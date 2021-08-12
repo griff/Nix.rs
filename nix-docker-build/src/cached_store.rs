@@ -18,12 +18,10 @@ impl CachedStore {
         store_uri: String,
         docker_bin: String,
         nix_store_bin: String,
-        write_allowed: bool
+        write_allowed: bool,
     ) -> Result<CachedStore, Error> {
         let mut b = LegacyStoreBuilder::new(nix_store_bin);
-        b.command_mut()
-            .env("NIX_REMOTE",store_uri)
-            .arg("--serve");
+        b.command_mut().env("NIX_REMOTE", store_uri).arg("--serve");
         b.host("cache");
         if write_allowed {
             b.command_mut().arg("--write");

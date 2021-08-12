@@ -32,9 +32,15 @@ pub fn main() {
     ]);
 
     let mut args = env::args().skip(1);
-    let store_uri = args.next().expect("expected first argument to be local store URI");
-    let docker_bin = args.next().expect("second argument should be docker binary");
-    let nix_store_bin = args.next().expect("third argument should be nix-store binary");
+    let store_uri = args
+        .next()
+        .expect("expected first argument to be local store URI");
+    let docker_bin = args
+        .next()
+        .expect("second argument should be docker binary");
+    let nix_store_bin = args
+        .next()
+        .expect("third argument should be nix-store binary");
     let mut write_allowed = false;
     for argument in args {
         if argument == "--write" {
@@ -51,7 +57,8 @@ pub fn main() {
         .build()
         .unwrap()
         .block_on(async move {
-            let store = CachedStore::connect(store_uri, docker_bin, nix_store_bin, write_allowed).await?;
+            let store =
+                CachedStore::connect(store_uri, docker_bin, nix_store_bin, write_allowed).await?;
             nixrs_store::nix_store::serve(source, out, store, write_allowed).await
         });
 
