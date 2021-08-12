@@ -199,8 +199,10 @@ impl Encoder<NAREvent> for NAREncoder {
 mod tests {
     use futures::{stream::iter, SinkExt, StreamExt, TryStreamExt};
     use pretty_assertions::assert_eq;
+    use std::io;
     use tempfile::tempdir;
     use tokio::fs::{self, File};
+    use tokio_util::codec::FramedWrite;
 
     use crate::archive::{parse_nar, proptest::arb_nar_events, test_data};
     use crate::hash;
@@ -215,9 +217,8 @@ mod tests {
         let path = dir.path().join("test-dir.nar");
 
         let io = File::create(&path).await.unwrap();
-        let encoder = tokio_util::codec::FramedWrite::new(io, NAREncoder);
-        let stream = futures::stream::iter(test_data::dir_example())
-            .map(|e| Ok(e) as Result<NAREvent, std::io::Error>);
+        let encoder = FramedWrite::new(io, NAREncoder);
+        let stream = iter(test_data::dir_example()).map(|e| Ok(e) as io::Result<NAREvent>);
         stream.forward(encoder).await.unwrap();
 
         let io = File::open(path).await.unwrap();
@@ -231,9 +232,8 @@ mod tests {
         let path = dir.path().join("test-text.nar");
 
         let io = File::create(&path).await.unwrap();
-        let encoder = tokio_util::codec::FramedWrite::new(io, NAREncoder);
-        let stream = futures::stream::iter(test_data::text_file())
-            .map(|e| Ok(e) as Result<NAREvent, std::io::Error>);
+        let encoder = FramedWrite::new(io, NAREncoder);
+        let stream = iter(test_data::text_file()).map(|e| Ok(e) as io::Result<NAREvent>);
         stream.forward(encoder).await.unwrap();
 
         let io = File::open(path).await.unwrap();
@@ -247,9 +247,8 @@ mod tests {
         let path = dir.path().join("test-exec.nar");
 
         let io = File::create(&path).await.unwrap();
-        let encoder = tokio_util::codec::FramedWrite::new(io, NAREncoder);
-        let stream = futures::stream::iter(test_data::exec_file())
-            .map(|e| Ok(e) as Result<NAREvent, std::io::Error>);
+        let encoder = FramedWrite::new(io, NAREncoder);
+        let stream = iter(test_data::exec_file()).map(|e| Ok(e) as io::Result<NAREvent>);
         stream.forward(encoder).await.unwrap();
 
         let io = File::open(path).await.unwrap();
@@ -263,9 +262,8 @@ mod tests {
         let path = dir.path().join("test-empty.nar");
 
         let io = File::create(&path).await.unwrap();
-        let encoder = tokio_util::codec::FramedWrite::new(io, NAREncoder);
-        let stream = futures::stream::iter(test_data::empty_file())
-            .map(|e| Ok(e) as Result<NAREvent, std::io::Error>);
+        let encoder = FramedWrite::new(io, NAREncoder);
+        let stream = iter(test_data::empty_file()).map(|e| Ok(e) as io::Result<NAREvent>);
         stream.forward(encoder).await.unwrap();
 
         let io = File::open(path).await.unwrap();
@@ -279,9 +277,8 @@ mod tests {
         let path = dir.path().join("test-empty.nar");
 
         let io = File::create(&path).await.unwrap();
-        let encoder = tokio_util::codec::FramedWrite::new(io, NAREncoder);
-        let stream = futures::stream::iter(test_data::empty_file_in_dir())
-            .map(|e| Ok(e) as Result<NAREvent, std::io::Error>);
+        let encoder = FramedWrite::new(io, NAREncoder);
+        let stream = iter(test_data::empty_file_in_dir()).map(|e| Ok(e) as io::Result<NAREvent>);
         stream.forward(encoder).await.unwrap();
 
         let io = File::open(path).await.unwrap();
@@ -311,15 +308,15 @@ mod tests {
                 let dir = tempdir()?;
                 let path = dir.path().join("encode_parse.nar");
                 let stream = iter(events.clone().into_iter())
-                    .map(|e| Ok(e) as Result<NAREvent, std::io::Error> );
+                    .map(|e| Ok(e) as io::Result<NAREvent> );
 
                 let io = File::create(&path).await?;
-                let encoder = tokio_util::codec::FramedWrite::new(io, NAREncoder);
+                let encoder = FramedWrite::new(io, NAREncoder);
                 let mut hash_io = hash::HashSink::new(hash::Algorithm::SHA256);
-                let hash_encoder = tokio_util::codec::FramedWrite::new(&mut hash_io, NAREncoder);
+                let hash_encoder = FramedWrite::new(&mut hash_io, NAREncoder);
                 stream.forward(encoder.fanout(hash_encoder)).await?;
                 let (nar_size, nar_hash) = hash_io.finish();
-                
+
                 let io = File::open(&path).await?;
                 let s = parse_nar(io)
                     .try_collect::<Vec<NAREvent>>().await?;
