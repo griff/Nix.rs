@@ -1,0 +1,2 @@
+[workspace]
+members = [ "nixrs-store", "nixrs-util", "nixrs-nix-store", "nix-docker-build" ]

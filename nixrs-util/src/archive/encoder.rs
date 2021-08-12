@@ -1,0 +1,332 @@
+use std::io;
+
+use bytes::BufMut;
+use bytes::BytesMut;
+use tokio_util::codec::Encoder;
+
+use crate::io::calc_padding;
+
+use super::NAREvent;
+
+impl NAREvent {
+    pub fn encoded_size(&self) -> usize {
+        match self {
+            NAREvent::Magic(magic) => {
+                let bytes = magic.as_bytes();
+                let padding = calc_padding(bytes.len() as u64) as usize;
+                // 1 * u64 = 8 bytes
+                return 8 + bytes.len() + padding;
+            },
+            NAREvent::RegularNode { offset: _, executable, size} => {
+                // 5 * u64 = 40 bytes
+                // 32 bytes strings
+                let mut needed = 40 + 32; 
+                if *executable {
+                    // 2 * u64 = 16 bytes
+                    // 16 bytes strings
+                    needed += 16 + 16;
+                }
+                if *size == 0 {
+                    // When size is 0 no Contents events are sent so also include
+                    // size of that:
+                    // 1 * u64 = 8
+                    // 8 byte from string
+                    needed += 8 + 8;
+                }
+                return needed;
+            },
+            NAREvent::Contents { total, index, buf} => {
+                if buf.len() as u64 + index == *total { // Last contents buffer
+                    let padding = calc_padding(*total) as usize;
+                    // 1 * u64 = 8 bytes
+                    // 8 bytes from strings
+                    return buf.len() + padding + 8 + 8;
+                } else {
+                    return buf.len();
+                }
+            }
+            NAREvent::SymlinkNode { target } => {
+                let bytes = target.as_bytes();
+                let padding = calc_padding(bytes.len() as u64) as usize;
+                // 6 * u64 = 48 bytes
+                // 40 bytes from strings
+                return 48 + 40 + bytes.len() + padding;
+            },
+            NAREvent::Directory => {
+                // 3 * u64 = 24 bytes
+                // 32 bytes from strings
+                return 24 + 32;
+            }
+            NAREvent::DirectoryEntry { name } => {
+                let bytes = name.as_bytes();
+                let padding = calc_padding(bytes.len() as u64) as usize;
+                // 5 * u64 = 40 bytes
+                // 32 bytes from strings
+                return 40 + 32 + bytes.len() + padding;
+            }
+            NAREvent::EndDirectory | NAREvent::EndDirectoryEntry => {
+                // 1 * u64 = 8 bytes
+                // 8 byte from string
+                return 8 + 8;
+            }
+        }
+    }
+
+    pub fn encode_into(&self, dst: &mut BytesMut) {
+        dst.reserve(self.encoded_size());
+        match self {
+            NAREvent::Magic(magic) => {
+                let bytes = magic.as_bytes();
+                let padding = calc_padding(bytes.len() as u64) as usize;
+                dst.put_u64_le(bytes.len() as u64);
+                dst.put_slice(bytes);
+                if padding > 0 {
+                    let zero = [0u8; 8];
+                    dst.put_slice(&zero[..padding]);    
+                }
+            }
+            NAREvent::RegularNode { offset: _, executable, size} => {
+                dst.put_u64_le(1);
+                dst.put_slice(b"(\0\0\0\0\0\0\0");
+                dst.put_u64_le(4);
+                dst.put_slice(b"type\0\0\0\0");
+                dst.put_u64_le(7);
+                dst.put_slice(b"regular\0");
+                if *executable {
+                    dst.put_u64_le(10);
+                    dst.put_slice(b"executable\0\0\0\0\0\0");
+                    dst.put_u64_le(0);
+                }
+                dst.put_u64_le(8);
+                dst.put_slice(b"contents");
+                dst.put_u64_le(*size);
+                if *size == 0 {
+                    // When size is 0 no Contents events are sent so close the node.
+                    dst.put_u64_le(1);
+                    dst.put_slice(b")\0\0\0\0\0\0\0");    
+                }
+            }
+            NAREvent::Contents { total, index, buf} => {
+                if buf.len() as u64 + index == *total { // Last contents buffer
+                    let padding = calc_padding(*total) as usize;
+                    dst.put_slice(&buf);
+                    if padding > 0 {
+                        let zero = [0u8; 8];
+                        dst.put_slice(&zero[0..padding]);    
+                    }
+                    dst.put_u64_le(1);
+                    dst.put_slice(b")\0\0\0\0\0\0\0");
+                } else {
+                    dst.extend_from_slice(&buf);
+                }
+            }
+            NAREvent::SymlinkNode { target } => {
+                let bytes = target.as_bytes();
+                let padding = calc_padding(bytes.len() as u64) as usize;
+                dst.put_u64_le(1);
+                dst.put_slice(b"(\0\0\0\0\0\0\0");
+                dst.put_u64_le(4);
+                dst.put_slice(b"type\0\0\0\0");
+                dst.put_u64_le(7);
+                dst.put_slice(b"symlink\0");
+                dst.put_u64_le(6);
+                dst.put_slice(b"target\0\0");
+                dst.put_u64_le(bytes.len() as u64);
+                dst.put_slice(bytes);
+                if padding > 0 {
+                    let zero = [0u8; 8];
+                    dst.put_slice(&zero[0..padding]);    
+                }
+                dst.put_u64_le(1);
+                dst.put_slice(b")\0\0\0\0\0\0\0");
+            },
+            NAREvent::Directory => {
+                dst.put_u64_le(1);
+                dst.put_slice(b"(\0\0\0\0\0\0\0");
+                dst.put_u64_le(4);
+                dst.put_slice(b"type\0\0\0\0");
+                dst.put_u64_le(9);
+                dst.put_slice(b"directory\0\0\0\0\0\0\0");
+            },
+            NAREvent::DirectoryEntry { name } => {
+                let bytes = name.as_bytes();
+                let padding = calc_padding(bytes.len() as u64) as usize;
+                dst.put_u64_le(5);
+                dst.put_slice(b"entry\0\0\0");    
+                dst.put_u64_le(1);
+                dst.put_slice(b"(\0\0\0\0\0\0\0");
+                dst.put_u64_le(4);
+                dst.put_slice(b"name\0\0\0\0");
+                dst.put_u64_le(bytes.len() as u64);
+                dst.put_slice(bytes);
+                if padding > 0 {
+                    let zero = [0u8; 8];
+                    dst.put_slice(&zero[..padding]);    
+                }
+                dst.put_u64_le(4);
+                dst.put_slice(b"node\0\0\0\0");
+            },
+            NAREvent::EndDirectory | NAREvent::EndDirectoryEntry => {
+                dst.put_u64_le(1);
+                dst.put_slice(b")\0\0\0\0\0\0\0");    
+            },
+        }
+    }
+}
+
+pub struct NAREncoder;
+
+impl Encoder<NAREvent> for NAREncoder {
+    type Error = io::Error;
+
+    fn encode(&mut self, item: NAREvent, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        item.encode_into(dst);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use futures::{SinkExt, StreamExt, TryStreamExt, stream::iter};
+    use tempfile::tempdir;
+    use tokio::fs::{self, File};
+    use pretty_assertions::assert_eq;
+
+    use crate::pretty_prop_assert_eq;
+    use crate::archive::{parse_nar, proptest::arb_nar_events, test_data};
+    use crate::hash;
+    use proptest::proptest;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_encode_nar_dir() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test-dir.nar");
+
+        let io = File::create(&path).await.unwrap();
+        let encoder = tokio_util::codec::FramedWrite::new(io, NAREncoder);
+        let stream = futures::stream::iter(test_data::dir_example())
+            .map(|e| Ok(e) as Result<NAREvent, std::io::Error> );
+        stream.forward(encoder).await.unwrap();
+        
+        let io = File::open(path).await.unwrap();
+        let s = parse_nar(io)
+            .try_collect::<Vec<NAREvent>>().await.unwrap();
+        assert_eq!(s, test_data::dir_example());
+    }
+
+    #[tokio::test]
+    async fn test_encode_nar_text() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test-text.nar");
+
+        let io = File::create(&path).await.unwrap();
+        let encoder = tokio_util::codec::FramedWrite::new(io, NAREncoder);
+        let stream = futures::stream::iter(test_data::text_file())
+            .map(|e| Ok(e) as Result<NAREvent, std::io::Error> );
+        stream.forward(encoder).await.unwrap();
+        
+        let io = File::open(path).await.unwrap();
+        let s = parse_nar(io)
+            .try_collect::<Vec<NAREvent>>().await.unwrap();
+        assert_eq!(s, test_data::text_file());
+    }
+
+    #[tokio::test]
+    async fn test_encode_nar_exec() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test-exec.nar");
+
+        let io = File::create(&path).await.unwrap();
+        let encoder = tokio_util::codec::FramedWrite::new(io, NAREncoder);
+        let stream = futures::stream::iter(test_data::exec_file())
+            .map(|e| Ok(e) as Result<NAREvent, std::io::Error> );
+        stream.forward(encoder).await.unwrap();
+        
+        let io = File::open(path).await.unwrap();
+        let s = parse_nar(io)
+            .try_collect::<Vec<NAREvent>>().await.unwrap();
+        assert_eq!(s, test_data::exec_file());
+    }
+
+    #[tokio::test]
+    async fn test_encode_nar_empty() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test-empty.nar");
+
+        let io = File::create(&path).await.unwrap();
+        let encoder = tokio_util::codec::FramedWrite::new(io, NAREncoder);
+        let stream = futures::stream::iter(test_data::empty_file())
+            .map(|e| Ok(e) as Result<NAREvent, std::io::Error> );
+        stream.forward(encoder).await.unwrap();
+        
+        let io = File::open(path).await.unwrap();
+        let s = parse_nar(io)
+            .try_collect::<Vec<NAREvent>>().await.unwrap();
+        assert_eq!(s, test_data::empty_file());
+    }
+
+
+    #[tokio::test]
+    async fn test_encode_nar_empty_file_in_dir() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test-empty.nar");
+
+        let io = File::create(&path).await.unwrap();
+        let encoder = tokio_util::codec::FramedWrite::new(io, NAREncoder);
+        let stream = futures::stream::iter(test_data::empty_file_in_dir())
+            .map(|e| Ok(e) as Result<NAREvent, std::io::Error> );
+        stream.forward(encoder).await.unwrap();
+        
+        let io = File::open(path).await.unwrap();
+        let s = parse_nar(io)
+            .try_collect::<Vec<NAREvent>>().await.unwrap();
+        assert_eq!(s, test_data::empty_file_in_dir());
+    }
+
+    #[test]
+    fn test_encode_parse() {
+        let r = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        proptest!(|(events in arb_nar_events(8, 256, 10))| {
+            let mut ctx = hash::Context::new(hash::Algorithm::SHA256);
+            let mut size = 0;
+            let mut buf = BytesMut::with_capacity(65_000);
+            for item in events.iter() {
+                size += item.encoded_size() as u64;
+                item.encode_into(&mut buf);
+                ctx.update(&buf);
+                buf.clear()
+            }
+            let hash = ctx.finish();
+
+            r.block_on(async {
+                let dir = tempdir()?;
+                let path = dir.path().join("encode_parse.nar");
+                let stream = iter(events.clone().into_iter())
+                    .map(|e| Ok(e) as Result<NAREvent, std::io::Error> );
+
+                let io = File::create(&path).await?;
+                let encoder = tokio_util::codec::FramedWrite::new(io, NAREncoder);
+                let mut hash_io = hash::HashSink::new(hash::Algorithm::SHA256);
+                let hash_encoder = tokio_util::codec::FramedWrite::new(&mut hash_io, NAREncoder);
+                stream.forward(encoder.fanout(hash_encoder)).await?;
+                let (nar_size, nar_hash) = hash_io.finish();
+                
+                let io = File::open(&path).await?;
+                let s = parse_nar(io)
+                    .try_collect::<Vec<NAREvent>>().await?;
+                pretty_prop_assert_eq!(s, events);
+
+                pretty_prop_assert_eq!(fs::metadata(&path).await?.len(), size);
+                pretty_prop_assert_eq!(nar_size, size);
+                pretty_prop_assert_eq!(nar_hash, hash);
+                Ok(())
+            })?;
+
+        });
+    }
+}
