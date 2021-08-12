@@ -116,7 +116,7 @@ impl<F> DumpOptions<F> {
         self
     }
 
-    pub fn use_case_hack(&mut self, use_case_hack: bool) -> &mut Self {
+    pub fn use_case_hack(mut self, use_case_hack: bool) -> Self {
         self.use_case_hack = use_case_hack;
         self
     }
@@ -333,7 +333,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_dump_dir() {
-        let s = dump("test-data/nar")
+        let s = DumpOptions::new()
+            .use_case_hack(true)
+            .dump("test-data/nar")
             .try_collect::<Vec<NAREvent>>()
             .await
             .unwrap();
