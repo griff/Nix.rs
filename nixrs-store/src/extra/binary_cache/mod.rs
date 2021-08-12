@@ -1,9 +1,9 @@
 use std::collections::HashSet;
-use std::path::PathBuf;
 use std::io::{Cursor, Read};
+use std::path::PathBuf;
 
-use serde::{Serialize, Deserialize};
 use crate::StorePath;
+use serde::{Deserialize, Serialize};
 
 //mod s3;
 #[allow(unused)]
@@ -15,7 +15,7 @@ fn nar_info_file_for(path: &StorePath) -> String {
 enum Compression {
     None,
     XZ,
-    BZip2
+    BZip2,
 }
 
 impl Default for Compression {
@@ -66,7 +66,7 @@ pub struct Config {
 pub trait BinaryCache {
     fn uri_schemes(&self) -> HashSet<String>;
     fn file_exists(&self, path: &StorePath) -> bool;
-    fn upsert_file<R:Read>(&self, path: &StorePath, stream: R, mime_type: &str);
+    fn upsert_file<R: Read>(&self, path: &StorePath, stream: R, mime_type: &str);
     fn upsert_file_data(&self, path: &StorePath, data: &[u8], mime_type: &str) {
         let stream = Cursor::new(data);
         self.upsert_file(path, stream, mime_type)

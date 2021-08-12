@@ -1,18 +1,17 @@
 use std::collections::BTreeSet;
 use std::convert::TryFrom;
 use std::fmt;
-use std::path::{MAIN_SEPARATOR, Path};
 use std::ops::Deref;
+use std::path::{Path, MAIN_SEPARATOR};
 
-use thiserror::Error;
-use serde::{Deserialize, Serialize};
-use nixrs_util::{base32, hash};
 use nixrs_util::path::clean_path;
+use nixrs_util::{base32, hash};
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::StoreDir;
 
 pub type StorePathSet = BTreeSet<StorePath>;
-
 
 #[derive(Error, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum ParseStorePathError {
@@ -39,11 +38,10 @@ pub enum ReadStorePathError {
 }
 
 /// Extension of derivations in the Nix store.
-pub const DRV_EXTENSION : &str = ".drv";
-
+pub const DRV_EXTENSION: &str = ".drv";
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Deserialize, Serialize)]
-#[serde(try_from="String", into="String")]
+#[serde(try_from = "String", into = "String")]
 pub struct StorePath {
     pub hash: StorePathHash,
     pub name: StorePathName,
@@ -57,20 +55,23 @@ impl StorePath {
         if !path.is_absolute() {
             return Err(ParseStorePathError::BadStorePath(path.to_owned()));
         }
-        let clean = clean_path(path); 
+        let clean = clean_path(path);
         let path = clean.as_ref();
         if path.parent() != Some(store_dir.as_ref()) {
             return Err(ParseStorePathError::NotInStore(path.into()));
         }
         Self::new_from_base_name(
             path.file_name()
-                .ok_or_else(|| ParseStorePathError::BadStorePath(path.into()) )?
+                .ok_or_else(|| ParseStorePathError::BadStorePath(path.into()))?
                 .to_str()
-                .ok_or_else(|| ParseStorePathError::BadStorePath(path.into()) )?,
+                .ok_or_else(|| ParseStorePathError::BadStorePath(path.into()))?,
         )
     }
 
-    pub fn from_parts(hash: [u8; STORE_PATH_HASH_BYTES], name: &str) -> Result<Self, ParseStorePathError> {
+    pub fn from_parts(
+        hash: [u8; STORE_PATH_HASH_BYTES],
+        name: &str,
+    ) -> Result<Self, ParseStorePathError> {
         Ok(StorePath {
             hash: StorePathHash(hash),
             name: StorePathName::new(name)?,
@@ -109,7 +110,7 @@ impl StorePath {
         let name_with_suffix = self.name.name();
         assert!(name_with_suffix.ends_with(DRV_EXTENSION));
 
-        name_with_suffix[..(name_with_suffix.len()-DRV_EXTENSION.len())].to_owned()
+        name_with_suffix[..(name_with_suffix.len() - DRV_EXTENSION.len())].to_owned()
     }
 }
 
@@ -133,23 +134,21 @@ impl From<StorePath> for String {
     }
 }
 
-
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct StorePathHash([u8; STORE_PATH_HASH_BYTES]);
 
 impl StorePathHash {
     pub fn new(s: &str) -> Result<Self, ParseStorePathError> {
         assert_eq!(s.len(), STORE_PATH_HASH_CHARS);
-        let v = base32::decode(s)
-            .map_err(|e| ParseStorePathError::BadBase32(e, s.into()))?;
+        let v = base32::decode(s).map_err(|e| ParseStorePathError::BadBase32(e, s.into()))?;
         assert_eq!(v.len(), STORE_PATH_HASH_BYTES);
-        let mut bytes = [ 0u8; STORE_PATH_HASH_BYTES];
+        let mut bytes = [0u8; STORE_PATH_HASH_BYTES];
         bytes.copy_from_slice(&v[0..STORE_PATH_HASH_BYTES]);
         Ok(Self(bytes))
     }
 
     pub fn new_from_hash(hash: &hash::Hash) -> Self {
-        let mut bytes = [ 0u8; STORE_PATH_HASH_BYTES];
+        let mut bytes = [0u8; STORE_PATH_HASH_BYTES];
         let buf = hash.as_ref();
         for i in 0..hash.len() {
             let idx = i % STORE_PATH_HASH_BYTES;
@@ -261,12 +260,12 @@ impl Deref for StorePathName {
     }
 }
 
-#[cfg(any(test, feature="test"))]
+#[cfg(any(test, feature = "test"))]
 pub mod proptest {
-    use ::proptest::{arbitrary::Arbitrary, prelude::*};
     use super::*;
+    use ::proptest::{arbitrary::Arbitrary, prelude::*};
 
-    pub fn arb_output_name() -> impl Strategy<Value=String> {
+    pub fn arb_output_name() -> impl Strategy<Value = String> {
         "[a-zA-Z0-9+\\-_?=][a-zA-Z0-9+\\-_?=.]{0,13}"
     }
 
@@ -281,7 +280,10 @@ pub mod proptest {
         }
     }
 
-    pub fn arb_store_path_name(max: u8, extension: Option<String>) -> impl Strategy<Value=StorePathName> {
+    pub fn arb_store_path_name(
+        max: u8,
+        extension: Option<String>,
+    ) -> impl Strategy<Value = StorePathName> {
         "[a-zA-Z0-9+\\-_?=][a-zA-Z0-9+\\-_?=.]{0,210}".prop_map(move |mut s| {
             let mut max = max;
             let len = extension.as_ref().map(|e| e.len() + 1).unwrap_or(0) as u8;
@@ -291,7 +293,6 @@ pub mod proptest {
             max = max - 1;
             if s.len() > max as usize {
                 s.truncate(max as usize);
-
             }
             if let Some(ext) = extension.as_ref() {
                 s.push('.');
@@ -310,15 +311,11 @@ pub mod proptest {
         }
     }
 
-    pub fn arb_store_path(max: u8, extension: Option<String>) -> impl Strategy<Value=StorePath> {
-        (
-            any::<StorePathHash>(),
-            arb_store_path_name(max, extension)
-        ).prop_map(|(hash, name)| {
-            StorePath { hash, name }
-        })
+    pub fn arb_store_path(max: u8, extension: Option<String>) -> impl Strategy<Value = StorePath> {
+        (any::<StorePathHash>(), arb_store_path_name(max, extension))
+            .prop_map(|(hash, name)| StorePath { hash, name })
     }
-    pub fn arb_drv_store_path() -> impl Strategy<Value=StorePath> {
+    pub fn arb_drv_store_path() -> impl Strategy<Value = StorePath> {
         arb_store_path(211 - 4 - 15, Some("drv".into()))
     }
 
@@ -334,12 +331,12 @@ pub mod proptest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pretty_assertions::assert_eq;
-    use assert_matches::assert_matches;
     use ::proptest::arbitrary::any;
     use ::proptest::prop_assert_eq;
     use ::proptest::proptest;
+    use assert_matches::assert_matches;
     use nixrs_util::base32::BadBase32;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn test_parse() {
@@ -351,13 +348,16 @@ mod tests {
         assert_eq!(&*p.name, "konsole-18.12.3");
         let value = [
             0x9f, 0x76, 0x49, 0x20, 0xf6, 0x5d, 0xe9, 0x71, 0xc4, 0xca, 0x46, 0x21, 0xab, 0xff,
-            0x9b, 0x44, 0xef, 0x87, 0x0f, 0x3c
+            0x9b, 0x44, 0xef, 0x87, 0x0f, 0x3c,
         ];
         assert_eq!(p.hash.0, value);
         assert_eq!(p.hash.as_ref(), &value);
         assert_eq!(&*p.hash, &value);
         assert_eq!(p.hash.hash(), &value);
-        assert_eq!(format!("{}", p), "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3");
+        assert_eq!(
+            format!("{}", p),
+            "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3"
+        );
         assert_eq!(p.is_derivation(), false);
         let p2 = StorePath::from_parts(value, "konsole-18.12.3").unwrap();
         assert_eq!(p, p2);
@@ -368,8 +368,11 @@ mod tests {
         let s = "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv".to_owned();
         let p = StorePath::try_from(s).unwrap();
         assert_eq!(p.name.0, "konsole-18.12.3.drv");
-        assert_eq!(format!("{}", p), "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv");
-        let s2 : String = p.clone().into();
+        assert_eq!(
+            format!("{}", p),
+            "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv"
+        );
+        let s2: String = p.clone().into();
         assert_eq!(s2, "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv");
         let s3 = "7h7qgvs4kgzsn8a6rb274saxyqh4jxlz-konsole-18.12.3.drv";
         let p2 = StorePath::new_from_base_name(s3).unwrap();
@@ -379,9 +382,15 @@ mod tests {
 
     #[test]
     fn test_from_parts() {
-        let hash = hash::Hash::parse_any_prefixed("sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s").unwrap();
+        let hash = hash::Hash::parse_any_prefixed(
+            "sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s",
+        )
+        .unwrap();
         let p = StorePath::from_hash(&hash, "konsole-18.12.3").unwrap();
-        assert_eq!(format!("{}", p), "ldhh7c134ap5swsm86rqnc0i7cinqvrc-konsole-18.12.3");
+        assert_eq!(
+            format!("{}", p),
+            "ldhh7c134ap5swsm86rqnc0i7cinqvrc-konsole-18.12.3"
+        );
     }
 
     #[test]
@@ -416,7 +425,8 @@ mod tests {
         let s = "7h7qgvs4kgzsn8e6rb273saxyqh4jxlz-konsole-18.12.3";
         assert_matches!(
             StorePath::new_from_base_name(&s),
-            Err(ParseStorePathError::BadBase32(BadBase32, _)));
+            Err(ParseStorePathError::BadBase32(BadBase32, _))
+        );
     }
 
     #[test]
@@ -468,7 +478,6 @@ mod tests {
         let p = StorePath::new_from_base_name(&s).unwrap();
         assert!(p.is_derivation());
     }
-
 
     #[test]
     fn test_name_from_drv() {

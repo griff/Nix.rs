@@ -1,6 +1,5 @@
-use nixrs_util::StringSet;
 use super::{ParseStorePathError, StoreDir, StorePath};
-
+use nixrs_util::StringSet;
 
 /// A "derived path" is a very simple sort of expression that evaluates
 /// to (concrete) store path. It is either:
@@ -22,10 +21,8 @@ pub enum DerivedPath {
 impl DerivedPath {
     pub fn print(&self, store_dir: &StoreDir) -> String {
         match self {
-            Self::Opaque(path) => {
-                store_dir.print_path(path)
-            }
-            Self::Built { drv_path, outputs} => {
+            Self::Opaque(path) => store_dir.print_path(path),
+            Self::Built { drv_path, outputs } => {
                 let mut ret = store_dir.print_path(drv_path);
                 ret.push('!');
                 if outputs.is_empty() {
@@ -45,12 +42,15 @@ impl DerivedPath {
         }
     }
 
-    pub fn parse(store_dir: &StoreDir, s:&str) -> Result<Self, ParseStorePathError> {
+    pub fn parse(store_dir: &StoreDir, s: &str) -> Result<Self, ParseStorePathError> {
         if let Some(pos) = s.find("!") {
             let drv_path = store_dir.parse_path(&s[..pos])?;
-            let o = &s[(pos+1)..];
+            let o = &s[(pos + 1)..];
             if o == "*" {
-                Ok(DerivedPath::Built { drv_path, outputs: StringSet::new() })
+                Ok(DerivedPath::Built {
+                    drv_path,
+                    outputs: StringSet::new(),
+                })
             } else {
                 let mut outputs = StringSet::new();
                 for output in o.split(",") {
@@ -65,10 +65,10 @@ impl DerivedPath {
     }
 }
 
-#[cfg(any(test, feature="test"))]
+#[cfg(any(test, feature = "test"))]
 pub mod proptest {
+    use crate::path::proptest::{arb_drv_store_path, arb_output_name};
     use ::proptest::{collection::btree_set, prelude::*};
-    use crate::path::proptest::{arb_output_name, arb_drv_store_path};
 
     use super::*;
 
@@ -81,12 +81,11 @@ pub mod proptest {
         }
     }
 
-    pub fn arb_derived_path() -> impl Strategy<Value=DerivedPath> {
+    pub fn arb_derived_path() -> impl Strategy<Value = DerivedPath> {
         prop_oneof![
-            any::<StorePath>().prop_map(|p| DerivedPath::Opaque(p) ),
-            
+            any::<StorePath>().prop_map(|p| DerivedPath::Opaque(p)),
             (arb_drv_store_path(), btree_set(arb_output_name(), 0..5))
-                .prop_map(|(drv_path, outputs)| DerivedPath::Built { drv_path, outputs } )
+                .prop_map(|(drv_path, outputs)| DerivedPath::Built { drv_path, outputs })
         ]
     }
 }
@@ -101,65 +100,135 @@ mod tests {
     #[test]
     fn test_derived_path_parse() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let drv_path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv").unwrap();
-        let p = DerivedPath::parse(&store_dir, "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv!*").unwrap();
-        assert_eq!(p, DerivedPath::Built { drv_path, outputs: StringSet::new() });
+        let drv_path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv")
+            .unwrap();
+        let p = DerivedPath::parse(
+            &store_dir,
+            "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv!*",
+        )
+        .unwrap();
+        assert_eq!(
+            p,
+            DerivedPath::Built {
+                drv_path,
+                outputs: StringSet::new()
+            }
+        );
     }
 
     #[test]
     fn test_derived_path_parse1() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let drv_path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv").unwrap();
-        let p = DerivedPath::parse(&store_dir, "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv!out").unwrap();
-        assert_eq!(p, DerivedPath::Built { drv_path, outputs: string_set!["out"] });
+        let drv_path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv")
+            .unwrap();
+        let p = DerivedPath::parse(
+            &store_dir,
+            "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv!out",
+        )
+        .unwrap();
+        assert_eq!(
+            p,
+            DerivedPath::Built {
+                drv_path,
+                outputs: string_set!["out"]
+            }
+        );
     }
 
     #[test]
     fn test_derived_path_parse2() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let drv_path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv").unwrap();
-        let p = DerivedPath::parse(&store_dir, "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv!dev,out").unwrap();
-        assert_eq!(p, DerivedPath::Built { drv_path, outputs: string_set!["out", "dev"] });
+        let drv_path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv")
+            .unwrap();
+        let p = DerivedPath::parse(
+            &store_dir,
+            "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv!dev,out",
+        )
+        .unwrap();
+        assert_eq!(
+            p,
+            DerivedPath::Built {
+                drv_path,
+                outputs: string_set!["out", "dev"]
+            }
+        );
     }
 
     #[test]
     fn test_derived_path_parse_opaque() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3").unwrap();
-        let p = DerivedPath::parse(&store_dir, "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3").unwrap();
+        let path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3")
+            .unwrap();
+        let p = DerivedPath::parse(
+            &store_dir,
+            "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3",
+        )
+        .unwrap();
         assert_eq!(p, DerivedPath::Opaque(path));
     }
-
 
     #[test]
     fn test_derived_path_print() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let drv_path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv").unwrap();
-        let dp = DerivedPath::Built { drv_path, outputs: StringSet::new() };
-        assert_eq!(dp.print(&store_dir), "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv!*");
+        let drv_path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv")
+            .unwrap();
+        let dp = DerivedPath::Built {
+            drv_path,
+            outputs: StringSet::new(),
+        };
+        assert_eq!(
+            dp.print(&store_dir),
+            "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv!*"
+        );
     }
 
     #[test]
     fn test_derived_path_print1() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let drv_path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv").unwrap();
-        let dp = DerivedPath::Built { drv_path, outputs: string_set!["out"] };
-        assert_eq!(dp.print(&store_dir), "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv!out");
+        let drv_path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv")
+            .unwrap();
+        let dp = DerivedPath::Built {
+            drv_path,
+            outputs: string_set!["out"],
+        };
+        assert_eq!(
+            dp.print(&store_dir),
+            "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv!out"
+        );
     }
 
     #[test]
     fn test_derived_path_print2() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let drv_path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv").unwrap();
-        let dp = DerivedPath::Built { drv_path, outputs: string_set!["out", "dev"] };
-        assert_eq!(dp.print(&store_dir), "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv!dev,out");
+        let drv_path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv")
+            .unwrap();
+        let dp = DerivedPath::Built {
+            drv_path,
+            outputs: string_set!["out", "dev"],
+        };
+        assert_eq!(
+            dp.print(&store_dir),
+            "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv!dev,out"
+        );
     }
 
     #[test]
     fn test_derived_path_print_opaque() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3").unwrap();
+        let path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3")
+            .unwrap();
         let dp = DerivedPath::Opaque(path);
-        assert_eq!(dp.print(&store_dir), "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3");
+        assert_eq!(
+            dp.print(&store_dir),
+            "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3"
+        );
     }
 }

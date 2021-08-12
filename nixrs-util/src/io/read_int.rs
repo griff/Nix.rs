@@ -15,8 +15,6 @@ use tokio::io::ReadBuf;
 
 use crate::ready;
 
-
-
 pin_project! {
     #[derive(Debug)]
     #[must_use = "futures do nothing unless you `.await` or poll them"]
@@ -58,7 +56,7 @@ impl<R: AsyncRead> Future for ReadU64<R> {
                 Poll::Ready(Ok(())) => {
                     let n = buf.filled().len();
                     if n == 0 {
-                        return Poll::Ready(Err(UnexpectedEof.into()))
+                        return Poll::Ready(Err(UnexpectedEof.into()));
                     }
 
                     n as u8
@@ -92,33 +90,38 @@ macro_rules! reader {
                 self.inner.inner()
             }
         }
-        
+
         impl<R> Future for $name<R>
-            where R: AsyncRead
+        where
+            R: AsyncRead,
         {
             type Output = io::Result<$t>;
-        
+
             fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
                 let $v = ready!(self.project().inner.poll(cx))?;
                 $e
             }
         }
-        
     };
 }
 
 reader!(ReadUsize, usize, |v| {
     if v > usize::MAX as u64 {
-        Poll::Ready(Err(io::Error::new(io::ErrorKind::InvalidData, 
-            format!("{} larger than {}", v, usize::MAX))))
+        Poll::Ready(Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{} larger than {}", v, usize::MAX),
+        )))
     } else {
         Poll::Ready(Ok(v as usize))
     }
 });
 reader!(ReadBool, bool, |v| { Poll::Ready(Ok(v != 0)) });
-reader!(ReadSeconds, Duration, |v| { Poll::Ready(Ok(Duration::from_secs(v))) });
-reader!(ReadTime, SystemTime, |v| { Poll::Ready(Ok(SystemTime::UNIX_EPOCH + Duration::from_secs(v))) });
-
+reader!(ReadSeconds, Duration, |v| {
+    Poll::Ready(Ok(Duration::from_secs(v)))
+});
+reader!(ReadTime, SystemTime, |v| {
+    Poll::Ready(Ok(SystemTime::UNIX_EPOCH + Duration::from_secs(v)))
+});
 
 pin_project! {
     #[derive(Debug)]
@@ -130,7 +133,7 @@ pin_project! {
     }
 }
 
-impl<R,T> ReadEnum<R, T> {
+impl<R, T> ReadEnum<R, T> {
     pub fn new(src: R) -> ReadEnum<R, T> {
         ReadEnum {
             inner: ReadU64::new(src),
@@ -143,9 +146,10 @@ impl<R,T> ReadEnum<R, T> {
     }
 }
 
-impl<R,T> Future for ReadEnum<R,T>
-    where R: AsyncRead,
-          T: From<u64>,
+impl<R, T> Future for ReadEnum<R, T>
+where
+    R: AsyncRead,
+    T: From<u64>,
 {
     type Output = io::Result<T>;
 
@@ -154,7 +158,6 @@ impl<R,T> Future for ReadEnum<R,T>
         Poll::Ready(Ok(v.into()))
     }
 }
-
 
 pin_project! {
     #[derive(Debug)]
@@ -166,7 +169,7 @@ pin_project! {
     }
 }
 
-impl<R,F> ReadFlag<R, F> {
+impl<R, F> ReadFlag<R, F> {
     pub fn new(src: R) -> ReadFlag<R, F> {
         ReadFlag {
             inner: ReadBool::new(src),
@@ -179,9 +182,10 @@ impl<R,F> ReadFlag<R, F> {
     }
 }
 
-impl<R,F> Future for ReadFlag<R,F>
-    where R: AsyncRead,
-          F: From<bool>,
+impl<R, F> Future for ReadFlag<R, F>
+where
+    R: AsyncRead,
+    F: From<bool>,
 {
     type Output = io::Result<F>;
 

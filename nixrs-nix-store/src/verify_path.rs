@@ -18,10 +18,12 @@ pub async fn verify_path<S: Store>(mut store: S, paths: &[PathBuf]) -> Result<()
         store.nar_from_path(&store_path, &mut sink).await?;
         let (_size, current) = sink.finish();
         if current != info.nar_hash {
-            error!("path '{}' was modified! expected hash '{}', got '{}'",
-                    sp_s, info.nar_hash, current);
+            error!(
+                "path '{}' was modified! expected hash '{}', got '{}'",
+                sp_s, info.nar_hash, current
+            );
             ret = Err(Error::Custom(1, "some modified paths".into()));
-        }    
+        }
     }
     ret
 }

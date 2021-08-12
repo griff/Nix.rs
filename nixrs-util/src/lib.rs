@@ -4,15 +4,15 @@ pub mod archive;
 pub mod base32;
 pub mod flag_enum;
 pub mod hash;
+mod io;
 pub mod num_enum;
 pub mod path;
-mod io;
 mod state_parse;
 mod state_print;
 
+pub use io::{AsyncSink, AsyncSource, CollectionRead, CollectionSize, OffsetReader};
 pub use state_parse::StateParse;
 pub use state_print::StatePrint;
-pub use io::{AsyncSource, AsyncSink, CollectionRead, CollectionSize, OffsetReader};
 
 pub type StringSet = BTreeSet<String>;
 
@@ -36,26 +36,27 @@ macro_rules! string_set {
 
 #[macro_export]
 macro_rules! ready {
-    ($e:expr) =>  {
+    ($e:expr) => {
         match $e {
             std::task::Poll::Ready(t) => t,
             std::task::Poll::Pending => {
                 return std::task::Poll::Pending;
             }
         }
-    }
+    };
 }
 
-
-#[cfg(any(test, feature="test"))]
+#[cfg(any(test, feature = "test"))]
 pub mod proptest {
-    use std::{path::PathBuf, time::{Duration, SystemTime}};
+    use std::{
+        path::PathBuf,
+        time::{Duration, SystemTime},
+    };
 
     use ::proptest::prelude::*;
 
-    pub fn arb_filename() -> impl Strategy<Value=String> {
-        "[a-zA-Z 0-9.?=+]+"
-            .prop_filter("Not cur and parent dir", |s| s != "." && s != ".." )
+    pub fn arb_filename() -> impl Strategy<Value = String> {
+        "[a-zA-Z 0-9.?=+]+".prop_filter("Not cur and parent dir", |s| s != "." && s != "..")
     }
     /*
     pub fn arb_filename() -> impl Strategy<Value=String> {
@@ -63,7 +64,7 @@ pub mod proptest {
             .prop_filter("Not cur and parent dir", |s| s != "." && s != ".." )
     }
     */
-    pub fn arb_file_component() -> impl Strategy<Value=String> {
+    pub fn arb_file_component() -> impl Strategy<Value = String> {
         "[a-zA-Z 0-9.?=+]+"
     }
     prop_compose! {

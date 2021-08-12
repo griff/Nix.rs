@@ -7,8 +7,8 @@ use std::task::Context;
 use std::task::Poll;
 
 use bytes::BufMut;
-use tokio::io::AsyncRead;
 use pin_project_lite::pin_project;
+use tokio::io::AsyncRead;
 
 use crate::ready;
 
@@ -32,13 +32,14 @@ impl<R> ReadExact<R> {
 }
 
 impl<R> Future for ReadExact<R>
-    where R: AsyncRead + Unpin
+where
+    R: AsyncRead + Unpin,
 {
     type Output = io::Result<Vec<u8>>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        use tokio::io::ReadBuf;
         use mem::MaybeUninit;
+        use tokio::io::ReadBuf;
 
         let mut me = self.project();
 
@@ -49,7 +50,7 @@ impl<R> Future for ReadExact<R>
                 let mut buf = ReadBuf::uninit(dst);
                 let ptr = buf.filled().as_ptr();
                 ready!(me.src.as_mut().poll_read(cx, &mut buf)?);
-    
+
                 assert_eq!(ptr, buf.filled().as_ptr());
                 buf.filled().len()
             };
@@ -58,7 +59,7 @@ impl<R> Future for ReadExact<R>
             }
             unsafe {
                 me.buf.advance_mut(n);
-            }    
+            }
         }
         Poll::Ready(Ok(mem::take(me.buf)))
     }

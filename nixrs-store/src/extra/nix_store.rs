@@ -2,20 +2,27 @@ use log::error;
 use tokio::io::AsyncReadExt;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
-use crate::Error;
 use crate::get_protocol_minor;
+use crate::legacy_local_store::{
+    ServeCommand, SERVE_MAGIC_1, SERVE_MAGIC_2, SERVE_PROTOCOL_VERSION,
+};
+use crate::Error;
 use crate::{BasicDerivation, BuildSettings, CheckSignaturesFlag, DerivedPath};
 use crate::{RepairFlag, Store, StorePath, StorePathSet, StorePathWithOutputs};
 use crate::{SubstituteFlag, ValidPathInfo};
-use crate::legacy_local_store::{ServeCommand, SERVE_MAGIC_1, SERVE_MAGIC_2, SERVE_PROTOCOL_VERSION};
-use nixrs_util::{AsyncSink, AsyncSource};
 use nixrs_util::hash;
+use nixrs_util::{AsyncSink, AsyncSource};
 
-
-pub async fn serve<S, R, W>(mut source: R, mut out:W, mut store: S, write_allowed: bool) -> Result<(), Error>
-    where S: Store,
-          R: AsyncRead + Unpin,
-          W: AsyncWrite + Unpin,
+pub async fn serve<S, R, W>(
+    mut source: R,
+    mut out: W,
+    mut store: S,
+    write_allowed: bool,
+) -> Result<(), Error>
+where
+    S: Store,
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
 {
     let store_dir = store.store_dir();
     let magic = source.read_u64_le().await?;
@@ -32,18 +39,20 @@ pub async fn serve<S, R, W>(mut source: R, mut out:W, mut store: S, write_allowe
             ServeCommand::CmdQueryValidPaths => {
                 let lock = source.read_bool().await? && write_allowed;
                 let substitute = source.read_bool().await?;
-                let paths : StorePathSet = source.read_parsed_coll(&store_dir).await?;
+                let paths: StorePathSet = source.read_parsed_coll(&store_dir).await?;
 
                 let maybe_substitute = if substitute && write_allowed {
                     SubstituteFlag::Substitute
                 } else {
                     SubstituteFlag::NoSubstitute
                 };
-                let ret = store.legacy_query_valid_paths(&paths, lock, maybe_substitute).await?;
+                let ret = store
+                    .legacy_query_valid_paths(&paths, lock, maybe_substitute)
+                    .await?;
                 out.write_printed_coll(&store_dir, &ret).await?;
-            },
+            }
             ServeCommand::CmdQueryPathInfos => {
-                let paths : StorePathSet = source.read_parsed_coll(&store_dir).await?;
+                let paths: StorePathSet = source.read_parsed_coll(&store_dir).await?;
                 // !!! Maybe we want a queryPathInfos?
                 for i in paths {
                     match store.query_path_info(&i).await {
@@ -61,45 +70,45 @@ pub async fn serve<S, R, W>(mut source: R, mut out:W, mut store: S, write_allowe
                             if get_protocol_minor!(client_version) >= 4 {
                                 let s = info.nar_hash.to_base32().to_string();
                                 out.write_string(&s).await?;
-                                
+
                                 if let Some(ca) = info.ca.as_ref() {
-                                    let ca = ca.to_string(); 
-                                    out.write_string(&ca).await?;    
+                                    let ca = ca.to_string();
+                                    out.write_string(&ca).await?;
                                 } else {
                                     out.write_string("").await?;
                                 }
-        
+
                                 out.write_string_coll(&info.sigs).await?;
                             }
-                        },
+                        }
                         Err(Error::InvalidPath(_)) => (),
                         Err(err) => return Err(err),
                     }
                 }
                 out.write_string("").await?;
-            },
+            }
             ServeCommand::CmdDumpStorePath => {
                 let path = source.read_parsed(&store_dir).await?;
                 store.nar_from_path(&path, &mut out).await?;
-            },
+            }
             ServeCommand::CmdImportPaths => {
                 if !write_allowed {
                     return Err(Error::WriteOnlyLegacyStore(command));
                 }
                 store.import_paths(&mut source).await?; // FIXME: should we support sig checking?
-                out.write_u64_le(1).await?;  // indicate success
-            },
+                out.write_u64_le(1).await?; // indicate success
+            }
             ServeCommand::CmdExportPaths => {
                 source.read_u64_le().await?; // obsolete
                 let paths = source.read_parsed_coll(&store_dir).await?;
                 store.export_paths(&paths, &mut out).await?;
-            },
+            }
             ServeCommand::CmdBuildPaths => {
                 if !write_allowed {
                     return Err(Error::WriteOnlyLegacyStore(command));
                 }
 
-                let paths : Vec<StorePathWithOutputs> = source.read_parsed_coll(&store_dir).await?;
+                let paths: Vec<StorePathWithOutputs> = source.read_parsed_coll(&store_dir).await?;
 
                 let mut settings = BuildSettings::default();
                 // TODO: let verbosity = Error;
@@ -118,10 +127,8 @@ pub async fn serve<S, R, W>(mut source: R, mut out:W, mut store: S, write_allowe
                 settings.print_repeated_builds = false;
 
                 // TODO: MonitorFdHup monitor(in.fd);
-                let drv_paths : Vec<DerivedPath> = paths.into_iter()
-                    .map(|e| e.into() )
-                    .collect();
-                
+                let drv_paths: Vec<DerivedPath> = paths.into_iter().map(|e| e.into()).collect();
+
                 match store.build_paths(&drv_paths, &settings).await {
                     Ok(_) => out.write_u64_le(0).await?,
                     Err(err) => {
@@ -130,15 +137,17 @@ pub async fn serve<S, R, W>(mut source: R, mut out:W, mut store: S, write_allowe
                         out.write_string(&err.to_string()).await?;
                     }
                 }
-            },
-            ServeCommand::CmdBuildDerivation => {  /* Used by hydra-queue-runner. */
+            }
+            ServeCommand::CmdBuildDerivation => {
+                /* Used by hydra-queue-runner. */
                 if !write_allowed {
                     return Err(Error::WriteOnlyLegacyStore(command));
                 }
 
-                let drv_path : StorePath = source.read_parsed(&store_dir).await?;
-                let drv = BasicDerivation::read_drv(&mut source, &store_dir, 
-                    &drv_path.name_from_drv()).await?;
+                let drv_path: StorePath = source.read_parsed(&store_dir).await?;
+                let drv =
+                    BasicDerivation::read_drv(&mut source, &store_dir, &drv_path.name_from_drv())
+                        .await?;
 
                 let mut settings = BuildSettings::default();
                 // TODO: let verbosity = Error;
@@ -177,13 +186,13 @@ pub async fn serve<S, R, W>(mut source: R, mut out:W, mut store: S, write_allowe
                         out.write_string(&val.to_json_string()?).await?;
                     }
                 }
-            },
+            }
             ServeCommand::CmdQueryClosure => {
                 let include_outputs = source.read_bool().await?;
-                let paths : StorePathSet = source.read_parsed_coll(&store_dir).await?;
+                let paths: StorePathSet = source.read_parsed_coll(&store_dir).await?;
                 let closure = store.query_closure(&paths, include_outputs).await?;
                 out.write_printed_coll(&store_dir, &closure).await?
-            },
+            }
             ServeCommand::CmdAddToStoreNar => {
                 if !write_allowed {
                     return Err(Error::WriteOnlyLegacyStore(command));
@@ -211,23 +220,39 @@ pub async fn serve<S, R, W>(mut source: R, mut out:W, mut store: S, write_allowe
                 };
 
                 if nar_size == 0 {
-                    return Err(Error::Misc("narInfo is too old and missing the narSize field".into()));
+                    return Err(Error::Misc(
+                        "narInfo is too old and missing the narSize field".into(),
+                    ));
                 }
                 let mut sized_source = tokio::io::AsyncReadExt::take(&mut source, nar_size);
                 let info = ValidPathInfo {
-                    path, deriver, nar_hash, references, nar_size, 
-                    ultimate, sigs, ca, registration_time,
+                    path,
+                    deriver,
+                    nar_hash,
+                    references,
+                    nar_size,
+                    ultimate,
+                    sigs,
+                    ca,
+                    registration_time,
                 };
-                store.add_to_store(&info, &mut sized_source, RepairFlag::NoRepair, CheckSignaturesFlag::NoCheckSigs).await?;
+                store
+                    .add_to_store(
+                        &info,
+                        &mut sized_source,
+                        RepairFlag::NoRepair,
+                        CheckSignaturesFlag::NoCheckSigs,
+                    )
+                    .await?;
 
                 // consume all the data that has been sent before continuing.
                 sized_source.drain_all().await?;
 
                 out.write_u64_le(1).await?; // indicate success
-            },
+            }
             ServeCommand::Unknown(cmd) => {
                 return Err(Error::Misc(format!("unknown serve command {}", cmd)));
-            },
+            }
         }
         out.flush().await?;
     }

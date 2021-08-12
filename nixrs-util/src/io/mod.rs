@@ -1,18 +1,18 @@
-mod async_source;
 mod async_sink;
+mod async_source;
 mod collection_read;
 mod collection_size;
 mod drain;
 mod offset_reader;
+mod read_exact;
 mod read_int;
 mod read_padding;
-mod read_string;
-mod read_exact;
 mod read_parsed;
-mod read_string_coll;
 mod read_parsed_coll;
-mod write_int;
+mod read_string;
+mod read_string_coll;
 mod write_all;
+mod write_int;
 mod write_string;
 mod write_string_coll;
 
@@ -22,7 +22,7 @@ pub use collection_read::CollectionRead;
 pub use collection_size::CollectionSize;
 pub use offset_reader::OffsetReader;
 
-pub(crate) const STATIC_PADDING : &[u8] = &[0u8; 8];
+pub(crate) const STATIC_PADDING: &[u8] = &[0u8; 8];
 
 pub fn calc_padding(size: u64) -> u8 {
     if size % 8 > 0 {
@@ -64,7 +64,7 @@ mod tests {
     impl StateParse<u64> for u64 {
         type Err = WrapError;
 
-        fn parse(&self, s:&str) -> Result<u64, Self::Err> {
+        fn parse(&self, s: &str) -> Result<u64, Self::Err> {
             Ok(s.parse::<u64>()? + *self)
         }
     }
@@ -74,7 +74,6 @@ mod tests {
             format!("{}", *item - *self)
         }
     }
-
 
     #[tokio::test]
     async fn test_write_usize() {
@@ -111,7 +110,10 @@ mod tests {
     async fn test_write_flag() {
         let mut buf = Vec::new();
         buf.write_flag(RepairFlag::NoRepair).await.unwrap();
-        assert_eq!((&buf[..]).read_flag::<RepairFlag>().await.unwrap(), RepairFlag::NoRepair);
+        assert_eq!(
+            (&buf[..]).read_flag::<RepairFlag>().await.unwrap(),
+            RepairFlag::NoRepair
+        );
         assert_eq!(buf.len(), 8);
     }
 
@@ -119,7 +121,10 @@ mod tests {
     async fn test_write_flag2() {
         let mut buf = Vec::new();
         buf.write_flag(RepairFlag::Repair).await.unwrap();
-        assert_eq!((&buf[..]).read_flag::<RepairFlag>().await.unwrap(), RepairFlag::Repair);
+        assert_eq!(
+            (&buf[..]).read_flag::<RepairFlag>().await.unwrap(),
+            RepairFlag::Repair
+        );
         assert_eq!(buf.len(), 8);
     }
 
@@ -127,15 +132,23 @@ mod tests {
     async fn test_write_seconds() {
         let mut buf = Vec::new();
         buf.write_seconds(Duration::from_secs(666)).await.unwrap();
-        assert_eq!((&buf[..]).read_seconds().await.unwrap(), Duration::from_secs(666));
+        assert_eq!(
+            (&buf[..]).read_seconds().await.unwrap(),
+            Duration::from_secs(666)
+        );
         assert_eq!(buf.len(), 8);
     }
 
     #[tokio::test]
     async fn test_write_seconds2() {
         let mut buf = Vec::new();
-        buf.write_seconds(Duration::from_secs(1621144078)).await.unwrap();
-        assert_eq!((&buf[..]).read_seconds().await.unwrap(), Duration::from_secs(1621144078));
+        buf.write_seconds(Duration::from_secs(1621144078))
+            .await
+            .unwrap();
+        assert_eq!(
+            (&buf[..]).read_seconds().await.unwrap(),
+            Duration::from_secs(1621144078)
+        );
         assert_eq!(buf.len(), 8);
     }
 
@@ -143,13 +156,18 @@ mod tests {
     async fn test_write_time_epoch() {
         let mut buf = Vec::new();
         buf.write_time(SystemTime::UNIX_EPOCH).await.unwrap();
-        assert_eq!((&buf[..]).read_time().await.unwrap(), SystemTime::UNIX_EPOCH);
+        assert_eq!(
+            (&buf[..]).read_time().await.unwrap(),
+            SystemTime::UNIX_EPOCH
+        );
         assert_eq!(buf.len(), 8);
     }
 
     #[tokio::test]
     async fn test_write_time_now() {
-        let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+        let time = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap();
         let time_s = Duration::from_secs(time.as_secs());
         let now = SystemTime::UNIX_EPOCH + time_s;
         let mut buf = Vec::new();
@@ -242,7 +260,7 @@ mod tests {
     async fn test_write_strings0() {
         let mut buf = Vec::new();
         buf.write_string_coll(&vec![]).await.unwrap();
-        let read : Vec<String> = (&buf[..]).read_string_coll().await.unwrap();
+        let read: Vec<String> = (&buf[..]).read_string_coll().await.unwrap();
         assert_eq!(read, Vec::new() as Vec<String>);
         assert_eq!(buf.len(), 8);
     }
@@ -250,8 +268,14 @@ mod tests {
     #[tokio::test]
     async fn test_write_strings3() {
         let mut buf = Vec::new();
-        buf.write_string_coll(&vec!["first".to_string(), "second".to_string(), "third".to_string()]).await.unwrap();
-        let read : Vec<String> = (&buf[..]).read_string_coll().await.unwrap();
+        buf.write_string_coll(&vec![
+            "first".to_string(),
+            "second".to_string(),
+            "third".to_string(),
+        ])
+        .await
+        .unwrap();
+        let read: Vec<String> = (&buf[..]).read_string_coll().await.unwrap();
         assert_eq!(read, vec!["first", "second", "third"]);
         assert_eq!(buf.len(), 56);
     }
@@ -259,8 +283,10 @@ mod tests {
     #[tokio::test]
     async fn test_write_string_set() {
         let mut buf = Vec::new();
-        buf.write_string_coll(&string_set!["first", "second", "third"]).await.unwrap();
-        let read : StringSet = (&buf[..]).read_string_coll().await.unwrap();
+        buf.write_string_coll(&string_set!["first", "second", "third"])
+            .await
+            .unwrap();
+        let read: StringSet = (&buf[..]).read_string_coll().await.unwrap();
         assert_eq!(read, string_set!["first", "second", "third"]);
         assert_eq!(buf.len(), 56);
     }
@@ -268,10 +294,12 @@ mod tests {
     #[tokio::test]
     async fn test_write_printed() {
         let mut buf = Vec::new();
-        buf.write_printed(&(45 as u64), &(195 as u64)).await.unwrap();
-        let read : u64 = (&buf[..]).read_parsed(&(45 as u64)).await.unwrap();
+        buf.write_printed(&(45 as u64), &(195 as u64))
+            .await
+            .unwrap();
+        let read: u64 = (&buf[..]).read_parsed(&(45 as u64)).await.unwrap();
         assert_eq!(read, 195);
-        let read : u64 = (&buf[..]).read_parsed(&(0 as u64)).await.unwrap();
+        let read: u64 = (&buf[..]).read_parsed(&(0 as u64)).await.unwrap();
         assert_eq!(read, 150);
         assert_eq!(buf.len(), 16);
     }
@@ -279,16 +307,16 @@ mod tests {
     #[tokio::test]
     async fn test_write_printed_coll() {
         let mut buf = Vec::new();
-        let mut set : HashSet<u64> = HashSet::new();
+        let mut set: HashSet<u64> = HashSet::new();
         set.insert(195);
         set.insert(290);
         buf.write_printed_coll(&(45 as u64), &set).await.unwrap();
-        let read : HashSet<u64> = (&buf[..]).read_parsed_coll(&(45 as u64)).await.unwrap();
+        let read: HashSet<u64> = (&buf[..]).read_parsed_coll(&(45 as u64)).await.unwrap();
         assert_eq!(read, set);
-        let mut set2 : HashSet<u64> = HashSet::new();
+        let mut set2: HashSet<u64> = HashSet::new();
         set2.insert(150);
         set2.insert(245);
-        let read : HashSet<u64> = (&buf[..]).read_parsed_coll(&(0 as u64)).await.unwrap();
+        let read: HashSet<u64> = (&buf[..]).read_parsed_coll(&(0 as u64)).await.unwrap();
         assert_eq!(read, set2);
         assert_eq!(buf.len(), 40);
     }

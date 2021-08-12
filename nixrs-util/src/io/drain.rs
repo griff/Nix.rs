@@ -9,7 +9,7 @@ use tokio::io::ReadBuf;
 
 use crate::ready;
 
-const BUF_SIZE : usize = 64_000;
+const BUF_SIZE: usize = 64_000;
 
 pin_project! {
     #[derive(Debug)]
@@ -18,11 +18,10 @@ pin_project! {
         reader: R,
         read: u64,
         buf: [u8; BUF_SIZE],
-    }    
+    }
 }
 
-impl<R> DrainAll<R>
-{
+impl<R> DrainAll<R> {
     pub fn new(reader: R) -> DrainAll<R> {
         Self {
             reader,
@@ -33,7 +32,8 @@ impl<R> DrainAll<R>
 }
 
 impl<R> Future for DrainAll<R>
-    where R: AsyncRead,
+where
+    R: AsyncRead,
 {
     type Output = io::Result<u64>;
 
@@ -47,7 +47,7 @@ impl<R> Future for DrainAll<R>
                 return Poll::Ready(Ok(*me.read));
             }
             *me.read += read as u64;
-            buf.clear();    
+            buf.clear();
         }
     }
 }
@@ -63,11 +63,11 @@ pin_project! {
     }
 }
 
-impl<R> DrainExact<R>
-{
+impl<R> DrainExact<R> {
     pub fn new(reader: R, len: u64) -> DrainExact<R> {
         Self {
-            reader, len,
+            reader,
+            len,
             read: 0,
             buf: [0u8; BUF_SIZE],
         }
@@ -75,7 +75,8 @@ impl<R> DrainExact<R>
 }
 
 impl<R> Future for DrainExact<R>
-    where R: AsyncRead,
+where
+    R: AsyncRead,
 {
     type Output = io::Result<()>;
 
@@ -88,19 +89,19 @@ impl<R> Future for DrainExact<R>
             } else {
                 ReadBuf::new(&mut me.buf[..])
             };
-            
+
             ready!(me.reader.as_mut().poll_read(cx, &mut buf))?;
             let read = buf.filled().len();
             if read == 0 {
                 if me.read != me.len {
-                    return Poll::Ready(Err(io::ErrorKind::UnexpectedEof.into()))
+                    return Poll::Ready(Err(io::ErrorKind::UnexpectedEof.into()));
                 } else {
                     return Poll::Ready(Ok(()));
                 }
             }
             *me.read += read as u64;
             if me.read == me.len {
-                return Poll::Ready(Ok(()))
+                return Poll::Ready(Ok(()));
             }
         }
     }

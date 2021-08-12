@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
 use std::collections::btree_map::IntoIter;
+use std::collections::BTreeMap;
 use std::fs::{FileType, Metadata};
 use std::future::Future;
 use std::io;
@@ -10,15 +10,15 @@ use std::sync::Arc;
 
 use async_stream::try_stream;
 use bytes::BytesMut;
-use futures::Stream;
 use futures::future::Ready;
+use futures::Stream;
 use log::debug;
 use log::trace;
 use tokio::fs::File;
 use tokio::fs::{read_dir, read_link, symlink_metadata};
 use tokio::io::AsyncReadExt;
 
-use super::{NAREvent, NAR_VERSION_MAGIC_1, CASE_HACK_SUFFIX};
+use super::{NAREvent, CASE_HACK_SUFFIX, NAR_VERSION_MAGIC_1};
 
 struct Item {
     path: PathBuf,
@@ -52,10 +52,10 @@ impl Iterator for Process {
     fn next(&mut self) -> Option<Self::Item> {
         match std::mem::replace(self, Process::Done) {
             Process::Done => None,
-            Process::Single(item)  => {
+            Process::Single(item) => {
                 *self = Process::Done;
                 Some(Entry::Single(item))
-            },
+            }
             Process::Dir(mut it) => {
                 let (name, item) = it.next()?;
                 *self = Process::Dir(it);
@@ -66,26 +66,27 @@ impl Iterator for Process {
 }
 
 pub trait Filter {
-    type Future : Future<Output=bool>;
-    fn run(&self, path:&Path) -> Self::Future;
+    type Future: Future<Output = bool>;
+    fn run(&self, path: &Path) -> Self::Future;
 }
 
 pub struct All;
 impl Filter for All {
     type Future = Ready<bool>;
-    fn run(&self, _path:&Path) -> Self::Future {
+    fn run(&self, _path: &Path) -> Self::Future {
         futures::future::ready(true)
     }
 }
 impl<T, Fut> Filter for T
-    where T: Fn(&Path) -> Fut,
-         Fut: Future<Output=bool>,
+where
+    T: Fn(&Path) -> Fut,
+    Fut: Future<Output = bool>,
 {
     type Future = Fut;
-    fn run(&self, path:&Path) -> Self::Future {
+    fn run(&self, path: &Path) -> Self::Future {
         (self)(path)
     }
-} 
+}
 
 pub struct DumpOptions<F> {
     use_case_hack: bool,
@@ -94,9 +95,9 @@ pub struct DumpOptions<F> {
 
 impl DumpOptions<All> {
     pub fn new() -> DumpOptions<All> {
-        #[cfg(target_os="macos")]
+        #[cfg(target_os = "macos")]
         let use_case_hack = true;
-        #[cfg(not(target_os="macos"))]
+        #[cfg(not(target_os = "macos"))]
         let use_case_hack = false;
         DumpOptions {
             use_case_hack,
@@ -107,8 +108,9 @@ impl DumpOptions<All> {
 
 impl<F> DumpOptions<F> {
     pub fn filter<Fut>(&mut self, filter: F) -> &mut Self
-        where F: Fn(&Path) -> Fut,
-              Fut: Future<Output=bool>,
+    where
+        F: Fn(&Path) -> Fut,
+        Fut: Future<Output = bool>,
     {
         self.filter = filter;
         self
@@ -119,24 +121,28 @@ impl<F> DumpOptions<F> {
         self
     }
 }
-impl<F> DumpOptions<F>
-{
-    pub fn dump<Fut, P>(self, path: P) -> impl Stream<Item=io::Result<NAREvent>>
-        where P: Into<PathBuf>,
-            F: Filter<Future=Fut>,
-            Fut: Future<Output=bool>,
+impl<F> DumpOptions<F> {
+    pub fn dump<Fut, P>(self, path: P) -> impl Stream<Item = io::Result<NAREvent>>
+    where
+        P: Into<PathBuf>,
+        F: Filter<Future = Fut>,
+        Fut: Future<Output = bool>,
     {
         dump_inner(path.into(), self)
     }
 }
 
-pub fn dump<P: Into<PathBuf>>(path: P) -> impl Stream<Item=io::Result<NAREvent>> {
+pub fn dump<P: Into<PathBuf>>(path: P) -> impl Stream<Item = io::Result<NAREvent>> {
     DumpOptions::new().dump(path)
 }
 
-fn dump_inner<F, Fut>(path: PathBuf, options: DumpOptions<F>) -> impl Stream<Item=io::Result<NAREvent>>
-    where F: Filter<Future=Fut>,
-          Fut: Future<Output=bool>,
+fn dump_inner<F, Fut>(
+    path: PathBuf,
+    options: DumpOptions<F>,
+) -> impl Stream<Item = io::Result<NAREvent>>
+where
+    F: Filter<Future = Fut>,
+    Fut: Future<Output = bool>,
 {
     try_stream! {
         let mut offset = 0;
@@ -214,7 +220,7 @@ fn dump_inner<F, Fut>(path: PathBuf, options: DumpOptions<F>) -> impl Stream<Ite
                         offset += event.encoded_size() as u64;
                         let event = NAREvent::RegularNode { executable, size, offset };
                         yield event;
-    
+
                         let mut index = 0;
                         let mut source = File::open(&path).await?;
                         while index < size {
@@ -328,35 +334,45 @@ mod tests {
     #[tokio::test]
     async fn test_dump_dir() {
         let s = dump("test-data/nar")
-            .try_collect::<Vec<NAREvent>>().await.unwrap();
+            .try_collect::<Vec<NAREvent>>()
+            .await
+            .unwrap();
         assert_eq!(s, test_data::dir_example());
     }
 
     #[tokio::test]
     async fn test_dump_text_file() {
         let s = dump("test-data/nar/testing.txt")
-            .try_collect::<Vec<NAREvent>>().await.unwrap();
+            .try_collect::<Vec<NAREvent>>()
+            .await
+            .unwrap();
         assert_eq!(s, test_data::text_file());
     }
 
     #[tokio::test]
     async fn test_dump_exec_file() {
         let s = dump("test-data/nar/dir/more/Deep~nix~case~hack~1")
-            .try_collect::<Vec<NAREvent>>().await.unwrap();
+            .try_collect::<Vec<NAREvent>>()
+            .await
+            .unwrap();
         assert_eq!(s, test_data::exec_file());
     }
 
     #[tokio::test]
     async fn test_dump_empty_file() {
         let s = dump("test-data/nar/dir/more/deep/empty.keep")
-            .try_collect::<Vec<NAREvent>>().await.unwrap();
+            .try_collect::<Vec<NAREvent>>()
+            .await
+            .unwrap();
         assert_eq!(s, test_data::empty_file());
     }
 
     #[tokio::test]
     async fn test_dump_symlink() {
         let s = dump("test-data/nar/dir/more/deep/loop")
-            .try_collect::<Vec<NAREvent>>().await.unwrap();
+            .try_collect::<Vec<NAREvent>>()
+            .await
+            .unwrap();
         assert_eq!(s, test_data::symlink());
     }
 }

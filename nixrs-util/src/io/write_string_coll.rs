@@ -1,16 +1,15 @@
 use std::future::Future;
 use std::io;
+use std::iter::IntoIterator;
 use std::mem;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::iter::IntoIterator;
 
 use tokio::io::AsyncWrite;
 
-use super::CollectionSize;
-use super::write_string::{write_string, WriteStr};
 use super::write_int::WriteU64;
-
+use super::write_string::{write_string, WriteStr};
+use super::CollectionSize;
 
 #[derive(Debug)]
 pub enum WriteStringColl<'a, W, I> {
@@ -21,17 +20,19 @@ pub enum WriteStringColl<'a, W, I> {
 }
 
 pub fn write_string_coll<'a, W, C, I>(dst: W, coll: C) -> WriteStringColl<'a, W, I>
-    where C: CollectionSize + IntoIterator<Item=&'a String, IntoIter=I>,
-          I: Iterator<Item=&'a String>,
+where
+    C: CollectionSize + IntoIterator<Item = &'a String, IntoIter = I>,
+    I: Iterator<Item = &'a String>,
 {
     let len = coll.len();
     let it = coll.into_iter();
     WriteStringColl::WriteSize(it, WriteU64::new(dst, len as u64))
 }
 
-impl<'a, W, I> Future for WriteStringColl<'a, W,I>
-    where W: AsyncWrite + Unpin,
-          I: Iterator<Item=&'a String> + Unpin,
+impl<'a, W, I> Future for WriteStringColl<'a, W, I>
+where
+    W: AsyncWrite + Unpin,
+    I: Iterator<Item = &'a String> + Unpin,
 {
     type Output = io::Result<()>;
 
@@ -45,7 +46,7 @@ impl<'a, W, I> Future for WriteStringColl<'a, W,I>
                         Poll::Pending => {
                             *self = WriteStringColl::WriteSize(it, writer);
                             return Poll::Pending;
-                        },
+                        }
                         Poll::Ready(res) => res?,
                     }
                     let dst = writer.inner();
@@ -53,7 +54,7 @@ impl<'a, W, I> Future for WriteStringColl<'a, W,I>
                         *self = WriteStringColl::WriteData(it, write_string(dst, next));
                     } else {
                         *self = WriteStringColl::Done(dst);
-                        return Poll::Ready(Ok(()))
+                        return Poll::Ready(Ok(()));
                     }
                 }
                 WriteStringColl::WriteData(mut it, mut writer) => {
@@ -61,7 +62,7 @@ impl<'a, W, I> Future for WriteStringColl<'a, W,I>
                         Poll::Pending => {
                             *self = WriteStringColl::WriteData(it, writer);
                             return Poll::Pending;
-                        },
+                        }
                         Poll::Ready(res) => res?,
                     }
                     let dst = writer.inner();
@@ -69,7 +70,7 @@ impl<'a, W, I> Future for WriteStringColl<'a, W,I>
                         *self = WriteStringColl::WriteData(it, write_string(dst, next));
                     } else {
                         *self = WriteStringColl::Done(dst);
-                        return Poll::Ready(Ok(()))
+                        return Poll::Ready(Ok(()));
                     }
                 }
             }

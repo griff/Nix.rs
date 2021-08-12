@@ -1,10 +1,9 @@
-
 use std::time::SystemTime;
 
-use crate::StorePath;
 use crate::content_address::ContentAddress;
 use crate::path::StorePathSet;
-use nixrs_util::{StringSet, hash::Hash};
+use crate::StorePath;
+use nixrs_util::{hash::Hash, StringSet};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub struct ValidPathInfo {
@@ -38,11 +37,11 @@ pub struct ValidPathInfo {
     pub ca: Option<ContentAddress>,
 }
 
-#[cfg(any(test, feature="test"))]
+#[cfg(any(test, feature = "test"))]
 pub mod proptest {
-    use bytes::Bytes;
-    use ::proptest::prelude::*;
     use super::*;
+    use ::proptest::prelude::*;
+    use bytes::Bytes;
     use nixrs_util::archive::proptest::arb_nar_contents;
     use nixrs_util::proptest::arb_system_time;
 

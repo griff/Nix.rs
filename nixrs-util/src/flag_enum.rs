@@ -12,7 +12,7 @@ macro_rules! flag_enum {
             $vis enum $name {
                 $it = true,
                 $if = false
-            }    
+            }
         }
     };
     (

@@ -1,6 +1,6 @@
+use std::future::Future;
 use std::io;
 use std::io::ErrorKind::UnexpectedEof;
-use std::future::Future;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
@@ -12,8 +12,7 @@ use tokio::io::ReadBuf;
 use super::calc_padding;
 
 fn invalid_data(s: &str) -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData,s)
-
+    io::Error::new(io::ErrorKind::InvalidData, s)
 }
 
 pin_project! {
@@ -27,7 +26,6 @@ pin_project! {
         padding: u8,
     }
 }
-
 
 impl<R> ReadPadding<R> {
     pub(crate) fn new(src: R, size: u64) -> Self {
@@ -53,9 +51,9 @@ impl<R: AsyncRead> Future for ReadPadding<R> {
             if *me.padding != 0 {
                 for i in &me.zero[..*me.padding as usize] {
                     if *i != 0 {
-                        return Poll::Ready(Err(invalid_data("non-zero padding")))
+                        return Poll::Ready(Err(invalid_data("non-zero padding")));
                     }
-                }    
+                }
             }
             return Poll::Ready(Ok(()));
         }
@@ -68,7 +66,7 @@ impl<R: AsyncRead> Future for ReadPadding<R> {
                 Poll::Ready(Ok(())) => {
                     let n = buf.filled().len();
                     if n == 0 {
-                        return Poll::Ready(Err(UnexpectedEof.into()))
+                        return Poll::Ready(Err(UnexpectedEof.into()));
                     }
 
                     n as u8
@@ -78,7 +76,7 @@ impl<R: AsyncRead> Future for ReadPadding<R> {
 
         for i in &me.zero[..*me.padding as usize] {
             if *i != 0 {
-                return Poll::Ready(Err(invalid_data("non-zero padding")))
+                return Poll::Ready(Err(invalid_data("non-zero padding")));
             }
         }
 

@@ -8,8 +8,8 @@ use tokio::io::AsyncWrite;
 
 use crate::io::calc_padding;
 
-use super::write_int::WriteU64;
 use super::write_all::{write_all, WriteAll};
+use super::write_int::WriteU64;
 use super::STATIC_PADDING;
 
 #[derive(Debug)]
@@ -21,8 +21,7 @@ pub enum WriteStr<'a, W> {
     Done(W),
 }
 
-pub(crate) fn write_string<'a, W>(dst: W, s:&'a str) -> WriteStr<'a, W>
-{
+pub(crate) fn write_string<'a, W>(dst: W, s: &'a str) -> WriteStr<'a, W> {
     let buf = s.as_bytes();
     let len = buf.len();
     WriteStr::WriteSize(buf, WriteU64::new(dst, len as u64))
@@ -40,9 +39,9 @@ impl<'a, W> WriteStr<'a, W> {
     }
 }
 
-
 impl<'a, W> Future for WriteStr<'a, W>
-    where W: AsyncWrite + Unpin
+where
+    W: AsyncWrite + Unpin,
 {
     type Output = io::Result<()>;
 
@@ -56,7 +55,7 @@ impl<'a, W> Future for WriteStr<'a, W>
                         Poll::Pending => {
                             *self = WriteStr::WriteSize(buf, writer);
                             return Poll::Pending;
-                        },
+                        }
                         Poll::Ready(res) => res?,
                     }
                     let dst = writer.inner();
@@ -66,18 +65,19 @@ impl<'a, W> Future for WriteStr<'a, W>
                     }
                     let padding = calc_padding(buf.len() as u64);
                     *self = WriteStr::WriteData(padding, write_all(dst, buf));
-                },
+                }
                 WriteStr::WriteData(padding, mut writer) => {
                     match Pin::new(&mut writer).poll(cx) {
                         Poll::Pending => {
                             *self = WriteStr::WriteData(padding, writer);
                             return Poll::Pending;
-                        },
+                        }
                         Poll::Ready(res) => res?,
                     }
                     let dst = writer.inner();
-                    *self = WriteStr::WritePadding(write_all(dst, &STATIC_PADDING[..padding as usize]));
-                },
+                    *self =
+                        WriteStr::WritePadding(write_all(dst, &STATIC_PADDING[..padding as usize]));
+                }
                 WriteStr::WritePadding(mut writer) => {
                     match Pin::new(&mut writer).poll(cx) {
                         Poll::Pending => {
@@ -89,7 +89,7 @@ impl<'a, W> Future for WriteStr<'a, W>
                     *self = WriteStr::Done(writer.inner());
                     return Poll::Ready(Ok(()));
                 }
-            }    
+            }
         }
     }
 }

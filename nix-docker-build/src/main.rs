@@ -13,14 +13,23 @@ mod cached_store;
 use cached_store::CachedStore;
 
 pub fn main() {
-    let _ = CombinedLogger::init(
-        vec![
-            TermLogger::new(LevelFilter::Trace, slog::Config::default(),
-                slog::TerminalMode::Stderr,slog::ColorChoice::Never),
-            WriteLogger::new(LevelFilter::Trace, slog::Config::default(),
-                OpenOptions::new().append(true).create(true).open("nix-cache.log").unwrap())
-        ]
-    );
+    let _ = CombinedLogger::init(vec![
+        TermLogger::new(
+            LevelFilter::Trace,
+            slog::Config::default(),
+            slog::TerminalMode::Stderr,
+            slog::ColorChoice::Never,
+        ),
+        WriteLogger::new(
+            LevelFilter::Trace,
+            slog::Config::default(),
+            OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open("nix-cache.log")
+                .unwrap(),
+        ),
+    ]);
 
     let mut write_allowed = false;
     for argument in env::args().skip(1) {

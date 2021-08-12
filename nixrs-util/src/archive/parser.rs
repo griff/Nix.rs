@@ -13,15 +13,16 @@ use crate::OffsetReader;
 
 use super::{FileType, NAREvent, NAR_VERSION_MAGIC_1};
 
-pub fn parse_nar<R>(source: R) -> impl Stream<Item=io::Result<NAREvent>>
-    where R: AsyncSource + AsyncRead + AsyncReadExt + Unpin
+pub fn parse_nar<R>(source: R) -> impl Stream<Item = io::Result<NAREvent>>
+where
+    R: AsyncSource + AsyncRead + AsyncReadExt + Unpin,
 {
     parse_nar_ext(source, false)
 }
 
-
-pub fn parse_nar_ext<R>(source: R, skip_content: bool) -> impl Stream<Item=io::Result<NAREvent>>
-    where R: AsyncRead + Unpin
+pub fn parse_nar_ext<R>(source: R, skip_content: bool) -> impl Stream<Item = io::Result<NAREvent>>
+where
+    R: AsyncRead + Unpin,
 {
     try_stream! {
         let mut source = OffsetReader::new(source);
@@ -30,7 +31,7 @@ pub fn parse_nar_ext<R>(source: R, skip_content: bool) -> impl Stream<Item=io::R
             Ok(magic) => {
                 if magic != NAR_VERSION_MAGIC_1 {
                     Err(io::Error::new(
-                        io::ErrorKind::InvalidData, 
+                        io::ErrorKind::InvalidData,
                         format!("input doesn't look like a Nix archive {}!={}", magic, NAR_VERSION_MAGIC_1)))?;
                     return;
                 }
@@ -39,9 +40,9 @@ pub fn parse_nar_ext<R>(source: R, skip_content: bool) -> impl Stream<Item=io::R
             Err(err) => {
                 if err.kind() == io::ErrorKind::UnexpectedEof {
                     Err(io::Error::new(
-                        io::ErrorKind::InvalidData, 
+                        io::ErrorKind::InvalidData,
                         "input doesn't look like a Nix archive. Unexpected EOF"))?;
-                    return;        
+                    return;
                 } else {
                     Err(err)?;
                     return;
@@ -52,7 +53,7 @@ pub fn parse_nar_ext<R>(source: R, skip_content: bool) -> impl Stream<Item=io::R
         let s = source.read_string().await?;
         if s != "(" {
             Err(io::Error::new(
-                io::ErrorKind::InvalidData, 
+                io::ErrorKind::InvalidData,
                 "expected open tag"))?;
             return;
         }
@@ -82,7 +83,7 @@ pub fn parse_nar_ext<R>(source: R, skip_content: bool) -> impl Stream<Item=io::R
                     yield NAREvent::EndDirectory;
                 } else if !got_target && file_type == Some(FileType::Symlink) {
                     Err(io::Error::new(
-                        io::ErrorKind::InvalidData, 
+                        io::ErrorKind::InvalidData,
                         "symlink missing target"))?;
                     break;
                 }
@@ -93,9 +94,9 @@ pub fn parse_nar_ext<R>(source: R, skip_content: bool) -> impl Stream<Item=io::R
                     let s = source.read_string().await?;
                     if s != ")" {
                         Err(io::Error::new(
-                            io::ErrorKind::InvalidData, 
+                            io::ErrorKind::InvalidData,
                             format!("unknown field '{}'", s)))?;
-                        return;        
+                        return;
                     }
                     depth -= 1;
                     trace!("{}End DirEntry {}", " ".repeat(depth), names.len());
@@ -111,7 +112,7 @@ pub fn parse_nar_ext<R>(source: R, skip_content: bool) -> impl Stream<Item=io::R
             } else if s == "type" {
                 if file_type.is_some() {
                     Err(io::Error::new(
-                        io::ErrorKind::InvalidData, 
+                        io::ErrorKind::InvalidData,
                         "multiple type fields"))?;
                     break;
                 }
@@ -127,7 +128,7 @@ pub fn parse_nar_ext<R>(source: R, skip_content: bool) -> impl Stream<Item=io::R
                     file_type = Some(FileType::Symlink);
                 } else {
                     Err(io::Error::new(
-                        io::ErrorKind::InvalidData, 
+                        io::ErrorKind::InvalidData,
                         format!("unknown file type {}", t)))?;
                     break
                 }
@@ -136,13 +137,13 @@ pub fn parse_nar_ext<R>(source: R, skip_content: bool) -> impl Stream<Item=io::R
                 let c = source.read_string().await?;
                 if c != "" {
                     Err(io::Error::new(
-                        io::ErrorKind::InvalidData, 
+                        io::ErrorKind::InvalidData,
                         "executable marker has non-empty value"))?;
                     break;
                 }
                 if size > 0 {
                     Err(io::Error::new(
-                        io::ErrorKind::InvalidData, 
+                        io::ErrorKind::InvalidData,
                         "executable marker after contents"))?;
                     break;
                 }
@@ -152,7 +153,7 @@ pub fn parse_nar_ext<R>(source: R, skip_content: bool) -> impl Stream<Item=io::R
                 if size > 0 {
                     let offset = source.offset() - start_pos;
                     trace!("{}Regular {} {} {} {}", " ".repeat(depth), size, offset, executable, names.len());
-                    yield NAREvent::RegularNode { offset, size, executable };    
+                    yield NAREvent::RegularNode { offset, size, executable };
                 }
                 if skip_content {
                     source.drain_exact(size).await?;
@@ -185,7 +186,7 @@ pub fn parse_nar_ext<R>(source: R, skip_content: bool) -> impl Stream<Item=io::R
                 let s = source.read_string().await?;
                 if s != "(" {
                     Err(io::Error::new(
-                        io::ErrorKind::InvalidData, 
+                        io::ErrorKind::InvalidData,
                         "expected open tag"))?;
                     return;
                 }
@@ -198,21 +199,21 @@ pub fn parse_nar_ext<R>(source: R, skip_content: bool) -> impl Stream<Item=io::R
                         trace!("read name");
                         if name.is_some() {
                             Err(io::Error::new(
-                                io::ErrorKind::InvalidData, 
+                                io::ErrorKind::InvalidData,
                                 "multiple name fields"))?;
                             return;
                         }
                         let n = source.read_string().await?;
                         if n.is_empty() || n == "." || n == ".." || n.contains("/") {
                             Err(io::Error::new(
-                                io::ErrorKind::InvalidData, 
+                                io::ErrorKind::InvalidData,
                                 format!("NAR contains invalid file name '{}'", n)))?;
                             return;
                         }
                         if let Some(p_name) = prev_name.as_ref() {
                             if &n <= p_name {
                                 Err(io::Error::new(
-                                    io::ErrorKind::InvalidData, 
+                                    io::ErrorKind::InvalidData,
                                     "NAR directory is not sorted"))?;
                                 return;
                             }
@@ -226,7 +227,7 @@ pub fn parse_nar_ext<R>(source: R, skip_content: bool) -> impl Stream<Item=io::R
                             let s = source.read_string().await?;
                             if s != "(" {
                                 Err(io::Error::new(
-                                    io::ErrorKind::InvalidData, 
+                                    io::ErrorKind::InvalidData,
                                     "expected open tag"))?;
                                 return;
                             }
@@ -240,13 +241,13 @@ pub fn parse_nar_ext<R>(source: R, skip_content: bool) -> impl Stream<Item=io::R
                             break;
                         } else {
                             Err(io::Error::new(
-                                io::ErrorKind::InvalidData, 
+                                io::ErrorKind::InvalidData,
                                 "entry name missing"))?;
                             return;
                         }
                     } else {
                         Err(io::Error::new(
-                            io::ErrorKind::InvalidData, 
+                            io::ErrorKind::InvalidData,
                             format!("unknown field '{}'", s)))?;
                         return;
                     }
@@ -259,7 +260,7 @@ pub fn parse_nar_ext<R>(source: R, skip_content: bool) -> impl Stream<Item=io::R
                 got_target = true;
             } else {
                 Err(io::Error::new(
-                    io::ErrorKind::InvalidData, 
+                    io::ErrorKind::InvalidData,
                     format!("unknown field '{}'", s)))?;
                 return;
             }
@@ -271,8 +272,8 @@ pub fn parse_nar_ext<R>(source: R, skip_content: bool) -> impl Stream<Item=io::R
 mod tests {
     use bytes::Bytes;
     use futures::TryStreamExt;
-    use tokio::fs::File;
     use pretty_assertions::assert_eq;
+    use tokio::fs::File;
 
     use crate::archive::test_data;
 
@@ -281,20 +282,26 @@ mod tests {
     #[tokio::test]
     async fn test_parse_nar_dir() {
         let io = File::open("test-data/test-dir.nar").await.unwrap();
-        let s = parse_nar(io)
-            .try_collect::<Vec<NAREvent>>().await.unwrap();
+        let s = parse_nar(io).try_collect::<Vec<NAREvent>>().await.unwrap();
         assert_eq!(s, test_data::dir_example());
     }
 
     #[tokio::test]
     async fn test_parse_nar_text() {
         let io = File::open("test-data/test-text.nar").await.unwrap();
-        let s = parse_nar(io)
-            .try_collect::<Vec<NAREvent>>().await.unwrap();
-        let expected = vec! [
+        let s = parse_nar(io).try_collect::<Vec<NAREvent>>().await.unwrap();
+        let expected = vec![
             NAREvent::Magic(Arc::new(NAR_VERSION_MAGIC_1.to_owned())),
-            NAREvent::RegularNode { executable: false, size: 12, offset: 96 },
-            NAREvent::Contents { total: 12, index: 0, buf: Bytes::from_static(b"Hello world!") },
+            NAREvent::RegularNode {
+                executable: false,
+                size: 12,
+                offset: 96,
+            },
+            NAREvent::Contents {
+                total: 12,
+                index: 0,
+                buf: Bytes::from_static(b"Hello world!"),
+            },
         ];
         assert_eq!(s, expected);
     }
@@ -302,12 +309,19 @@ mod tests {
     #[tokio::test]
     async fn test_parse_nar_exec() {
         let io = File::open("test-data/test-exec.nar").await.unwrap();
-        let s = parse_nar(io)
-            .try_collect::<Vec<NAREvent>>().await.unwrap();
-        let expected = vec! [
+        let s = parse_nar(io).try_collect::<Vec<NAREvent>>().await.unwrap();
+        let expected = vec![
             NAREvent::Magic(Arc::new(NAR_VERSION_MAGIC_1.to_owned())),
-            NAREvent::RegularNode { executable: true, size: 15, offset: 128 },
-            NAREvent::Contents { total: 15, index: 0, buf: Bytes::from_static(b"Very cool stuff") },
+            NAREvent::RegularNode {
+                executable: true,
+                size: 15,
+                offset: 128,
+            },
+            NAREvent::Contents {
+                total: 15,
+                index: 0,
+                buf: Bytes::from_static(b"Very cool stuff"),
+            },
         ];
         assert_eq!(s, expected);
     }

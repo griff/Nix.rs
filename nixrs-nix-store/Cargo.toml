@@ -8,7 +8,7 @@ edition = "2018"
 name = "nixrs-store"
 test = false
 bench = false
-path = "bin/nix_store.rs"
+path = "src/bin/nixrs_store.rs"
 
 [dependencies]
 log = "0.4.14"

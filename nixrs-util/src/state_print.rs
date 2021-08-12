@@ -3,7 +3,8 @@ pub trait StatePrint<I> {
 }
 
 impl<'t, T, I> StatePrint<I> for &'t T
-    where T: StatePrint<I>,
+where
+    T: StatePrint<I>,
 {
     fn print(&self, item: &I) -> String {
         StatePrint::print(*self, item)

@@ -16,11 +16,15 @@ impl NAREvent {
                 let padding = calc_padding(bytes.len() as u64) as usize;
                 // 1 * u64 = 8 bytes
                 return 8 + bytes.len() + padding;
-            },
-            NAREvent::RegularNode { offset: _, executable, size} => {
+            }
+            NAREvent::RegularNode {
+                offset: _,
+                executable,
+                size,
+            } => {
                 // 5 * u64 = 40 bytes
                 // 32 bytes strings
-                let mut needed = 40 + 32; 
+                let mut needed = 40 + 32;
                 if *executable {
                     // 2 * u64 = 16 bytes
                     // 16 bytes strings
@@ -34,9 +38,10 @@ impl NAREvent {
                     needed += 8 + 8;
                 }
                 return needed;
-            },
-            NAREvent::Contents { total, index, buf} => {
-                if buf.len() as u64 + index == *total { // Last contents buffer
+            }
+            NAREvent::Contents { total, index, buf } => {
+                if buf.len() as u64 + index == *total {
+                    // Last contents buffer
                     let padding = calc_padding(*total) as usize;
                     // 1 * u64 = 8 bytes
                     // 8 bytes from strings
@@ -51,7 +56,7 @@ impl NAREvent {
                 // 6 * u64 = 48 bytes
                 // 40 bytes from strings
                 return 48 + 40 + bytes.len() + padding;
-            },
+            }
             NAREvent::Directory => {
                 // 3 * u64 = 24 bytes
                 // 32 bytes from strings
@@ -82,10 +87,14 @@ impl NAREvent {
                 dst.put_slice(bytes);
                 if padding > 0 {
                     let zero = [0u8; 8];
-                    dst.put_slice(&zero[..padding]);    
+                    dst.put_slice(&zero[..padding]);
                 }
             }
-            NAREvent::RegularNode { offset: _, executable, size} => {
+            NAREvent::RegularNode {
+                offset: _,
+                executable,
+                size,
+            } => {
                 dst.put_u64_le(1);
                 dst.put_slice(b"(\0\0\0\0\0\0\0");
                 dst.put_u64_le(4);
@@ -103,16 +112,17 @@ impl NAREvent {
                 if *size == 0 {
                     // When size is 0 no Contents events are sent so close the node.
                     dst.put_u64_le(1);
-                    dst.put_slice(b")\0\0\0\0\0\0\0");    
+                    dst.put_slice(b")\0\0\0\0\0\0\0");
                 }
             }
-            NAREvent::Contents { total, index, buf} => {
-                if buf.len() as u64 + index == *total { // Last contents buffer
+            NAREvent::Contents { total, index, buf } => {
+                if buf.len() as u64 + index == *total {
+                    // Last contents buffer
                     let padding = calc_padding(*total) as usize;
                     dst.put_slice(&buf);
                     if padding > 0 {
                         let zero = [0u8; 8];
-                        dst.put_slice(&zero[0..padding]);    
+                        dst.put_slice(&zero[0..padding]);
                     }
                     dst.put_u64_le(1);
                     dst.put_slice(b")\0\0\0\0\0\0\0");
@@ -135,11 +145,11 @@ impl NAREvent {
                 dst.put_slice(bytes);
                 if padding > 0 {
                     let zero = [0u8; 8];
-                    dst.put_slice(&zero[0..padding]);    
+                    dst.put_slice(&zero[0..padding]);
                 }
                 dst.put_u64_le(1);
                 dst.put_slice(b")\0\0\0\0\0\0\0");
-            },
+            }
             NAREvent::Directory => {
                 dst.put_u64_le(1);
                 dst.put_slice(b"(\0\0\0\0\0\0\0");
@@ -147,12 +157,12 @@ impl NAREvent {
                 dst.put_slice(b"type\0\0\0\0");
                 dst.put_u64_le(9);
                 dst.put_slice(b"directory\0\0\0\0\0\0\0");
-            },
+            }
             NAREvent::DirectoryEntry { name } => {
                 let bytes = name.as_bytes();
                 let padding = calc_padding(bytes.len() as u64) as usize;
                 dst.put_u64_le(5);
-                dst.put_slice(b"entry\0\0\0");    
+                dst.put_slice(b"entry\0\0\0");
                 dst.put_u64_le(1);
                 dst.put_slice(b"(\0\0\0\0\0\0\0");
                 dst.put_u64_le(4);
@@ -161,15 +171,15 @@ impl NAREvent {
                 dst.put_slice(bytes);
                 if padding > 0 {
                     let zero = [0u8; 8];
-                    dst.put_slice(&zero[..padding]);    
+                    dst.put_slice(&zero[..padding]);
                 }
                 dst.put_u64_le(4);
                 dst.put_slice(b"node\0\0\0\0");
-            },
+            }
             NAREvent::EndDirectory | NAREvent::EndDirectoryEntry => {
                 dst.put_u64_le(1);
-                dst.put_slice(b")\0\0\0\0\0\0\0");    
-            },
+                dst.put_slice(b")\0\0\0\0\0\0\0");
+            }
         }
     }
 }
@@ -187,14 +197,14 @@ impl Encoder<NAREvent> for NAREncoder {
 
 #[cfg(test)]
 mod tests {
-    use futures::{SinkExt, StreamExt, TryStreamExt, stream::iter};
+    use futures::{stream::iter, SinkExt, StreamExt, TryStreamExt};
+    use pretty_assertions::assert_eq;
     use tempfile::tempdir;
     use tokio::fs::{self, File};
-    use pretty_assertions::assert_eq;
 
-    use crate::pretty_prop_assert_eq;
     use crate::archive::{parse_nar, proptest::arb_nar_events, test_data};
     use crate::hash;
+    use crate::pretty_prop_assert_eq;
     use proptest::proptest;
 
     use super::*;
@@ -207,12 +217,11 @@ mod tests {
         let io = File::create(&path).await.unwrap();
         let encoder = tokio_util::codec::FramedWrite::new(io, NAREncoder);
         let stream = futures::stream::iter(test_data::dir_example())
-            .map(|e| Ok(e) as Result<NAREvent, std::io::Error> );
+            .map(|e| Ok(e) as Result<NAREvent, std::io::Error>);
         stream.forward(encoder).await.unwrap();
-        
+
         let io = File::open(path).await.unwrap();
-        let s = parse_nar(io)
-            .try_collect::<Vec<NAREvent>>().await.unwrap();
+        let s = parse_nar(io).try_collect::<Vec<NAREvent>>().await.unwrap();
         assert_eq!(s, test_data::dir_example());
     }
 
@@ -224,12 +233,11 @@ mod tests {
         let io = File::create(&path).await.unwrap();
         let encoder = tokio_util::codec::FramedWrite::new(io, NAREncoder);
         let stream = futures::stream::iter(test_data::text_file())
-            .map(|e| Ok(e) as Result<NAREvent, std::io::Error> );
+            .map(|e| Ok(e) as Result<NAREvent, std::io::Error>);
         stream.forward(encoder).await.unwrap();
-        
+
         let io = File::open(path).await.unwrap();
-        let s = parse_nar(io)
-            .try_collect::<Vec<NAREvent>>().await.unwrap();
+        let s = parse_nar(io).try_collect::<Vec<NAREvent>>().await.unwrap();
         assert_eq!(s, test_data::text_file());
     }
 
@@ -241,12 +249,11 @@ mod tests {
         let io = File::create(&path).await.unwrap();
         let encoder = tokio_util::codec::FramedWrite::new(io, NAREncoder);
         let stream = futures::stream::iter(test_data::exec_file())
-            .map(|e| Ok(e) as Result<NAREvent, std::io::Error> );
+            .map(|e| Ok(e) as Result<NAREvent, std::io::Error>);
         stream.forward(encoder).await.unwrap();
-        
+
         let io = File::open(path).await.unwrap();
-        let s = parse_nar(io)
-            .try_collect::<Vec<NAREvent>>().await.unwrap();
+        let s = parse_nar(io).try_collect::<Vec<NAREvent>>().await.unwrap();
         assert_eq!(s, test_data::exec_file());
     }
 
@@ -258,15 +265,13 @@ mod tests {
         let io = File::create(&path).await.unwrap();
         let encoder = tokio_util::codec::FramedWrite::new(io, NAREncoder);
         let stream = futures::stream::iter(test_data::empty_file())
-            .map(|e| Ok(e) as Result<NAREvent, std::io::Error> );
+            .map(|e| Ok(e) as Result<NAREvent, std::io::Error>);
         stream.forward(encoder).await.unwrap();
-        
+
         let io = File::open(path).await.unwrap();
-        let s = parse_nar(io)
-            .try_collect::<Vec<NAREvent>>().await.unwrap();
+        let s = parse_nar(io).try_collect::<Vec<NAREvent>>().await.unwrap();
         assert_eq!(s, test_data::empty_file());
     }
-
 
     #[tokio::test]
     async fn test_encode_nar_empty_file_in_dir() {
@@ -276,12 +281,11 @@ mod tests {
         let io = File::create(&path).await.unwrap();
         let encoder = tokio_util::codec::FramedWrite::new(io, NAREncoder);
         let stream = futures::stream::iter(test_data::empty_file_in_dir())
-            .map(|e| Ok(e) as Result<NAREvent, std::io::Error> );
+            .map(|e| Ok(e) as Result<NAREvent, std::io::Error>);
         stream.forward(encoder).await.unwrap();
-        
+
         let io = File::open(path).await.unwrap();
-        let s = parse_nar(io)
-            .try_collect::<Vec<NAREvent>>().await.unwrap();
+        let s = parse_nar(io).try_collect::<Vec<NAREvent>>().await.unwrap();
         assert_eq!(s, test_data::empty_file_in_dir());
     }
 

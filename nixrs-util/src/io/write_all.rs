@@ -15,7 +15,7 @@ pin_project! {
     pub struct WriteAll<'a, W> {
         writer: W,
         buf: &'a [u8],
-    }    
+    }
 }
 
 impl<'a, W> WriteAll<'a, W> {
@@ -28,10 +28,7 @@ pub(crate) fn write_all<'a, W>(writer: W, buf: &'a [u8]) -> WriteAll<'a, W>
 where
     W: AsyncWrite + Unpin,
 {
-    WriteAll {
-        writer,
-        buf,
-    }
+    WriteAll { writer, buf }
 }
 
 impl<W> Future for WriteAll<'_, W>

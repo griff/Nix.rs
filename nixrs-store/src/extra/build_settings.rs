@@ -3,7 +3,6 @@ use std::time::Duration;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BuildSettings {
     //TODO: verbosity: Verbosity,
-
     /// If set to `true` (the default), Nix will write the build log of a
     /// derivation (i.e. the standard output and error of its builder) to
     /// the directory `/nix/var/log/nix/drvs`. The build log can be
@@ -82,10 +81,10 @@ impl Default for BuildSettings {
     }
 }
 
-#[cfg(any(test, feature="test"))]
+#[cfg(any(test, feature = "test"))]
 pub mod proptest {
-    use ::proptest::prelude::*;
     use super::*;
+    use ::proptest::prelude::*;
     use nixrs_util::proptest::arb_duration;
 
     impl Arbitrary for BuildSettings {

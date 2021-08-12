@@ -22,7 +22,8 @@ impl<T> CollectionRead<T> for Vec<T> {
 }
 
 impl<T> CollectionRead<T> for HashSet<T>
-    where T: Eq + Hash,
+where
+    T: Eq + Hash,
 {
     fn make(len: usize) -> Self {
         HashSet::with_capacity(len)
@@ -37,9 +38,9 @@ impl<T> CollectionRead<T> for HashSet<T>
     }
 }
 
-
 impl<T> CollectionRead<T> for BTreeSet<T>
-    where T: Ord + PartialOrd,
+where
+    T: Ord + PartialOrd,
 {
     fn make(_len: usize) -> Self {
         BTreeSet::new()

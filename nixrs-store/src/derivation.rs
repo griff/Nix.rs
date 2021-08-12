@@ -1,38 +1,46 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use tokio::io::{AsyncRead, AsyncWrite};
 use thiserror::Error;
+use tokio::io::{AsyncRead, AsyncWrite};
 
-use nixrs_util::flag_enum;
-use crate::content_address::FixedOutputHash;
 use crate::content_address::FileIngestionMethod;
-use nixrs_util::{AsyncSink, AsyncSource};
+use crate::content_address::FixedOutputHash;
+use nixrs_util::flag_enum;
 use nixrs_util::hash;
 use nixrs_util::hash::Hash;
+use nixrs_util::{AsyncSink, AsyncSource};
 
+use super::path::StorePathSet;
 use super::ParseStorePathError;
 use super::ReadStorePathError;
 use super::StoreDir;
 use super::StorePath;
-use super::path::StorePathSet;
 
 flag_enum! {
     #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
     pub enum RepairFlag {
         NoRepair = false,
         Repair = true,
-    }    
+    }
 }
 
 #[derive(Error, Debug, PartialEq, Clone)]
 pub enum ParseDerivationError {
     #[error("bad store path in derivation: {0}")]
-    BadStorePath(#[from] #[source] ParseStorePathError),
+    BadStorePath(
+        #[from]
+        #[source]
+        ParseStorePathError,
+    ),
     #[error("bad path '{0}' in derivation")]
     BadPath(String),
     #[error("bad hash in derivation: {0}")]
-    BadHash(#[from] #[source] hash::ParseHashError),
+    BadHash(
+        #[from]
+        #[source]
+        hash::ParseHashError,
+    ),
 }
 
 impl From<hash::UnknownAlgorithm> for ParseDerivationError {
@@ -44,18 +52,26 @@ impl From<hash::UnknownAlgorithm> for ParseDerivationError {
 #[derive(Error, Debug)]
 pub enum ReadDerivationError {
     #[error("{0}")]
-    BadDerivation(#[from] #[source] ParseDerivationError),
+    BadDerivation(
+        #[from]
+        #[source]
+        ParseDerivationError,
+    ),
     #[error("io error reading derivation {0}")]
-    IO(#[from] #[source] std::io::Error),
+    IO(
+        #[from]
+        #[source]
+        std::io::Error,
+    ),
 }
 
 impl From<ReadStorePathError> for ReadDerivationError {
     fn from(v: ReadStorePathError) -> ReadDerivationError {
         use ReadStorePathError::*;
         match v {
-            BadStorePath(e) => ReadDerivationError::BadDerivation(
-                ParseDerivationError::BadStorePath(e) 
-            ),
+            BadStorePath(e) => {
+                ReadDerivationError::BadDerivation(ParseDerivationError::BadStorePath(e))
+            }
             IO(io) => ReadDerivationError::IO(io),
         }
     }
@@ -64,13 +80,20 @@ impl From<ReadStorePathError> for ReadDerivationError {
 #[derive(Error, Debug)]
 pub enum WriteDerivationError {
     #[error("{0}")]
-    BadStorePath(#[from] #[source] ParseStorePathError),
+    BadStorePath(
+        #[from]
+        #[source]
+        ParseStorePathError,
+    ),
     #[error("io error reading derivation {0}")]
-    IO(#[from] #[source] std::io::Error),
+    IO(
+        #[from]
+        #[source]
+        std::io::Error,
+    ),
     #[error("Builder '{0:?}' could not be converted to string")]
-    InvalidBuilder(PathBuf)
+    InvalidBuilder(PathBuf),
 }
-
 
 fn validate_path(s: &str) -> Result<(), ParseDerivationError> {
     if s.len() == 0 || !s.starts_with("/") {
@@ -87,7 +110,6 @@ fn output_path_name(drv_name: &str, output_name: &str) -> String {
         drv_name.to_owned()
     }
 }
-
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum DerivationOutput {
@@ -109,8 +131,12 @@ pub enum DerivationOutput {
 }
 
 impl DerivationOutput {
-    pub fn parse_output(store_dir: &StoreDir, path_s: String, hash_algo: String, hash:String) -> Result<DerivationOutput, ParseDerivationError>
-    {
+    pub fn parse_output(
+        store_dir: &StoreDir,
+        path_s: String,
+        hash_algo: String,
+        hash: String,
+    ) -> Result<DerivationOutput, ParseDerivationError> {
         if hash_algo != "" {
             let (method, algo) = if hash_algo.starts_with("r:") {
                 (FileIngestionMethod::Recursive, &hash_algo[2..])
@@ -127,7 +153,8 @@ impl DerivationOutput {
                 // TODO: settings.requireExperimentalFeature("ca-derivations");
                 assert_eq!(path_s, "");
                 Ok(DerivationOutput::CAFloating {
-                    method, hash_type: algorithm,
+                    method,
+                    hash_type: algorithm,
                 })
             }
         } else {
@@ -141,8 +168,12 @@ impl DerivationOutput {
         }
     }
 
-    pub async fn read_output<R>(mut source: R, store_dir: &StoreDir) -> Result<DerivationOutput, ReadDerivationError>
-        where R: AsyncRead + Unpin,
+    pub async fn read_output<R>(
+        mut source: R,
+        store_dir: &StoreDir,
+    ) -> Result<DerivationOutput, ReadDerivationError>
+    where
+        R: AsyncRead + Unpin,
     {
         let path_s = source.read_string().await?;
         let hash_algo = source.read_string().await?;
@@ -150,21 +181,29 @@ impl DerivationOutput {
         Ok(Self::parse_output(store_dir, path_s, hash_algo, hash)?)
     }
 
-    pub async fn write_output<W>(&self, mut sink: W, store_dir: &StoreDir, drv_name: &str, output_name: &str) -> Result<(), WriteDerivationError>
-        where W: AsyncWrite + Unpin,
+    pub async fn write_output<W>(
+        &self,
+        mut sink: W,
+        store_dir: &StoreDir,
+        drv_name: &str,
+        output_name: &str,
+    ) -> Result<(), WriteDerivationError>
+    where
+        W: AsyncWrite + Unpin,
     {
         match self {
             DerivationOutput::InputAddressed(path) => {
                 sink.write_printed(store_dir, path).await?;
                 sink.write_string("").await?;
                 sink.write_string("").await?;
-            },
+            }
             DerivationOutput::CAFixed(dof) => {
                 let path = store_dir.make_fixed_output_path(
-                    dof.method, dof.hash,
+                    dof.method,
+                    dof.hash,
                     &output_path_name(drv_name, output_name),
                     &StorePathSet::new(),
-                    false
+                    false,
                 )?;
                 sink.write_printed(store_dir, &path).await?;
                 sink.write_string(&format!("{:#}", dof)).await?;
@@ -183,23 +222,26 @@ impl DerivationOutput {
                 sink.write_string("").await?;
                 sink.write_string("").await?;
                 sink.write_string("").await?;
-            },
+            }
         }
         Ok(())
     }
 
-    pub fn path(&self, store_dir: &StoreDir, drv_name: &str, output_name: &str) -> Result<Option<StorePath>, ParseStorePathError>
-    {
+    pub fn path(
+        &self,
+        store_dir: &StoreDir,
+        drv_name: &str,
+        output_name: &str,
+    ) -> Result<Option<StorePath>, ParseStorePathError> {
         match self {
             DerivationOutput::InputAddressed(path) => Ok(Some(path.clone())),
-            DerivationOutput::CAFixed(dof) => {
-                Ok(Some(store_dir.make_fixed_output_path(
-                    dof.method, dof.hash,
-                    &output_path_name(drv_name, output_name),
-                    &StorePathSet::new(),
-                    false
-                )?))
-            },
+            DerivationOutput::CAFixed(dof) => Ok(Some(store_dir.make_fixed_output_path(
+                dof.method,
+                dof.hash,
+                &output_path_name(drv_name, output_name),
+                &StorePathSet::new(),
+                false,
+            )?)),
             DerivationOutput::CAFloating { .. } => Ok(None),
             DerivationOutput::Deferred => Ok(None),
         }
@@ -213,12 +255,11 @@ pub type DerivationOutputs = BTreeMap<String, DerivationOutput>;
 /// be written. To calculate values of these types, see the corresponding
 /// functions in BasicDerivation
 pub type DerivationOutputsAndOptPaths = BTreeMap<String, (DerivationOutput, Option<StorePath>)>;
- 
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub struct BasicDerivation {
     pub outputs: DerivationOutputs, /* keyed on symbolic IDs */
-    pub input_srcs: StorePathSet, /* inputs that are sources */
+    pub input_srcs: StorePathSet,   /* inputs that are sources */
     pub platform: String,
     pub builder: PathBuf,
     pub args: Vec<String>,
@@ -227,17 +268,30 @@ pub struct BasicDerivation {
 }
 
 impl BasicDerivation {
-    pub fn outputs_and_opt_paths(&self, store_dir: &StoreDir) -> Result<DerivationOutputsAndOptPaths, ParseStorePathError> {
+    pub fn outputs_and_opt_paths(
+        &self,
+        store_dir: &StoreDir,
+    ) -> Result<DerivationOutputsAndOptPaths, ParseStorePathError> {
         let mut res = DerivationOutputsAndOptPaths::new();
         for (output_name, drv_output) in self.outputs.iter() {
-            res.insert(output_name.clone(), 
-                (drv_output.clone(), drv_output.path(store_dir, &self.name, output_name)?));
+            res.insert(
+                output_name.clone(),
+                (
+                    drv_output.clone(),
+                    drv_output.path(store_dir, &self.name, output_name)?,
+                ),
+            );
         }
         Ok(res)
     }
 
-    pub async fn read_drv<R>(mut source: R, store_dir: &StoreDir, name: &str) -> Result<BasicDerivation, ReadDerivationError>
-        where R: AsyncRead + Unpin,
+    pub async fn read_drv<R>(
+        mut source: R,
+        store_dir: &StoreDir,
+        name: &str,
+    ) -> Result<BasicDerivation, ReadDerivationError>
+    where
+        R: AsyncRead + Unpin,
     {
         let name = name.to_owned();
         let nr = source.read_usize().await?;
@@ -261,23 +315,39 @@ impl BasicDerivation {
             env.push((name, value));
         }
         Ok(BasicDerivation {
-            env, name, args, builder, platform, input_srcs, outputs,
+            env,
+            name,
+            args,
+            builder,
+            platform,
+            input_srcs,
+            outputs,
         })
     }
 
-    pub async fn write_drv<W>(&self, mut sink: W, store_dir: &StoreDir) -> Result<(), WriteDerivationError>
-        where W: AsyncWrite + Unpin
+    pub async fn write_drv<W>(
+        &self,
+        mut sink: W,
+        store_dir: &StoreDir,
+    ) -> Result<(), WriteDerivationError>
+    where
+        W: AsyncWrite + Unpin,
     {
         sink.write_usize(self.outputs.len()).await?;
         for (name, output) in self.outputs.iter() {
             sink.write_string(name).await?;
-            output.write_output(&mut sink, store_dir, &self.name, name).await?;
+            output
+                .write_output(&mut sink, store_dir, &self.name, name)
+                .await?;
         }
         sink.write_printed_coll(store_dir, &self.input_srcs).await?;
         sink.write_string(&self.platform).await?;
-        sink.write_string(self.builder.to_str().ok_or_else(|| {
-            WriteDerivationError::InvalidBuilder(self.builder.clone())
-        })?).await?;
+        sink.write_string(
+            self.builder
+                .to_str()
+                .ok_or_else(|| WriteDerivationError::InvalidBuilder(self.builder.clone()))?,
+        )
+        .await?;
         sink.write_string_coll(&self.args).await?;
 
         sink.write_usize(self.env.len()).await?;
@@ -289,12 +359,12 @@ impl BasicDerivation {
     }
 }
 
-#[cfg(any(test, feature="test"))]
+#[cfg(any(test, feature = "test"))]
 pub mod proptest {
-    use ::proptest::prelude::*;
     use super::*;
-    use nixrs_util::proptest::arb_path;
     use crate::path::proptest::arb_output_name;
+    use ::proptest::prelude::*;
+    use nixrs_util::proptest::arb_path;
 
     impl Arbitrary for DerivationOutput {
         type Parameters = ();
@@ -305,12 +375,13 @@ pub mod proptest {
         }
     }
 
-    pub fn arb_derivation_output() -> impl Strategy<Value=DerivationOutput> {
+    pub fn arb_derivation_output() -> impl Strategy<Value = DerivationOutput> {
         use DerivationOutput::*;
         prop_oneof![
-            any::<StorePath>().prop_map(|s| InputAddressed(s) ),
-            any::<FixedOutputHash>().prop_map(|s| CAFixed(s) ),
-            (any::<FileIngestionMethod>(), any::<hash::Algorithm>()).prop_map(|(method, hash_type)| CAFloating { method, hash_type } ),
+            any::<StorePath>().prop_map(|s| InputAddressed(s)),
+            any::<FixedOutputHash>().prop_map(|s| CAFixed(s)),
+            (any::<FileIngestionMethod>(), any::<hash::Algorithm>())
+                .prop_map(|(method, hash_type)| CAFloating { method, hash_type }),
             Just(Deferred)
         ]
     }
@@ -353,11 +424,7 @@ mod tests {
         let store_dir = StoreDir::new("/nix/store").unwrap();
         let path_s = "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3".to_owned();
         let path = store_dir.parse_path(&path_s).unwrap();
-        let p = DerivationOutput::parse_output(
-            &store_dir, 
-            path_s,
-            "".into(),
-            "".into());
+        let p = DerivationOutput::parse_output(&store_dir, path_s, "".into(), "".into());
         assert_eq!(p, Ok(DerivationOutput::InputAddressed(path)));
     }
 
@@ -367,12 +434,14 @@ mod tests {
         let path_s = "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3".to_owned();
         let hash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".to_owned();
         let h = Hash::parse_non_sri_unprefixed(&hash, hash::Algorithm::SHA256).unwrap();
-        let p = DerivationOutput::parse_output(
-            &store_dir, 
-            path_s,
-            "sha256".into(),
-            hash);
-        assert_eq!(p, Ok(DerivationOutput::CAFixed(FixedOutputHash { method: FileIngestionMethod::Flat, hash:h })));
+        let p = DerivationOutput::parse_output(&store_dir, path_s, "sha256".into(), hash);
+        assert_eq!(
+            p,
+            Ok(DerivationOutput::CAFixed(FixedOutputHash {
+                method: FileIngestionMethod::Flat,
+                hash: h
+            }))
+        );
     }
 
     #[test]
@@ -381,56 +450,64 @@ mod tests {
         let path_s = "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3".to_owned();
         let hash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".to_owned();
         let h = Hash::parse_non_sri_unprefixed(&hash, hash::Algorithm::SHA256).unwrap();
-        let p = DerivationOutput::parse_output(
-            &store_dir, 
-            path_s,
-            "r:sha256".into(),
-            hash);
-        assert_eq!(p, Ok(DerivationOutput::CAFixed(FixedOutputHash { method: FileIngestionMethod::Recursive, hash:h })));
+        let p = DerivationOutput::parse_output(&store_dir, path_s, "r:sha256".into(), hash);
+        assert_eq!(
+            p,
+            Ok(DerivationOutput::CAFixed(FixedOutputHash {
+                method: FileIngestionMethod::Recursive,
+                hash: h
+            }))
+        );
     }
 
     #[test]
     fn test_derivation_output_parse_ca_floating() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let p = DerivationOutput::parse_output(
-            &store_dir, 
-            "".into(),
-            "sha256".into(),
-            "".into());
-        assert_eq!(p, Ok(DerivationOutput::CAFloating { method: FileIngestionMethod::Flat, hash_type: hash::Algorithm::SHA256 } ));
+        let p = DerivationOutput::parse_output(&store_dir, "".into(), "sha256".into(), "".into());
+        assert_eq!(
+            p,
+            Ok(DerivationOutput::CAFloating {
+                method: FileIngestionMethod::Flat,
+                hash_type: hash::Algorithm::SHA256
+            })
+        );
     }
 
     #[test]
     fn test_derivation_output_parse_ca_floating_recursive() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let p = DerivationOutput::parse_output(
-            &store_dir, 
-            "".into(),
-            "r:sha256".into(),
-            "".into());
-        assert_eq!(p, Ok(DerivationOutput::CAFloating { method: FileIngestionMethod::Recursive, hash_type: hash::Algorithm::SHA256 } ));
+        let p = DerivationOutput::parse_output(&store_dir, "".into(), "r:sha256".into(), "".into());
+        assert_eq!(
+            p,
+            Ok(DerivationOutput::CAFloating {
+                method: FileIngestionMethod::Recursive,
+                hash_type: hash::Algorithm::SHA256
+            })
+        );
     }
 
     #[test]
     fn test_derivation_output_parse_deferred() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let p = DerivationOutput::parse_output(
-            &store_dir, 
-            "".into(),
-            "".into(),
-            "".into());
+        let p = DerivationOutput::parse_output(&store_dir, "".into(), "".into(), "".into());
         assert_eq!(p, Ok(DerivationOutput::Deferred));
     }
-
 
     #[test]
     fn test_derivation_output_path_input_address() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let path = store_dir.parse_path("/nix/store/ivz5kvk528akza21x33r8jn2wl8bpsw3-konsole-18.12.3").unwrap();
+        let path = store_dir
+            .parse_path("/nix/store/ivz5kvk528akza21x33r8jn2wl8bpsw3-konsole-18.12.3")
+            .unwrap();
         let drv_out = DerivationOutput::InputAddressed(path);
         assert_eq!(
             drv_out.path(&store_dir, "konsole-18.12.3", "out").unwrap(),
-            Some(store_dir.parse_path("/nix/store/ivz5kvk528akza21x33r8jn2wl8bpsw3-konsole-18.12.3").unwrap()));
+            Some(
+                store_dir
+                    .parse_path("/nix/store/ivz5kvk528akza21x33r8jn2wl8bpsw3-konsole-18.12.3")
+                    .unwrap()
+            )
+        );
     }
 
     #[test]
@@ -438,23 +515,40 @@ mod tests {
         let store_dir = StoreDir::new("/nix/store").unwrap();
         let hash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".to_owned();
         let h = Hash::parse_non_sri_unprefixed(&hash, hash::Algorithm::SHA256).unwrap();
-        let drv_out = DerivationOutput::CAFixed(FixedOutputHash { method: FileIngestionMethod::Recursive, hash:h });
+        let drv_out = DerivationOutput::CAFixed(FixedOutputHash {
+            method: FileIngestionMethod::Recursive,
+            hash: h,
+        });
         assert_eq!(
             drv_out.path(&store_dir, "konsole-18.12.3", "out").unwrap(),
-            Some(store_dir.parse_path("/nix/store/ivz5kvk528akza21x33r8jn2wl8bpsw3-konsole-18.12.3").unwrap()));
+            Some(
+                store_dir
+                    .parse_path("/nix/store/ivz5kvk528akza21x33r8jn2wl8bpsw3-konsole-18.12.3")
+                    .unwrap()
+            )
+        );
     }
 
     #[test]
     fn test_derivation_output_path_ca_floating() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let drv_out = DerivationOutput::CAFloating { method: FileIngestionMethod::Flat, hash_type: hash::Algorithm::SHA256 };
-        assert_eq!(drv_out.path(&store_dir, "konsole-18.12.3", "out").unwrap(), None);
+        let drv_out = DerivationOutput::CAFloating {
+            method: FileIngestionMethod::Flat,
+            hash_type: hash::Algorithm::SHA256,
+        };
+        assert_eq!(
+            drv_out.path(&store_dir, "konsole-18.12.3", "out").unwrap(),
+            None
+        );
     }
 
     #[test]
     fn test_derivation_output_path_deferred() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
         let drv_out = DerivationOutput::Deferred;
-        assert_eq!(drv_out.path(&store_dir, "konsole-18.12.3", "out").unwrap(), None);
+        assert_eq!(
+            drv_out.path(&store_dir, "konsole-18.12.3", "out").unwrap(),
+            None
+        );
     }
 }

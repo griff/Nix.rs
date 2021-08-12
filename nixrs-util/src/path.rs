@@ -1,11 +1,11 @@
 use std::borrow::Cow;
 use std::io;
-use std::path::{Path, PathBuf, Component};
+use std::path::{Component, Path, PathBuf};
 
 use smallvec::SmallVec;
 use tokio::fs;
 
-pub async fn resolve_link<P:AsRef<Path>>(path: P) -> io::Result<PathBuf> {
+pub async fn resolve_link<P: AsRef<Path>>(path: P) -> io::Result<PathBuf> {
     let path = path.as_ref();
     let target = fs::read_link(path).await?;
     if let Some(dir) = path.parent() {
@@ -18,13 +18,13 @@ pub async fn resolve_link<P:AsRef<Path>>(path: P) -> io::Result<PathBuf> {
 pub fn absolute_path_buf_from_current(path: PathBuf) -> io::Result<PathBuf> {
     match absolute_path_from_current(&path)? {
         Cow::Borrowed(_) => Ok(path),
-        Cow::Owned(o) => Ok(o)
-    } 
+        Cow::Owned(o) => Ok(o),
+    }
 }
 
 pub fn absolute_path_from_current(path: &Path) -> io::Result<Cow<Path>> {
     if path.is_absolute() {
-        return Ok(clean_path(path))
+        return Ok(clean_path(path));
     }
     let base = std::env::current_dir()?;
     Ok(absolute_path(path, &base))
@@ -39,7 +39,7 @@ pub fn absolute_path_buf(path: PathBuf, base: &Path) -> PathBuf {
 
 pub fn absolute_path<'p>(path: &'p Path, base: &Path) -> Cow<'p, Path> {
     if path.is_absolute() {
-        return clean_path(path)
+        return clean_path(path);
     }
     Cow::Owned(clean_path_buf(base.join(path)))
 }
@@ -47,7 +47,7 @@ pub fn absolute_path<'p>(path: &'p Path, base: &Path) -> Cow<'p, Path> {
 pub fn clean_path_buf(path: PathBuf) -> PathBuf {
     match clean_path(&path) {
         Cow::Borrowed(_) => path,
-        Cow::Owned(o)  => o
+        Cow::Owned(o) => o,
     }
 }
 
@@ -58,20 +58,19 @@ pub fn clean_path(path: &Path) -> Cow<Path> {
         match comp {
             Component::CurDir => {
                 no_changes = false;
-            },
+            }
             Component::ParentDir => match out.last() {
                 Some(Component::RootDir) => {
                     no_changes = false;
-                },
+                }
                 Some(Component::Normal(_)) => {
                     no_changes = false;
                     out.pop();
-                },
+                }
                 None
                 | Some(Component::CurDir)
                 | Some(Component::ParentDir)
                 | Some(Component::Prefix(_)) => out.push(comp),
-                
             },
             comp => out.push(comp),
         }
@@ -79,7 +78,7 @@ pub fn clean_path(path: &Path) -> Cow<Path> {
     if no_changes {
         Cow::Borrowed(path)
     } else if !out.is_empty() {
-        let ret : PathBuf = out.iter().collect();
+        let ret: PathBuf = out.iter().collect();
         Cow::Owned(ret)
     } else {
         Cow::Owned(PathBuf::from("."))
@@ -94,18 +93,30 @@ mod tests {
 
     #[test]
     fn test_clean_path() {
-        assert_eq!(clean_path(Path::new("/nix/store")),
-            Cow::Borrowed(Path::new("/nix/store")));
-        assert_eq!(clean_path(Path::new("/../nix/store")),
-            Cow::<Path>::Owned(PathBuf::from("/nix/store")));
-        assert_eq!(clean_path(Path::new("/nix/./store")),
-            Cow::<Path>::Owned(PathBuf::from("/nix/store")));
-        assert_eq!(clean_path(Path::new("/nix/./../store")),
-            Cow::<Path>::Owned(PathBuf::from("/store")));
-        assert_eq!(clean_path(Path::new("/nix/item/part/../../store")),
-            Cow::<Path>::Owned(PathBuf::from("/nix/store")));
-        assert_eq!(clean_path(Path::new("/nix/item/../part/../store")),
-            Cow::<Path>::Owned(PathBuf::from("/nix/store")));
+        assert_eq!(
+            clean_path(Path::new("/nix/store")),
+            Cow::Borrowed(Path::new("/nix/store"))
+        );
+        assert_eq!(
+            clean_path(Path::new("/../nix/store")),
+            Cow::<Path>::Owned(PathBuf::from("/nix/store"))
+        );
+        assert_eq!(
+            clean_path(Path::new("/nix/./store")),
+            Cow::<Path>::Owned(PathBuf::from("/nix/store"))
+        );
+        assert_eq!(
+            clean_path(Path::new("/nix/./../store")),
+            Cow::<Path>::Owned(PathBuf::from("/store"))
+        );
+        assert_eq!(
+            clean_path(Path::new("/nix/item/part/../../store")),
+            Cow::<Path>::Owned(PathBuf::from("/nix/store"))
+        );
+        assert_eq!(
+            clean_path(Path::new("/nix/item/../part/../store")),
+            Cow::<Path>::Owned(PathBuf::from("/nix/store"))
+        );
         /*
         //assert_eq!(clean_path(Path::new("c:/test")),
         //    Cow::Borrowed(Path::new("c:/test")));
@@ -115,50 +126,73 @@ mod tests {
         assert_eq!(clean_path(Path::new("c:../nix/store")),
             Cow::Borrowed(Path::new("/nix/store")));
         */
-        assert_eq!(clean_path(Path::new("../nix/store")),
-            Cow::Borrowed(Path::new("../nix/store")));
-        assert_eq!(clean_path(Path::new("../../nix/store")),
-            Cow::Borrowed(Path::new("../../nix/store")));
-        assert_eq!(clean_path(Path::new("./test")),
-            Cow::Borrowed(Path::new("test")));
-        assert_eq!(clean_path(Path::new("./.")),
-            Cow::Borrowed(Path::new(".")));
+        assert_eq!(
+            clean_path(Path::new("../nix/store")),
+            Cow::Borrowed(Path::new("../nix/store"))
+        );
+        assert_eq!(
+            clean_path(Path::new("../../nix/store")),
+            Cow::Borrowed(Path::new("../../nix/store"))
+        );
+        assert_eq!(
+            clean_path(Path::new("./test")),
+            Cow::Borrowed(Path::new("test"))
+        );
+        assert_eq!(clean_path(Path::new("./.")), Cow::Borrowed(Path::new(".")));
     }
 
     #[test]
     fn test_clean_path_buf() {
-        assert_eq!(clean_path_buf(PathBuf::from("/nix/store")),
-            PathBuf::from("/nix/store"));
-        assert_eq!(clean_path_buf(PathBuf::from("/nix/../store")),
-            PathBuf::from("/store"));
+        assert_eq!(
+            clean_path_buf(PathBuf::from("/nix/store")),
+            PathBuf::from("/nix/store")
+        );
+        assert_eq!(
+            clean_path_buf(PathBuf::from("/nix/../store")),
+            PathBuf::from("/store")
+        );
     }
 
     #[test]
     fn test_absolute_path() {
-        assert_eq!(absolute_path(Path::new("/nix/store"), Path::new("/test")),
-            Cow::Borrowed(Path::new("/nix/store")));
-        assert_eq!(absolute_path(Path::new("./nix/../store"), Path::new("test")),
-            Cow::Borrowed(Path::new("test/store")));
-        assert_eq!(absolute_path(Path::new("./nix/../store"), Path::new("/test")),
-            Cow::Borrowed(Path::new("/test/store")));
+        assert_eq!(
+            absolute_path(Path::new("/nix/store"), Path::new("/test")),
+            Cow::Borrowed(Path::new("/nix/store"))
+        );
+        assert_eq!(
+            absolute_path(Path::new("./nix/../store"), Path::new("test")),
+            Cow::Borrowed(Path::new("test/store"))
+        );
+        assert_eq!(
+            absolute_path(Path::new("./nix/../store"), Path::new("/test")),
+            Cow::Borrowed(Path::new("/test/store"))
+        );
     }
 
     #[test]
     fn test_absolute_path_buf() {
-        assert_eq!(absolute_path_buf(PathBuf::from("/nix/store"), Path::new("/test")),
-            PathBuf::from("/nix/store"));
-        assert_eq!(absolute_path_buf(PathBuf::from("store"), Path::new("/test")),
-            PathBuf::from("/test/store"));
+        assert_eq!(
+            absolute_path_buf(PathBuf::from("/nix/store"), Path::new("/test")),
+            PathBuf::from("/nix/store")
+        );
+        assert_eq!(
+            absolute_path_buf(PathBuf::from("store"), Path::new("/test")),
+            PathBuf::from("/test/store")
+        );
     }
 
     #[test]
     fn test_absolute_path_from_current() -> io::Result<()> {
         let base = std::env::current_dir()?;
 
-        assert_eq!(absolute_path_from_current(Path::new("/nix/store"))?,
-            Cow::Borrowed(Path::new("/nix/store")));
-        assert_eq!(absolute_path_from_current(Path::new("./nix/../store"))?,
-            Cow::<Path>::Owned(base.join("store")));
+        assert_eq!(
+            absolute_path_from_current(Path::new("/nix/store"))?,
+            Cow::Borrowed(Path::new("/nix/store"))
+        );
+        assert_eq!(
+            absolute_path_from_current(Path::new("./nix/../store"))?,
+            Cow::<Path>::Owned(base.join("store"))
+        );
         Ok(())
     }
 
@@ -166,10 +200,14 @@ mod tests {
     fn test_absolute_path_buf_from_current() -> io::Result<()> {
         let base = std::env::current_dir()?;
 
-        assert_eq!(absolute_path_buf_from_current(PathBuf::from("/nix/store"))?,
-            PathBuf::from("/nix/store"));
-        assert_eq!(absolute_path_buf_from_current(PathBuf::from("./nix/../store"))?,
-            base.join("store"));
+        assert_eq!(
+            absolute_path_buf_from_current(PathBuf::from("/nix/store"))?,
+            PathBuf::from("/nix/store")
+        );
+        assert_eq!(
+            absolute_path_buf_from_current(PathBuf::from("./nix/../store"))?,
+            base.join("store")
+        );
         Ok(())
     }
 

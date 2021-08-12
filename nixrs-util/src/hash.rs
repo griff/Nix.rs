@@ -5,18 +5,16 @@ use std::str::FromStr;
 
 use derive_more::Display;
 use hex::FromHexError;
-use thiserror::Error;
 use ring::digest;
+use thiserror::Error;
 
 use super::base32;
 
-
-const MD5_SIZE : usize = 128 / 8;
-const SHA1_SIZE : usize = 160 / 8;
-const SHA256_SIZE : usize = 256 / 8;
-const SHA512_SIZE : usize = 512 / 8;
-const MAX_SIZE : usize = SHA512_SIZE;
-
+const MD5_SIZE: usize = 128 / 8;
+const SHA1_SIZE: usize = 160 / 8;
+const SHA256_SIZE: usize = 256 / 8;
+const SHA512_SIZE: usize = 512 / 8;
+const MAX_SIZE: usize = SHA512_SIZE;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Display)]
 pub enum Algorithm {
@@ -37,7 +35,6 @@ impl Default for Algorithm {
     }
 }
 
-
 impl Algorithm {
     #[inline]
     pub fn size(&self) -> usize {
@@ -49,38 +46,36 @@ impl Algorithm {
         }
     }
 
-     /// Returns the length of a base-16 representation of this hash.
-     #[inline]
-     pub fn base16_len(&self) -> usize {
-         return self.size() * 2;
-     }
- 
-     /// Returns the length of a base-32 representation of this hash.
-     #[inline]
-     pub fn base32_len(&self) -> usize
-     {
-         return (self.size() * 8 - 1) / 5 + 1;
-     }
- 
-     /// Returns the length of a base-64 representation of this hash.
-     #[inline]
-     pub fn base64_len(&self) -> usize
-     {
-         return ((4 * self.size() / 3) + 3) & !3;
-     }
- 
-     fn digest_algorithm(&self) -> &'static digest::Algorithm {
+    /// Returns the length of a base-16 representation of this hash.
+    #[inline]
+    pub fn base16_len(&self) -> usize {
+        return self.size() * 2;
+    }
+
+    /// Returns the length of a base-32 representation of this hash.
+    #[inline]
+    pub fn base32_len(&self) -> usize {
+        return (self.size() * 8 - 1) / 5 + 1;
+    }
+
+    /// Returns the length of a base-64 representation of this hash.
+    #[inline]
+    pub fn base64_len(&self) -> usize {
+        return ((4 * self.size() / 3) + 3) & !3;
+    }
+
+    fn digest_algorithm(&self) -> &'static digest::Algorithm {
         match self {
             Algorithm::SHA1 => &digest::SHA1_FOR_LEGACY_USE_ONLY,
             Algorithm::SHA256 => &digest::SHA256,
             Algorithm::SHA512 => &digest::SHA512,
-            a => panic!("Unsupported digest algorithm {:?}",  a)
+            a => panic!("Unsupported digest algorithm {:?}", a),
         }
     }
 }
 
 #[derive(Error, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
-#[error("Unsupported digest algorithm {0}",)]
+#[error("Unsupported digest algorithm {0}")]
 pub struct UnknownAlgorithm(String);
 
 impl<'a> TryFrom<&'a digest::Algorithm> for Algorithm {
@@ -118,7 +113,11 @@ impl FromStr for Algorithm {
 #[derive(Error, Debug, PartialEq, Clone)]
 pub enum ParseHashError {
     #[error("{0}")]
-    Algorithm(#[from] #[source] UnknownAlgorithm),
+    Algorithm(
+        #[from]
+        #[source]
+        UnknownAlgorithm,
+    ),
     #[error("Hash '{0}' is not SRI")]
     NotSRI(String),
     #[error("Hash '{0}' does not include a type")]
@@ -140,7 +139,7 @@ pub enum ParseHashError {
     #[error("invalid SRI hash '{0}'")]
     BadSRIHash(String),
     #[error("hash '{1}' has wrong length for hash type '{0}'")]
-    WrongHashLength(Algorithm, String)
+    WrongHashLength(Algorithm, String),
 }
 
 pub fn split_prefix<'a>(s: &'a str, prefix: &str) -> Option<(&'a str, &'a str)> {
@@ -153,12 +152,12 @@ pub fn split_prefix<'a>(s: &'a str, prefix: &str) -> Option<(&'a str, &'a str)> 
     }
 }
 
-pub(crate) fn parse_prefix(s:&str) -> Result<Option<(Algorithm, bool, &str)>, UnknownAlgorithm> {
+pub(crate) fn parse_prefix(s: &str) -> Result<Option<(Algorithm, bool, &str)>, UnknownAlgorithm> {
     if let Some((prefix, rest)) = split_prefix(s, ":") {
-        let a : Algorithm = prefix.parse()?;
+        let a: Algorithm = prefix.parse()?;
         Ok(Some((a, false, rest)))
     } else if let Some((prefix, rest)) = split_prefix(s, "-") {
-        let a : Algorithm = prefix.parse()?;
+        let a: Algorithm = prefix.parse()?;
         Ok(Some((a, true, rest)))
     } else {
         Ok(None)
@@ -174,7 +173,7 @@ pub struct Hash {
 impl Hash {
     pub fn new(algorithm: Algorithm, hash: &[u8]) -> Hash {
         let mut data = [0u8; MAX_SIZE];
-        (& mut data[0..algorithm.size()]).copy_from_slice(&hash);
+        (&mut data[0..algorithm.size()]).copy_from_slice(&hash);
         Hash { algorithm, data }
     }
 
@@ -193,7 +192,7 @@ impl Hash {
         } else if !is_sri && rest.len() == a.base32_len() {
             let data = base32::decode(rest)
                 .map_err(|err| ParseHashError::BadBase32Hash(rest.to_string(), err))?;
-            
+
             Ok(Hash::new(a, &data))
         } else if is_sri || rest.len() == a.base64_len() {
             let data = base64::decode(rest)
@@ -202,7 +201,10 @@ impl Hash {
                 if is_sri {
                     Err(ParseHashError::BadSRIHash(rest.to_string()))
                 } else {
-                    Err(ParseHashError::BadBase64Hash(rest.to_string(), base64::DecodeError::InvalidLength))
+                    Err(ParseHashError::BadBase64Hash(
+                        rest.to_string(),
+                        base64::DecodeError::InvalidLength,
+                    ))
                 }
             } else {
                 Ok(Hash::new(a, &data))
@@ -217,7 +219,7 @@ impl Hash {
     /// These have the format "<type>-<base64>",
     pub fn parse_sri(s: &str) -> Result<Hash, ParseHashError> {
         if let Some((prefix, rest)) = split_prefix(s, "-") {
-            let a : Algorithm = prefix.parse()?;
+            let a: Algorithm = prefix.parse()?;
             Hash::from_str(rest, a, true)
         } else {
             Err(ParseHashError::NotSRI(s.to_owned()))
@@ -231,7 +233,7 @@ impl Hash {
     /// Subresource Integrity hash expression). If the 'type' argument
     /// is not present, then the hash type must be specified in the
     /// string.
-    pub fn parse_any(s:&str, algorithm: Option<Algorithm>) -> Result<Hash, ParseHashError> {
+    pub fn parse_any(s: &str, algorithm: Option<Algorithm>) -> Result<Hash, ParseHashError> {
         if let Some((a, is_sri, rest)) = parse_prefix(s)? {
             if let Some(expected) = algorithm {
                 if expected != a {
@@ -295,19 +297,19 @@ impl Hash {
         base64::encode(self.as_ref())
     }
 
-    pub fn to_base16<'a>(& 'a self) -> impl fmt::Display + 'a {
+    pub fn to_base16<'a>(&'a self) -> impl fmt::Display + 'a {
         Base16Hash(self)
     }
 
-    pub fn to_base32<'a>(& 'a self) -> impl fmt::Display + 'a {
+    pub fn to_base32<'a>(&'a self) -> impl fmt::Display + 'a {
         Base32Hash(self)
     }
 
-    pub fn to_base64<'a>(& 'a self) -> impl fmt::Display + 'a {
+    pub fn to_base64<'a>(&'a self) -> impl fmt::Display + 'a {
         Base64Hash(self)
     }
 
-    pub fn to_sri<'a>(& 'a self) -> impl fmt::Display + 'a {
+    pub fn to_sri<'a>(&'a self) -> impl fmt::Display + 'a {
         SRIHash(self)
     }
 }
@@ -361,7 +363,7 @@ impl FromStr for Hash {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Hash::parse_any_prefixed(s)
-    }    
+    }
 }
 
 impl fmt::Display for Hash {
@@ -421,12 +423,10 @@ impl<'a> fmt::Display for SRIHash<'a> {
 pub fn digest<B: AsRef<[u8]>>(algorithm: Algorithm, data: B) -> Hash {
     match algorithm {
         #[cfg(feature = "md5")]
-        Algorithm::MD5 => {
-            Hash::new(Algorithm::MD5, md5::compute(data).as_ref()) 
-        },
-        _ => {
-            digest::digest(algorithm.digest_algorithm(), data.as_ref()).try_into().unwrap()
-        }
+        Algorithm::MD5 => Hash::new(Algorithm::MD5, md5::compute(data).as_ref()),
+        _ => digest::digest(algorithm.digest_algorithm(), data.as_ref())
+            .try_into()
+            .unwrap(),
     }
 }
 
@@ -443,11 +443,14 @@ impl Context {
         match algorithm {
             #[cfg(feature = "md5")]
             Algorithm::MD5 => Context(algorithm, InnerContext::MD5(md5::Context::new())),
-            _=> Context(algorithm, InnerContext::Ring(digest::Context::new(algorithm.digest_algorithm()))),
+            _ => Context(
+                algorithm,
+                InnerContext::Ring(digest::Context::new(algorithm.digest_algorithm())),
+            ),
         }
     }
 
-    pub fn update<D:AsRef<[u8]>>(&mut self, data: D) {
+    pub fn update<D: AsRef<[u8]>>(&mut self, data: D) {
         let data = data.as_ref();
         match &mut self.1 {
             InnerContext::MD5(ctx) => ctx.consume(data),
@@ -457,12 +460,8 @@ impl Context {
 
     pub fn finish(self) -> Hash {
         match self.1 {
-            InnerContext::MD5(ctx) => {
-                Hash::new(self.0, ctx.compute().as_ref())
-            },
-            InnerContext::Ring(ctx) => {
-                ctx.finish().try_into().unwrap()
-            },
+            InnerContext::MD5(ctx) => Hash::new(self.0, ctx.compute().as_ref()),
+            InnerContext::Ring(ctx) => ctx.finish().try_into().unwrap(),
         }
     }
 }
@@ -490,25 +489,30 @@ impl tokio::io::AsyncWrite for HashSink {
             Some((read, ctx)) => {
                 *read += buf.len() as u64;
                 ctx.update(buf)
-            },
+            }
         }
         std::task::Poll::Ready(Ok(buf.len()))
     }
 
-    fn poll_flush(self: std::pin::Pin<&mut Self>, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), std::io::Error>> {
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), std::io::Error>> {
         std::task::Poll::Ready(Ok(()))
     }
 
-    fn poll_shutdown(self: std::pin::Pin<&mut Self>, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), std::io::Error>> {
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), std::io::Error>> {
         std::task::Poll::Ready(Ok(()))
     }
 }
 
-
-#[cfg(any(test, feature="test"))]
+#[cfg(any(test, feature = "test"))]
 pub mod proptest {
-    use ::proptest::prelude::*;
     use super::*;
+    use ::proptest::prelude::*;
 
     impl Arbitrary for Algorithm {
         type Parameters = ();
@@ -520,7 +524,8 @@ pub mod proptest {
                 2 => Just(Algorithm::SHA1),
                 5 => Just(Algorithm::SHA256),
                 2 => Just(Algorithm::SHA512)
-            ].boxed()
+            ]
+            .boxed()
         }
     }
 
@@ -549,8 +554,7 @@ mod tests {
 
     /// digest
 
-    fn test_hash(s1: &str, algo: Algorithm, base16: &str, base32:&str, base64: &str)
-    {
+    fn test_hash(s1: &str, algo: Algorithm, base16: &str, base32: &str, base64: &str) {
         let hash = digest(algo, s1);
         let base16_h = base16.to_uppercase();
         let base16_p = format!("{}:{}", algo, base16);
@@ -581,7 +585,10 @@ mod tests {
         assert_eq!(hash, Hash::parse_any(&base16_p, Some(algo)).unwrap());
         assert_eq!(hash, Hash::parse_any(base16, Some(algo)).unwrap());
         assert_eq!(hash, Hash::parse_non_sri_unprefixed(base16, algo).unwrap());
-        assert_eq!(hash, Hash::parse_non_sri_unprefixed(&base16_h, algo).unwrap());
+        assert_eq!(
+            hash,
+            Hash::parse_non_sri_unprefixed(&base16_h, algo).unwrap()
+        );
         assert_eq!(hash, base32_p.parse().unwrap());
         assert_eq!(hash, Hash::parse_any(&base32_p, None).unwrap());
         assert_eq!(hash, Hash::parse_any(&base32_p, Some(algo)).unwrap());
@@ -688,32 +695,82 @@ mod tests {
 
     #[test]
     fn test_errors() {
-        assert_eq!(Err(UnknownAlgorithm("test".into())), "test".parse::<Algorithm>());
-        assert_eq!(Err(UnknownAlgorithm("SHA384".into())), Algorithm::try_from(&digest::SHA384));
-        assert_eq!(Err(ParseHashError::Algorithm(UnknownAlgorithm("test".into()))), Hash::parse_any_prefixed("test:12345"));
-        assert_eq!(Err(ParseHashError::NotSRI("test:1234".into())), Hash::parse_sri("test:1234"));
-        assert_eq!(Err(ParseHashError::MissingTypePrefix("12345".into())), Hash::parse_any_prefixed("12345"));
-        assert_eq!(Err(ParseHashError::MissingTypePrefix("12345".into())), Hash::parse_non_sri_prefixed("12345"));
-        assert_eq!(Err(ParseHashError::TypeMismatch {
-            expected: Algorithm::SHA256,
-            actual: Algorithm::SHA1,
-            hash: "sha1:12345".into(),
-        }), Hash::parse_any("sha1:12345", Some(Algorithm::SHA256)));
-        assert_eq!(Err(ParseHashError::MissingType("12345".into())), Hash::parse_any("12345", None));
-        assert_eq!(Err(ParseHashError::BadBase16Hash("k9993e364706816aba3e25717850c26c9cd0d89d".into(), 
-                FromHexError::InvalidHexCharacter {c: 'k', index: 0} )), 
-            "sha1:k9993e364706816aba3e25717850c26c9cd0d89d".parse::<Hash>());
-        assert_eq!(Err(ParseHashError::BadBase32Hash("!pcd173cq987hw957sx6m0868wv3x6d9".into(), 
-                base32::BadBase32)), 
-            "sha1:!pcd173cq987hw957sx6m0868wv3x6d9".parse::<Hash>());
-        assert_eq!(Err(ParseHashError::BadBase64Hash("!Zk+NkcGgWq6PiVxeFDCbJzQ2J0=".into(), 
-                base64::DecodeError::InvalidByte(0, b'!'))), 
-            "sha1:!Zk+NkcGgWq6PiVxeFDCbJzQ2J0=".parse::<Hash>());
-        assert_eq!(Err(ParseHashError::BadBase64Hash("qZk+NkcGgWq6PiVxeFDCbJzQ2J0a".into(), 
-                base64::DecodeError::InvalidLength)), 
-            "sha1:qZk+NkcGgWq6PiVxeFDCbJzQ2J0a".parse::<Hash>());
-        assert_eq!(Err(ParseHashError::BadSRIHash("qZk+NkcGgWq6PiVxeFDCbJzQ2J0a".into())), 
-            "sha1-qZk+NkcGgWq6PiVxeFDCbJzQ2J0a".parse::<Hash>());
-        assert_eq!(Err(ParseHashError::WrongHashLength(Algorithm::SHA1 ,"12345".into())), "sha1:12345".parse::<Hash>());
+        assert_eq!(
+            Err(UnknownAlgorithm("test".into())),
+            "test".parse::<Algorithm>()
+        );
+        assert_eq!(
+            Err(UnknownAlgorithm("SHA384".into())),
+            Algorithm::try_from(&digest::SHA384)
+        );
+        assert_eq!(
+            Err(ParseHashError::Algorithm(UnknownAlgorithm("test".into()))),
+            Hash::parse_any_prefixed("test:12345")
+        );
+        assert_eq!(
+            Err(ParseHashError::NotSRI("test:1234".into())),
+            Hash::parse_sri("test:1234")
+        );
+        assert_eq!(
+            Err(ParseHashError::MissingTypePrefix("12345".into())),
+            Hash::parse_any_prefixed("12345")
+        );
+        assert_eq!(
+            Err(ParseHashError::MissingTypePrefix("12345".into())),
+            Hash::parse_non_sri_prefixed("12345")
+        );
+        assert_eq!(
+            Err(ParseHashError::TypeMismatch {
+                expected: Algorithm::SHA256,
+                actual: Algorithm::SHA1,
+                hash: "sha1:12345".into(),
+            }),
+            Hash::parse_any("sha1:12345", Some(Algorithm::SHA256))
+        );
+        assert_eq!(
+            Err(ParseHashError::MissingType("12345".into())),
+            Hash::parse_any("12345", None)
+        );
+        assert_eq!(
+            Err(ParseHashError::BadBase16Hash(
+                "k9993e364706816aba3e25717850c26c9cd0d89d".into(),
+                FromHexError::InvalidHexCharacter { c: 'k', index: 0 }
+            )),
+            "sha1:k9993e364706816aba3e25717850c26c9cd0d89d".parse::<Hash>()
+        );
+        assert_eq!(
+            Err(ParseHashError::BadBase32Hash(
+                "!pcd173cq987hw957sx6m0868wv3x6d9".into(),
+                base32::BadBase32
+            )),
+            "sha1:!pcd173cq987hw957sx6m0868wv3x6d9".parse::<Hash>()
+        );
+        assert_eq!(
+            Err(ParseHashError::BadBase64Hash(
+                "!Zk+NkcGgWq6PiVxeFDCbJzQ2J0=".into(),
+                base64::DecodeError::InvalidByte(0, b'!')
+            )),
+            "sha1:!Zk+NkcGgWq6PiVxeFDCbJzQ2J0=".parse::<Hash>()
+        );
+        assert_eq!(
+            Err(ParseHashError::BadBase64Hash(
+                "qZk+NkcGgWq6PiVxeFDCbJzQ2J0a".into(),
+                base64::DecodeError::InvalidLength
+            )),
+            "sha1:qZk+NkcGgWq6PiVxeFDCbJzQ2J0a".parse::<Hash>()
+        );
+        assert_eq!(
+            Err(ParseHashError::BadSRIHash(
+                "qZk+NkcGgWq6PiVxeFDCbJzQ2J0a".into()
+            )),
+            "sha1-qZk+NkcGgWq6PiVxeFDCbJzQ2J0a".parse::<Hash>()
+        );
+        assert_eq!(
+            Err(ParseHashError::WrongHashLength(
+                Algorithm::SHA1,
+                "12345".into()
+            )),
+            "sha1:12345".parse::<Hash>()
+        );
     }
 }

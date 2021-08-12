@@ -1,38 +1,37 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt;
-use std::path::{MAIN_SEPARATOR, Path, PathBuf};
+use std::path::{Path, PathBuf, MAIN_SEPARATOR};
 use std::sync::Arc;
 use std::time::SystemTime;
 
 use async_trait::async_trait;
 use futures::future::try_join;
 use log::{debug, trace};
+use nixrs_util::path::absolute_path_from_current;
+use nixrs_util::path::clean_path;
+use nixrs_util::path::resolve_link;
+use nixrs_util::{flag_enum, num_enum};
+use nixrs_util::{hash, StateParse, StatePrint};
 use tokio::fs;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
-use nixrs_util::{flag_enum, num_enum};
-use nixrs_util::path::absolute_path_from_current;
-use nixrs_util::path::resolve_link;
-use nixrs_util::{StateParse, StatePrint, hash};
-use nixrs_util::path::clean_path;
 
-use crate::Error;
 use super::content_address::{ContentAddress, FileIngestionMethod};
-use super::{BuildSettings, DerivedPath, ParseStorePathError, ReadStorePathError};
 use super::RepairFlag;
 use super::{BasicDerivation, DrvOutputs, StorePath, StorePathSet, ValidPathInfo};
+use super::{BuildSettings, DerivedPath, ParseStorePathError, ReadStorePathError};
+use crate::Error;
 
 /* Magic header of exportPath() output (obsolete). */
-pub const EXPORT_MAGIC : u64 = 0x4558494e;
-
+pub const EXPORT_MAGIC: u64 = 0x4558494e;
 
 flag_enum! {
     #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
     pub enum CheckSignaturesFlag {
         CheckSigs = true,
         NoCheckSigs = false,
-    }    
+    }
 }
 
 flag_enum! {
@@ -40,9 +39,8 @@ flag_enum! {
     pub enum SubstituteFlag {
         NoSubstitute = false,
         Substitute = true,
-    }    
+    }
 }
-
 
 num_enum! {
     #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
@@ -66,9 +64,7 @@ num_enum! {
 impl BuildStatus {
     pub fn success(&self) -> bool {
         match self {
-            BuildStatus::Built |
-            BuildStatus::Substituted |
-            BuildStatus::AlreadyValid => true,
+            BuildStatus::Built | BuildStatus::Substituted | BuildStatus::AlreadyValid => true,
             _ => false,
         }
     }
@@ -95,7 +91,7 @@ pub struct BuildResult {
     pub is_non_deterministic: bool,
 
     pub built_outputs: DrvOutputs,
-    
+
     /// The start time of the build (or one of the rounds, if it was repeated).
     pub start_time: SystemTime,
     /// The stop time of the build (or one of the rounds, if it was repeated).
@@ -105,7 +101,8 @@ pub struct BuildResult {
 impl BuildResult {
     pub fn new(status: BuildStatus, error_msg: String) -> BuildResult {
         BuildResult {
-            status, error_msg,
+            status,
+            error_msg,
             times_built: 0,
             is_non_deterministic: false,
             built_outputs: DrvOutputs::new(),
@@ -118,14 +115,14 @@ impl BuildResult {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StoreDir(Arc<PathBuf>, Arc<String>);
 impl StoreDir {
     pub fn new<P: Into<PathBuf>>(path: P) -> Result<StoreDir, ParseStorePathError> {
         let path = path.into();
-        let path_s = path.to_str()
-            .ok_or_else(|| ParseStorePathError::BadStorePath(path.clone()) )?
+        let path_s = path
+            .to_str()
+            .ok_or_else(|| ParseStorePathError::BadStorePath(path.clone()))?
             .to_string();
         Ok(StoreDir(Arc::new(path), Arc::new(path_s)))
     }
@@ -142,7 +139,12 @@ impl StoreDir {
         StorePath::new(Path::new(s), self)
     }
 
-    fn make_type(&self, mut path_type: String, references: &StorePathSet, has_self_reference: bool) -> String {
+    fn make_type(
+        &self,
+        mut path_type: String,
+        references: &StorePathSet,
+        has_self_reference: bool,
+    ) -> String {
         for reference in references {
             path_type.push_str(":");
             path_type.push_str(&self.print_path(reference));
@@ -153,16 +155,22 @@ impl StoreDir {
         path_type
     }
 
-    pub fn make_store_path_str(&self, path_type: &str, hash: &str, name: &str) -> Result<StorePath, ParseStorePathError> {
+    pub fn make_store_path_str(
+        &self,
+        path_type: &str,
+        hash: &str,
+        name: &str,
+    ) -> Result<StorePath, ParseStorePathError> {
         let s = format!("{}:{}:{}:{}", path_type, hash, self, name);
-        StorePath::from_hash(
-            &hash::digest(hash::Algorithm::SHA256, &s),
-            name
-        )
+        StorePath::from_hash(&hash::digest(hash::Algorithm::SHA256, &s), name)
     }
 
-    pub fn make_store_path(&self, path_type: &str, hash: hash::Hash, name: &str) -> Result<StorePath, ParseStorePathError>
-    {
+    pub fn make_store_path(
+        &self,
+        path_type: &str,
+        hash: hash::Hash,
+        name: &str,
+    ) -> Result<StorePath, ParseStorePathError> {
         self.make_store_path_str(path_type, &format!("{:x}", hash), name)
     }
 
@@ -172,37 +180,53 @@ impl StoreDir {
         hash: hash::Hash,
         name: &str,
         references: &StorePathSet,
-        has_self_reference: bool) -> Result<StorePath, ParseStorePathError>
-    {
-        if let (hash::Algorithm::SHA256, FileIngestionMethod::Recursive) = (hash.algorithm(), method)
+        has_self_reference: bool,
+    ) -> Result<StorePath, ParseStorePathError> {
+        if let (hash::Algorithm::SHA256, FileIngestionMethod::Recursive) =
+            (hash.algorithm(), method)
         {
-            self.make_store_path(&self.make_type("source".into(), references, has_self_reference), hash, name)
+            self.make_store_path(
+                &self.make_type("source".into(), references, has_self_reference),
+                hash,
+                name,
+            )
         } else {
             assert!(references.is_empty());
-            let hash = hash::digest(hash::Algorithm::SHA256, 
-                &format!("fixed:out:{:#}{:x}:", method, hash));
+            let hash = hash::digest(
+                hash::Algorithm::SHA256,
+                &format!("fixed:out:{:#}{:x}:", method, hash),
+            );
             trace!("Output hash {:x}", hash);
             self.make_store_path("output:out", hash, name)
         }
     }
 
-    pub fn make_fixed_output_path_from_ca(&self,
+    pub fn make_fixed_output_path_from_ca(
+        &self,
         name: &str,
         ca: ContentAddress,
         references: &StorePathSet,
-        has_self_reference: bool
+        has_self_reference: bool,
     ) -> Result<StorePath, ParseStorePathError> {
         use ContentAddress::*;
         match ca {
             TextHash(hash) => self.make_text_path(name, hash, references),
-            FixedOutputHash(fsh) => {
-                self.make_fixed_output_path(fsh.method, fsh.hash, name, references, has_self_reference)
-            }
+            FixedOutputHash(fsh) => self.make_fixed_output_path(
+                fsh.method,
+                fsh.hash,
+                name,
+                references,
+                has_self_reference,
+            ),
         }
     }
 
-    pub fn make_text_path(&self, name: &str, hash: hash::Hash, references: &StorePathSet) -> Result<StorePath, ParseStorePathError>
-    {
+    pub fn make_text_path(
+        &self,
+        name: &str,
+        hash: hash::Hash,
+        references: &StorePathSet,
+    ) -> Result<StorePath, ParseStorePathError> {
         assert_eq!(hash.algorithm(), hash::Algorithm::SHA256);
         // Stuff the references (if any) into the type.  This is a bit
         // hacky, but we can't put them in `s' since that would be
@@ -211,7 +235,7 @@ impl StoreDir {
         self.make_store_path(&path_type, hash, name)
     }
 
-    fn strip_store_path<'a>(&self, path:&'a Path) -> Result<Cow<'a,Path>, &'a Path> {
+    fn strip_store_path<'a>(&self, path: &'a Path) -> Result<Cow<'a, Path>, &'a Path> {
         if !path.is_absolute() {
             return Err(path);
         }
@@ -220,51 +244,54 @@ impl StoreDir {
             match o.strip_prefix(&self) {
                 Err(_) => Err(path),
                 Ok(p) if p == Path::new("") => Err(path),
-                Ok(p) => Ok(Cow::Owned(p.into()))
+                Ok(p) => Ok(Cow::Owned(p.into())),
             }
         } else {
             match path.strip_prefix(&self) {
                 Err(_) => Err(path),
                 Ok(p) if p == Path::new("") => Err(path),
-                Ok(p) => Ok(Cow::Borrowed(p))
+                Ok(p) => Ok(Cow::Borrowed(p)),
             }
         }
     }
 
-    pub fn is_in_store<P:AsRef<Path>>(&self, path: P) -> bool {
+    pub fn is_in_store<P: AsRef<Path>>(&self, path: P) -> bool {
         match self.strip_store_path(path.as_ref()) {
             Err(_) => false,
-            Ok(_) => true
+            Ok(_) => true,
         }
     }
 
-    pub fn to_store_path<'p>(&self, path: &'p Path) -> Result<(StorePath, Cow<'p,Path>), ParseStorePathError> {
+    pub fn to_store_path<'p>(
+        &self,
+        path: &'p Path,
+    ) -> Result<(StorePath, Cow<'p, Path>), ParseStorePathError> {
         match self.strip_store_path(path) {
             Err(p) => Err(ParseStorePathError::NotInStore(p.into())),
-            Ok(p) => {
-                match p {
-                    Cow::Owned(o) => {
-                        let mut c = o.components();
-                        let base_name = c.next().unwrap().as_os_str();
-                        let store_path = StorePath::new_from_base_name(
-                            base_name.to_str()
-                                .ok_or_else(|| ParseStorePathError::BadStorePath(path.into()) )?
-                        )?;
-                        let after = c.as_path();
-                        Ok((store_path, Cow::Owned(after.into())))
-                    },
-                    Cow::Borrowed(b) => {
-                        let mut c = b.components();
-                        let base_name = c.next().unwrap().as_os_str();
-                        let store_path = StorePath::new_from_base_name(
-                            base_name.to_str()
-                                .ok_or_else(|| ParseStorePathError::BadStorePath(path.into()) )?
-                        )?;
-                        let after = c.as_path();
-                        Ok((store_path, Cow::Borrowed(after)))
-                    }
+            Ok(p) => match p {
+                Cow::Owned(o) => {
+                    let mut c = o.components();
+                    let base_name = c.next().unwrap().as_os_str();
+                    let store_path = StorePath::new_from_base_name(
+                        base_name
+                            .to_str()
+                            .ok_or_else(|| ParseStorePathError::BadStorePath(path.into()))?,
+                    )?;
+                    let after = c.as_path();
+                    Ok((store_path, Cow::Owned(after.into())))
                 }
-            }
+                Cow::Borrowed(b) => {
+                    let mut c = b.components();
+                    let base_name = c.next().unwrap().as_os_str();
+                    let store_path = StorePath::new_from_base_name(
+                        base_name
+                            .to_str()
+                            .ok_or_else(|| ParseStorePathError::BadStorePath(path.into()))?,
+                    )?;
+                    let after = c.as_path();
+                    Ok((store_path, Cow::Borrowed(after)))
+                }
+            },
         }
     }
 
@@ -278,14 +305,18 @@ impl StoreDir {
             path = resolve_link(&path).await?;
         }
         if !self.is_in_store(&path) {
-            Err(ReadStorePathError::BadStorePath(ParseStorePathError::NotInStore(path)))
+            Err(ReadStorePathError::BadStorePath(
+                ParseStorePathError::NotInStore(path),
+            ))
         } else {
             Ok(path)
         }
     }
 
-    pub async fn follow_links_to_store_path(&self, path: &Path) -> Result<StorePath, ReadStorePathError>
-    {
+    pub async fn follow_links_to_store_path(
+        &self,
+        path: &Path,
+    ) -> Result<StorePath, ReadStorePathError> {
         let path = self.follow_links_to_store(path).await?;
         Ok(self.to_store_path(&path)?.0)
     }
@@ -294,7 +325,7 @@ impl StoreDir {
 impl StateParse<StorePath> for StoreDir {
     type Err = ReadStorePathError;
 
-    fn parse(&self, s:&str) -> Result<StorePath, Self::Err> {
+    fn parse(&self, s: &str) -> Result<StorePath, Self::Err> {
         Ok(self.parse_path(s)?)
     }
 }
@@ -323,9 +354,14 @@ impl fmt::Display for StoreDir {
     }
 }
 
-pub async fn copy_paths<S, D>(src_store: &mut S, dst_store: &mut D, store_paths: &StorePathSet) -> Result<(), Error>
-    where S: Store,
-          D: Store,
+pub async fn copy_paths<S, D>(
+    src_store: &mut S,
+    dst_store: &mut D,
+    store_paths: &StorePathSet,
+) -> Result<(), Error>
+where
+    S: Store,
+    D: Store,
 {
     copy_paths_full(
         src_store,
@@ -333,23 +369,29 @@ pub async fn copy_paths<S, D>(src_store: &mut S, dst_store: &mut D, store_paths:
         store_paths,
         RepairFlag::NoRepair,
         CheckSignaturesFlag::CheckSigs,
-        SubstituteFlag::NoSubstitute
-    ).await
+        SubstituteFlag::NoSubstitute,
+    )
+    .await
 }
 
 // TODO: Rewrite as parallel process when we support sync store
 // This is also a super thrown together implementation that was done
 // at the end of the project and after a 20h coding session.
-pub async fn copy_paths_full<S, D>(src_store: &mut S, dst_store: &mut D, store_paths: &StorePathSet,
-    repair: RepairFlag, check_sigs: CheckSignaturesFlag, substitute: SubstituteFlag) -> Result<(), Error>
-    where S: Store,
-          D: Store,
+pub async fn copy_paths_full<S, D>(
+    src_store: &mut S,
+    dst_store: &mut D,
+    store_paths: &StorePathSet,
+    repair: RepairFlag,
+    check_sigs: CheckSignaturesFlag,
+    substitute: SubstituteFlag,
+) -> Result<(), Error>
+where
+    S: Store,
+    D: Store,
 {
     let valid = dst_store.query_valid_paths(store_paths, substitute).await?;
 
-    let missing : StorePathSet = store_paths.difference(&valid)
-        .map(|s| s.clone())
-        .collect();
+    let missing: StorePathSet = store_paths.difference(&valid).map(|s| s.clone()).collect();
 
     let mut paths_map = BTreeMap::new();
     for path in store_paths.iter() {
@@ -358,21 +400,28 @@ pub async fn copy_paths_full<S, D>(src_store: &mut S, dst_store: &mut D, store_p
     let dst_store_dir = dst_store.store_dir();
     let src_store_dir = src_store.store_dir();
     let mut refs = BTreeMap::new();
-    let mut rrefs : BTreeMap<StorePath, StorePathSet> = BTreeMap::new();
+    let mut rrefs: BTreeMap<StorePath, StorePathSet> = BTreeMap::new();
     let mut roots = StorePathSet::new();
     for store_path in missing {
         let info = src_store.query_path_info(&store_path).await?;
         let mut store_path_for_dst = store_path.clone();
         if info.ca.is_some() && info.references.is_empty() {
-            store_path_for_dst = dst_store_dir.make_fixed_output_path_from_ca(store_path.name.name(), info.ca.unwrap(), &StorePathSet::new(), false)?;
+            store_path_for_dst = dst_store_dir.make_fixed_output_path_from_ca(
+                store_path.name.name(),
+                info.ca.unwrap(),
+                &StorePathSet::new(),
+                false,
+            )?;
             if dst_store_dir == src_store_dir {
                 assert_eq!(store_path_for_dst, store_path)
             }
             if store_path_for_dst != store_path {
-                debug!("replaced path '{}' to '{}' for substituter '{}'", 
+                debug!(
+                    "replaced path '{}' to '{}' for substituter '{}'",
                     src_store_dir.print_path(&store_path),
                     dst_store_dir.print_path(&store_path_for_dst),
-                    "local");
+                    "local"
+                );
             }
         }
         paths_map.insert(store_path.clone(), store_path_for_dst);
@@ -383,7 +432,10 @@ pub async fn copy_paths_full<S, D>(src_store: &mut S, dst_store: &mut D, store_p
                 roots.insert(store_path.clone());
             } else {
                 for m in edges.iter() {
-                    rrefs.entry(m.clone()).or_default().insert(store_path.clone());
+                    rrefs
+                        .entry(m.clone())
+                        .or_default()
+                        .insert(store_path.clone());
                 }
                 refs.insert(store_path, edges);
             }
@@ -413,15 +465,27 @@ pub async fn copy_paths_full<S, D>(src_store: &mut S, dst_store: &mut D, store_p
     Ok(())
 }
 
-pub async fn copy_store_path<S,D>(src_store: &mut S, dst_store: &mut D, store_path: &StorePath, repair: RepairFlag, check_sigs: CheckSignaturesFlag) ->  Result<(), Error>
-    where S: Store,
-          D: Store,
+pub async fn copy_store_path<S, D>(
+    src_store: &mut S,
+    dst_store: &mut D,
+    store_path: &StorePath,
+    repair: RepairFlag,
+    check_sigs: CheckSignaturesFlag,
+) -> Result<(), Error>
+where
+    S: Store,
+    D: Store,
 {
     let mut info = src_store.query_path_info(store_path).await?;
 
     // recompute store path on the chance dstStore does it differently
     if info.ca.is_some() && info.references.is_empty() {
-        let path = dst_store.store_dir().make_fixed_output_path_from_ca(info.path.name.name(), info.ca.unwrap(), &StorePathSet::new(), false)?;
+        let path = dst_store.store_dir().make_fixed_output_path_from_ca(
+            info.path.name.name(),
+            info.ca.unwrap(),
+            &StorePathSet::new(),
+            false,
+        )?;
         if dst_store.store_dir() == src_store.store_dir() {
             assert_eq!(info.path, path);
         }
@@ -434,8 +498,9 @@ pub async fn copy_store_path<S,D>(src_store: &mut S, dst_store: &mut D, store_pa
     let (sink, source) = tokio::io::duplex(64_000);
     try_join(
         src_store.nar_from_path(&store_path, sink),
-        dst_store.add_to_store(&info, source, repair, check_sigs)
-    ).await?;
+        dst_store.add_to_store(&info, source, repair, check_sigs),
+    )
+    .await?;
     /*
     auto source = sinkToSource([&](Sink & sink) {
         LambdaSink progressSink([&](std::string_view data) {
@@ -458,10 +523,19 @@ pub trait Store {
     /// Root path of this store
     fn store_dir(&self) -> StoreDir;
 
-    async fn query_valid_paths(&mut self, paths: &StorePathSet, maybe_substitute: SubstituteFlag) -> Result<StorePathSet, Error>;
+    async fn query_valid_paths(
+        &mut self,
+        paths: &StorePathSet,
+        maybe_substitute: SubstituteFlag,
+    ) -> Result<StorePathSet, Error>;
     fn add_temp_root(&self, path: &StorePath);
 
-    async fn legacy_query_valid_paths(&mut self, paths: &StorePathSet, lock: bool, maybe_substitute: SubstituteFlag) -> Result<StorePathSet, Error> {
+    async fn legacy_query_valid_paths(
+        &mut self,
+        paths: &StorePathSet,
+        lock: bool,
+        maybe_substitute: SubstituteFlag,
+    ) -> Result<StorePathSet, Error> {
         if lock {
             for path in paths.iter() {
                 self.add_temp_root(path);
@@ -478,24 +552,50 @@ pub trait Store {
         }
     }
 
-    async fn nar_from_path<W:AsyncWrite + Unpin>(&mut self, path: &StorePath, sink: W) -> Result<(), Error>;
-    async fn export_paths<W:AsyncWrite + Unpin>(&mut self, paths: &StorePathSet, mut sink: W) -> Result<(), Error>;
-    async fn import_paths<R:AsyncRead + Unpin>(&mut self, source: R) -> Result<(), Error>;
-    async fn build_derivation(&mut self, drv_path: &StorePath, drv: &BasicDerivation, settings: &BuildSettings) -> Result<BuildResult, Error>;
-    async fn build_paths(&mut self, drv_paths: &[DerivedPath], settings: &BuildSettings) -> Result<(), Error>;
+    async fn nar_from_path<W: AsyncWrite + Unpin>(
+        &mut self,
+        path: &StorePath,
+        sink: W,
+    ) -> Result<(), Error>;
+    async fn export_paths<W: AsyncWrite + Unpin>(
+        &mut self,
+        paths: &StorePathSet,
+        mut sink: W,
+    ) -> Result<(), Error>;
+    async fn import_paths<R: AsyncRead + Unpin>(&mut self, source: R) -> Result<(), Error>;
+    async fn build_derivation(
+        &mut self,
+        drv_path: &StorePath,
+        drv: &BasicDerivation,
+        settings: &BuildSettings,
+    ) -> Result<BuildResult, Error>;
+    async fn build_paths(
+        &mut self,
+        drv_paths: &[DerivedPath],
+        settings: &BuildSettings,
+    ) -> Result<(), Error>;
 
     /// Import a path into the store.
-    async fn add_to_store<R:AsyncRead + Unpin>(&mut self, info: &ValidPathInfo, source: R,
-        repair: RepairFlag, check_sigs: CheckSignaturesFlag) -> Result<(), Error>;
-    async fn query_closure(&mut self, paths: &StorePathSet, include_outputs: bool) -> Result<StorePathSet, Error>;
+    async fn add_to_store<R: AsyncRead + Unpin>(
+        &mut self,
+        info: &ValidPathInfo,
+        source: R,
+        repair: RepairFlag,
+        check_sigs: CheckSignaturesFlag,
+    ) -> Result<(), Error>;
+    async fn query_closure(
+        &mut self,
+        paths: &StorePathSet,
+        include_outputs: bool,
+    ) -> Result<StorePathSet, Error>;
 }
 
-#[cfg(any(test, feature="test"))]
+#[cfg(any(test, feature = "test"))]
 pub mod proptest {
     use std::time::Duration;
 
-    use ::proptest::prelude::*;
     use super::*;
+    use ::proptest::prelude::*;
     use nixrs_util::proptest::arb_system_time;
 
     impl Arbitrary for BuildStatus {
@@ -518,7 +618,8 @@ pub mod proptest {
                 5 => Just(DependencyFailed),
                 5 => Just(LogLimitExceeded),
                 5 => Just(NotDeterministic)
-            ].boxed()
+            ]
+            .boxed()
         }
     }
 
@@ -554,30 +655,32 @@ pub mod proptest {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ::proptest::{arbitrary::any, prop_assert_eq, proptest};
     use nixrs_util::hash;
     use pretty_assertions::assert_eq;
-    use ::proptest::{arbitrary::any, prop_assert_eq, proptest};
 
     #[test]
     fn test_store_dir_display() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
         assert_eq!(format!("{}", store_dir), "/nix/store");
         assert_eq!(store_dir.to_str(), "/nix/store");
-        let s : &str = store_dir.as_ref();
+        let s: &str = store_dir.as_ref();
         assert_eq!(s, "/nix/store");
     }
 
     #[test]
     fn test_store_dir_as_ref() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let s : &Path = store_dir.as_ref();
+        let s: &Path = store_dir.as_ref();
         assert_eq!(s, Path::new("/nix/store"));
     }
 
     #[test]
     fn test_store_dir_parse() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let p = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3").unwrap();
+        let p = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3")
+            .unwrap();
         assert_eq!(p.name.as_ref(), "konsole-18.12.3");
         assert_eq!(
             p.hash.as_ref(),
@@ -586,17 +689,33 @@ mod tests {
                 0x9b, 0x44, 0xef, 0x87, 0x0f, 0x3c
             ]
         );
-        let p : StorePath = store_dir.parse("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3").unwrap();
-        assert_eq!(p.to_string(), "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3");
+        let p: StorePath = store_dir
+            .parse("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3")
+            .unwrap();
+        assert_eq!(
+            p.to_string(),
+            "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3"
+        );
     }
 
     #[test]
     fn test_store_dir_print() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let p = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3").unwrap();
-        assert_eq!(store_dir.print_path(&p), "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3");
-        assert_eq!(StatePrint::print(&store_dir, &p), "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3");
-        assert_eq!(p.print(&store_dir), "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3");
+        let p = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3")
+            .unwrap();
+        assert_eq!(
+            store_dir.print_path(&p),
+            "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3"
+        );
+        assert_eq!(
+            StatePrint::print(&store_dir, &p),
+            "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3"
+        );
+        assert_eq!(
+            p.print(&store_dir),
+            "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3"
+        );
     }
 
     #[test]
@@ -612,10 +731,17 @@ mod tests {
         let store_dir = StoreDir::new("/nix/store").unwrap();
         let d = hash::digest(hash::Algorithm::SHA256, "source:sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1:/nix/store:konsole-18.12.3");
         let p = StorePath::from_hash(&d, "konsole-18.12.3").unwrap();
-        let hash = "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse::<hash::Hash>().unwrap();
-        let p2 = store_dir.make_store_path("source", hash, "konsole-18.12.3").unwrap();
+        let hash = "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+            .parse::<hash::Hash>()
+            .unwrap();
+        let p2 = store_dir
+            .make_store_path("source", hash, "konsole-18.12.3")
+            .unwrap();
         assert_eq!(p2, p);
-        assert_eq!(format!("{}", p2), "1w01xxn8f7s9s4n65ry6rwd7x9awf04s-konsole-18.12.3");
+        assert_eq!(
+            format!("{}", p2),
+            "1w01xxn8f7s9s4n65ry6rwd7x9awf04s-konsole-18.12.3"
+        );
     }
 
     #[test]
@@ -624,11 +750,23 @@ mod tests {
         let d = hash::digest(hash::Algorithm::SHA256, "source:sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1:/nix/store:konsole-18.12.3");
         let p = StorePath::from_hash(&d, "konsole-18.12.3").unwrap();
 
-        let hash = "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse::<hash::Hash>().unwrap();
-        let p2 = store_dir.make_fixed_output_path(FileIngestionMethod::Recursive, hash, "konsole-18.12.3",
-            &StorePathSet::new(), false).unwrap();
+        let hash = "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+            .parse::<hash::Hash>()
+            .unwrap();
+        let p2 = store_dir
+            .make_fixed_output_path(
+                FileIngestionMethod::Recursive,
+                hash,
+                "konsole-18.12.3",
+                &StorePathSet::new(),
+                false,
+            )
+            .unwrap();
         assert_eq!(p2, p);
-        assert_eq!(format!("{}", p2), "1w01xxn8f7s9s4n65ry6rwd7x9awf04s-konsole-18.12.3");
+        assert_eq!(
+            format!("{}", p2),
+            "1w01xxn8f7s9s4n65ry6rwd7x9awf04s-konsole-18.12.3"
+        );
     }
 
     #[test]
@@ -637,44 +775,97 @@ mod tests {
         let d = hash::digest(hash::Algorithm::SHA256, "source:/nix/store/7h7qgvs4kgzsn8a6rb274saxyqh4jxlz-konsole-18.12.3.drv:/nix/store/ldhh7c134ap5swsm86rqnc0i7cinqvrc-my-terminal:self:sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1:/nix/store:konsole-18.12.3");
         let p = StorePath::from_hash(&d, "konsole-18.12.3").unwrap();
 
-        let hash = "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse::<hash::Hash>().unwrap();
+        let hash = "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+            .parse::<hash::Hash>()
+            .unwrap();
         let mut set = StorePathSet::new();
-        set.insert(StorePath::new_from_base_name("ldhh7c134ap5swsm86rqnc0i7cinqvrc-my-terminal").unwrap());
-        set.insert(StorePath::new_from_base_name("7h7qgvs4kgzsn8a6rb274saxyqh4jxlz-konsole-18.12.3.drv").unwrap());
-        let p2 = store_dir.make_fixed_output_path(FileIngestionMethod::Recursive, hash, "konsole-18.12.3",
-            &set, true).unwrap();
+        set.insert(
+            StorePath::new_from_base_name("ldhh7c134ap5swsm86rqnc0i7cinqvrc-my-terminal").unwrap(),
+        );
+        set.insert(
+            StorePath::new_from_base_name("7h7qgvs4kgzsn8a6rb274saxyqh4jxlz-konsole-18.12.3.drv")
+                .unwrap(),
+        );
+        let p2 = store_dir
+            .make_fixed_output_path(
+                FileIngestionMethod::Recursive,
+                hash,
+                "konsole-18.12.3",
+                &set,
+                true,
+            )
+            .unwrap();
         assert_eq!(p2, p);
-        assert_eq!(format!("{}", p2), "k7jq5x1vj193x2317ypwsl4k9h0kvra2-konsole-18.12.3");
+        assert_eq!(
+            format!("{}", p2),
+            "k7jq5x1vj193x2317ypwsl4k9h0kvra2-konsole-18.12.3"
+        );
     }
 
     #[test]
     fn test_store_dir_make_fixed_output_path_flat() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let d = hash::digest(hash::Algorithm::SHA256, "fixed:out:sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1:");
-        let d = hash::digest(hash::Algorithm::SHA256, &format!("output:out:{:x}:/nix/store:konsole-18.12.3", d));
+        let d = hash::digest(
+            hash::Algorithm::SHA256,
+            "fixed:out:sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1:",
+        );
+        let d = hash::digest(
+            hash::Algorithm::SHA256,
+            &format!("output:out:{:x}:/nix/store:konsole-18.12.3", d),
+        );
         let p = StorePath::from_hash(&d, "konsole-18.12.3").unwrap();
 
-        let hash = "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse::<hash::Hash>().unwrap();
+        let hash = "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+            .parse::<hash::Hash>()
+            .unwrap();
 
-        let p2 = store_dir.make_fixed_output_path(FileIngestionMethod::Flat, hash, "konsole-18.12.3",
-            &StorePathSet::new(), false).unwrap();
+        let p2 = store_dir
+            .make_fixed_output_path(
+                FileIngestionMethod::Flat,
+                hash,
+                "konsole-18.12.3",
+                &StorePathSet::new(),
+                false,
+            )
+            .unwrap();
         assert_eq!(p2, p);
-        assert_eq!(format!("{}", p2), "jw8chmp9sf8f7pw684cszp6pa2zmn0bx-konsole-18.12.3");
+        assert_eq!(
+            format!("{}", p2),
+            "jw8chmp9sf8f7pw684cszp6pa2zmn0bx-konsole-18.12.3"
+        );
     }
 
     #[test]
     fn test_store_dir_make_fixed_output_path_sha1() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let d = hash::digest(hash::Algorithm::SHA256, "fixed:out:r:sha1:84983e441c3bd26ebaae4aa1f95129e5e54670f1:");
-        let d = hash::digest(hash::Algorithm::SHA256, &format!("output:out:{:x}:/nix/store:konsole-18.12.3", d));
+        let d = hash::digest(
+            hash::Algorithm::SHA256,
+            "fixed:out:r:sha1:84983e441c3bd26ebaae4aa1f95129e5e54670f1:",
+        );
+        let d = hash::digest(
+            hash::Algorithm::SHA256,
+            &format!("output:out:{:x}:/nix/store:konsole-18.12.3", d),
+        );
         let p = StorePath::from_hash(&d, "konsole-18.12.3").unwrap();
 
-        let hash = "sha1:84983e441c3bd26ebaae4aa1f95129e5e54670f1".parse::<hash::Hash>().unwrap();
+        let hash = "sha1:84983e441c3bd26ebaae4aa1f95129e5e54670f1"
+            .parse::<hash::Hash>()
+            .unwrap();
 
-        let p2 = store_dir.make_fixed_output_path(FileIngestionMethod::Recursive, hash, "konsole-18.12.3",
-            &StorePathSet::new(), false).unwrap();
+        let p2 = store_dir
+            .make_fixed_output_path(
+                FileIngestionMethod::Recursive,
+                hash,
+                "konsole-18.12.3",
+                &StorePathSet::new(),
+                false,
+            )
+            .unwrap();
         assert_eq!(p2, p);
-        assert_eq!(format!("{}", p2), "ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3");
+        assert_eq!(
+            format!("{}", p2),
+            "ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3"
+        );
     }
 
     #[test]
@@ -702,37 +893,113 @@ mod tests {
     #[test]
     fn test_store_dir_to_store_path_error() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        assert_eq!(store_dir.to_store_path(Path::new("/")), Err(ParseStorePathError::NotInStore("/".into())));
-        assert_eq!(store_dir.to_store_path(Path::new("/test")), Err(ParseStorePathError::NotInStore("/test".into())));
-        assert_eq!(store_dir.to_store_path(Path::new("/nix")), Err(ParseStorePathError::NotInStore("/nix".into())));
-        assert_eq!(store_dir.to_store_path(Path::new("/nix/store")), Err(ParseStorePathError::NotInStore("/nix/store".into())));
-        assert_eq!(store_dir.to_store_path(Path::new("/nix/store.rs")), Err(ParseStorePathError::NotInStore("/nix/store.rs".into())));
-        assert_eq!(store_dir.to_store_path(Path::new("/nix/store/")), Err(ParseStorePathError::NotInStore("/nix/store/".into())));
-        assert_eq!(store_dir.to_store_path(Path::new("/nix/store/..")), Err(ParseStorePathError::NotInStore("/nix/store/..".into())));
-        assert_eq!(store_dir.to_store_path(Path::new("/nix/store/ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3/..")), Err(ParseStorePathError::NotInStore("/nix/store/ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3/..".into())));
-        assert_eq!(store_dir.to_store_path(Path::new("/nix/store/ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3/../../hello")), Err(ParseStorePathError::NotInStore("/nix/store/ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3/../../hello".into())));
+        assert_eq!(
+            store_dir.to_store_path(Path::new("/")),
+            Err(ParseStorePathError::NotInStore("/".into()))
+        );
+        assert_eq!(
+            store_dir.to_store_path(Path::new("/test")),
+            Err(ParseStorePathError::NotInStore("/test".into()))
+        );
+        assert_eq!(
+            store_dir.to_store_path(Path::new("/nix")),
+            Err(ParseStorePathError::NotInStore("/nix".into()))
+        );
+        assert_eq!(
+            store_dir.to_store_path(Path::new("/nix/store")),
+            Err(ParseStorePathError::NotInStore("/nix/store".into()))
+        );
+        assert_eq!(
+            store_dir.to_store_path(Path::new("/nix/store.rs")),
+            Err(ParseStorePathError::NotInStore("/nix/store.rs".into()))
+        );
+        assert_eq!(
+            store_dir.to_store_path(Path::new("/nix/store/")),
+            Err(ParseStorePathError::NotInStore("/nix/store/".into()))
+        );
+        assert_eq!(
+            store_dir.to_store_path(Path::new("/nix/store/..")),
+            Err(ParseStorePathError::NotInStore("/nix/store/..".into()))
+        );
+        assert_eq!(
+            store_dir.to_store_path(Path::new(
+                "/nix/store/ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3/.."
+            )),
+            Err(ParseStorePathError::NotInStore(
+                "/nix/store/ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3/..".into()
+            ))
+        );
+        assert_eq!(
+            store_dir.to_store_path(Path::new(
+                "/nix/store/ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3/../../hello"
+            )),
+            Err(ParseStorePathError::NotInStore(
+                "/nix/store/ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3/../../hello".into()
+            ))
+        );
     }
 
     #[test]
     fn test_store_dir_to_store_path() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
 
-        let sp = StorePath::new_from_base_name("ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3").unwrap();
-        assert_eq!(store_dir.to_store_path(Path::new("/nix/store/ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3")).unwrap(),
-            (sp.clone(), Cow::Borrowed(Path::new(""))));
-        assert_eq!(store_dir.to_store_path(Path::new("/nix/store/test/../ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3")).unwrap(),
-            (sp.clone(), Cow::Borrowed(Path::new(""))));
-        assert_eq!(store_dir.to_store_path(Path::new("/nix/store/ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3/")).unwrap(),
-            (sp.clone(), Cow::Borrowed(Path::new(""))));
-        assert_eq!(store_dir.to_store_path(Path::new("/nix/store/ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3/also")).unwrap(),
-            (sp.clone(), Cow::Borrowed(Path::new("also"))));
-        assert_eq!(store_dir.to_store_path(Path::new("/nix/store/ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3/also/")).unwrap(),
-            (sp.clone(), Cow::Borrowed(Path::new("also/"))));
-        assert_eq!(store_dir.to_store_path(Path::new("/nix/store/ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3/more/../also/")).unwrap(),
-            (sp.clone(), Cow::Borrowed(Path::new("also/"))));
+        let sp = StorePath::new_from_base_name("ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3")
+            .unwrap();
+        assert_eq!(
+            store_dir
+                .to_store_path(Path::new(
+                    "/nix/store/ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3"
+                ))
+                .unwrap(),
+            (sp.clone(), Cow::Borrowed(Path::new("")))
+        );
+        assert_eq!(
+            store_dir
+                .to_store_path(Path::new(
+                    "/nix/store/test/../ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3"
+                ))
+                .unwrap(),
+            (sp.clone(), Cow::Borrowed(Path::new("")))
+        );
+        assert_eq!(
+            store_dir
+                .to_store_path(Path::new(
+                    "/nix/store/ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3/"
+                ))
+                .unwrap(),
+            (sp.clone(), Cow::Borrowed(Path::new("")))
+        );
+        assert_eq!(
+            store_dir
+                .to_store_path(Path::new(
+                    "/nix/store/ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3/also"
+                ))
+                .unwrap(),
+            (sp.clone(), Cow::Borrowed(Path::new("also")))
+        );
+        assert_eq!(
+            store_dir
+                .to_store_path(Path::new(
+                    "/nix/store/ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3/also/"
+                ))
+                .unwrap(),
+            (sp.clone(), Cow::Borrowed(Path::new("also/")))
+        );
+        assert_eq!(
+            store_dir
+                .to_store_path(Path::new(
+                    "/nix/store/ww9d58nz1xsl5ck0vcpc99h23l1y2hln-konsole-18.12.3/more/../also/"
+                ))
+                .unwrap(),
+            (sp.clone(), Cow::Borrowed(Path::new("also/")))
+        );
         let sp = StorePath::new_from_base_name("ww7d58nz1xsl5ck0vcpc99h23l1y2hln-a").unwrap();
-        assert_eq!(store_dir.to_store_path(Path::new("/nix/store/ww7d58nz1xsl5ck0vcpc99h23l1y2hln-a")).unwrap(),
-            (sp, Cow::Borrowed(Path::new(""))));
+        assert_eq!(
+            store_dir
+                .to_store_path(Path::new("/nix/store/ww7d58nz1xsl5ck0vcpc99h23l1y2hln-a"))
+                .unwrap(),
+            (sp, Cow::Borrowed(Path::new("")))
+        );
     }
 
     proptest! {
@@ -744,5 +1011,4 @@ mod tests {
             prop_assert_eq!(path, parsed);
         }
     }
-
 }

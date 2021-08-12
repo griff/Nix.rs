@@ -4,7 +4,6 @@ use nixrs_util::{StateParse, StatePrint, StringSet};
 
 use crate::{DerivedPath, ParseStorePathError, ReadStorePathError, StoreDir, StorePath};
 
-
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub struct StorePathWithOutputs {
     path: StorePath,
@@ -16,13 +15,16 @@ impl StorePathWithOutputs {
         if let Some(pos) = s.find("!") {
             let path = store_dir.parse_path(&s[..pos])?;
             let mut outputs = StringSet::new();
-            for output in s[(pos+1)..].split(",") {
+            for output in s[(pos + 1)..].split(",") {
                 outputs.insert(output.to_owned());
             }
             Ok(StorePathWithOutputs { path, outputs })
         } else {
             let path = store_dir.parse_path(s)?;
-            Ok(StorePathWithOutputs { path, outputs: StringSet::new() })
+            Ok(StorePathWithOutputs {
+                path,
+                outputs: StringSet::new(),
+            })
         }
     }
 
@@ -50,9 +52,10 @@ impl TryFrom<DerivedPath> for StorePathWithOutputs {
 
     fn try_from(value: DerivedPath) -> Result<Self, Self::Error> {
         match value {
-            DerivedPath::Built { drv_path: path, outputs } => {
-                Ok(StorePathWithOutputs { path, outputs })
-            }
+            DerivedPath::Built {
+                drv_path: path,
+                outputs,
+            } => Ok(StorePathWithOutputs { path, outputs }),
             DerivedPath::Opaque(path) => {
                 if path.is_derivation() {
                     Err(path)
@@ -77,7 +80,7 @@ impl<'a> TryFrom<&'a DerivedPath> for StorePathWithOutputs {
 impl StateParse<StorePathWithOutputs> for StoreDir {
     type Err = ReadStorePathError;
 
-    fn parse(&self, s:&str) -> Result<StorePathWithOutputs, Self::Err> {
+    fn parse(&self, s: &str) -> Result<StorePathWithOutputs, Self::Err> {
         Ok(StorePathWithOutputs::parse(self, s)?)
     }
 }
@@ -101,7 +104,6 @@ impl From<StorePathWithOutputs> for DerivedPath {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,13 +114,28 @@ mod tests {
         let store_dir = StoreDir::new("/nix/store").unwrap();
         let s = "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3";
         let path = StorePathWithOutputs::parse(&store_dir, s).unwrap();
-        assert_eq!(path.path.to_string(), "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3");
+        assert_eq!(
+            path.path.to_string(),
+            "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3"
+        );
         assert_eq!(path.outputs, StringSet::new());
         let s_path = store_dir.parse_path(s).unwrap();
-        assert_eq!(path, StorePathWithOutputs{path: s_path.clone(), outputs: StringSet::new()});
+        assert_eq!(
+            path,
+            StorePathWithOutputs {
+                path: s_path.clone(),
+                outputs: StringSet::new()
+            }
+        );
 
-        let path : StorePathWithOutputs = store_dir.parse(s).unwrap();
-        assert_eq!(path, StorePathWithOutputs{path: s_path, outputs: StringSet::new()});
+        let path: StorePathWithOutputs = store_dir.parse(s).unwrap();
+        assert_eq!(
+            path,
+            StorePathWithOutputs {
+                path: s_path,
+                outputs: StringSet::new()
+            }
+        );
     }
 
     #[test]
@@ -126,13 +143,30 @@ mod tests {
         let store_dir = StoreDir::new("/nix/store").unwrap();
         let s = "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3!out";
         let path = StorePathWithOutputs::parse(&store_dir, s).unwrap();
-        assert_eq!(path.path.to_string(), "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3");
+        assert_eq!(
+            path.path.to_string(),
+            "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3"
+        );
         assert_eq!(path.outputs, string_set!["out"]);
-        let s_path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3").unwrap();
-        assert_eq!(path, StorePathWithOutputs{path: s_path.clone(), outputs: string_set!["out"]});
+        let s_path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3")
+            .unwrap();
+        assert_eq!(
+            path,
+            StorePathWithOutputs {
+                path: s_path.clone(),
+                outputs: string_set!["out"]
+            }
+        );
 
-        let path : StorePathWithOutputs = store_dir.parse(s).unwrap();
-        assert_eq!(path, StorePathWithOutputs{path: s_path.clone(), outputs: string_set!["out"]});
+        let path: StorePathWithOutputs = store_dir.parse(s).unwrap();
+        assert_eq!(
+            path,
+            StorePathWithOutputs {
+                path: s_path.clone(),
+                outputs: string_set!["out"]
+            }
+        );
     }
 
     #[test]
@@ -140,22 +174,41 @@ mod tests {
         let store_dir = StoreDir::new("/nix/store").unwrap();
         let s = "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3!out,dev,bin";
         let path = StorePathWithOutputs::parse(&store_dir, s).expect("stuff");
-        assert_eq!(path.path.to_string(), "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3");
+        assert_eq!(
+            path.path.to_string(),
+            "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3"
+        );
         assert_eq!(path.outputs, string_set!["out", "dev", "bin"]);
-        let s_path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3").unwrap();
-        assert_eq!(path, StorePathWithOutputs{path: s_path.clone(), outputs: string_set!["out", "dev", "bin"]});
+        let s_path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3")
+            .unwrap();
+        assert_eq!(
+            path,
+            StorePathWithOutputs {
+                path: s_path.clone(),
+                outputs: string_set!["out", "dev", "bin"]
+            }
+        );
 
-        let path : StorePathWithOutputs = store_dir.parse(s).unwrap();
-        assert_eq!(path, StorePathWithOutputs{path: s_path.clone(), outputs: string_set!["out", "dev", "bin"]});
+        let path: StorePathWithOutputs = store_dir.parse(s).unwrap();
+        assert_eq!(
+            path,
+            StorePathWithOutputs {
+                path: s_path.clone(),
+                outputs: string_set!["out", "dev", "bin"]
+            }
+        );
     }
-
 
     #[test]
     fn test_print() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
         let s = "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3";
         let path = store_dir.parse_path(s).unwrap();
-        let sp = StorePathWithOutputs{path, outputs: StringSet::new()};
+        let sp = StorePathWithOutputs {
+            path,
+            outputs: StringSet::new(),
+        };
 
         assert_eq!(sp.print(&store_dir), s);
         assert_eq!(store_dir.print(&sp), s);
@@ -164,8 +217,13 @@ mod tests {
     #[test]
     fn test_print_1() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3").unwrap();
-        let sp = StorePathWithOutputs{path, outputs: string_set!["out"]};
+        let path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3")
+            .unwrap();
+        let sp = StorePathWithOutputs {
+            path,
+            outputs: string_set!["out"],
+        };
         let s = "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3!out";
         assert_eq!(sp.print(&store_dir), s);
         assert_eq!(store_dir.print(&sp), s);
@@ -174,8 +232,13 @@ mod tests {
     #[test]
     fn test_print_3() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3").unwrap();
-        let sp = StorePathWithOutputs{path, outputs: string_set!["out", "dev", "bin"]};
+        let path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3")
+            .unwrap();
+        let sp = StorePathWithOutputs {
+            path,
+            outputs: string_set!["out", "dev", "bin"],
+        };
         let s = "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3!bin,dev,out";
         assert_eq!(sp.print(&store_dir), s);
         assert_eq!(store_dir.print(&sp), s);
@@ -184,85 +247,137 @@ mod tests {
     #[test]
     fn test_from_derived_path() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv").unwrap();
-        let sp2 = StorePathWithOutputs{path:path.clone(), outputs: StringSet::new()};
-        let dp = DerivedPath::Built { drv_path: path.clone(), outputs: StringSet::new() };
-        let sp : StorePathWithOutputs = StorePathWithOutputs::try_from(&dp).unwrap();
+        let path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv")
+            .unwrap();
+        let sp2 = StorePathWithOutputs {
+            path: path.clone(),
+            outputs: StringSet::new(),
+        };
+        let dp = DerivedPath::Built {
+            drv_path: path.clone(),
+            outputs: StringSet::new(),
+        };
+        let sp: StorePathWithOutputs = StorePathWithOutputs::try_from(&dp).unwrap();
         assert_eq!(sp, sp2);
-        let sp : StorePathWithOutputs = dp.try_into().unwrap();
+        let sp: StorePathWithOutputs = dp.try_into().unwrap();
         assert_eq!(sp, sp2);
     }
 
     #[test]
     fn test_from_derived_path_3() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv").unwrap();
-        let sp2 = StorePathWithOutputs{path:path.clone(), outputs: string_set!["out", "dev", "bin"]};
-        let dp = DerivedPath::Built { drv_path: path.clone(), outputs: string_set!["out", "dev", "bin"] };
-        let sp : StorePathWithOutputs = StorePathWithOutputs::try_from(&dp).unwrap();
+        let path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv")
+            .unwrap();
+        let sp2 = StorePathWithOutputs {
+            path: path.clone(),
+            outputs: string_set!["out", "dev", "bin"],
+        };
+        let dp = DerivedPath::Built {
+            drv_path: path.clone(),
+            outputs: string_set!["out", "dev", "bin"],
+        };
+        let sp: StorePathWithOutputs = StorePathWithOutputs::try_from(&dp).unwrap();
         assert_eq!(sp, sp2);
-        let sp : StorePathWithOutputs = dp.try_into().unwrap();
+        let sp: StorePathWithOutputs = dp.try_into().unwrap();
         assert_eq!(sp, sp2);
     }
 
     #[test]
     fn test_from_derived_path_opaque() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3").unwrap();
-        let sp2 = StorePathWithOutputs{path:path.clone(), outputs: StringSet::new()};
+        let path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3")
+            .unwrap();
+        let sp2 = StorePathWithOutputs {
+            path: path.clone(),
+            outputs: StringSet::new(),
+        };
         let dp = DerivedPath::Opaque(path.clone());
-        let sp : StorePathWithOutputs = StorePathWithOutputs::try_from(&dp).unwrap();
+        let sp: StorePathWithOutputs = StorePathWithOutputs::try_from(&dp).unwrap();
         assert_eq!(sp, sp2);
-        let sp : StorePathWithOutputs = dp.try_into().unwrap();
+        let sp: StorePathWithOutputs = dp.try_into().unwrap();
         assert_eq!(sp, sp2);
     }
 
     #[test]
     fn test_from_derived_path_opaque_drv() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv").unwrap();
+        let path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv")
+            .unwrap();
         let dp = DerivedPath::Opaque(path.clone());
-        let sp : Result<StorePathWithOutputs, StorePath> = dp.try_into();
+        let sp: Result<StorePathWithOutputs, StorePath> = dp.try_into();
         assert_eq!(sp, Err(path));
     }
 
     #[test]
     fn test_to_derived_path() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3").unwrap();
+        let path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3")
+            .unwrap();
         let dp = DerivedPath::Opaque(path.clone());
-        let sp = StorePathWithOutputs{path, outputs: string_set!["bin", "dev", "out"]};
-        let dp2 : DerivedPath = sp.into();
+        let sp = StorePathWithOutputs {
+            path,
+            outputs: string_set!["bin", "dev", "out"],
+        };
+        let dp2: DerivedPath = sp.into();
         assert_eq!(dp, dp2);
     }
 
     #[test]
     fn test_to_derived_path_built() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv").unwrap();
-        let dp = DerivedPath::Built {drv_path: path.clone(), outputs: StringSet::new()};
-        let sp = StorePathWithOutputs{path, outputs: StringSet::new()};
-        let dp2 : DerivedPath = sp.into();
+        let path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv")
+            .unwrap();
+        let dp = DerivedPath::Built {
+            drv_path: path.clone(),
+            outputs: StringSet::new(),
+        };
+        let sp = StorePathWithOutputs {
+            path,
+            outputs: StringSet::new(),
+        };
+        let dp2: DerivedPath = sp.into();
         assert_eq!(dp, dp2);
     }
 
     #[test]
     fn test_to_derived_path_built_1() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv").unwrap();
-        let dp = DerivedPath::Built {drv_path: path.clone(), outputs: string_set!["out"]};
-        let sp = StorePathWithOutputs{path, outputs: string_set!["out"]};
-        let dp2 : DerivedPath = sp.into();
+        let path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv")
+            .unwrap();
+        let dp = DerivedPath::Built {
+            drv_path: path.clone(),
+            outputs: string_set!["out"],
+        };
+        let sp = StorePathWithOutputs {
+            path,
+            outputs: string_set!["out"],
+        };
+        let dp2: DerivedPath = sp.into();
         assert_eq!(dp, dp2);
     }
 
     #[test]
     fn test_to_derived_path_built_3() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let path = store_dir.parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv").unwrap();
-        let dp = DerivedPath::Built {drv_path: path.clone(), outputs: string_set!["bin", "dev", "out"]};
-        let sp = StorePathWithOutputs{path, outputs: string_set!["bin", "dev", "out"]};
-        let dp2 : DerivedPath = sp.into();
+        let path = store_dir
+            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv")
+            .unwrap();
+        let dp = DerivedPath::Built {
+            drv_path: path.clone(),
+            outputs: string_set!["bin", "dev", "out"],
+        };
+        let sp = StorePathWithOutputs {
+            path,
+            outputs: string_set!["bin", "dev", "out"],
+        };
+        let dp2: DerivedPath = sp.into();
         assert_eq!(dp, dp2);
     }
 }

@@ -13,8 +13,8 @@ mod store_api;
 
 #[cfg(any(feature = "test", test))]
 pub use extra::assert_store;
-pub use extra::nix_store;
 pub use extra::build_settings::BuildSettings;
+pub use extra::nix_store;
 
 pub use derivation::{BasicDerivation, DerivationOutput, ParseDerivationError};
 pub use derivation::{ReadDerivationError, RepairFlag, WriteDerivationError};
@@ -22,9 +22,11 @@ pub use derived_path::DerivedPath;
 pub use error::Error;
 pub use legacy_local_store::{LegacyLocalStore, LegacyStoreBuilder};
 pub use path::{ParseStorePathError, ReadStorePathError, StorePath};
-pub use path::{StorePathSet, StorePathHash, StorePathName};
+pub use path::{StorePathHash, StorePathName, StorePathSet};
 pub use path_info::ValidPathInfo;
 pub use path_with_outputs::StorePathWithOutputs;
-pub use realisation::{DrvOutputs, DrvOutput, ParseDrvOutputError, Realisation};
+pub use realisation::{DrvOutput, DrvOutputs, ParseDrvOutputError, Realisation};
 pub use store_api::{copy_paths, copy_paths_full, copy_store_path};
-pub use store_api::{CheckSignaturesFlag, SubstituteFlag, BuildStatus, BuildResult, Store, StoreDir};
+pub use store_api::{
+    BuildResult, BuildStatus, CheckSignaturesFlag, Store, StoreDir, SubstituteFlag,
+};

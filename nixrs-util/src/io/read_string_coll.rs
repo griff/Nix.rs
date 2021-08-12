@@ -6,10 +6,9 @@ use std::task::{Context, Poll};
 
 use tokio::io::AsyncRead;
 
-use super::CollectionRead;
-use super::read_string::ReadString;
 use super::read_int::ReadUsize;
-
+use super::read_string::ReadString;
+use super::CollectionRead;
 
 #[derive(Debug)]
 pub enum ReadStringColl<R, C> {
@@ -18,17 +17,19 @@ pub enum ReadStringColl<R, C> {
     ReadData(usize, C, ReadString<R>),
 }
 
-impl<R,C> ReadStringColl<R,C> {
-    pub fn new(src: R) -> ReadStringColl<R,C>
-        where C: CollectionRead<String>,
+impl<R, C> ReadStringColl<R, C> {
+    pub fn new(src: R) -> ReadStringColl<R, C>
+    where
+        C: CollectionRead<String>,
     {
         ReadStringColl::ReadSize(ReadUsize::new(src))
     }
 }
 
-impl<R,C> Future for ReadStringColl<R,C>
-    where R: AsyncRead + Unpin,
-          C: CollectionRead<String> + Unpin,
+impl<R, C> Future for ReadStringColl<R, C>
+where
+    R: AsyncRead + Unpin,
+    C: CollectionRead<String> + Unpin,
 {
     type Output = io::Result<C>;
 
@@ -41,7 +42,7 @@ impl<R,C> Future for ReadStringColl<R,C>
                         Poll::Pending => {
                             *self = ReadStringColl::ReadSize(reader);
                             return Poll::Pending;
-                        },
+                        }
                         Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
                         Poll::Ready(Ok(v)) => v,
                     };
@@ -58,13 +59,13 @@ impl<R,C> Future for ReadStringColl<R,C>
                         Poll::Pending => {
                             *self = ReadStringColl::ReadData(len, coll, reader);
                             return Poll::Pending;
-                        },
+                        }
                         Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
                         Poll::Ready(Ok(v)) => v,
                     };
                     coll.push(s);
                     if coll.len() == len {
-                        return Poll::Ready(Ok(coll))
+                        return Poll::Ready(Ok(coll));
                     } else {
                         let src = reader.inner();
                         *self = ReadStringColl::ReadData(len, coll, ReadString::new(src));

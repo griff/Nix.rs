@@ -1,45 +1,48 @@
 use std::convert::TryInto;
 use std::ffi::OsStr;
+use std::fmt;
 use std::path::Path;
 use std::process::Stdio;
-use std::fmt;
 use std::time::SystemTime;
 
 use async_trait::async_trait;
 use derive_more::{LowerHex, UpperHex};
 use log::{debug, trace};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::process::{ChildStdin, ChildStdout, Command};
-use nixrs_util::AsyncSink;
-use nixrs_util::AsyncSource;
 use nixrs_util::archive::copy_nar;
 use nixrs_util::hash::Hash;
+use nixrs_util::AsyncSink;
+use nixrs_util::AsyncSource;
+use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::process::{ChildStdin, ChildStdout, Command};
 
-use crate::{BuildSettings, ParseStorePathError};
-use crate::{BasicDerivation, BuildResult, BuildStatus, CheckSignaturesFlag, DerivedPath};
-use crate::{RepairFlag, Store, StoreDir, StorePath, SubstituteFlag, StorePathSet};
-use crate::ValidPathInfo;
-use crate::StorePathWithOutputs;
 use crate::store_api::EXPORT_MAGIC;
 use crate::Error;
+use crate::StorePathWithOutputs;
+use crate::ValidPathInfo;
+use crate::{BasicDerivation, BuildResult, BuildStatus, CheckSignaturesFlag, DerivedPath};
+use crate::{BuildSettings, ParseStorePathError};
+use crate::{RepairFlag, Store, StoreDir, StorePath, StorePathSet, SubstituteFlag};
 use nixrs_util::num_enum;
 
-pub const SERVE_MAGIC_1 : u64 = 0x390c9deb;
-pub const SERVE_MAGIC_2 : u64 = 0x5452eecb;
+pub const SERVE_MAGIC_1: u64 = 0x390c9deb;
+pub const SERVE_MAGIC_2: u64 = 0x5452eecb;
 
-pub const SERVE_PROTOCOL_VERSION : u64 = 2 << 8 | 6;
+pub const SERVE_PROTOCOL_VERSION: u64 = 2 << 8 | 6;
 
 #[macro_export]
 macro_rules! get_protocol_major {
-    ($x:expr) => { ($x) & 0xff00 }
+    ($x:expr) => {
+        ($x) & 0xff00
+    };
 }
 
 #[macro_export]
 macro_rules! get_protocol_minor {
-    ($x:expr) => {($x) & 0x00ff }
+    ($x:expr) => {
+        ($x) & 0x00ff
+    };
 }
-
 
 num_enum! {
     #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, UpperHex, LowerHex)]
@@ -54,7 +57,7 @@ num_enum! {
         CmdQueryClosure = 7,
         CmdBuildDerivation = 8,
         CmdAddToStoreNar = 9
-    }    
+    }
 }
 
 impl fmt::Display for ServeCommand {
@@ -82,11 +85,11 @@ pub struct LegacyStoreBuilder {
 }
 
 impl LegacyStoreBuilder {
-    pub fn new<P:AsRef<OsStr>>(program: P) -> LegacyStoreBuilder {
+    pub fn new<P: AsRef<OsStr>>(program: P) -> LegacyStoreBuilder {
         LegacyStoreBuilder {
             cmd: Command::new(program),
             store_dir: StoreDir::new("/nix/store").unwrap(),
-            host: "localhost".into()
+            host: "localhost".into(),
         }
     }
 
@@ -99,7 +102,10 @@ impl LegacyStoreBuilder {
         &mut self.cmd
     }
 
-    pub fn store_dir<P:AsRef<Path>>(&mut self, store_dir: P) -> Result<&mut Self, ParseStorePathError> {
+    pub fn store_dir<P: AsRef<Path>>(
+        &mut self,
+        store_dir: P,
+    ) -> Result<&mut Self, ParseStorePathError> {
         self.store_dir = StoreDir::new(store_dir.as_ref())?;
         Ok(self)
     }
@@ -111,18 +117,13 @@ impl LegacyStoreBuilder {
         let mut child = cmd.spawn()?;
         let reader = child.stdout.take().unwrap();
         let writer = child.stdin.take().unwrap();
-        let mut store = LegacyLocalStore::new(
-            self.store_dir,
-            self.host,
-            reader,
-            writer
-        );
+        let mut store = LegacyLocalStore::new(self.store_dir, self.host, reader, writer);
         store.handshake().await?;
         Ok(store)
     }
 }
 
-pub struct LegacyLocalStore<R,W> {
+pub struct LegacyLocalStore<R, W> {
     host: String,
     store_dir: StoreDir,
     source: R,
@@ -130,13 +131,12 @@ pub struct LegacyLocalStore<R,W> {
     remote_version: Option<u64>,
 }
 
-impl LegacyLocalStore<ChildStdout, ChildStdin>
-{
-    pub async fn connect(write_allowed: bool) -> Result<LegacyLocalStore<ChildStdout,ChildStdin>, Error>
-    {
+impl LegacyLocalStore<ChildStdout, ChildStdin> {
+    pub async fn connect(
+        write_allowed: bool,
+    ) -> Result<LegacyLocalStore<ChildStdout, ChildStdin>, Error> {
         let mut b = LegacyStoreBuilder::new("nix-store");
-        b.command_mut()
-            .arg("--serve");
+        b.command_mut().arg("--serve");
         if write_allowed {
             b.command_mut().arg("--write");
         }
@@ -144,14 +144,21 @@ impl LegacyLocalStore<ChildStdout, ChildStdin>
     }
 }
 
-impl<R,W> LegacyLocalStore<R,W>
-    where R: AsyncRead + Unpin,
-          W: AsyncWrite + Unpin,
+impl<R, W> LegacyLocalStore<R, W>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
 {
     pub fn new(store_dir: StoreDir, host: String, reader: R, writer: W) -> LegacyLocalStore<R, W> {
         let sink = writer;
         let remote_version = None;
-        LegacyLocalStore { store_dir, source: reader, sink, remote_version, host }
+        LegacyLocalStore {
+            store_dir,
+            source: reader,
+            sink,
+            remote_version,
+            host,
+        }
     }
     async fn remote_version(&mut self) -> Result<u64, Error> {
         if self.remote_version.is_none() {
@@ -171,7 +178,7 @@ impl<R,W> LegacyLocalStore<R,W>
         let remote_version = self.source.read_u64_le().await?;
         self.remote_version = Some(remote_version);
         if get_protocol_major!(remote_version) != 0x200 {
-            return Err(Error::UnsupportedLegacyProtocol(self.host.clone()))
+            return Err(Error::UnsupportedLegacyProtocol(self.host.clone()));
         }
         Ok(())
     }
@@ -183,24 +190,30 @@ impl<R,W> LegacyLocalStore<R,W>
 }
 
 #[async_trait(?Send)]
-impl<R,W> Store for LegacyLocalStore<R,W>
-    where R: AsyncRead + Unpin,
-          W: AsyncWrite + Unpin,
+impl<R, W> Store for LegacyLocalStore<R, W>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
 {
     fn store_dir(&self) -> StoreDir {
         self.store_dir.clone()
     }
 
-    async fn query_path_info(&mut self, path: &StorePath) -> Result<ValidPathInfo, Error>
-    {
+    async fn query_path_info(&mut self, path: &StorePath) -> Result<ValidPathInfo, Error> {
         let remote_version = self.remote_version().await?;
         /* No longer support missing NAR hash */
         assert!(get_protocol_minor!(remote_version) >= 4);
 
         let store_dir = self.store_dir.clone();
-        debug!("querying remote host '{}' for info on '{}'", self.host, store_dir.print_path(path));
+        debug!(
+            "querying remote host '{}' for info on '{}'",
+            self.host,
+            store_dir.print_path(path)
+        );
 
-        self.sink.write_enum(ServeCommand::CmdQueryPathInfos).await?;
+        self.sink
+            .write_enum(ServeCommand::CmdQueryPathInfos)
+            .await?;
         self.sink.write_u64_le(1).await?;
         self.sink.write_printed(&store_dir, path).await?;
         self.sink.flush().await?;
@@ -211,7 +224,7 @@ impl<R,W> Store for LegacyLocalStore<R,W>
         }
         let path2 = store_dir.parse_path(&p)?;
         assert_eq!(path, &path2);
-        
+
         let deriver = self.source.read_string().await?;
         let deriver = if deriver != "" {
             Some(store_dir.parse_path(&deriver)?)
@@ -226,7 +239,7 @@ impl<R,W> Store for LegacyLocalStore<R,W>
         if s == "" {
             return Err(Error::MandatoryNARHash);
         }
-        let nar_hash : Hash = s.parse()?;
+        let nar_hash: Hash = s.parse()?;
         let ca_s = self.source.read_string().await?;
         let ca = if ca_s != "" {
             Some(ca_s.parse()?)
@@ -238,26 +251,45 @@ impl<R,W> Store for LegacyLocalStore<R,W>
         let s = self.source.read_string().await?;
         assert_eq!(s, "");
         Ok(ValidPathInfo {
-            path: path2, deriver, references, nar_size, nar_hash, ca, sigs,
+            path: path2,
+            deriver,
+            references,
+            nar_size,
+            nar_hash,
+            ca,
+            sigs,
             ultimate: false,
             registration_time: SystemTime::UNIX_EPOCH,
         })
     }
 
-    async fn query_valid_paths(&mut self, paths: &StorePathSet, maybe_substitute: SubstituteFlag) -> Result<StorePathSet, Error>
-    {
-        self.legacy_query_valid_paths(paths, false, maybe_substitute).await
+    async fn query_valid_paths(
+        &mut self,
+        paths: &StorePathSet,
+        maybe_substitute: SubstituteFlag,
+    ) -> Result<StorePathSet, Error> {
+        self.legacy_query_valid_paths(paths, false, maybe_substitute)
+            .await
     }
 
     fn add_temp_root(&self, _path: &StorePath) {
         unimplemented!()
     }
 
-    async fn legacy_query_valid_paths(&mut self, paths: &StorePathSet, lock: bool, maybe_substitute: SubstituteFlag) -> Result<StorePathSet, Error>
-    {
-        debug!("Query for valid paths lock={}, substitute={:?}, {:?}", lock, maybe_substitute, paths);
+    async fn legacy_query_valid_paths(
+        &mut self,
+        paths: &StorePathSet,
+        lock: bool,
+        maybe_substitute: SubstituteFlag,
+    ) -> Result<StorePathSet, Error> {
+        debug!(
+            "Query for valid paths lock={}, substitute={:?}, {:?}",
+            lock, maybe_substitute, paths
+        );
         let _remote_version = self.remote_version().await?;
-        self.sink.write_enum(ServeCommand::CmdQueryValidPaths).await?;
+        self.sink
+            .write_enum(ServeCommand::CmdQueryValidPaths)
+            .await?;
         self.sink.write_bool(lock).await?;
         self.sink.write_flag(maybe_substitute).await?;
         let store_dir = self.store_dir.clone();
@@ -268,7 +300,8 @@ impl<R,W> Store for LegacyLocalStore<R,W>
     }
 
     async fn nar_from_path<SW>(&mut self, path: &StorePath, writer: SW) -> Result<(), Error>
-        where SW: AsyncWrite + Unpin
+    where
+        SW: AsyncWrite + Unpin,
     {
         debug!("Sending NAR for path {}", path);
         let _remote_version = self.remote_version().await?;
@@ -282,7 +315,11 @@ impl<R,W> Store for LegacyLocalStore<R,W>
         Ok(())
     }
 
-    async fn export_paths<SW:AsyncWrite + Unpin>(&mut self, paths: &StorePathSet, mut sink: SW) -> Result<(), Error> {
+    async fn export_paths<SW: AsyncWrite + Unpin>(
+        &mut self,
+        paths: &StorePathSet,
+        mut sink: SW,
+    ) -> Result<(), Error> {
         debug!("Exporting: {:?}", paths);
         let _remote_version = self.remote_version().await?;
         let store_dir = self.store_dir.clone();
@@ -297,9 +334,9 @@ impl<R,W> Store for LegacyLocalStore<R,W>
             copy_nar(&mut self.source, &mut sink).await?;
             let magic = self.source.read_u64_le().await?;
             sink.write_u64_le(magic).await?;
-            let path : StorePath = self.source.read_parsed(&store_dir).await?;
+            let path: StorePath = self.source.read_parsed(&store_dir).await?;
             sink.write_printed(&store_dir, &path).await?;
-            let paths : StorePathSet = self.source.read_parsed_coll(&store_dir).await?;
+            let paths: StorePathSet = self.source.read_parsed_coll(&store_dir).await?;
             sink.write_printed_coll(&store_dir, &paths).await?;
             let deriver = self.source.read_string().await?;
             sink.write_string(&deriver).await?;
@@ -316,8 +353,7 @@ impl<R,W> Store for LegacyLocalStore<R,W>
         Ok(())
     }
 
-    async fn import_paths<SR: AsyncRead + Unpin>(&mut self, mut source: SR) -> Result<(), Error>
-    {
+    async fn import_paths<SR: AsyncRead + Unpin>(&mut self, mut source: SR) -> Result<(), Error> {
         debug!("Importing paths");
         let _remote_version = self.remote_version().await?;
         let store_dir = self.store_dir.clone();
@@ -331,9 +367,9 @@ impl<R,W> Store for LegacyLocalStore<R,W>
             copy_nar(&mut source, &mut self.sink).await?;
             let magic = source.read_u64_le().await?;
             self.sink.write_u64_le(magic).await?;
-            let path : StorePath = source.read_parsed(&store_dir).await?;
+            let path: StorePath = source.read_parsed(&store_dir).await?;
             self.sink.write_printed(&store_dir, &path).await?;
-            let paths : StorePathSet = source.read_parsed_coll(&store_dir).await?;
+            let paths: StorePathSet = source.read_parsed_coll(&store_dir).await?;
             self.sink.write_printed_coll(&&store_dir, &paths).await?;
             let deriver = source.read_string().await?;
             self.sink.write_string(&deriver).await?;
@@ -349,13 +385,19 @@ impl<R,W> Store for LegacyLocalStore<R,W>
 
         Ok(())
     }
-    
-    async fn build_derivation(&mut self, drv_path: &StorePath, drv: &BasicDerivation, settings: &BuildSettings) -> Result<BuildResult, Error>
-    {
+
+    async fn build_derivation(
+        &mut self,
+        drv_path: &StorePath,
+        drv: &BasicDerivation,
+        settings: &BuildSettings,
+    ) -> Result<BuildResult, Error> {
         debug!("Build derivation {} with path {}", drv.name, drv_path);
         let remote_version = self.remote_version().await?;
         let store_dir = self.store_dir.clone();
-        self.sink.write_enum(ServeCommand::CmdBuildDerivation).await?;
+        self.sink
+            .write_enum(ServeCommand::CmdBuildDerivation)
+            .await?;
 
         trace!("Write drv_path {}", drv_path);
         self.sink.write_printed(&store_dir, drv_path).await?;
@@ -373,7 +415,7 @@ impl<R,W> Store for LegacyLocalStore<R,W>
 
         self.sink.flush().await?;
 
-        let status : BuildStatus = self.source.read_enum().await?;
+        let status: BuildStatus = self.source.read_enum().await?;
         let error_msg = self.source.read_string().await?;
         let mut status = BuildResult::new(status, error_msg);
         if get_protocol_minor!(remote_version) >= 3 {
@@ -393,15 +435,18 @@ impl<R,W> Store for LegacyLocalStore<R,W>
         Ok(status)
     }
 
-    async fn build_paths(&mut self, drv_paths: &[DerivedPath], settings: &BuildSettings) -> Result<(), Error>
-    {
+    async fn build_paths(
+        &mut self,
+        drv_paths: &[DerivedPath],
+        settings: &BuildSettings,
+    ) -> Result<(), Error> {
         debug!("Build paths {:?}", drv_paths);
         let remote_version = self.remote_version().await?;
         let store_dir = self.store_dir.clone();
         self.sink.write_enum(ServeCommand::CmdBuildPaths).await?;
         self.sink.write_usize(drv_paths.len()).await?;
         for p in drv_paths {
-            let res : Result<StorePathWithOutputs,StorePath> = p.try_into();
+            let res: Result<StorePathWithOutputs, StorePath> = p.try_into();
             match res {
                 Ok(sp) => self.sink.write_printed(&store_dir, &sp).await?,
                 Err(path) => Err(Error::WantedFetchInLegacy(store_dir.print_path(&path)))?,
@@ -420,7 +465,7 @@ impl<R,W> Store for LegacyLocalStore<R,W>
 
         self.sink.flush().await?;
 
-        let status : BuildStatus = self.source.read_enum().await?;
+        let status: BuildStatus = self.source.read_enum().await?;
         if status.success() {
             Ok(())
         } else {
@@ -429,12 +474,20 @@ impl<R,W> Store for LegacyLocalStore<R,W>
         }
     }
 
-    async fn add_to_store<SR:AsyncRead + Unpin>(&mut self, info: &ValidPathInfo, source: SR,
-        _repair: RepairFlag, _check_sigs: CheckSignaturesFlag) -> Result<(), Error>
-    {
+    async fn add_to_store<SR: AsyncRead + Unpin>(
+        &mut self,
+        info: &ValidPathInfo,
+        source: SR,
+        _repair: RepairFlag,
+        _check_sigs: CheckSignaturesFlag,
+    ) -> Result<(), Error> {
         let remote_version = self.remote_version().await?;
         let store_dir = self.store_dir.clone();
-        debug!("adding path '{}' to remote host '{}'", store_dir.print_path(&info.path), self.host);
+        debug!(
+            "adding path '{}' to remote host '{}'",
+            store_dir.print_path(&info.path),
+            self.host
+        );
         if get_protocol_minor!(remote_version) >= 5 {
             self.sink.write_enum(ServeCommand::CmdAddToStoreNar).await?;
             self.sink.write_printed(&store_dir, &info.path).await?;
@@ -443,8 +496,12 @@ impl<R,W> Store for LegacyLocalStore<R,W>
             } else {
                 self.sink.write_string("").await?;
             }
-            self.sink.write_string(&format!("{:#x}", info.nar_hash)).await?;
-            self.sink.write_printed_coll(&store_dir, &info.references).await?;
+            self.sink
+                .write_string(&format!("{:#x}", info.nar_hash))
+                .await?;
+            self.sink
+                .write_printed_coll(&store_dir, &info.references)
+                .await?;
             self.sink.write_time(info.registration_time).await?;
             self.sink.write_u64_le(info.nar_size).await?;
             self.sink.write_bool(info.ultimate).await?;
@@ -457,7 +514,7 @@ impl<R,W> Store for LegacyLocalStore<R,W>
 
             // TODO: Handle exceptions
             //try {
-                copy_nar(source, &mut self.sink).await?;
+            copy_nar(source, &mut self.sink).await?;
             //} catch (...) {
             //    conn->good = false;
             //    throw;
@@ -470,14 +527,16 @@ impl<R,W> Store for LegacyLocalStore<R,W>
 
             // TODO: Handle exceptions
             //try {
-                copy_nar(source, &mut self.sink).await?;
+            copy_nar(source, &mut self.sink).await?;
             //} catch (...) {
             //    conn->good = false;
             //    throw;
             //}
             self.sink.write_u64_le(EXPORT_MAGIC).await?;
             self.sink.write_printed(&store_dir, &info.path).await?;
-            self.sink.write_printed_coll(&store_dir, &info.references).await?;
+            self.sink
+                .write_printed_coll(&store_dir, &info.references)
+                .await?;
             if let Some(deriver) = info.deriver.as_ref() {
                 self.sink.write_printed(&store_dir, deriver).await?;
             } else {
@@ -490,15 +549,24 @@ impl<R,W> Store for LegacyLocalStore<R,W>
 
         let success = self.source.read_u64_le().await?;
         if success != 1 {
-            return Err(Error::FailedToAddToStore(store_dir.print_path(&info.path), self.host.clone()));
+            return Err(Error::FailedToAddToStore(
+                store_dir.print_path(&info.path),
+                self.host.clone(),
+            ));
         }
 
         Ok(())
     }
 
-    async fn query_closure(&mut self, paths: &StorePathSet, include_outputs: bool) -> Result<StorePathSet, Error>
-    {
-        debug!("Query the closure include_outputs={} of {:?}", include_outputs, paths);
+    async fn query_closure(
+        &mut self,
+        paths: &StorePathSet,
+        include_outputs: bool,
+    ) -> Result<StorePathSet, Error> {
+        debug!(
+            "Query the closure include_outputs={} of {:?}",
+            include_outputs, paths
+        );
         let _remote_version = self.remote_version().await?;
         let store_dir = self.store_dir.clone();
         self.sink.write_enum(ServeCommand::CmdQueryClosure).await?;
@@ -514,20 +582,20 @@ mod tests {
     use super::*;
 
     use std::io::Cursor;
-    #[cfg(feature="slowtests")]
+    #[cfg(feature = "slowtests")]
     use std::time::Instant;
 
+    use ::proptest::arbitrary::any;
+    use ::proptest::proptest;
     use futures::future::try_join;
     use nixrs_util::archive::proptest::arb_nar_contents;
     use nixrs_util::hash;
     use nixrs_util::pretty_prop_assert_eq;
-    use ::proptest::arbitrary::any;
-    use ::proptest::proptest;
 
     use crate::assert_store::AssertStore;
-    use crate::path_info::proptest::arb_valid_info_and_content;
-    #[cfg(feature="slowtests")]
+    #[cfg(feature = "slowtests")]
     use crate::path::proptest::arb_drv_store_path;
+    use crate::path_info::proptest::arb_valid_info_and_content;
 
     macro_rules! store_cmd {
         (
@@ -542,7 +610,7 @@ mod tests {
             let store_dir = StoreDir::new("/nix/store").unwrap();
             let (client, server) = tokio::io::duplex(1_000_000);
             let (read, write) = tokio::io::split(client);
-            let mut test_store = LegacyLocalStore::new(store_dir.clone(), "localhost".into(), read, write);        
+            let mut test_store = LegacyLocalStore::new(store_dir.clone(), "localhost".into(), read, write);
 
             r.block_on(async {
                 let store = AssertStore::$assert($ae $(, $ae2)*);
@@ -557,7 +625,7 @@ mod tests {
                 let (res, _) = try_join(cmd, server).await?;
                 pretty_prop_assert_eq!(res, $res);
                 Ok(())
-            })?;       
+            })?;
         }}
     }
 
@@ -634,7 +702,7 @@ mod tests {
             );
         }
     }
- 
+
     proptest! {
        #[test]
        fn test_store_add_to_store(

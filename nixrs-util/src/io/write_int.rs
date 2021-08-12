@@ -1,5 +1,5 @@
-use std::io;
 use std::future::Future;
+use std::io;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
@@ -28,7 +28,6 @@ impl<W> WriteU64<W> {
         };
         BufMut::put_u64_le(&mut &mut writer.buf[..], value);
         writer
-
     }
     pub(crate) fn inner(self) -> W {
         self.dst
@@ -36,7 +35,8 @@ impl<W> WriteU64<W> {
 }
 
 impl<W> Future for WriteU64<W>
-    where W: AsyncWrite
+where
+    W: AsyncWrite,
 {
     type Output = io::Result<()>;
 

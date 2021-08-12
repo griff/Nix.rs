@@ -6,10 +6,9 @@ use std::task::{Context, Poll};
 
 use tokio::io::AsyncRead;
 
+use super::read_exact::ReadExact;
 use super::read_int::ReadUsize;
 use super::read_padding::ReadPadding;
-use super::read_exact::ReadExact;
-
 
 #[derive(Debug)]
 pub enum ReadString<R> {
@@ -38,9 +37,9 @@ impl<R> ReadString<R> {
     }
 }
 
-
 impl<R> Future for ReadString<R>
-    where R: AsyncRead + Unpin
+where
+    R: AsyncRead + Unpin,
 {
     type Output = io::Result<String>;
 
@@ -54,13 +53,15 @@ impl<R> Future for ReadString<R>
                         Poll::Pending => {
                             *self = ReadString::ReadSize(limit, reader);
                             return Poll::Pending;
-                        },
+                        }
                         Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
                         Poll::Ready(Ok(v)) => v,
                     };
                     if len > limit {
-                        return Poll::Ready(Err(io::Error::new(io::ErrorKind::InvalidData,
-                            format!("string is to long: {}", len))));
+                        return Poll::Ready(Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!("string is to long: {}", len),
+                        )));
                     }
                     let src = reader.inner();
                     if len == 0 {
@@ -68,20 +69,20 @@ impl<R> Future for ReadString<R>
                         return Poll::Ready(Ok(String::new()));
                     }
                     *self = ReadString::ReadData(ReadExact::new(src, Vec::with_capacity(len)));
-                },
+                }
                 ReadString::ReadData(mut reader) => {
                     let v = match Pin::new(&mut reader).poll(cx) {
                         Poll::Pending => {
                             *self = ReadString::ReadData(reader);
                             return Poll::Pending;
-                        },
+                        }
                         Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
                         Poll::Ready(Ok(v)) => v,
                     };
                     let src = reader.inner();
                     let size = v.len() as u64;
                     *self = ReadString::ReadPadding(v, ReadPadding::new(src, size));
-                },
+                }
                 ReadString::ReadPadding(buf, mut padding) => {
                     match Pin::new(&mut padding).poll(cx) {
                         Poll::Pending => {
@@ -90,12 +91,13 @@ impl<R> Future for ReadString<R>
                         }
                         Poll::Ready(res) => res?,
                     }
-                    let s = String::from_utf8(buf)
-                        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "String is not UTF-8"))?;
+                    let s = String::from_utf8(buf).map_err(|_| {
+                        io::Error::new(io::ErrorKind::InvalidData, "String is not UTF-8")
+                    })?;
                     *self = ReadString::Done(padding.inner());
                     return Poll::Ready(Ok(s));
                 }
-            }    
+            }
         }
     }
 }

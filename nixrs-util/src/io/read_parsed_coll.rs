@@ -1,6 +1,6 @@
-use std::marker::PhantomData;
 use std::future::Future;
 use std::io;
+use std::marker::PhantomData;
 use std::mem;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -9,9 +9,9 @@ use tokio::io::AsyncRead;
 
 use crate::StateParse;
 
-use super::CollectionRead;
 use super::read_int::ReadUsize;
 use super::read_string::ReadString;
+use super::CollectionRead;
 
 pub enum ReadParsedColl<R, S, T, C> {
     Invalid(PhantomData<T>),
@@ -24,22 +24,23 @@ pub enum ReadParsedColl<R, S, T, C> {
     },
 }
 
-impl<R, S, T, C> ReadParsedColl<R, S, T, C>
-{
+impl<R, S, T, C> ReadParsedColl<R, S, T, C> {
     pub fn new(src: R, state: S) -> ReadParsedColl<R, S, T, C>
-        where S: StateParse<T>,
-              C: CollectionRead<T>,
+    where
+        S: StateParse<T>,
+        C: CollectionRead<T>,
     {
         ReadParsedColl::ReadSize(state, ReadUsize::new(src))
     }
 }
 
 impl<R, S, T, C> Future for ReadParsedColl<R, S, T, C>
-    where R: AsyncRead + Unpin,
-          S: StateParse<T> + Unpin,
-          C: CollectionRead<T> + Unpin,
-          S::Err: From<io::Error>,
-          Self: Unpin,
+where
+    R: AsyncRead + Unpin,
+    S: StateParse<T> + Unpin,
+    C: CollectionRead<T> + Unpin,
+    S::Err: From<io::Error>,
+    Self: Unpin,
 {
     type Output = Result<C, S::Err>;
 
@@ -52,7 +53,7 @@ impl<R, S, T, C> Future for ReadParsedColl<R, S, T, C>
                         Poll::Pending => {
                             *self = ReadParsedColl::ReadSize(state, reader);
                             return Poll::Pending;
-                        },
+                        }
                         Poll::Ready(Err(err)) => return Poll::Ready(Err(err.into())),
                         Poll::Ready(Ok(v)) => v,
                     };
@@ -62,28 +63,42 @@ impl<R, S, T, C> Future for ReadParsedColl<R, S, T, C>
                         return Poll::Ready(Ok(coll));
                     } else {
                         *self = ReadParsedColl::ReadData {
-                            state, coll, len,
+                            state,
+                            coll,
+                            len,
                             reader: ReadString::new(src),
                         };
                     }
                 }
-                ReadParsedColl::ReadData { state, mut coll, len, mut reader } => {
+                ReadParsedColl::ReadData {
+                    state,
+                    mut coll,
+                    len,
+                    mut reader,
+                } => {
                     let s = match Pin::new(&mut reader).poll(cx) {
                         Poll::Pending => {
-                            *self = ReadParsedColl::ReadData { state, coll, len, reader };
+                            *self = ReadParsedColl::ReadData {
+                                state,
+                                coll,
+                                len,
+                                reader,
+                            };
                             return Poll::Pending;
-                        },
+                        }
                         Poll::Ready(Err(err)) => return Poll::Ready(Err(err.into())),
                         Poll::Ready(Ok(v)) => v,
                     };
                     let p = state.parse(&s)?;
                     coll.push(p);
                     if coll.len() == len {
-                        return Poll::Ready(Ok(coll))
+                        return Poll::Ready(Ok(coll));
                     } else {
                         let src = reader.inner();
                         *self = ReadParsedColl::ReadData {
-                            state, coll, len,
+                            state,
+                            coll,
+                            len,
                             reader: ReadString::new(src),
                         };
                     }

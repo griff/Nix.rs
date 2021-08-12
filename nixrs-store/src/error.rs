@@ -1,22 +1,41 @@
-use thiserror::Error;
 use nixrs_util::hash;
+use thiserror::Error;
 
-use crate::{ParseDrvOutputError, ParseStorePathError, ReadDerivationError, ReadStorePathError, WriteDerivationError};
 use crate::content_address::ParseContentAddressError;
 use crate::legacy_local_store::ServeCommand;
+use crate::{
+    ParseDrvOutputError, ParseStorePathError, ReadDerivationError, ReadStorePathError,
+    WriteDerivationError,
+};
 
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("wanted to fetch '{0}' but the legacy ssh protocol doesn't support merely substituting drv files via the build paths command. It would build them instead. Try using ssh-ng://")]
     WantedFetchInLegacy(String),
     #[error("{0}")]
-    StorePath(#[from] #[source] ReadStorePathError),
+    StorePath(
+        #[from]
+        #[source]
+        ReadStorePathError,
+    ),
     #[error("{0}")]
-    BadDerivation(#[from] #[source] ReadDerivationError),
+    BadDerivation(
+        #[from]
+        #[source]
+        ReadDerivationError,
+    ),
     #[error("{0}")]
-    DerivationWrite(#[from] #[source] WriteDerivationError),
+    DerivationWrite(
+        #[from]
+        #[source]
+        WriteDerivationError,
+    ),
     #[error("{0}")]
-    BadDrvOutput(#[from] #[source] ParseDrvOutputError),
+    BadDrvOutput(
+        #[from]
+        #[source]
+        ParseDrvOutputError,
+    ),
     #[error("path '{0}' is not a valid store path")]
     InvalidPath(String),
     #[error("path '{}' is not a store path", .0.display())]
@@ -26,7 +45,11 @@ pub enum Error {
     #[error(".narinfo file is corrupt")]
     BadNarInfo,
     #[error("invalid base32 string")]
-    BadBase32(#[from] #[source] nixrs_util::base32::BadBase32),
+    BadBase32(
+        #[from]
+        #[source]
+        nixrs_util::base32::BadBase32,
+    ),
     #[error("store path name is empty")]
     StorePathNameEmpty,
     #[error("store path name is longer than 211 characters")]
@@ -52,14 +75,26 @@ pub enum Error {
     #[error("bad 'executable' field in NAR")]
     BadExecutableField,
     #[error("I/O error: {0}")]
-    IOError(#[from] #[source] std::io::Error),
+    IOError(
+        #[from]
+        #[source]
+        std::io::Error,
+    ),
     #[cfg(unused)]
     #[error("HTTP error: {0}")]
-    HttpError(#[from] #[source] hyper::error::Error),
+    HttpError(
+        #[from]
+        #[source]
+        hyper::error::Error,
+    ),
     #[error("{0}")]
     Misc(String),
     #[error("JSON error: {0}")]
-    JSONError(#[from] #[source] serde_json::Error),
+    JSONError(
+        #[from]
+        #[source]
+        serde_json::Error,
+    ),
     #[error("{0} is not allowed")]
     WriteOnlyLegacyStore(ServeCommand),
     #[error("tar archive contains illegal file name '{0}'")]
@@ -75,11 +110,19 @@ pub enum Error {
     #[error("NAR hash is now mandatory")]
     MandatoryNARHash,
     #[error("{0}")]
-    BadHash(#[from] #[source] hash::ParseHashError),
+    BadHash(
+        #[from]
+        #[source]
+        hash::ParseHashError,
+    ),
     #[error("{0}")]
-    BadContentAddress(#[from] #[source] ParseContentAddressError),
+    BadContentAddress(
+        #[from]
+        #[source]
+        ParseContentAddressError,
+    ),
     #[error("{1}")]
-    Custom(u64, String)
+    Custom(u64, String),
 }
 
 impl Error {

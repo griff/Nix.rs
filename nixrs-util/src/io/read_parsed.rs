@@ -23,9 +23,10 @@ pin_project! {
     }
 }
 
-impl<R,S, T> ReadParsed<R,S, T> {
+impl<R, S, T> ReadParsed<R, S, T> {
     pub fn new(src: R, state: S) -> ReadParsed<R, S, T>
-        where S: StateParse<T>,
+    where
+        S: StateParse<T>,
     {
         ReadParsed {
             inner: ReadString::new(src),
@@ -35,10 +36,11 @@ impl<R,S, T> ReadParsed<R,S, T> {
     }
 }
 
-impl<R,S,T> Future for ReadParsed<R,S, T>
-    where R: AsyncRead + Unpin,
-          S: StateParse<T>,
-          S::Err: From<io::Error>,
+impl<R, S, T> Future for ReadParsed<R, S, T>
+where
+    R: AsyncRead + Unpin,
+    S: StateParse<T>,
+    S::Err: From<io::Error>,
 {
     type Output = Result<T, S::Err>;
 

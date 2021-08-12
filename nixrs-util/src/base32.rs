@@ -141,10 +141,7 @@ mod tests {
             "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"
         );
 
-        assert_matches!(
-            decode("xoxf8v9fxf3jk8zln1cwlsrmhqvp0f88"),
-            Err(BadBase32)
-        );
+        assert_matches!(decode("xoxf8v9fxf3jk8zln1cwlsrmhqvp0f88"), Err(BadBase32));
         assert_matches!(
             decode("2b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s"),
             Err(BadBase32)
