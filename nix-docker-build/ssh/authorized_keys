@@ -1,1 +1,1 @@
-command="/Users/bro/Documents/Lisberg/nix-cache/target/debug/gitlab-ci-cache --write" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH7Zm6DmZWlGtRut+nS3mVbYZPOGbed7a0q/gu9vzqMd store_test
+command="@BASE_DIR@/target/debug/nix-docker-build file://@BASE_DIR@/nix-docker-build/ssh/test-store @DOCKER@ @NIX_STORE_CMD@ --write" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH7Zm6DmZWlGtRut+nS3mVbYZPOGbed7a0q/gu9vzqMd store_test

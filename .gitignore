@@ -1,2 +1,4 @@
 /target
 Cargo.lock
+/nix-docker-build/ssh/resolved
+/nix-docker-build/ssh/test-store

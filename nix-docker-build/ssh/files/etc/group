@@ -1,0 +1,4 @@
+root:x:0:
+app:x:1000:
+nixbld:x:30000:nixbld
+nogroup:x:65534:

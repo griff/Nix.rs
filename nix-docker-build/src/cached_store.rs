@@ -10,16 +10,19 @@ use nixrs_store::{LegacyLocalStore, LegacyStoreBuilder, Store, StoreDir, StorePa
 pub struct CachedStore {
     cache: LegacyLocalStore<ChildStdout, ChildStdin>,
     write_allowed: bool,
+    docker_bin: String,
 }
 
 impl CachedStore {
-    pub async fn connect(write_allowed: bool) -> Result<CachedStore, Error> {
-        let mut b = LegacyStoreBuilder::new("/run/current-system/sw/bin/nix-store");
+    pub async fn connect(
+        store_uri: String,
+        docker_bin: String,
+        nix_store_bin: String,
+        write_allowed: bool
+    ) -> Result<CachedStore, Error> {
+        let mut b = LegacyStoreBuilder::new(nix_store_bin);
         b.command_mut()
-            .env(
-                "NIX_REMOTE",
-                "file:///Users/bro/Documents/Maven-Group/Nix.rs/test-store3",
-            )
+            .env("NIX_REMOTE",store_uri)
             .arg("--serve");
         b.host("cache");
         if write_allowed {
@@ -29,6 +32,7 @@ impl CachedStore {
         Ok(CachedStore {
             cache,
             write_allowed,
+            docker_bin,
         })
     }
 }
@@ -125,10 +129,12 @@ impl Store for CachedStore {
     ) -> Result<BuildResult, Error> {
         let store_dir = self.store_dir();
         let inputs = self.cache.query_closure(&drv.input_srcs, false).await?;
-        let mut b = LegacyStoreBuilder::new("/usr/local/bin/docker");
+        let mut b = LegacyStoreBuilder::new(&self.docker_bin);
         b.command_mut().args(&[
             "run",
             "-i",
+            "--network",
+            "none",
             "--tmpfs",
             "/nix/store:exec",
             "griff/nix-static",
