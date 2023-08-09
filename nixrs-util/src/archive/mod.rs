@@ -12,6 +12,7 @@ mod dump;
 mod encoder;
 mod parser;
 mod restore;
+mod validator;
 #[cfg(test)]
 mod test_data;
 
@@ -20,6 +21,7 @@ pub use dump::{dump, All, DumpOptions, Filter};
 pub use encoder::NAREncoder;
 pub use parser::parse_nar;
 pub use restore::{restore, NARRestorer};
+pub use validator::NARValidator;
 
 pub const NAR_VERSION_MAGIC_1: &str = "nix-archive-1";
 pub const CASE_HACK_SUFFIX: &str = "~nix~case~hack~";
