@@ -1,11 +1,13 @@
+use std::fmt::{self, Write};
 use std::time::SystemTime;
 
-use crate::content_address::ContentAddress;
+use crate::{content_address::ContentAddress, StoreDir};
 use crate::path::StorePathSet;
 use crate::StorePath;
 use nixrs_util::{hash::Hash, StringSet};
+use thiserror::Error;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
+#[derive(Debug, Eq, PartialOrd, Ord, Hash, Clone)]
 pub struct ValidPathInfo {
     pub path: StorePath,
     pub deriver: Option<StorePath>,
@@ -35,6 +37,70 @@ pub struct ValidPathInfo {
     /// and the store path would be computed from the name component, ‘narHash’
     /// and ‘references’. However, we support many types of content addresses.
     pub ca: Option<ContentAddress>,
+}
+
+struct FingerprintDisplay<'a> {
+    info: &'a ValidPathInfo,
+    store: &'a StoreDir,
+}
+
+impl<'a> fmt::Display for FingerprintDisplay<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "1;{};{};{};",
+            self.store.display_path(&self.info.path),
+            self.info.nar_hash.to_base32(),
+            self.info.nar_size)?;
+
+        let mut first = true;
+        for r in &self.info.references {
+            if first {
+                first = false
+            } else {
+                write!(f, ",")?;
+            }
+            write!(f, "{}", self.store.display_path(r))?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Error, Debug)]
+#[error("cannot calculate fingerprint of path '{0}' because its size is not known")]
+pub struct InvalidPathInfo(String);
+
+impl ValidPathInfo {
+    pub fn new(path: StorePath, nar_hash: Hash) -> ValidPathInfo {
+        ValidPathInfo {
+            path, nar_hash,
+            deriver: None,
+            nar_size: 0,
+            references: StorePathSet::new(),
+            sigs: StringSet::new(),
+            registration_time: SystemTime::UNIX_EPOCH,
+            ultimate: false,
+            ca: None,
+        }
+    }
+
+    pub fn fingerprint<'a>(&'a self, store: &'a StoreDir) -> Result<impl fmt::Display + 'a, InvalidPathInfo>
+    {
+        if self.nar_size == 0 {
+            Err(InvalidPathInfo(store.display_path(&self.path).to_string()))
+        } else {
+            Ok(FingerprintDisplay {
+                store,
+                info: self,
+            })
+        }
+    }
+}
+
+impl PartialEq for ValidPathInfo {
+    fn eq(&self, other: &Self) -> bool {
+        self.path == other.path &&
+        self.nar_hash == other.nar_hash &&
+        self.references == other.references
+    }
 }
 
 #[cfg(any(test, feature = "test"))]

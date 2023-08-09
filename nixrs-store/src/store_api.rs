@@ -11,8 +11,8 @@ use log::{debug, trace};
 use nixrs_util::path::absolute_path_from_current;
 use nixrs_util::path::clean_path;
 use nixrs_util::path::resolve_link;
-use nixrs_util::{flag_enum, num_enum};
-use nixrs_util::{hash, StateParse, StatePrint};
+use nixrs_util::{flag_enum, num_enum, hash};
+use nixrs_util::io::{StateParse, StatePrint};
 use tokio::fs;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
@@ -115,6 +115,17 @@ impl BuildResult {
     }
 }
 
+struct DisplayStorePath<'a> {
+    store_dir: &'a StoreDir,
+    path: &'a StorePath,
+}
+
+impl<'a> fmt::Display for DisplayStorePath<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}{}", self.store_dir, MAIN_SEPARATOR, self.path)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StoreDir(Arc<PathBuf>, Arc<String>);
 impl StoreDir {
@@ -131,8 +142,15 @@ impl StoreDir {
         self.1.as_ref()
     }
 
+    pub fn display_path<'a>(&'a self, path: &'a StorePath) -> impl fmt::Display + 'a {
+        DisplayStorePath {
+            store_dir: self,
+            path,
+        }
+    }
+
     pub fn print_path(&self, path: &StorePath) -> String {
-        format!("{}{}{}", self, MAIN_SEPARATOR, path)
+        self.display_path(path).to_string()
     }
 
     pub fn parse_path(&self, s: &str) -> Result<StorePath, ParseStorePathError> {
@@ -457,6 +475,18 @@ where
             }
         }
     }
+    /*
+    try_join_all(sorted.into_iter().map(|store_path| {
+        let mut dst_store = dst_store.clone();
+        let mut src_store = src_store.clone();
+        async move {
+            if !dst_store.is_valid_path(&store_path).await? {
+                copy_store_path(&mut src_store, &mut dst_store, &store_path, repair, check_sigs).await?;
+            }
+            Ok(()) as Result<(), Error>
+        }
+    })).await?;
+     */
     for store_path in sorted {
         if !dst_store.is_valid_path(&store_path).await? {
             copy_store_path(src_store, dst_store, &store_path, repair, check_sigs).await?;
@@ -528,7 +558,7 @@ pub trait Store {
         paths: &StorePathSet,
         maybe_substitute: SubstituteFlag,
     ) -> Result<StorePathSet, Error>;
-    fn add_temp_root(&self, path: &StorePath);
+    async fn add_temp_root(&self, path: &StorePath);
 
     async fn legacy_query_valid_paths(
         &mut self,
@@ -538,7 +568,7 @@ pub trait Store {
     ) -> Result<StorePathSet, Error> {
         if lock {
             for path in paths.iter() {
-                self.add_temp_root(path);
+                self.add_temp_root(path).await;
             }
         }
         self.query_valid_paths(paths, maybe_substitute).await

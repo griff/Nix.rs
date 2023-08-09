@@ -24,13 +24,6 @@ pub use restore::{restore, NARRestorer};
 pub const NAR_VERSION_MAGIC_1: &str = "nix-archive-1";
 pub const CASE_HACK_SUFFIX: &str = "~nix~case~hack~";
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
-pub enum FileType {
-    Regular,
-    Symlink,
-    Directory,
-}
-
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub enum NAREvent {
     Magic(Arc<String>),

@@ -10,8 +10,7 @@ use derive_more::{LowerHex, UpperHex};
 use log::{debug, trace};
 use nixrs_util::archive::copy_nar;
 use nixrs_util::hash::Hash;
-use nixrs_util::AsyncSink;
-use nixrs_util::AsyncSource;
+use nixrs_util::io::{AsyncSink, AsyncSource};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{ChildStdin, ChildStdout, Command};
@@ -272,7 +271,7 @@ where
             .await
     }
 
-    fn add_temp_root(&self, _path: &StorePath) {
+    async fn add_temp_root(&self, _path: &StorePath) {
         unimplemented!()
     }
 

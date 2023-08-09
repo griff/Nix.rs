@@ -11,7 +11,7 @@ use crate::{BasicDerivation, BuildSettings, CheckSignaturesFlag, DerivedPath};
 use crate::{RepairFlag, Store, StorePath, StorePathSet, StorePathWithOutputs};
 use crate::{SubstituteFlag, ValidPathInfo};
 use nixrs_util::hash;
-use nixrs_util::{AsyncSink, AsyncSource};
+use nixrs_util::io::{AsyncSink, AsyncSource};
 
 pub async fn serve<S, R, W>(
     mut source: R,

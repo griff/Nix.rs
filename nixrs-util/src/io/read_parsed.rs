@@ -8,8 +8,8 @@ use pin_project_lite::pin_project;
 use tokio::io::AsyncRead;
 
 use crate::ready;
-use crate::StateParse;
 
+use super::StateParse;
 use super::read_string::ReadString;
 
 pin_project! {

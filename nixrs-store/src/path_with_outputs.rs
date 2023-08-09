@@ -1,6 +1,7 @@
 use std::convert::{TryFrom, TryInto};
 
-use nixrs_util::{StateParse, StatePrint, StringSet};
+use nixrs_util::StringSet;
+use nixrs_util::io::{StateParse, StatePrint};
 
 use crate::{DerivedPath, ParseStorePathError, ReadStorePathError, StoreDir, StorePath};
 

@@ -64,6 +64,7 @@ impl Algorithm {
         return ((4 * self.size() / 3) + 3) & !3;
     }
 
+    #[inline]
     fn digest_algorithm(&self) -> &'static digest::Algorithm {
         match self {
             Algorithm::SHA1 => &digest::SHA1_FOR_LEGACY_USE_ONLY,
@@ -463,6 +464,10 @@ impl Context {
             InnerContext::MD5(ctx) => Hash::new(self.0, ctx.compute().as_ref()),
             InnerContext::Ring(ctx) => ctx.finish().try_into().unwrap(),
         }
+    }
+
+    pub fn algorithm(&self) -> Algorithm {
+        self.0
     }
 }
 

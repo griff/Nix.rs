@@ -11,6 +11,8 @@ mod read_parsed;
 mod read_parsed_coll;
 mod read_string;
 mod read_string_coll;
+mod state_parse;
+mod state_print;
 mod write_all;
 mod write_int;
 mod write_string;
@@ -21,6 +23,8 @@ pub use async_source::AsyncSource;
 pub use collection_read::CollectionRead;
 pub use collection_size::CollectionSize;
 pub use offset_reader::OffsetReader;
+pub use state_parse::StateParse;
+pub use state_print::StatePrint;
 
 pub(crate) const STATIC_PADDING: &[u8] = &[0u8; 8];
 
@@ -40,8 +44,7 @@ mod tests {
 
     use pretty_assertions::assert_eq;
 
-    use crate::{flag_enum, string_set};
-    use crate::{StateParse, StatePrint, StringSet};
+    use crate::{flag_enum, string_set, StringSet};
 
     use super::*;
 

@@ -7,7 +7,7 @@ use std::task::{Context, Poll};
 
 use tokio::io::AsyncRead;
 
-use crate::StateParse;
+use super::StateParse;
 
 use super::read_int::ReadUsize;
 use super::read_string::ReadString;

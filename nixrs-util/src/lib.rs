@@ -2,17 +2,14 @@ use std::collections::BTreeSet;
 
 pub mod archive;
 pub mod base32;
+mod closure;
 pub mod flag_enum;
 pub mod hash;
-mod io;
+pub mod io;
 pub mod num_enum;
 pub mod path;
-mod state_parse;
-mod state_print;
 
-pub use io::{AsyncSink, AsyncSource, CollectionRead, CollectionSize, OffsetReader};
-pub use state_parse::StateParse;
-pub use state_print::StatePrint;
+pub use closure::compute_closure;
 
 pub type StringSet = BTreeSet<String>;
 

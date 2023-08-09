@@ -6,8 +6,7 @@ use std::time::{Duration, SystemTime};
 use futures::future::{self, Either, Ready};
 use tokio::io::AsyncWrite;
 
-use crate::StatePrint;
-
+use super::state_print::StatePrint;
 use super::write_int::WriteU64;
 use super::write_string::{write_string, WriteStr};
 use super::write_string_coll::{write_string_coll, WriteStringColl};

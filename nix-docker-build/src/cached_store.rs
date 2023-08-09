@@ -60,8 +60,7 @@ impl Store for CachedStore {
         self.cache.query_valid_paths(paths, maybe_substitute).await
     }
 
-    fn add_temp_root(&self, path: &StorePath) {
-        self.cache.add_temp_root(path)
+    async fn add_temp_root(&self, _path: &StorePath) {
     }
 
     async fn query_path_info(&mut self, path: &StorePath) -> Result<ValidPathInfo, Error> {

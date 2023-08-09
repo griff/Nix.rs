@@ -268,7 +268,7 @@ impl Store for AssertStore {
             e => panic!("Invalid response {:?} for query_valid_paths", e),
         }
     }
-    fn add_temp_root(&self, path: &StorePath) {
+    async fn add_temp_root(&self, path: &StorePath) {
         let actual = Message::AddTempRoot(path.clone());
         assert_eq!(self.expected, actual, "add_temp_root");
     }

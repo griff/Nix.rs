@@ -99,7 +99,7 @@ impl StorePath {
     }
 
     pub fn print(&self, store_dir: &StoreDir) -> String {
-        format!("{}{}{}", store_dir, MAIN_SEPARATOR, self)
+        store_dir.display_path(self).to_string()
     }
 
     pub fn is_derivation(&self) -> bool {

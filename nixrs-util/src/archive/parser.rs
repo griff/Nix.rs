@@ -8,10 +8,17 @@ use log::trace;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 
-use crate::AsyncSource;
-use crate::OffsetReader;
+use crate::io::AsyncSource;
+use crate::io::OffsetReader;
 
-use super::{FileType, NAREvent, NAR_VERSION_MAGIC_1};
+use super::{NAREvent, NAR_VERSION_MAGIC_1};
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+enum FileType {
+    Regular,
+    Symlink,
+    Directory,
+}
 
 pub fn parse_nar<R>(source: R) -> impl Stream<Item = io::Result<NAREvent>>
 where
@@ -152,7 +159,7 @@ where
                 size = source.read_u64_le().await?;
                 if size > 0 {
                     let offset = source.offset() - start_pos;
-                    trace!("{}Regular {} {} {} {}", " ".repeat(depth), size, offset, executable, names.len());
+                    trace!("{}Regular {} {} {} {}", " ".repeat(depth), size, offset, executable, names.len());
                     yield NAREvent::RegularNode { offset, size, executable };
                 }
                 if skip_content {

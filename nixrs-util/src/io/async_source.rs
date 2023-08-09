@@ -1,7 +1,5 @@
 use tokio::io::AsyncRead;
 
-use crate::StateParse;
-
 use super::drain::{DrainAll, DrainExact};
 use super::read_int::{ReadBool, ReadEnum, ReadFlag, ReadSeconds, ReadTime, ReadUsize};
 use super::read_padding::ReadPadding;
@@ -9,6 +7,7 @@ use super::read_parsed::ReadParsed;
 use super::read_parsed_coll::ReadParsedColl;
 use super::read_string::ReadString;
 use super::read_string_coll::ReadStringColl;
+use super::state_parse::StateParse;
 use super::CollectionRead;
 
 pub trait AsyncSource {

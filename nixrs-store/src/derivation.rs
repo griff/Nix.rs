@@ -9,7 +9,7 @@ use crate::content_address::FixedOutputHash;
 use nixrs_util::flag_enum;
 use nixrs_util::hash;
 use nixrs_util::hash::Hash;
-use nixrs_util::{AsyncSink, AsyncSource};
+use nixrs_util::io::{AsyncSink, AsyncSource};
 
 use super::path::StorePathSet;
 use super::ParseStorePathError;
@@ -85,7 +85,7 @@ pub enum WriteDerivationError {
         #[source]
         ParseStorePathError,
     ),
-    #[error("io error reading derivation {0}")]
+    #[error("io error writing derivation {0}")]
     IO(
         #[from]
         #[source]
