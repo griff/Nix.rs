@@ -1,6 +1,6 @@
 Host local-nix
   HostName 127.0.0.1
-  Port 2322
+  Port 12222
   IdentityFile @BASE_DIR@/nix-docker-build/ssh/store_test
   StrictHostKeyChecking yes
   UserKnownHostsFile @BASE_DIR@/nix-docker-build/ssh/known_hosts

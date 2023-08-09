@@ -16,5 +16,6 @@ RUN wget https://hydra.nixos.org/job/nix/master/buildStatic.$ARCH-linux/latest/d
  && ln -s /bin/nix /bin/nix-shell \
  && ln -s /bin/nix /bin/nix-store \
  && mkdir -m 0755 /etc/nix \
- && echo 'experimental-features = nix-command' > /etc/nix/nix.conf
+ && echo 'experimental-features = nix-command' > /etc/nix/nix.conf \
+ && echo 'extra-platforms = aarch64-linux arm-linux' >> /etc/nix/nix.conf
 

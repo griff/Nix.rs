@@ -9,6 +9,7 @@ use nixrs_store::{LegacyLocalStore, LegacyStoreBuilder, Store, StoreDir, StorePa
 
 pub struct CachedStore {
     cache: LegacyLocalStore<ChildStdout, ChildStdin>,
+    builder: Option<LegacyLocalStore<ChildStdout, ChildStdin>>,
     write_allowed: bool,
     docker_bin: String,
 }
@@ -28,6 +29,7 @@ impl CachedStore {
         }
         let cache = b.connect().await?;
         Ok(CachedStore {
+            builder: None,
             cache,
             write_allowed,
             docker_bin,
@@ -47,9 +49,18 @@ impl Store for CachedStore {
         lock: bool,
         maybe_substitute: SubstituteFlag,
     ) -> Result<StorePathSet, Error> {
-        self.cache
-            .legacy_query_valid_paths(paths, lock, maybe_substitute)
-            .await
+        if let Some(builder) = self.builder.as_mut() {
+            let mut ret = builder.legacy_query_valid_paths(&paths, lock, maybe_substitute).await?;
+            let mut local = self.cache
+                .legacy_query_valid_paths(&paths, lock, maybe_substitute)
+                .await?;
+            ret.append(&mut local);
+            Ok(ret)
+        } else {
+            self.cache
+                .legacy_query_valid_paths(paths, lock, maybe_substitute)
+                .await
+        }
     }
 
     async fn query_valid_paths(
@@ -57,14 +68,33 @@ impl Store for CachedStore {
         paths: &StorePathSet,
         maybe_substitute: SubstituteFlag,
     ) -> Result<StorePathSet, Error> {
-        self.cache.query_valid_paths(paths, maybe_substitute).await
+        if let Some(builder) = self.builder.as_mut() {
+            let mut ret = builder.query_valid_paths(&paths, maybe_substitute).await?;
+            let mut local = self.cache
+                .query_valid_paths(&paths, maybe_substitute)
+                .await?;
+            ret.append(&mut local);
+            Ok(ret)
+        } else {
+            self.cache.query_valid_paths(paths, maybe_substitute).await
+        }
     }
 
     async fn add_temp_root(&self, _path: &StorePath) {
     }
 
     async fn query_path_info(&mut self, path: &StorePath) -> Result<ValidPathInfo, Error> {
-        self.cache.query_path_info(path).await
+        if let Some(builder) = self.builder.as_mut() {
+            match builder.query_path_info(path).await {
+                Ok(ret) => Ok(ret),
+                Err(Error::InvalidPath(_)) => {
+                    self.cache.query_path_info(path).await
+                },
+                Err(err) => Err(err),
+            }
+        } else {
+            self.cache.query_path_info(path).await
+        }
     }
 
     async fn nar_from_path<W: tokio::io::AsyncWrite + Unpin>(
@@ -72,7 +102,15 @@ impl Store for CachedStore {
         path: &StorePath,
         sink: W,
     ) -> Result<(), Error> {
-        self.cache.nar_from_path(path, sink).await
+        if let Some(builder) = self.builder.as_mut() {
+            if builder.is_valid_path(&path).await? {
+                builder.nar_from_path(&path, sink).await
+            } else {
+                self.cache.nar_from_path(path, sink).await
+            }
+        } else {
+            self.cache.nar_from_path(path, sink).await
+        }
     }
 
     async fn export_paths<W: tokio::io::AsyncWrite + Unpin>(
@@ -124,7 +162,7 @@ impl Store for CachedStore {
         drv: &BasicDerivation,
         settings: &BuildSettings,
     ) -> Result<BuildResult, Error> {
-        let store_dir = self.store_dir();
+        //let store_dir = self.store_dir();
         let inputs = self.cache.query_closure(&drv.input_srcs, false).await?;
         let mut b = LegacyStoreBuilder::new(&self.docker_bin);
         b.command_mut().args(&[
@@ -134,6 +172,12 @@ impl Store for CachedStore {
             "none",
             "--tmpfs",
             "/nix/store:exec",
+        ]);
+        for input in inputs.iter() {
+            b.command_mut().arg("-v")
+                .arg(&format!("/nix/store/{}:/nix/store/{}", input, input));
+        }
+        b.command_mut().args(&[
             "griff/nix-static",
             "nix-store",
             "--serve",
@@ -149,6 +193,7 @@ impl Store for CachedStore {
         let result = builder.build_derivation(drv_path, drv, settings).await?;
 
         if result.success() {
+            /*
             let mut missing_paths = StorePathSet::new();
             let output_paths = drv.outputs_and_opt_paths(&store_dir)?;
             for (_output_name, (_, store_path)) in output_paths {
@@ -160,6 +205,8 @@ impl Store for CachedStore {
             if !missing_paths.is_empty() {
                 copy_paths(&mut builder, &mut self.cache, &missing_paths).await?;
             }
+             */
+            self.builder = Some(builder);
         }
 
         Ok(result)

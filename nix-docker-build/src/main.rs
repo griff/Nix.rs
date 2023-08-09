@@ -15,13 +15,13 @@ use cached_store::CachedStore;
 pub fn main() {
     let _ = CombinedLogger::init(vec![
         TermLogger::new(
-            LevelFilter::Trace,
+            LevelFilter::Debug,
             slog::Config::default(),
             slog::TerminalMode::Stderr,
             slog::ColorChoice::Never,
         ),
         WriteLogger::new(
-            LevelFilter::Trace,
+            LevelFilter::Debug,
             slog::Config::default(),
             OpenOptions::new()
                 .append(true)
