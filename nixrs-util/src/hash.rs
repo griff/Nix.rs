@@ -16,6 +16,7 @@ const SHA256_SIZE: usize = 256 / 8;
 const SHA512_SIZE: usize = 512 / 8;
 const MAX_SIZE: usize = SHA512_SIZE;
 
+/// A digest algorithm.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Display)]
 pub enum Algorithm {
     #[display(fmt = "md5")]
@@ -36,6 +37,7 @@ impl Default for Algorithm {
 }
 
 impl Algorithm {
+    /// Returns the size in bytes of this hash.
     #[inline]
     pub fn size(&self) -> usize {
         match &self {
@@ -217,7 +219,7 @@ impl Hash {
 
     /// Parse Subresource Integrity hash expression.
     ///
-    /// These have the format "<type>-<base64>",
+    /// These have the format `<type>-<base64>`,
     pub fn parse_sri(s: &str) -> Result<Hash, ParseHashError> {
         if let Some((prefix, rest)) = split_prefix(s, "-") {
             let a: Algorithm = prefix.parse()?;
@@ -229,11 +231,11 @@ impl Hash {
 
     /// Parse the hash from a string representation.
     ///
-    //  This will parse a hash in the format
-    /// "[<type>:]<base16|base32|base64>" or "<type>-<base64>" (a
+    /// This will parse a hash in the format
+    /// `[<type>:]<base16|base32|base64>` or `<type>-<base64>` (a
     /// Subresource Integrity hash expression). If the 'type' argument
     /// is not present, then the hash type must be specified in the
-    /// string.
+    /// in the `algorithm` argument.
     pub fn parse_any(s: &str, algorithm: Option<Algorithm>) -> Result<Hash, ParseHashError> {
         if let Some((a, is_sri, rest)) = parse_prefix(s)? {
             if let Some(expected) = algorithm {
@@ -272,7 +274,7 @@ impl Hash {
         }
     }
 
-    /// Parse a plain hash that musst not have any prefix indicating the type.
+    /// Parse a plain hash that must not have any prefix indicating the type.
     /// The type is passed in to disambiguate.
     pub fn parse_non_sri_unprefixed(s: &str, algorithm: Algorithm) -> Result<Hash, ParseHashError> {
         Hash::from_str(s, algorithm, false)
@@ -421,6 +423,14 @@ impl<'a> fmt::Display for SRIHash<'a> {
     }
 }
 
+/// Returns the digest of `data` using the given digest algorithm.
+///
+/// ```
+/// # use nixrs_util::hash::{digest, Algorithm};
+/// let hash = digest(Algorithm::SHA256, "abc");
+///
+/// assert_eq!("sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s", hash.to_string());
+/// ```
 pub fn digest<B: AsRef<[u8]>>(algorithm: Algorithm, data: B) -> Hash {
     match algorithm {
         #[cfg(feature = "md5")]
@@ -431,15 +441,35 @@ pub fn digest<B: AsRef<[u8]>>(algorithm: Algorithm, data: B) -> Hash {
     }
 }
 
+#[derive(Clone)]
 enum InnerContext {
     #[cfg(feature = "md5")]
     MD5(md5::Context),
     Ring(digest::Context),
 }
 
+/// A context for multi-step (Init-Update-Finish) digest calculation.
+///
+/// # Examples
+///
+/// ```
+/// use nixrs_util::hash;
+///
+/// let one_shot = hash::digest(hash::Algorithm::SHA256, "hello, world");
+///
+/// let mut ctx = hash::Context::new(hash::Algorithm::SHA256);
+/// ctx.update("hello");
+/// ctx.update(", ");
+/// ctx.update("world");
+/// let multi_path = ctx.finish();
+///
+/// assert_eq!(one_shot, multi_path);
+/// ```
+#[derive(Clone)]
 pub struct Context(Algorithm, InnerContext);
 
 impl Context {
+    /// Constructs a new context with `algorithm`.
     pub fn new(algorithm: Algorithm) -> Self {
         match algorithm {
             #[cfg(feature = "md5")]
@@ -451,6 +481,8 @@ impl Context {
         }
     }
 
+    /// Update the digest with all the data in `data`.
+    /// `update` may be called zero or more times before `finish` is called.
     pub fn update<D: AsRef<[u8]>>(&mut self, data: D) {
         let data = data.as_ref();
         match &mut self.1 {
@@ -459,6 +491,10 @@ impl Context {
         }
     }
 
+    /// Finalizes the digest calculation and returns the [`Hash`] value.
+    /// This consumes the context to prevent misuse.
+    ///
+    /// [`Hash`]: struct@Hash
     pub fn finish(self) -> Hash {
         match self.1 {
             InnerContext::MD5(ctx) => Hash::new(self.0, ctx.compute().as_ref()),
@@ -466,17 +502,44 @@ impl Context {
         }
     }
 
+    /// The algorithm that this context is using.
     pub fn algorithm(&self) -> Algorithm {
         self.0
     }
 }
 
+/// A hash sink that implements [`AsyncWrite`].
+///
+/// # Examples
+///
+/// ```
+/// use tokio::io;
+/// use nixrs_util::hash;
+///
+/// # #[tokio::main]
+/// # async fn main() -> std::io::Result<()> {
+/// let mut reader: &[u8] = b"hello, world";
+/// let mut sink = hash::HashSink::new(hash::Algorithm::SHA256);
+///
+/// io::copy(&mut reader, &mut sink).await?;
+/// let (size, hash) = sink.finish();
+///
+/// let one_shot = hash::digest(hash::Algorithm::SHA256, "hello, world");
+/// assert_eq!(one_shot, hash);
+/// assert_eq!(12, size);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// [`AsyncWrite`]: tokio::io::AsyncWrite
 pub struct HashSink(Option<(u64, Context)>);
 impl HashSink {
+    /// Constructs a new sink with `algorithm`.
     pub fn new(algorithm: Algorithm) -> HashSink {
         HashSink(Some((0, Context::new(algorithm))))
     }
 
+    /// Finalizes this sink and returns the hash and number of bytes written to the sink.
     pub fn finish(self) -> (u64, Hash) {
         let (read, ctx) = self.0.unwrap();
         (read, ctx.finish())

@@ -126,9 +126,22 @@ impl<'a> fmt::Display for DisplayStorePath<'a> {
     }
 }
 
+/// Store directory.
+/// Since the [`StorePath`] abstraction is only a hash and a name we need this
+/// to convert the path to a full store path string.
+///
+/// ```
+/// use nixrs_store::StoreDir;
+/// let store = StoreDir::new("/nix/store").unwrap();
+/// let path = store.parse_path("/nix/store/55xkmqns51sw7nrgykp5vnz36w4fr3cw-nix-2.1.3").unwrap();
+/// ```
+///
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StoreDir(Arc<PathBuf>, Arc<String>);
 impl StoreDir {
+    /// Create a new StoreDir from given path.
+    /// This can fail if the path contains non-UTF-8 characters and therefore can't be
+    /// converted to a [`String`].
     pub fn new<P: Into<PathBuf>>(path: P) -> Result<StoreDir, ParseStorePathError> {
         let path = path.into();
         let path_s = path
@@ -138,10 +151,28 @@ impl StoreDir {
         Ok(StoreDir(Arc::new(path), Arc::new(path_s)))
     }
 
+    /// Get [`str`] representation of this StoreDir.
+    ///
+    /// ```
+    /// # use nixrs_store::StoreDir;
+    /// let store = StoreDir::new("/nix/store").unwrap();
+    /// assert_eq!("/nix/store", store.to_str());
+    /// ```
     pub fn to_str(&self) -> &str {
         self.1.as_ref()
     }
 
+    /// Returns an object that implements [`Display`] for printing a [`StorePath`] complete
+    /// with the full path.
+    ///
+    /// ```
+    /// # use nixrs_store::StoreDir;
+    /// let store = StoreDir::new("/nix/store").unwrap();
+    /// let path = store.parse_path("/nix/store/55xkmqns51sw7nrgykp5vnz36w4fr3cw-nix-2.1.3").unwrap();
+    /// println!("{}", store.display_path(&path));
+    /// ```
+    ///
+    /// [`Display`]: fmt::Display
     pub fn display_path<'a>(&'a self, path: &'a StorePath) -> impl fmt::Display + 'a {
         DisplayStorePath {
             store_dir: self,
@@ -149,10 +180,26 @@ impl StoreDir {
         }
     }
 
+    /// Returns a [`String`] with the full path for the provided [`StorePath`].
+    ///
+    /// ```
+    /// # use nixrs_store::StoreDir;
+    /// let store = StoreDir::new("/nix/store").unwrap();
+    /// let path = store.parse_path("/nix/store/55xkmqns51sw7nrgykp5vnz36w4fr3cw-nix-2.1.3").unwrap();
+    /// assert_eq!("/nix/store/55xkmqns51sw7nrgykp5vnz36w4fr3cw-nix-2.1.3", store.print_path(&path));
+    /// ```
     pub fn print_path(&self, path: &StorePath) -> String {
         self.display_path(path).to_string()
     }
 
+    /// Parses a string `s` to a [`StorePath`].
+    ///
+    /// ```
+    /// # use nixrs_store::StoreDir;
+    /// let store = StoreDir::new("/nix/store").unwrap();
+    /// let path = store.parse_path("/nix/store/55xkmqns51sw7nrgykp5vnz36w4fr3cw-nix-2.1.3").unwrap();
+    /// assert_eq!("55xkmqns51sw7nrgykp5vnz36w4fr3cw-nix-2.1.3", format!("{}", path));
+    /// ```
     pub fn parse_path(&self, s: &str) -> Result<StorePath, ParseStorePathError> {
         StorePath::new(Path::new(s), self)
     }
@@ -273,6 +320,16 @@ impl StoreDir {
         }
     }
 
+    /// Checks that the suplied path is in this store.
+    ///
+    /// ```
+    /// # use nixrs_store::StoreDir;
+    /// let store = StoreDir::new("/nix/store").unwrap();
+    /// assert_eq!(true, store.is_in_store("/nix/store/55xkmqns51sw7nrgykp5vnz36w4fr3cw-nix-2.1.3"));
+    /// assert_eq!(true, store.is_in_store("/nix/store/55xkmqns51sw7nrgykp5vnz36w4fr3cw-nix-2.1.3/etc/"));
+    /// assert_eq!(false, store.is_in_store("/nix/store/"));
+    /// assert_eq!(false, store.is_in_store("/var/lib/"));
+    /// ```
     pub fn is_in_store<P: AsRef<Path>>(&self, path: P) -> bool {
         match self.strip_store_path(path.as_ref()) {
             Err(_) => false,
@@ -280,6 +337,46 @@ impl StoreDir {
         }
     }
 
+    /// Convert a `path` in this store to a [`StorePath`].
+    /// This will fail when the given path is not in this store or when the path
+    /// is not a valid store path.
+    ///
+    /// # Examples
+    ///
+    /// Basic store path with no extra path elements
+    ///
+    /// ```
+    /// # use std::path::Path;
+    /// # use nixrs_store::StoreDir;
+    /// let store = StoreDir::new("/nix/store").unwrap();
+    /// let p = Path::new("/nix/store/55xkmqns51sw7nrgykp5vnz36w4fr3cw-nix-2.1.3");
+    /// let (path, rest) = store.to_store_path(p).unwrap();
+    ///
+    /// assert_eq!("55xkmqns51sw7nrgykp5vnz36w4fr3cw-nix-2.1.3", path.to_string());
+    /// assert_eq!(Path::new(""), rest);
+    /// ```
+    ///
+    /// Path that points to a file inside the store:
+    ///
+    /// ```
+    /// # use std::path::Path;
+    /// # use nixrs_store::StoreDir;
+    /// let store = StoreDir::new("/nix/store").unwrap();
+    /// let p = Path::new("/nix/store/55xkmqns51sw7nrgykp5vnz36w4fr3cw-nix-2.1.3/etc/init/nix-daemon.conf");
+    /// let (path, rest) = store.to_store_path(p).unwrap();
+    /// assert_eq!("55xkmqns51sw7nrgykp5vnz36w4fr3cw-nix-2.1.3", path.to_string());
+    /// assert_eq!(Path::new("etc/init/nix-daemon.conf"), rest);
+    /// ```
+    ///
+    /// Path outside the store:
+    ///
+    /// ```
+    /// # use std::path::Path;
+    /// # use nixrs_store::StoreDir;
+    /// let store = StoreDir::new("/nix/store").unwrap();
+    /// let res = store.to_store_path(Path::new("/var/local/lib"));
+    /// assert!(res.is_err());
+    /// ```
     pub fn to_store_path<'p>(
         &self,
         path: &'p Path,
@@ -313,6 +410,8 @@ impl StoreDir {
         }
     }
 
+    /// Follow a chain of symlinks until we either end up with a path in this store
+    /// or return an error.
     pub async fn follow_links_to_store(&self, path: &Path) -> Result<PathBuf, ReadStorePathError> {
         let mut path = absolute_path_from_current(path)?.into_owned();
         while !self.is_in_store(&path) {
@@ -331,6 +430,9 @@ impl StoreDir {
         }
     }
 
+    /// Like [`follow_links_to_store`] but returns a [`StorePath`].
+    ///
+    /// [`follow_links_to_store`]: #method.follow_links_to_store
     pub async fn follow_links_to_store_path(
         &self,
         path: &Path,
