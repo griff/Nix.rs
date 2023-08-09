@@ -12,9 +12,9 @@ mod dump;
 mod encoder;
 mod parser;
 mod restore;
-mod validator;
 #[cfg(test)]
 mod test_data;
+mod validator;
 
 pub use case_hack::CaseHackStream;
 pub use dump::{dump, All, DumpOptions, Filter};

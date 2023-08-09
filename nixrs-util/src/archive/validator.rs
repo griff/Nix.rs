@@ -13,9 +13,7 @@ enum Location {
     Entry,
 }
 
-pub struct NARValidateError {
-
-}
+pub struct NARValidateError {}
 
 pub struct NARValidator {
     loc: Location,

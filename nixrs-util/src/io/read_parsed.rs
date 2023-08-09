@@ -9,8 +9,8 @@ use tokio::io::AsyncRead;
 
 use crate::ready;
 
-use super::StateParse;
 use super::read_string::ReadString;
+use super::StateParse;
 
 pin_project! {
     #[derive(Debug)]

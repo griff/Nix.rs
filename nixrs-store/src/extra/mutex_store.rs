@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use futures::lock::Mutex;
 use async_trait::async_trait;
+use futures::lock::Mutex;
 
 use crate::{Store, StoreDir};
 
@@ -34,7 +34,10 @@ where
         store.add_temp_root(path).await
     }
 
-    async fn query_path_info(&mut self, path: &crate::StorePath) -> Result<crate::ValidPathInfo, crate::Error> {
+    async fn query_path_info(
+        &mut self,
+        path: &crate::StorePath,
+    ) -> Result<crate::ValidPathInfo, crate::Error> {
         let mut store = self.store.lock().await;
         store.query_path_info(path).await
     }
@@ -57,7 +60,10 @@ where
         store.export_paths(paths, sink).await
     }
 
-    async fn import_paths<R: tokio::io::AsyncRead + Unpin>(&mut self, source: R) -> Result<(), crate::Error> {
+    async fn import_paths<R: tokio::io::AsyncRead + Unpin>(
+        &mut self,
+        source: R,
+    ) -> Result<(), crate::Error> {
         let mut store = self.store.lock().await;
         store.import_paths(source).await
     }
@@ -108,7 +114,9 @@ where
         maybe_substitute: crate::SubstituteFlag,
     ) -> Result<crate::StorePathSet, crate::Error> {
         let mut store = self.store.lock().await;
-        store.legacy_query_valid_paths(paths, lock, maybe_substitute).await
+        store
+            .legacy_query_valid_paths(paths, lock, maybe_substitute)
+            .await
     }
 
     async fn is_valid_path(&mut self, path: &crate::StorePath) -> Result<bool, crate::Error> {

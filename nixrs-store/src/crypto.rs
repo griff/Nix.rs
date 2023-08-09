@@ -3,17 +3,15 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use base64::{decode, encode};
-use ring::signature::{self, UnparsedPublicKey, Ed25519KeyPair, KeyPair};
+use ring::error::{KeyRejected, Unspecified};
 use ring::rand;
-use ring::error::{Unspecified, KeyRejected};
+use ring::signature::{self, Ed25519KeyPair, KeyPair, UnparsedPublicKey};
 use thiserror::Error;
 
-
-pub const SIGNATURE_BYTES : usize = 64;
-pub const SEED_BYTES : usize = 32;
-pub const SECRET_KEY_BYTES : usize = 32 + 32;
-pub const PUBLIC_KEY_BYTES : usize = 32;
-
+pub const SIGNATURE_BYTES: usize = 64;
+pub const SEED_BYTES: usize = 32;
+pub const SECRET_KEY_BYTES: usize = 32 + 32;
+pub const PUBLIC_KEY_BYTES: usize = 32;
 
 #[derive(Error, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum ParseSignatureError {
@@ -22,7 +20,6 @@ pub enum ParseSignatureError {
     #[error("signature is not valid")]
     InvalidSignature,
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Signature(Arc<String>, [u8; SIGNATURE_BYTES]);
@@ -53,7 +50,11 @@ impl FromStr for Signature {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut sp = s.splitn(2, ":");
-        let name = Arc::new(sp.next().ok_or(ParseSignatureError::CorruptSignature)?.to_string());
+        let name = Arc::new(
+            sp.next()
+                .ok_or(ParseSignatureError::CorruptSignature)?
+                .to_string(),
+        );
         let sig_s = sp.next().ok_or(ParseSignatureError::CorruptSignature)?;
         let sig_b = decode(&sig_s).map_err(|_| ParseSignatureError::InvalidSignature)?;
         if sig_b.len() != SIGNATURE_BYTES {
@@ -61,10 +62,9 @@ impl FromStr for Signature {
         }
         let mut sig_buf = [0u8; SIGNATURE_BYTES];
         sig_buf.copy_from_slice(&sig_b);
-        Ok(Signature (name, sig_buf))
+        Ok(Signature(name, sig_buf))
     }
 }
-
 
 #[derive(Error, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum ParseKeyError {
@@ -86,7 +86,9 @@ pub struct PublicKey {
 impl PublicKey {
     pub fn verify<M: AsRef<[u8]>>(&self, data: M, signature: &Signature) -> bool {
         let message = data.as_ref();
-        self.key.verify(message, signature.signature_bytes()).is_ok()
+        self.key
+            .verify(message, signature.signature_bytes())
+            .is_ok()
     }
 
     pub fn name(&self) -> &str {
@@ -139,7 +141,11 @@ impl FromStr for PublicKey {
         let key = UnparsedPublicKey::new(&signature::ED25519, key_buf);
         let mut key_data = [0u8; PUBLIC_KEY_BYTES];
         key_data.copy_from_slice(&key_b);
-        Ok(PublicKey { name, key, key_data })
+        Ok(PublicKey {
+            name,
+            key,
+            key_data,
+        })
     }
 }
 
@@ -165,7 +171,10 @@ pub struct SecretKey {
 }
 
 impl SecretKey {
-    pub fn generate(name: String, rng: &dyn rand::SecureRandom) -> Result<SecretKey, GenerateKeyError> {
+    pub fn generate(
+        name: String,
+        rng: &dyn rand::SecureRandom,
+    ) -> Result<SecretKey, GenerateKeyError> {
         let name = Arc::new(name);
         let seed: [u8; SEED_BYTES] = rand::generate(rng)?.expose();
         let key = Ed25519KeyPair::from_seed_unchecked(&seed)?;
@@ -173,7 +182,11 @@ impl SecretKey {
         let mut key_data = [0u8; SECRET_KEY_BYTES];
         (&mut key_data[0..SEED_BYTES]).copy_from_slice(&seed);
         (&mut key_data[SEED_BYTES..SECRET_KEY_BYTES]).copy_from_slice(pk.as_ref());
-        Ok(SecretKey { name, key, key_data })
+        Ok(SecretKey {
+            name,
+            key,
+            key_data,
+        })
     }
 
     pub fn name(&self) -> &str {
@@ -189,7 +202,7 @@ impl SecretKey {
         let sig = self.key.sign(msg);
         let mut sig_buf = [0u8; SIGNATURE_BYTES];
         sig_buf.copy_from_slice(sig.as_ref());
-        Signature (self.name.clone(), sig_buf)
+        Signature(self.name.clone(), sig_buf)
     }
 
     pub fn to_public_key(&self) -> PublicKey {
@@ -200,7 +213,11 @@ impl SecretKey {
         let key = UnparsedPublicKey::new(&signature::ED25519, key_buf);
         let mut key_data = [0u8; PUBLIC_KEY_BYTES];
         key_data.copy_from_slice(peer_public_key_bytes.as_ref());
-        PublicKey { name, key, key_data }
+        PublicKey {
+            name,
+            key,
+            key_data,
+        }
     }
 }
 
@@ -254,11 +271,15 @@ impl FromStr for SecretKey {
         }
         let seed = &key_b[0..SEED_BYTES];
         let public_key = &key_b[SEED_BYTES..SECRET_KEY_BYTES];
-        let key = Ed25519KeyPair::from_seed_and_public_key(seed, public_key )
+        let key = Ed25519KeyPair::from_seed_and_public_key(seed, public_key)
             .map_err(|_| ParseKeyError::InvalidSecretKey)?;
         let mut key_data = [0u8; SECRET_KEY_BYTES];
         key_data.copy_from_slice(&key_b);
-        Ok(SecretKey { name, key, key_data })
+        Ok(SecretKey {
+            name,
+            key,
+            key_data,
+        })
     }
 }
 
@@ -270,10 +291,10 @@ mod tests {
     #[test]
     fn test_public_key() {
         let sk_s = "cache.example.org-1:ZJui+kG6vPCSRD4+p1P4DyUVlASmp/zsaeN84PTFW28tj2/PtQWvFWK6Mw+ay8kGif8AZkR5KosHLvuwlzDlgg==";
-        let sk : SecretKey = sk_s.parse().unwrap();
+        let sk: SecretKey = sk_s.parse().unwrap();
         assert_eq!("cache.example.org-1", sk.name());
         let pk_s = "cache.example.org-1:LY9vz7UFrxViujMPmsvJBon/AGZEeSqLBy77sJcw5YI=";
-        let pk : PublicKey = pk_s.parse().unwrap();
+        let pk: PublicKey = pk_s.parse().unwrap();
         assert_eq!("cache.example.org-1", pk.name());
         assert_eq!(sk.to_public_key(), pk);
         assert_eq!(sk.to_string(), sk_s);
@@ -285,11 +306,11 @@ mod tests {
         let rng = rand::SystemRandom::new();
         let sk_gen = SecretKey::generate("cache.example.org-1".into(), &rng).unwrap();
         let sk_s = sk_gen.to_string();
-        let sk : SecretKey = sk_s.parse().unwrap();
+        let sk: SecretKey = sk_s.parse().unwrap();
         assert_eq!(sk_gen, sk);
         assert_eq!(sk.to_string(), sk_s);
         let pk_s = sk_gen.to_public_key().to_string();
-        let pk : PublicKey = pk_s.parse().unwrap();
+        let pk: PublicKey = pk_s.parse().unwrap();
         assert_eq!(sk.to_public_key(), pk);
         assert_eq!(pk.to_string(), pk_s);
     }
@@ -299,7 +320,9 @@ mod tests {
         let data = "1;/nix/store/02bfycjg1607gpcnsg8l13lc45qa8qj3-libssh2-1.10.0;sha256:1l29f8r5q2739wnq4i7m2v545qx77b3wrdsw9xz2ajiy3hv1al8b;294664;/nix/store/02bfycjg1607gpcnsg8l13lc45qa8qj3-libssh2-1.10.0,/nix/store/1l4r0r4ab3v3a3ppir4jwiah3icalk9d-zlib-1.2.11,/nix/store/gf6j3k1flnhayvpnwnhikkg0s5dxrn1i-openssl-1.1.1l,/nix/store/z56jcx3j1gfyk4sv7g8iaan0ssbdkhz1-glibc-2.33-56";
         let s : Signature = "cache.nixos.org-1:0CpHca+06TwFp9VkMyz5OaphT3E8mnS+1SWymYlvFaghKSYPCMQ66TS1XPAr1+y9rfQZPLaHrBjjnIRktE/nAA==".parse().unwrap();
         assert_eq!("cache.nixos.org-1", s.name());
-        let pk : PublicKey = "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=".parse().unwrap();
+        let pk: PublicKey = "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
+            .parse()
+            .unwrap();
         assert_eq!(pk.verify(data, &s), true);
     }
 
@@ -307,10 +330,10 @@ mod tests {
     fn test_sign() {
         let data = "1;/nix/store/02bfycjg1607gpcnsg8l13lc45qa8qj3-libssh2-1.10.0;sha256:1l29f8r5q2739wnq4i7m2v545qx77b3wrdsw9xz2ajiy3hv1al8b;294664;/nix/store/02bfycjg1607gpcnsg8l13lc45qa8qj3-libssh2-1.10.0,/nix/store/1l4r0r4ab3v3a3ppir4jwiah3icalk9d-zlib-1.2.11,/nix/store/gf6j3k1flnhayvpnwnhikkg0s5dxrn1i-openssl-1.1.1l,/nix/store/z56jcx3j1gfyk4sv7g8iaan0ssbdkhz1-glibc-2.33-56";
         let sk_s = "cache.example.org-1:ZJui+kG6vPCSRD4+p1P4DyUVlASmp/zsaeN84PTFW28tj2/PtQWvFWK6Mw+ay8kGif8AZkR5KosHLvuwlzDlgg==";
-        let sk : SecretKey = sk_s.parse().unwrap();
+        let sk: SecretKey = sk_s.parse().unwrap();
         let pk_s = "cache.example.org-1:LY9vz7UFrxViujMPmsvJBon/AGZEeSqLBy77sJcw5YI=";
-        let pk : PublicKey = pk_s.parse().unwrap();
-        
+        let pk: PublicKey = pk_s.parse().unwrap();
+
         let s = sk.sign(&data);
         assert_eq!(pk.verify(data, &s), true);
     }

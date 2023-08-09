@@ -3,14 +3,14 @@ use std::future::Future;
 
 use futures::future::select_all;
 
-
 pub async fn compute_closure<E, T, F, Fut>(
     start_elts: BTreeSet<T>,
     get_edges_async: F,
 ) -> Result<BTreeSet<T>, E>
-    where T: Ord + Clone,
-          F: Fn(&T) -> Fut,
-          Fut: Future<Output=Result<BTreeSet<T>, E>> + Unpin
+where
+    T: Ord + Clone,
+    F: Fn(&T) -> Fut,
+    Fut: Future<Output = Result<BTreeSet<T>, E>> + Unpin,
 {
     let mut res = BTreeSet::new();
     let mut pending = Vec::with_capacity(start_elts.len());

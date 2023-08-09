@@ -2,8 +2,7 @@ use std::future::Future;
 
 use nixrs_util::compute_closure;
 
-use crate::{StorePathSet, StorePath, ValidPathInfo, Store, Error};
-
+use crate::{Error, Store, StorePath, StorePathSet, ValidPathInfo};
 
 pub async fn compute_fs_closure<S>(
     store: S,
@@ -12,7 +11,8 @@ pub async fn compute_fs_closure<S>(
     include_outputs: bool,
     include_derivers: bool,
 ) -> Result<StorePathSet, Error>
-    where S: Store + Clone,
+where
+    S: Store + Clone,
 {
     /*
     let query_deps = if flip_direction {
@@ -37,7 +37,7 @@ pub async fn compute_fs_closure<S>(
                         }
                     }
                     Ok(res)
-                })    
+                })
             }
         ).await
     } else {
@@ -90,28 +90,26 @@ pub async fn compute_fs_closure<S>(
         };
 
      */
-    compute_closure(
-        start_paths,
-        move |path: &StorePath| {
-            let path = path.clone();
-            let mut store = store.clone();
-            Box::pin(async move {
-                let mut res = StorePathSet::new();
-                let info = store.query_path_info(&path).await?;
-                for reference in info.references {
-                    if reference != path {
-                        res.insert(reference);
+    compute_closure(start_paths, move |path: &StorePath| {
+        let path = path.clone();
+        let mut store = store.clone();
+        Box::pin(async move {
+            let mut res = StorePathSet::new();
+            let info = store.query_path_info(&path).await?;
+            for reference in info.references {
+                if reference != path {
+                    res.insert(reference);
+                }
+            }
+            if include_derivers {
+                if let Some(deriver) = info.deriver {
+                    if store.is_valid_path(&deriver).await? {
+                        res.insert(deriver);
                     }
                 }
-                if include_derivers {
-                    if let Some(deriver) = info.deriver {
-                        if store.is_valid_path(&deriver).await? {
-                            res.insert(deriver);
-                        }
-                    }
-                }
-                Ok(res)
-            })    
-        }
-    ).await
+            }
+            Ok(res)
+        })
+    })
+    .await
 }

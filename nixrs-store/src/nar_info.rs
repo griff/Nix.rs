@@ -1,11 +1,14 @@
-use std::{fmt, collections::BTreeMap, num::ParseIntError, time::SystemTime};
+use std::{collections::BTreeMap, fmt, num::ParseIntError, time::SystemTime};
 
-use nixrs_util::StringSet;
 use nixrs_util::hash::{Hash, ParseHashError};
 use nixrs_util::io::StateParse;
+use nixrs_util::StringSet;
 use thiserror::Error;
 
-use crate::{ValidPathInfo, StorePath, StoreDir, ParseStorePathError, StorePathSet, content_address::{ContentAddress, ParseContentAddressError}};
+use crate::{
+    content_address::{ContentAddress, ParseContentAddressError},
+    ParseStorePathError, StoreDir, StorePath, StorePathSet, ValidPathInfo,
+};
 
 #[derive(Debug, Eq, PartialOrd, Ord, Clone)]
 pub struct NarInfo {
@@ -14,7 +17,7 @@ pub struct NarInfo {
     pub compression: String,
     pub file_hash: Option<Hash>,
     pub file_size: u64,
-    pub extra: BTreeMap<String,String>,
+    pub extra: BTreeMap<String, String>,
 }
 
 struct DisplayNarInfo<'a> {
@@ -24,7 +27,11 @@ struct DisplayNarInfo<'a> {
 
 impl<'a> fmt::Display for DisplayNarInfo<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "StorePath: {}\n", self.store_dir.display_path(&self.nar_info.path_info.path))?;
+        write!(
+            f,
+            "StorePath: {}\n",
+            self.store_dir.display_path(&self.nar_info.path_info.path)
+        )?;
         write!(f, "URL: {}\n", self.nar_info.url)?;
         //assert!(self.nar_info.compression != "");
         if self.nar_info.compression != "" {
@@ -37,7 +44,11 @@ impl<'a> fmt::Display for DisplayNarInfo<'a> {
         }
         write!(f, "FileSize: {}\n", self.nar_info.file_size)?;
         //assert!(self.nar_info.path_info.nar_hash.algorithm() == Algorithm::SHA256);
-        write!(f, "NarHash: {}\n", self.nar_info.path_info.nar_hash.to_base32())?;
+        write!(
+            f,
+            "NarHash: {}\n",
+            self.nar_info.path_info.nar_hash.to_base32()
+        )?;
         write!(f, "NarSize: {}\n", self.nar_info.path_info.nar_size)?;
 
         write!(f, "References: ")?;
@@ -121,7 +132,7 @@ impl NarInfo {
                         if references.is_empty() {
                             return Err(ParseNarInfoError::MissingReferences);
                         }
-                    },
+                    }
                     "Deriver" => {
                         if value != "unknown-deriver" {
                             deriver = Some(store_dir.parse_path(value)?);
@@ -140,7 +151,7 @@ impl NarInfo {
                     }
                 }
             } else {
-                return Err(ParseNarInfoError::InvalidLine(line.into()))
+                return Err(ParseNarInfoError::InvalidLine(line.into()));
             }
         }
         if path.is_none() {
@@ -161,12 +172,23 @@ impl NarInfo {
         let path = path.unwrap();
         let nar_hash = nar_hash.unwrap();
         let path_info = ValidPathInfo {
-            path, deriver, nar_size, nar_hash, references, sigs, ca,
+            path,
+            deriver,
+            nar_size,
+            nar_hash,
+            references,
+            sigs,
+            ca,
             registration_time: SystemTime::UNIX_EPOCH,
             ultimate: false,
         };
         Ok(NarInfo {
-            path_info, url, compression, file_hash, file_size, extra,
+            path_info,
+            url,
+            compression,
+            file_hash,
+            file_size,
+            extra,
         })
     }
 
@@ -224,13 +246,29 @@ impl StateParse<NarInfo> for StoreDir {
 #[derive(Debug, Error)]
 pub enum ParseNarInfoError {
     #[error("error parsing int {0}")]
-    ParseIntError(#[from] #[source] ParseIntError),
+    ParseIntError(
+        #[from]
+        #[source]
+        ParseIntError,
+    ),
     #[error("error parsing hash {0}")]
-    ParseHashError(#[from] #[source] ParseHashError),
+    ParseHashError(
+        #[from]
+        #[source]
+        ParseHashError,
+    ),
     #[error("error parsing store path {0}")]
-    ParseStorePathError(#[from] #[source] ParseStorePathError),
+    ParseStorePathError(
+        #[from]
+        #[source]
+        ParseStorePathError,
+    ),
     #[error("error parsing content address {0}")]
-    ParseContentAddressError(#[from] #[source] ParseContentAddressError),
+    ParseContentAddressError(
+        #[from]
+        #[source]
+        ParseContentAddressError,
+    ),
     #[error("invalid line {0}")]
     InvalidLine(String),
     #[error("missing StorePath")]
@@ -242,5 +280,5 @@ pub enum ParseNarInfoError {
     #[error("missing NarSize")]
     MissingNarSize,
     #[error("missing references")]
-    MissingReferences
+    MissingReferences,
 }

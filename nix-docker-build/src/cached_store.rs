@@ -50,8 +50,11 @@ impl Store for CachedStore {
         maybe_substitute: SubstituteFlag,
     ) -> Result<StorePathSet, Error> {
         if let Some(builder) = self.builder.as_mut() {
-            let mut ret = builder.legacy_query_valid_paths(&paths, lock, maybe_substitute).await?;
-            let mut local = self.cache
+            let mut ret = builder
+                .legacy_query_valid_paths(&paths, lock, maybe_substitute)
+                .await?;
+            let mut local = self
+                .cache
                 .legacy_query_valid_paths(&paths, lock, maybe_substitute)
                 .await?;
             ret.append(&mut local);
@@ -70,7 +73,8 @@ impl Store for CachedStore {
     ) -> Result<StorePathSet, Error> {
         if let Some(builder) = self.builder.as_mut() {
             let mut ret = builder.query_valid_paths(&paths, maybe_substitute).await?;
-            let mut local = self.cache
+            let mut local = self
+                .cache
                 .query_valid_paths(&paths, maybe_substitute)
                 .await?;
             ret.append(&mut local);
@@ -80,16 +84,13 @@ impl Store for CachedStore {
         }
     }
 
-    async fn add_temp_root(&self, _path: &StorePath) {
-    }
+    async fn add_temp_root(&self, _path: &StorePath) {}
 
     async fn query_path_info(&mut self, path: &StorePath) -> Result<ValidPathInfo, Error> {
         if let Some(builder) = self.builder.as_mut() {
             match builder.query_path_info(path).await {
                 Ok(ret) => Ok(ret),
-                Err(Error::InvalidPath(_)) => {
-                    self.cache.query_path_info(path).await
-                },
+                Err(Error::InvalidPath(_)) => self.cache.query_path_info(path).await,
                 Err(err) => Err(err),
             }
         } else {
@@ -174,14 +175,12 @@ impl Store for CachedStore {
             "/nix/store:exec",
         ]);
         for input in inputs.iter() {
-            b.command_mut().arg("-v")
+            b.command_mut()
+                .arg("-v")
                 .arg(&format!("/nix/store/{}:/nix/store/{}", input, input));
         }
-        b.command_mut().args(&[
-            "griff/nix-static",
-            "nix-store",
-            "--serve",
-        ]);
+        b.command_mut()
+            .args(&["griff/nix-static", "nix-store", "--serve"]);
         b.host("builder");
         if self.write_allowed {
             b.command_mut().arg("--write");
