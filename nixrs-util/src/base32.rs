@@ -5,7 +5,8 @@ use thiserror::Error;
 #[error("invalid base32 string")]
 pub struct BadBase32;
 
-pub fn encoded_len(input_len: usize) -> usize {
+#[inline]
+pub const fn encoded_len(input_len: usize) -> usize {
     if input_len == 0 {
         0
     } else {
@@ -13,7 +14,8 @@ pub fn encoded_len(input_len: usize) -> usize {
     }
 }
 
-pub fn decoded_len(input_len: usize) -> usize {
+#[inline]
+pub const fn decoded_len(input_len: usize) -> usize {
     input_len * 5 / 8
 }
 

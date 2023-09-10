@@ -14,7 +14,8 @@ const MD5_SIZE: usize = 128 / 8;
 const SHA1_SIZE: usize = 160 / 8;
 const SHA256_SIZE: usize = 256 / 8;
 const SHA512_SIZE: usize = 512 / 8;
-const MAX_SIZE: usize = SHA512_SIZE;
+const LARGEST_ALGORITHM : Algorithm = Algorithm::SHA512;
+const MAX_SIZE: usize = LARGEST_ALGORITHM.size();
 
 /// A digest algorithm.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Display)]
@@ -39,7 +40,7 @@ impl Default for Algorithm {
 impl Algorithm {
     /// Returns the size in bytes of this hash.
     #[inline]
-    pub fn size(&self) -> usize {
+    pub const fn size(&self) -> usize {
         match &self {
             Algorithm::MD5 => MD5_SIZE,
             Algorithm::SHA1 => SHA1_SIZE,
@@ -50,19 +51,19 @@ impl Algorithm {
 
     /// Returns the length of a base-16 representation of this hash.
     #[inline]
-    pub fn base16_len(&self) -> usize {
+    pub const fn base16_len(&self) -> usize {
         return self.size() * 2;
     }
 
     /// Returns the length of a base-32 representation of this hash.
     #[inline]
-    pub fn base32_len(&self) -> usize {
-        return (self.size() * 8 - 1) / 5 + 1;
+    pub const fn base32_len(&self) -> usize {
+        return base32::encoded_len(self.size())
     }
 
     /// Returns the length of a base-64 representation of this hash.
     #[inline]
-    pub fn base64_len(&self) -> usize {
+    pub const fn base64_len(&self) -> usize {
         return ((4 * self.size() / 3) + 3) & !3;
     }
 
