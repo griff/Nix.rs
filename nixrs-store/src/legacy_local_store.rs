@@ -309,7 +309,11 @@ where
         self.sink.write_printed(&store_dir, path).await?;
         self.sink.flush().await?;
 
+        debug!("Write Command for {}", path);
+
         copy_nar(&mut self.source, writer).await?;
+
+        debug!("Completed NAR for path {}", path);
 
         Ok(())
     }

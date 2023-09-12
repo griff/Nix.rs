@@ -1,4 +1,4 @@
-use log::error;
+use log::{error, debug};
 use tokio::io::AsyncReadExt;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
@@ -35,6 +35,7 @@ where
     let client_version = source.read_u64_le().await?;
 
     while let Ok(command) = source.read_enum::<ServeCommand>().await {
+        debug!("Got command {}", command);
         match command {
             ServeCommand::CmdQueryValidPaths => {
                 let lock = source.read_bool().await? && write_allowed;
@@ -254,8 +255,11 @@ where
                 return Err(Error::Misc(format!("unknown serve command {}", cmd)));
             }
         }
+        debug!("Flushing!");
         out.flush().await?;
+        debug!("Loop");
     }
+    debug!("Serve done");
 
     Ok(())
 }

@@ -2,6 +2,7 @@ use std::io;
 
 use bytes::BufMut;
 use bytes::BytesMut;
+use log::debug;
 use tokio_util::codec::Encoder;
 
 use crate::io::calc_padding;
@@ -190,6 +191,7 @@ impl Encoder<NAREvent> for NAREncoder {
     type Error = io::Error;
 
     fn encode(&mut self, item: NAREvent, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        debug!("Encode {} {:?}", item.encoded_size(), item);
         item.encode_into(dst);
         Ok(())
     }
