@@ -1,5 +1,6 @@
 use super::{ParseStorePathError, StoreDir, StorePath};
 use nixrs_util::StringSet;
+use nixrs_util::io::{StateParse, StatePrint};
 
 /// A "derived path" is a very simple sort of expression that evaluates
 /// to (concrete) store path. It is either:
@@ -62,6 +63,20 @@ impl DerivedPath {
             let path = store_dir.parse_path(s)?;
             Ok(DerivedPath::Opaque(path))
         }
+    }
+}
+
+impl StateParse<DerivedPath> for StoreDir {
+    type Err = ParseStorePathError;
+
+    fn parse(&self, s: &str) -> Result<DerivedPath, Self::Err> {
+        DerivedPath::parse(self, s)
+    }
+}
+
+impl StatePrint<DerivedPath> for StoreDir {
+    fn print(&self, item: &DerivedPath) -> String {
+        item.print(self)
     }
 }
 
