@@ -8,68 +8,68 @@ use std::task::{Context, Poll};
 use tokio::io::AsyncWrite;
 
 use super::write_int::WriteU64;
-use super::write_str::{write_str, WriteStr};
+use super::write_string::{write_string, WriteString};
 use super::CollectionSize;
 
-#[derive(Debug)]
-pub enum WriteStringColl<'a, W, I> {
-    Invalid,
-    WriteSize(I, WriteU64<W>),
-    WriteData(I, WriteStr<'a, W>),
-    Done(W),
-}
-
-pub fn write_string_coll<'a, W, C, I>(dst: W, coll: C) -> WriteStringColl<'a, W, I>
+pub fn write_owned_string_coll<W, C, I>(dst: W, coll: C) -> WriteOwnedStringColl<W, I>
 where
-    C: CollectionSize + IntoIterator<Item = &'a String, IntoIter = I>,
-    I: Iterator<Item = &'a String>,
+    C: CollectionSize + IntoIterator<Item = String, IntoIter = I>,
+    I: Iterator<Item = String>,
 {
     let len = coll.len();
     let it = coll.into_iter();
-    WriteStringColl::WriteSize(it, WriteU64::new(dst, len as u64))
+    WriteOwnedStringColl::WriteSize(it, WriteU64::new(dst, len as u64))
 }
 
-impl<'a, W, I> Future for WriteStringColl<'a, W, I>
+#[derive(Debug)]
+pub enum WriteOwnedStringColl<W, I> {
+    Invalid,
+    WriteSize(I, WriteU64<W>),
+    WriteData(I, WriteString<W>),
+    Done(W),
+}
+
+impl<'a, W, I> Future for WriteOwnedStringColl<W, I>
 where
     W: AsyncWrite + Unpin,
-    I: Iterator<Item = &'a String> + Unpin,
+    I: Iterator<Item = String> + Unpin,
 {
     type Output = io::Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         loop {
-            match mem::replace(&mut *self, WriteStringColl::Invalid) {
-                WriteStringColl::Invalid => panic!("invalid state"),
-                WriteStringColl::Done(_) => panic!("polling completed future"),
-                WriteStringColl::WriteSize(mut it, mut writer) => {
+            match mem::replace(&mut *self, WriteOwnedStringColl::Invalid) {
+                WriteOwnedStringColl::Invalid => panic!("invalid state"),
+                WriteOwnedStringColl::Done(_) => panic!("polling completed future"),
+                WriteOwnedStringColl::WriteSize(mut it, mut writer) => {
                     match Pin::new(&mut writer).poll(cx) {
                         Poll::Pending => {
-                            *self = WriteStringColl::WriteSize(it, writer);
+                            *self = WriteOwnedStringColl::WriteSize(it, writer);
                             return Poll::Pending;
                         }
                         Poll::Ready(res) => res?,
                     }
                     let dst = writer.inner();
                     if let Some(next) = it.next() {
-                        *self = WriteStringColl::WriteData(it, write_str(dst, next));
+                        *self = WriteOwnedStringColl::WriteData(it, write_string(dst, next));
                     } else {
-                        *self = WriteStringColl::Done(dst);
+                        *self = WriteOwnedStringColl::Done(dst);
                         return Poll::Ready(Ok(()));
                     }
                 }
-                WriteStringColl::WriteData(mut it, mut writer) => {
+                WriteOwnedStringColl::WriteData(mut it, mut writer) => {
                     match Pin::new(&mut writer).poll(cx) {
                         Poll::Pending => {
-                            *self = WriteStringColl::WriteData(it, writer);
+                            *self = WriteOwnedStringColl::WriteData(it, writer);
                             return Poll::Pending;
                         }
                         Poll::Ready(res) => res?,
                     }
                     let dst = writer.inner();
                     if let Some(next) = it.next() {
-                        *self = WriteStringColl::WriteData(it, write_str(dst, next));
+                        *self = WriteOwnedStringColl::WriteData(it, write_string(dst, next));
                     } else {
-                        *self = WriteStringColl::Done(dst);
+                        *self = WriteOwnedStringColl::Done(dst);
                         return Poll::Ready(Ok(()));
                     }
                 }
@@ -77,4 +77,3 @@ where
         }
     }
 }
-

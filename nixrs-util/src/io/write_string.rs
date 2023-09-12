@@ -12,34 +12,36 @@ use super::write_all::{write_all, WriteAll};
 use super::write_int::WriteU64;
 use super::STATIC_PADDING;
 
+
+pub(crate) fn write_string<W>(dst: W, s: String) -> WriteString<W> {
+    let len = s.as_bytes().len();
+    WriteString::WriteSize(s, WriteU64::new(dst, len as u64))
+}
+
+
 #[derive(Debug)]
-pub enum WriteStr<'a, W> {
+pub enum WriteString<W> {
     Invalid,
-    WriteSize(&'a [u8], WriteU64<W>),
-    WriteData(u8, WriteAll<'a, W>),
+    WriteSize(String, WriteU64<W>),
+    WriteData(u8, String, usize, W),
     WritePadding(WriteAll<'static, W>),
     Done(W),
 }
 
-pub(crate) fn write_string<'a, W>(dst: W, s: &'a str) -> WriteStr<'a, W> {
-    let buf = s.as_bytes();
-    let len = buf.len();
-    WriteStr::WriteSize(buf, WriteU64::new(dst, len as u64))
-}
 
-impl<'a, W> WriteStr<'a, W> {
+impl<W> WriteString<W> {
     pub fn inner(self) -> W {
         match self {
-            WriteStr::Invalid => panic!("invalid state"),
-            WriteStr::WriteSize(_, w) => w.inner(),
-            WriteStr::WriteData(_, w) => w.inner(),
-            WriteStr::WritePadding(w) => w.inner(),
-            WriteStr::Done(w) => w,
+            WriteString::Invalid => panic!("invalid state"),
+            WriteString::WriteSize(_, w) => w.inner(),
+            WriteString::WriteData(_, _, _, w) => w,
+            WriteString::WritePadding(w) => w.inner(),
+            WriteString::Done(w) => w,
         }
     }
 }
 
-impl<'a, W> Future for WriteStr<'a, W>
+impl<W> Future for WriteString<W>
 where
     W: AsyncWrite + Unpin,
 {
@@ -47,49 +49,57 @@ where
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         loop {
-            match mem::replace(&mut *self, WriteStr::Invalid) {
-                WriteStr::Invalid => panic!("invalid state"),
-                WriteStr::Done(_) => panic!("polling completed future"),
-                WriteStr::WriteSize(buf, mut writer) => {
+            match mem::replace(&mut *self, WriteString::Invalid) {
+                WriteString::Invalid => panic!("invalid state"),
+                WriteString::Done(_) => panic!("polling completed future"),
+                WriteString::WriteSize(buf, mut writer) => {
                     match Pin::new(&mut writer).poll(cx) {
                         Poll::Pending => {
-                            *self = WriteStr::WriteSize(buf, writer);
+                            *self = WriteString::WriteSize(buf, writer);
                             return Poll::Pending;
                         }
                         Poll::Ready(res) => res?,
                     }
                     let dst = writer.inner();
                     if buf.len() == 0 {
-                        *self = WriteStr::Done(dst);
+                        *self = WriteString::Done(dst);
                         return Poll::Ready(Ok(()));
                     }
                     let padding = calc_padding(buf.len() as u64);
-                    *self = WriteStr::WriteData(padding, write_all(dst, buf));
+                    *self = WriteString::WriteData(padding, buf, 0, dst);
                 }
-                WriteStr::WriteData(padding, mut writer) => {
-                    match Pin::new(&mut writer).poll(cx) {
-                        Poll::Pending => {
-                            *self = WriteStr::WriteData(padding, writer);
-                            return Poll::Pending;
+                WriteString::WriteData(padding, buf, mut written, mut writer) => {
+                    let b = buf.as_bytes();
+                    loop {
+                        let remaining = &b[written..];
+                        let next = match Pin::new(&mut writer).poll_write(cx, remaining) {
+                            Poll::Pending => {
+                                *self = WriteString::WriteData(padding, buf, written, writer);
+                                return Poll::Pending;
+                            }
+                            Poll::Ready(res) => res?,
+                        };
+                        written += next;
+                        if written >= b.len() {
+                            break;
                         }
-                        Poll::Ready(res) => res?,
                     }
-                    let dst = writer.inner();
                     *self =
-                        WriteStr::WritePadding(write_all(dst, &STATIC_PADDING[..padding as usize]));
+                    WriteString::WritePadding(write_all(writer, &STATIC_PADDING[..padding as usize]));
                 }
-                WriteStr::WritePadding(mut writer) => {
+                WriteString::WritePadding(mut writer) => {
                     match Pin::new(&mut writer).poll(cx) {
                         Poll::Pending => {
-                            *self = WriteStr::WritePadding(writer);
+                            *self = WriteString::WritePadding(writer);
                             return Poll::Pending;
                         }
                         Poll::Ready(res) => res?,
                     }
-                    *self = WriteStr::Done(writer.inner());
+                    *self = WriteString::Done(writer.inner());
                     return Poll::Ready(Ok(()));
                 }
             }
         }
     }
 }
+

@@ -3,6 +3,7 @@ mod async_source;
 mod collection_read;
 mod collection_size;
 mod drain;
+mod map_printed_state;
 mod offset_reader;
 mod read_exact;
 mod read_int;
@@ -15,6 +16,8 @@ mod state_parse;
 mod state_print;
 mod write_all;
 mod write_int;
+mod write_owned_string_coll;
+mod write_str;
 mod write_string;
 mod write_string_coll;
 
@@ -182,7 +185,7 @@ mod tests {
     #[tokio::test]
     async fn test_write_string0() {
         let mut buf = Vec::new();
-        buf.write_string("").await.unwrap();
+        buf.write_str("").await.unwrap();
         assert_eq!((&buf[..]).read_string().await.unwrap(), "");
         assert_eq!(buf.len(), 8);
     }
@@ -190,7 +193,7 @@ mod tests {
     #[tokio::test]
     async fn test_write_string1() {
         let mut buf = Vec::new();
-        buf.write_string(")").await.unwrap();
+        buf.write_str(")").await.unwrap();
         assert_eq!((&buf[..]).read_string().await.unwrap(), ")");
         assert_eq!(buf.len(), 16);
     }
@@ -198,7 +201,7 @@ mod tests {
     #[tokio::test]
     async fn test_write_string2() {
         let mut buf = Vec::new();
-        buf.write_string("it").await.unwrap();
+        buf.write_str("it").await.unwrap();
         assert_eq!((&buf[..]).read_string().await.unwrap(), "it");
         assert_eq!(buf.len(), 16);
     }
@@ -206,7 +209,7 @@ mod tests {
     #[tokio::test]
     async fn test_write_string3() {
         let mut buf = Vec::new();
-        buf.write_string("tea").await.unwrap();
+        buf.write_str("tea").await.unwrap();
         assert_eq!((&buf[..]).read_string().await.unwrap(), "tea");
         assert_eq!(buf.len(), 16);
     }
@@ -214,7 +217,7 @@ mod tests {
     #[tokio::test]
     async fn test_write_string4() {
         let mut buf = Vec::new();
-        buf.write_string("were").await.unwrap();
+        buf.write_str("were").await.unwrap();
         assert_eq!((&buf[..]).read_string().await.unwrap(), "were");
         assert_eq!(buf.len(), 16);
     }
@@ -222,7 +225,7 @@ mod tests {
     #[tokio::test]
     async fn test_write_string5() {
         let mut buf = Vec::new();
-        buf.write_string("where").await.unwrap();
+        buf.write_str("where").await.unwrap();
         assert_eq!((&buf[..]).read_string().await.unwrap(), "where");
         assert_eq!(buf.len(), 16);
     }
@@ -230,7 +233,7 @@ mod tests {
     #[tokio::test]
     async fn test_write_string6() {
         let mut buf = Vec::new();
-        buf.write_string("unwrap").await.unwrap();
+        buf.write_str("unwrap").await.unwrap();
         assert_eq!((&buf[..]).read_string().await.unwrap(), "unwrap");
         assert_eq!(buf.len(), 16);
     }
@@ -238,7 +241,7 @@ mod tests {
     #[tokio::test]
     async fn test_write_string7() {
         let mut buf = Vec::new();
-        buf.write_string("where's").await.unwrap();
+        buf.write_str("where's").await.unwrap();
         assert_eq!((&buf[..]).read_string().await.unwrap(), "where's");
         assert_eq!(buf.len(), 16);
     }
@@ -246,7 +249,7 @@ mod tests {
     #[tokio::test]
     async fn test_write_string8() {
         let mut buf = Vec::new();
-        buf.write_string("read_tea").await.unwrap();
+        buf.write_str("read_tea").await.unwrap();
         assert_eq!((&buf[..]).read_string().await.unwrap(), "read_tea");
         assert_eq!(buf.len(), 16);
     }
@@ -254,7 +257,7 @@ mod tests {
     #[tokio::test]
     async fn test_write_string9() {
         let mut buf = Vec::new();
-        buf.write_string("read_tess").await.unwrap();
+        buf.write_str("read_tess").await.unwrap();
         assert_eq!((&buf[..]).read_string().await.unwrap(), "read_tess");
         assert_eq!(buf.len(), 24);
     }

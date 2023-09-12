@@ -194,8 +194,8 @@ impl DerivationOutput {
         match self {
             DerivationOutput::InputAddressed(path) => {
                 sink.write_printed(store_dir, path).await?;
-                sink.write_string("").await?;
-                sink.write_string("").await?;
+                sink.write_str("").await?;
+                sink.write_str("").await?;
             }
             DerivationOutput::CAFixed(dof) => {
                 let path = store_dir.make_fixed_output_path(
@@ -206,22 +206,22 @@ impl DerivationOutput {
                     false,
                 )?;
                 sink.write_printed(store_dir, &path).await?;
-                sink.write_string(&format!("{:#}", dof)).await?;
-                sink.write_string(&format!("{:#x}", dof.hash)).await?;
+                sink.write_str(&format!("{:#}", dof)).await?;
+                sink.write_str(&format!("{:#x}", dof.hash)).await?;
             }
             DerivationOutput::CAFloating { method, hash_type } => {
-                sink.write_string("").await?;
+                sink.write_str("").await?;
                 let hash_algo = match method {
                     FileIngestionMethod::Recursive => format!("r:{}", hash_type),
                     FileIngestionMethod::Flat => hash_type.to_string(),
                 };
-                sink.write_string(&hash_algo).await?;
-                sink.write_string("").await?;
+                sink.write_str(&hash_algo).await?;
+                sink.write_str("").await?;
             }
             DerivationOutput::Deferred => {
-                sink.write_string("").await?;
-                sink.write_string("").await?;
-                sink.write_string("").await?;
+                sink.write_str("").await?;
+                sink.write_str("").await?;
+                sink.write_str("").await?;
             }
         }
         Ok(())
@@ -335,14 +335,14 @@ impl BasicDerivation {
     {
         sink.write_usize(self.outputs.len()).await?;
         for (name, output) in self.outputs.iter() {
-            sink.write_string(name).await?;
+            sink.write_str(name).await?;
             output
                 .write_output(&mut sink, store_dir, &self.name, name)
                 .await?;
         }
         sink.write_printed_coll(store_dir, &self.input_srcs).await?;
-        sink.write_string(&self.platform).await?;
-        sink.write_string(
+        sink.write_str(&self.platform).await?;
+        sink.write_str(
             self.builder
                 .to_str()
                 .ok_or_else(|| WriteDerivationError::InvalidBuilder(self.builder.clone()))?,
@@ -352,8 +352,8 @@ impl BasicDerivation {
 
         sink.write_usize(self.env.len()).await?;
         for (name, value) in self.env.iter() {
-            sink.write_string(name).await?;
-            sink.write_string(value).await?;
+            sink.write_str(name).await?;
+            sink.write_str(value).await?;
         }
         Ok(())
     }

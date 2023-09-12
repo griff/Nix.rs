@@ -1,14 +1,15 @@
-use std::future::Future;
 use std::io;
-use std::pin::Pin;
 use std::time::{Duration, SystemTime};
 
 use futures::future::{self, Either, Ready};
 use tokio::io::AsyncWrite;
 
+use super::map_printed_state::{MapPrintedColl, MapPrintedState};
 use super::state_print::StatePrint;
 use super::write_int::WriteU64;
-use super::write_string::{write_string, WriteStr};
+use super::write_owned_string_coll::{write_owned_string_coll, WriteOwnedStringColl};
+use super::write_str::{write_str, WriteStr, write_buf};
+use super::write_string::{write_string, WriteString};
 use super::write_string_coll::{write_string_coll, WriteStringColl};
 use super::CollectionSize;
 
@@ -27,34 +28,31 @@ pub trait AsyncSink {
         &mut self,
         time: SystemTime,
     ) -> Either<WriteU64<&mut Self>, Ready<io::Result<()>>>;
-    fn write_string<'a>(&mut self, s: &'a str) -> WriteStr<'a, &mut Self>;
+    fn write_buf<'a>(&mut self, buf: &'a [u8]) -> WriteStr<'a, &mut Self>;
+    fn write_str<'a>(&mut self, s: &'a str) -> WriteStr<'a, &mut Self>;
+    fn write_string(&mut self, s: String) -> WriteString<&mut Self>;
     fn write_string_coll<'a, C, I>(&mut self, coll: C) -> WriteStringColl<'a, &mut Self, I>
     where
         C: CollectionSize + IntoIterator<Item = &'a String, IntoIter = I>,
         I: Iterator<Item = &'a String>;
-    fn write_printed<'this, 'item, 'async_trait, S, I>(
-        &'this mut self,
+    fn write_printed<S, I>(
+        &mut self,
         state: S,
-        item: &'item I,
-    ) -> Pin<Box<dyn Future<Output = io::Result<()>> + 'async_trait>>
+        item: &I,
+    ) -> WriteString<&mut Self>
     where
-        'this: 'async_trait,
-        'item: 'async_trait,
-        S: StatePrint<I> + 'async_trait,
-        Self: Unpin;
-    fn write_printed_coll<'this, 'async_trait, 'item, C, S, IT, I>(
-        &'this mut self,
+        S: StatePrint<I>;
+    fn write_printed_coll<'async_trait, 'item, C, S, IT, I>(
+        &mut self,
         state: S,
         coll: C,
-    ) -> Pin<Box<dyn Future<Output = io::Result<()>> + 'async_trait>>
+    ) -> WriteOwnedStringColl<&mut Self, MapPrintedState<S, IT>>
     where
-        'this: 'async_trait,
         'item: 'async_trait,
         S: StatePrint<I> + 'async_trait,
-        C: CollectionSize + IntoIterator<Item = &'item I, IntoIter = IT> + 'async_trait,
+        C: CollectionSize + IntoIterator<Item = &'item I, IntoIter = IT>,
         IT: Iterator<Item = &'item I> + 'async_trait,
-        I: 'item,
-        Self: Unpin;
+        I: 'item;
 }
 
 impl<W> AsyncSink for W
@@ -105,7 +103,15 @@ where
         }
     }
 
-    fn write_string<'a>(&mut self, s: &'a str) -> WriteStr<'a, &mut Self> {
+    fn write_buf<'a>(&mut self, buf: &'a [u8]) -> WriteStr<'a, &mut Self> {
+        write_buf(self, buf)
+    }
+
+    fn write_str<'a>(&mut self, s: &'a str) -> WriteStr<'a, &mut Self> {
+        write_str(self, s)
+    }
+
+    fn write_string(&mut self, s: String) -> WriteString<&mut Self> {
         write_string(self, s)
     }
 
@@ -117,57 +123,31 @@ where
         write_string_coll(self, coll)
     }
 
-    fn write_printed<'this, 'item, 'async_trait, S, I>(
-        &'this mut self,
+    fn write_printed<S, I>(
+        &mut self,
         state: S,
-        item: &'item I,
-    ) -> Pin<Box<dyn Future<Output = io::Result<()>> + 'async_trait>>
+        item: &I,
+    ) -> WriteString<&mut Self>
     where
-        'this: 'async_trait,
-        'item: 'async_trait,
-        S: StatePrint<I> + 'async_trait,
-        Self: Unpin,
+        S: StatePrint<I>,
     {
-        async fn run<W, S, I>(me: &mut W, state: S, item: &I) -> io::Result<()>
-        where
-            S: StatePrint<I>,
-            W: AsyncWrite + Unpin,
-        {
-            let s = state.print(item);
-            me.write_string(&s).await
-        }
-        Box::pin(run(self, state, item))
+        let s = state.print(item);
+        write_string(self, s)
     }
-    fn write_printed_coll<'this, 'async_trait, 'item, C, S, IT, I>(
-        &'this mut self,
+
+    fn write_printed_coll<'async_trait, 'item, C, S, IT, I>(
+        &mut self,
         state: S,
         coll: C,
-    ) -> Pin<Box<dyn Future<Output = io::Result<()>> + 'async_trait>>
+    ) -> WriteOwnedStringColl<&mut Self, MapPrintedState<S, IT>>
     where
-        'this: 'async_trait,
         'item: 'async_trait,
         S: StatePrint<I> + 'async_trait,
-        C: CollectionSize + IntoIterator<Item = &'item I, IntoIter = IT> + 'async_trait,
+        C: CollectionSize + IntoIterator<Item = &'item I, IntoIter = IT>,
         IT: Iterator<Item = &'item I> + 'async_trait,
         I: 'item,
-        Self: Unpin,
     {
-        async fn run<'a, W, C, S, IT, I>(me: &mut W, state: S, coll: C) -> io::Result<()>
-        where
-            S: StatePrint<I>,
-            W: AsyncWrite + Unpin,
-            C: CollectionSize + IntoIterator<Item = &'a I, IntoIter = IT>,
-            I: 'a,
-            IT: Iterator<Item = &'a I>,
-        {
-            let len = coll.len();
-            me.write_usize(len).await?;
-            for item in coll.into_iter() {
-                let s = state.print(item);
-                me.write_string(&s).await?;
-            }
-            Ok(())
-        }
-        Box::pin(run(self, state, coll))
+
+        write_owned_string_coll(self, MapPrintedColl { state, coll })
     }
 }

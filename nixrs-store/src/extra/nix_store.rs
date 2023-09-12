@@ -61,7 +61,7 @@ where
                             if let Some(deriver) = info.deriver.as_ref() {
                                 out.write_printed(&store_dir, deriver).await?;
                             } else {
-                                out.write_string("").await?;
+                                out.write_str("").await?;
                             }
                             out.write_printed_coll(&store_dir, &info.references).await?;
                             // !!! Maybe we want compression?
@@ -69,13 +69,13 @@ where
                             out.write_u64_le(info.nar_size).await?;
                             if get_protocol_minor!(client_version) >= 4 {
                                 let s = info.nar_hash.to_base32().to_string();
-                                out.write_string(&s).await?;
+                                out.write_str(&s).await?;
 
                                 if let Some(ca) = info.ca.as_ref() {
                                     let ca = ca.to_string();
-                                    out.write_string(&ca).await?;
+                                    out.write_str(&ca).await?;
                                 } else {
-                                    out.write_string("").await?;
+                                    out.write_str("").await?;
                                 }
 
                                 out.write_string_coll(&info.sigs).await?;
@@ -85,7 +85,7 @@ where
                         Err(err) => return Err(err),
                     }
                 }
-                out.write_string("").await?;
+                out.write_str("").await?;
             }
             ServeCommand::CmdDumpStorePath => {
                 let path = source.read_parsed(&store_dir).await?;
@@ -134,7 +134,7 @@ where
                     Err(err) => {
                         assert!(err.exit_code() != 0);
                         out.write_u64_le(err.exit_code()).await?;
-                        out.write_string(&err.to_string()).await?;
+                        out.write_str(&err.to_string()).await?;
                     }
                 }
             }
@@ -168,7 +168,7 @@ where
                 // TODO: MonitorFdHup monitor(in.fd);
                 let status = store.build_derivation(&drv_path, &drv, &settings).await?;
                 out.write_enum(status.status).await?;
-                out.write_string(&status.error_msg).await?;
+                out.write_str(&status.error_msg).await?;
                 if !status.success() {
                     error!("Build failed {:?}: {}", status.status, status.error_msg);
                 }
@@ -182,8 +182,8 @@ where
                 if get_protocol_minor!(client_version) >= 6 {
                     out.write_usize(status.built_outputs.len()).await?;
                     for (key, val) in status.built_outputs {
-                        out.write_string(&key.to_string()).await?;
-                        out.write_string(&val.to_json_string()?).await?;
+                        out.write_str(&key.to_string()).await?;
+                        out.write_str(&val.to_json_string()?).await?;
                     }
                 }
             }

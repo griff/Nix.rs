@@ -338,7 +338,7 @@ where
             let paths: StorePathSet = self.source.read_parsed_coll(&store_dir).await?;
             sink.write_printed_coll(&store_dir, &paths).await?;
             let deriver = self.source.read_string().await?;
-            sink.write_string(&deriver).await?;
+            sink.write_str(&deriver).await?;
             let end = self.source.read_u64_le().await?;
             if end != 0 {
                 break;
@@ -371,7 +371,7 @@ where
             let paths: StorePathSet = source.read_parsed_coll(&store_dir).await?;
             self.sink.write_printed_coll(&&store_dir, &paths).await?;
             let deriver = source.read_string().await?;
-            self.sink.write_string(&deriver).await?;
+            self.sink.write_str(&deriver).await?;
             let end = source.read_u64_le().await?;
             if end != 0 {
                 break;
@@ -493,10 +493,10 @@ where
             if let Some(deriver) = info.deriver.as_ref() {
                 self.sink.write_printed(&store_dir, deriver).await?;
             } else {
-                self.sink.write_string("").await?;
+                self.sink.write_str("").await?;
             }
             self.sink
-                .write_string(&format!("{:#x}", info.nar_hash))
+                .write_str(&format!("{:#x}", info.nar_hash))
                 .await?;
             self.sink
                 .write_printed_coll(&store_dir, &info.references)
@@ -506,9 +506,9 @@ where
             self.sink.write_bool(info.ultimate).await?;
             self.sink.write_string_coll(&info.sigs).await?;
             if let Some(ca) = info.ca.as_ref() {
-                self.sink.write_string(&ca.to_string()).await?;
+                self.sink.write_str(&ca.to_string()).await?;
             } else {
-                self.sink.write_string("").await?;
+                self.sink.write_str("").await?;
             }
 
             // TODO: Handle exceptions
@@ -539,7 +539,7 @@ where
             if let Some(deriver) = info.deriver.as_ref() {
                 self.sink.write_printed(&store_dir, deriver).await?;
             } else {
-                self.sink.write_string("").await?;
+                self.sink.write_str("").await?;
             }
             self.sink.write_u64_le(0).await?;
             self.sink.write_u64_le(0).await?;
