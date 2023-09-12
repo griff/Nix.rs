@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::convert::TryFrom;
 use std::fmt;
 use std::ops::Deref;
-use std::path::{Path, MAIN_SEPARATOR};
+use std::path::Path;
 
 use nixrs_util::path::clean_path;
 use nixrs_util::{base32, hash};

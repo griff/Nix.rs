@@ -1,4 +1,4 @@
-use std::fmt::{self, Write};
+use std::fmt;
 use std::time::SystemTime;
 
 use crate::path::StorePathSet;

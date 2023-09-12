@@ -1,8 +1,6 @@
-use std::future::Future;
-
 use nixrs_util::compute_closure;
 
-use crate::{Error, Store, StorePath, StorePathSet, ValidPathInfo};
+use crate::{Error, Store, StorePath, StorePathSet};
 
 pub async fn compute_fs_closure<S>(
     store: S,

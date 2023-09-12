@@ -92,7 +92,7 @@ impl LegacyStoreBuilder {
         }
     }
 
-    pub fn host(&mut self, host: &str) -> &mut Self {
+    pub fn host<H: Into<String>>(&mut self, host: H) -> &mut Self {
         self.host = host.into();
         self
     }
