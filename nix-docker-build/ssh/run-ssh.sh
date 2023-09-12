@@ -10,7 +10,7 @@ replace() {
 
 DIR="$(dirname "$0")"
 export RESOLVE="$(cd "$DIR/../.."; pwd)"
-bash -c 'cd "$RESOLVE/nix-docker-build"; cargo build'
+#bash -c 'cd "$RESOLVE/nix-docker-build"; cargo build'
 echo "Resolved: $RESOLVE"
 mkdir -p "$DIR/resolved"
 
@@ -25,6 +25,6 @@ replace authorized_keys
 replace ssh_config
 replace sshd_config
 
-docker build -t griff/nix-static "$DIR"
+#docker build -t griff/nix-static "$DIR"
 echo "Running: "$SSHD" -D -f "$DIR/resolved/sshd_config""
 "$SSHD" -D -f "$DIR/resolved/sshd_config"

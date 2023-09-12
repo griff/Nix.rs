@@ -1,1 +1,3 @@
+command="/Users/brian/Documents/Maven-Group/nix-builder-ui/ssh-plugin/open '/Users/brian/Library/Application Support/org.maven-group.nix-builder-ui/connections/ssh-thodin.json'" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH7Zm6DmZWlGtRut+nS3mVbYZPOGbed7a0q/gu9vzqMd bro@Arlen.maven-group.org
+
 command="@BASE_DIR@/target/debug/nix-docker-build daemon @DOCKER@ @NIX_STORE_CMD@ --write" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH7Zm6DmZWlGtRut+nS3mVbYZPOGbed7a0q/gu9vzqMd store_test
