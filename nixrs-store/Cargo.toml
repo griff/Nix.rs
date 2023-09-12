@@ -17,6 +17,7 @@ byteorder = "1.4.3"
 bytes = "1.0.1"
 derive_more = "0.99.16"
 futures = "0.3"
+lazy_static = "1.4.0"
 log = "0.4.14"
 pin-project-lite = "0.2"
 ring = "0.16.20"
@@ -28,6 +29,7 @@ tokio = {version = "^1.3", features = ["fs", "io-util", "process"] }
 proptest = {version = "1.0.0", optional = true }
 pretty_assertions = {version = "0.7.2", optional = true }
 nixrs-util = { version = "0.1.0", path = "../nixrs-util" }
+caches = "0.2.4"
 
 [dev-dependencies]
 assert_matches = "1.5.0"

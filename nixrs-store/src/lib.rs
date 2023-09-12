@@ -18,6 +18,7 @@ mod store_api;
 pub use extra::assert_store;
 pub use extra::build_settings::BuildSettings;
 pub use extra::nix_store;
+pub use extra::cached_store::CachedStore;
 
 pub use derivation::{BasicDerivation, DerivationOutput, ParseDerivationError};
 pub use derivation::{ReadDerivationError, RepairFlag, WriteDerivationError};
