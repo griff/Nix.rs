@@ -395,9 +395,11 @@ impl<'a> fmt::Display for Base16Hash<'a> {
 struct Base32Hash<'a>(&'a Hash);
 impl<'a> fmt::Display for Base32Hash<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = base32::encode(self.0.as_ref());
+        let mut buf = [0u8; LARGEST_ALGORITHM.base32_len()];
+        base32::encode_into(self.0.as_ref(), &mut buf[..self.0.algorithm.base32_len()]);
+        let s = std::str::from_utf8(&buf[..self.0.algorithm.base32_len()]).unwrap();
         if f.alternate() {
-            write!(f, "{}", s)
+            f.write_str(s)
         } else {
             write!(f, "{}:{}", self.0.algorithm(), s)
         }
