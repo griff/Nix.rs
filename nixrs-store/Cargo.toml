@@ -9,6 +9,7 @@ edition = "2018"
 default = ["full"]
 full = ["nixrs-util/full", "test"]
 test = ["pretty_assertions", "proptest", "nixrs-util/test"]
+slowtests = []
 
 [dependencies]
 async-trait = "0.1.50"
