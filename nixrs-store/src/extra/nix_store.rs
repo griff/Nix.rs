@@ -13,16 +13,18 @@ use crate::{SubstituteFlag, ValidPathInfo};
 use nixrs_util::hash;
 use nixrs_util::io::{AsyncSink, AsyncSource};
 
-pub async fn serve<S, R, W>(
+pub async fn serve<S, R, W, BW>(
     mut source: R,
     mut out: W,
     mut store: S,
+    mut build_log: BW,
     write_allowed: bool,
 ) -> Result<(), Error>
 where
     S: Store,
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
+    BW: AsyncWrite + Unpin + Send,
 {
     let store_dir = store.store_dir();
     let magic = source.read_u64_le().await?;
@@ -130,7 +132,7 @@ where
                 // TODO: MonitorFdHup monitor(in.fd);
                 let drv_paths: Vec<DerivedPath> = paths.into_iter().map(|e| e.into()).collect();
 
-                match store.build_paths(&drv_paths, &settings).await {
+                match store.build_paths(&drv_paths, &settings, &mut build_log).await {
                     Ok(_) => out.write_u64_le(0).await?,
                     Err(err) => {
                         assert!(err.exit_code() != 0);
@@ -167,7 +169,7 @@ where
                 settings.print_repeated_builds = false;
 
                 // TODO: MonitorFdHup monitor(in.fd);
-                let status = store.build_derivation(&drv_path, &drv, &settings).await?;
+                let status = store.build_derivation(&drv_path, &drv, &settings, &mut build_log).await?;
                 out.write_enum(status.status).await?;
                 out.write_str(&status.error_msg).await?;
                 if !status.success() {

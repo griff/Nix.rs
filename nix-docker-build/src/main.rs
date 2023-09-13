@@ -52,6 +52,7 @@ pub fn main() {
     }
     let source = tokio::io::stdin();
     let out = tokio::io::stdout();
+    let build_log = tokio::io::stderr();
     let res = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -59,7 +60,7 @@ pub fn main() {
         .block_on(async move {
             let store =
                 CachedStore::connect(store_uri, docker_bin, nix_store_bin, write_allowed).await?;
-            nixrs_store::nix_store::serve(source, out, store, write_allowed).await
+            nixrs_store::nix_store::serve(source, out, store, build_log, write_allowed).await
         });
 
     if let Err(e) = res {

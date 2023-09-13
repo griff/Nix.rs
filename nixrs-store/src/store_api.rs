@@ -695,16 +695,18 @@ pub trait Store {
         mut sink: W,
     ) -> Result<(), Error>;
     async fn import_paths<R: AsyncRead + Unpin>(&mut self, source: R) -> Result<(), Error>;
-    async fn build_derivation(
+    async fn build_derivation<W: AsyncWrite + Unpin>(
         &mut self,
         drv_path: &StorePath,
         drv: &BasicDerivation,
         settings: &BuildSettings,
+        build_log: W,
     ) -> Result<BuildResult, Error>;
-    async fn build_paths(
+    async fn build_paths<W: AsyncWrite + Unpin>(
         &mut self,
         drv_paths: &[DerivedPath],
         settings: &BuildSettings,
+        build_log: W,
     ) -> Result<(), Error>;
 
     /// Import a path into the store.

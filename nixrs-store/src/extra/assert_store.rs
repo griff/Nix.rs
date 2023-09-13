@@ -48,7 +48,7 @@ pub enum Message {
 pub enum MessageResponse {
     Empty,
     StorePathSet(StorePathSet),
-    BuildResult(BuildResult),
+    BuildResult((BuildResult, Bytes)),
     Bytes(Bytes),
     ValidPathInfo(ValidPathInfo),
 }
@@ -63,8 +63,8 @@ impl From<StorePathSet> for MessageResponse {
         MessageResponse::StorePathSet(v)
     }
 }
-impl From<BuildResult> for MessageResponse {
-    fn from(v: BuildResult) -> Self {
+impl From<(BuildResult, Bytes)> for MessageResponse {
+    fn from(v: (BuildResult, Bytes)) -> Self {
         MessageResponse::BuildResult(v)
     }
 }
@@ -176,7 +176,7 @@ impl AssertStore {
         drv_path: &StorePath,
         drv: &BasicDerivation,
         settings: &BuildSettings,
-        response: Result<BuildResult, Error>,
+        response: Result<(BuildResult, Bytes), Error>,
     ) -> AssertStore {
         let store_dir = StoreDir::new("/nix/store").unwrap();
         let expected = Message::BuildDerivation {
@@ -194,7 +194,7 @@ impl AssertStore {
     pub fn assert_build_paths(
         drv_paths: &[DerivedPath],
         settings: &BuildSettings,
-        response: Result<(), Error>,
+        response: Result<Bytes, Error>,
     ) -> AssertStore {
         let store_dir = StoreDir::new("/nix/store").unwrap();
         let expected = Message::BuildPaths {
@@ -341,11 +341,12 @@ impl Store for AssertStore {
             e => panic!("Invalid response {:?} for import_paths", e),
         }
     }
-    async fn build_derivation(
+    async fn build_derivation<W: AsyncWrite + Unpin>(
         &mut self,
         drv_path: &StorePath,
         drv: &BasicDerivation,
         settings: &BuildSettings,
+        mut build_log: W,
     ) -> Result<BuildResult, Error> {
         let actual = Message::BuildDerivation {
             drv_path: drv_path.clone(),
@@ -354,14 +355,19 @@ impl Store for AssertStore {
         };
         assert_eq!(self.expected, actual, "build_derivation");
         match take(&mut self.response)? {
-            MessageResponse::BuildResult(res) => Ok(res),
+            MessageResponse::BuildResult((res, set)) => {
+                build_log.write_all(&set).await?;
+                build_log.flush().await?;
+                Ok(res)
+            },
             e => panic!("Invalid response {:?} for build_derivation", e),
         }
     }
-    async fn build_paths(
+    async fn build_paths<W: AsyncWrite + Unpin>(
         &mut self,
         drv_paths: &[DerivedPath],
         settings: &BuildSettings,
+        mut build_log: W,
     ) -> Result<(), Error> {
         let actual = Message::BuildPaths {
             drv_paths: drv_paths.into(),
@@ -369,6 +375,11 @@ impl Store for AssertStore {
         };
         assert_eq!(self.expected, actual, "build_paths");
         match take(&mut self.response)? {
+            MessageResponse::Bytes(set) => {
+                build_log.write_all(&set).await?;
+                build_log.flush().await?;
+                Ok(())
+            }
             MessageResponse::Empty => Ok(()),
             e => panic!("Invalid response {:?} for build_paths", e),
         }

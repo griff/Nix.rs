@@ -138,21 +138,23 @@ where
         self.store.import_paths(source).await
     }
 
-    async fn build_derivation(
+    async fn build_derivation<W: tokio::io::AsyncWrite + Unpin>(
         &mut self,
         drv_path: &crate::StorePath,
         drv: &crate::BasicDerivation,
         settings: &crate::BuildSettings,
+        build_log: W,
     ) -> Result<crate::BuildResult, crate::Error> {
-        self.store.build_derivation(drv_path, drv, settings).await
+        self.store.build_derivation(drv_path, drv, settings, build_log).await
     }
 
-    async fn build_paths(
+    async fn build_paths<W: tokio::io::AsyncWrite + Unpin>(
         &mut self,
         drv_paths: &[crate::DerivedPath],
         settings: &crate::BuildSettings,
+        build_log: W,
     ) -> Result<(), crate::Error> {
-        self.store.build_paths(drv_paths, settings).await
+        self.store.build_paths(drv_paths, settings, build_log).await
     }
 
     async fn add_to_store<R: tokio::io::AsyncRead + Unpin>(

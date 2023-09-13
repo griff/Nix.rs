@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use tokio::process::{ChildStdin, ChildStdout};
+use tokio::process::{ChildStdin, ChildStdout, ChildStderr};
 
 use nixrs_store::copy_paths;
 use nixrs_store::Error;
@@ -8,8 +8,8 @@ use nixrs_store::{BuildResult, BuildSettings, StorePath, SubstituteFlag, ValidPa
 use nixrs_store::{LegacyLocalStore, LegacyStoreBuilder, Store, StoreDir, StorePathSet};
 
 pub struct CachedStore {
-    cache: LegacyLocalStore<ChildStdout, ChildStdin>,
-    builder: Option<LegacyLocalStore<ChildStdout, ChildStdin>>,
+    cache: LegacyLocalStore<ChildStdout, ChildStdin, ChildStderr>,
+    builder: Option<LegacyLocalStore<ChildStdout, ChildStdin, ChildStderr>>,
     write_allowed: bool,
     docker_bin: String,
 }
@@ -149,19 +149,21 @@ impl Store for CachedStore {
         self.cache.query_closure(paths, include_outputs).await
     }
 
-    async fn build_paths(
+    async fn build_paths<W: tokio::io::AsyncWrite + Unpin>(
         &mut self,
         _drv_paths: &[DerivedPath],
         _settings: &BuildSettings,
+        _build_log: W,
     ) -> Result<(), Error> {
         unimplemented!("Unsupported operation 'build_paths'");
     }
 
-    async fn build_derivation(
+    async fn build_derivation<W: tokio::io::AsyncWrite + Unpin>(
         &mut self,
         drv_path: &StorePath,
         drv: &BasicDerivation,
         settings: &BuildSettings,
+        build_log: W,
     ) -> Result<BuildResult, Error> {
         //let store_dir = self.store_dir();
         let inputs = self.cache.query_closure(&drv.input_srcs, false).await?;
@@ -189,7 +191,7 @@ impl Store for CachedStore {
         let mut builder = b.connect().await?;
 
         copy_paths(&mut self.cache, &mut builder, &inputs).await?;
-        let result = builder.build_derivation(drv_path, drv, settings).await?;
+        let result = builder.build_derivation(drv_path, drv, settings, build_log).await?;
 
         if result.success() {
             /*

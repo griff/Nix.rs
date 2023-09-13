@@ -7,13 +7,17 @@ use std::time::SystemTime;
 
 use async_trait::async_trait;
 use derive_more::{LowerHex, UpperHex};
+use futures::TryFutureExt;
 use log::{debug, trace};
 use nixrs_util::archive::copy_nar;
+use nixrs_util::cancelled_reader::CancelledReader;
 use nixrs_util::hash::Hash;
 use nixrs_util::io::{AsyncSink, AsyncSource};
-use tokio::io::{AsyncRead, AsyncWrite};
+use nixrs_util::taken_reader::{TakenReader, Taker};
+use tokio::io::{AsyncRead, AsyncWrite, copy, stderr};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::process::{ChildStdin, ChildStdout, Command};
+use tokio::process::{ChildStdin, ChildStdout, ChildStderr, Command};
+use tokio::spawn;
 
 use crate::store_api::EXPORT_MAGIC;
 use crate::Error;
@@ -109,31 +113,46 @@ impl LegacyStoreBuilder {
         Ok(self)
     }
 
-    pub async fn connect(self) -> Result<LegacyLocalStore<ChildStdout, ChildStdin>, Error> {
+    pub async fn connect_with_log<W>(self, mut build_log: W) -> Result<LegacyLocalStore<ChildStdout, ChildStdin, ChildStderr>, Error>
+        where W: AsyncWrite + Unpin + Send + 'static
+    {
         let mut cmd = self.cmd;
         cmd.stdin(Stdio::piped());
         cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
         let mut child = cmd.spawn()?;
         let reader = child.stdout.take().unwrap();
         let writer = child.stdin.take().unwrap();
-        let mut store = LegacyLocalStore::new(self.store_dir, self.host, reader, writer);
+        let stderr = child.stderr.take().unwrap();
+        let mut taken_reader = TakenReader::new(stderr);
+        let stderr = taken_reader.taker();
+        spawn(async move {
+            copy(&mut taken_reader, &mut build_log).await
+        });
+
+        let mut store = LegacyLocalStore::new(self.store_dir, self.host, reader, writer, stderr);
         store.handshake().await?;
         Ok(store)
     }
+
+    pub async fn connect(self) -> Result<LegacyLocalStore<ChildStdout, ChildStdin, ChildStderr>, Error> {
+        self.connect_with_log(stderr()).await
+    }
 }
 
-pub struct LegacyLocalStore<R, W> {
+pub struct LegacyLocalStore<R, W, BR> {
     host: String,
     store_dir: StoreDir,
     source: R,
     sink: W,
     remote_version: Option<u64>,
+    build_log: Taker<BR>,
 }
 
-impl LegacyLocalStore<ChildStdout, ChildStdin> {
+impl LegacyLocalStore<ChildStdout, ChildStdin, ChildStderr> {
     pub async fn connect(
         write_allowed: bool,
-    ) -> Result<LegacyLocalStore<ChildStdout, ChildStdin>, Error> {
+    ) -> Result<LegacyLocalStore<ChildStdout, ChildStdin, ChildStderr>, Error> {
         let mut b = LegacyStoreBuilder::new("nix-store");
         b.command_mut().arg("--serve");
         if write_allowed {
@@ -143,12 +162,12 @@ impl LegacyLocalStore<ChildStdout, ChildStdin> {
     }
 }
 
-impl<R, W> LegacyLocalStore<R, W>
+impl<R, W, BR> LegacyLocalStore<R, W, BR>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    pub fn new(store_dir: StoreDir, host: String, reader: R, writer: W) -> LegacyLocalStore<R, W> {
+    pub fn new(store_dir: StoreDir, host: String, reader: R, writer: W, build_log: Taker<BR>) -> LegacyLocalStore<R, W, BR> {
         let sink = writer;
         let remote_version = None;
         LegacyLocalStore {
@@ -157,6 +176,7 @@ where
             sink,
             remote_version,
             host,
+            build_log,
         }
     }
     async fn remote_version(&mut self) -> Result<u64, Error> {
@@ -189,10 +209,11 @@ where
 }
 
 #[async_trait(?Send)]
-impl<R, W> Store for LegacyLocalStore<R, W>
+impl<R, W, BR> Store for LegacyLocalStore<R, W, BR>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
+    BR: AsyncRead + Unpin + Send + 'static,
 {
     fn store_dir(&self) -> StoreDir {
         self.store_dir.clone()
@@ -389,13 +410,17 @@ where
         Ok(())
     }
 
-    async fn build_derivation(
+    async fn build_derivation<BW: AsyncWrite + Unpin>(
         &mut self,
         drv_path: &StorePath,
         drv: &BasicDerivation,
         settings: &BuildSettings,
+        mut build_log: BW,
     ) -> Result<BuildResult, Error> {
         debug!("Build derivation {} with path {}", drv.name, drv_path);
+        let taker = self.build_log.clone();
+        let reader = taker.take();
+
         let remote_version = self.remote_version().await?;
         let store_dir = self.store_dir.clone();
         self.sink
@@ -418,7 +443,18 @@ where
 
         self.sink.flush().await?;
 
-        let status: BuildStatus = self.source.read_enum().await?;
+        let (mut creader, build_log_token) = CancelledReader::new(reader);
+        let copy_fut = copy(&mut creader, &mut build_log).map_err(Error::from);
+        let status_fut = async {
+            let status: BuildStatus = self.source.read_enum().await?;
+            build_log_token.cancel();
+            Ok(status)
+        };
+        let status = match tokio::try_join!(status_fut, copy_fut) {
+            Ok((status, _)) => status,
+            Err(err) => return Err(err),
+        };
+
         let error_msg = self.source.read_string().await?;
         let mut status = BuildResult::new(status, error_msg);
         if get_protocol_minor!(remote_version) >= 3 {
@@ -438,12 +474,17 @@ where
         Ok(status)
     }
 
-    async fn build_paths(
+    async fn build_paths<BW: AsyncWrite + Unpin>(
         &mut self,
         drv_paths: &[DerivedPath],
         settings: &BuildSettings,
+        mut build_log: BW,
     ) -> Result<(), Error> {
         debug!("Build paths {:?}", drv_paths);
+
+        let taker = self.build_log.clone();
+        let reader = taker.take();
+
         let remote_version = self.remote_version().await?;
         let store_dir = self.store_dir.clone();
         self.sink.write_enum(ServeCommand::CmdBuildPaths).await?;
@@ -468,13 +509,26 @@ where
 
         self.sink.flush().await?;
 
-        let status: BuildStatus = self.source.read_enum().await?;
-        if status.success() {
-            Ok(())
-        } else {
-            let error_msg = self.source.read_string().await?;
-            Err(Error::Custom(status.into(), error_msg))
+        let (mut creader, build_log_token) = CancelledReader::new(reader);
+        let copy_fut = copy(&mut creader, &mut build_log).map_err(Error::from);
+        let result_fut = async {
+            let status: BuildStatus = self.source.read_enum().await?;
+            build_log_token.cancel();
+            if status.success() {
+                Ok(())
+            } else {
+                let error_msg = self.source.read_string().await?;
+                Err(Error::Custom(status.into(), error_msg))
+            }
+        };
+        match tokio::try_join!(result_fut, copy_fut) {
+            Ok(_) => {
+                eprintln!("Both completed");
+                Ok(())
+            },
+            Err(err) => Err(err),
         }
+
     }
 
     async fn add_to_store<SR: AsyncRead + Unpin>(
@@ -613,12 +667,19 @@ mod tests {
             let store_dir = StoreDir::new("/nix/store").unwrap();
             let (client, server) = tokio::io::duplex(1_000_000);
             let (read, write) = tokio::io::split(client);
-            let mut test_store = LegacyLocalStore::new(store_dir.clone(), "localhost".into(), read, write);
+            let (build_log_client, build_log_server) = tokio::io::duplex(1_000_000);
+            let mut taken_reader = TakenReader::new(build_log_client);
+            let stdreader = taken_reader.taker();
+            r.spawn(async move {
+                copy(&mut taken_reader, &mut stderr()).await
+            });
+
+            let mut test_store = LegacyLocalStore::new(store_dir.clone(), "localhost".into(), read, write, stdreader);
 
             r.block_on(async {
                 let store = AssertStore::$assert($ae $(, $ae2)*);
                 let (read, write) = tokio::io::split(server);
-                let server = crate::nix_store::serve(read, write, store, true);
+                let server = crate::nix_store::serve(read, write, store, build_log_server, true);
 
                 let cmd = async {
                     let res = test_store.$cmd($ce $(, $ce2)*).await?;
@@ -677,17 +738,20 @@ mod tests {
             mut drv in any::<BasicDerivation>(),
             settings in any::<BuildSettings>(),
             result in any::<BuildResult>(),
+            build_log in any::<Vec<u8>>()
         )
         {
             let now = Instant::now();
+            let build_log = bytes::Bytes::from(build_log);
+            let mut buf = Vec::new();
             eprintln!("Run test {}", drv_path);
             drv.name = drv_path.name_from_drv();
             store_cmd!(
-                assert_build_derivation(&drv_path, &drv, &settings, Ok(result.clone())),
-                build_derivation(&drv_path, &drv, &settings),
+                assert_build_derivation(&drv_path, &drv, &settings, Ok((result.clone(), build_log.clone()))),
+                build_derivation(&drv_path, &drv, &settings, Cursor::new(&mut buf)),
                 result
             );
-            eprintln!("Completed test {} in {}", drv_path, now.elapsed().as_secs());
+            eprintln!("Completed test {} in {}", drv_path, now.elapsed().as_secs_f64());
         }
     }
 
@@ -696,13 +760,18 @@ mod tests {
         fn test_store_build_paths(
             drv_paths in any::<Vec<DerivedPath>>(),
             settings in any::<BuildSettings>(),
+            build_log in any::<Vec<u8>>()
         )
         {
+            let build_log = bytes::Bytes::from(build_log);
+            let mut buf = Vec::new();
             store_cmd!(
-                assert_build_paths(&drv_paths, &settings, Ok(())),
-                build_paths(&drv_paths, &settings),
+                assert_build_paths(&drv_paths, &settings, Ok(build_log.clone())),
+                build_paths(&drv_paths, &settings, Cursor::new(&mut buf)),
                 ()
             );
+            pretty_prop_assert_eq!(buf.len(), build_log.len(), "Build log length");
+            pretty_prop_assert_eq!(buf, build_log, "Build log");
         }
     }
 
