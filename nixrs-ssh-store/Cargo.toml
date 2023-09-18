@@ -1,0 +1,17 @@
+[package]
+name = "nixrs-ssh-store"
+version = "0.1.0"
+authors = ["Brian Olsen <brian@maven-group.org>"]
+edition = "2018"
+
+[dependencies]
+anyhow = "1.0.75"
+async-trait = "0.1.50"
+futures = "0.3.28"
+log = "0.4.14"
+nixrs-store = { version = "0.1.0", path = "../nixrs-store" }
+nixrs-util = { version = "0.1.0", path = "../nixrs-util" }
+tokio = {version = "^1.3", features = ["fs", "io-util", "rt", "rt-multi-thread"] }
+tokio-util = "0.7.8"
+thrussh = "0.34.0"
+thrussh-keys = "0.22.1"
