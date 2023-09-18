@@ -2,7 +2,7 @@
 name = "nixrs-ssh-store"
 version = "0.1.0"
 authors = ["Brian Olsen <brian@maven-group.org>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 anyhow = "1.0.75"

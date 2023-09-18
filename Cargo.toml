@@ -1,2 +1,3 @@
 [workspace]
+resolver = "2"
 members = [ "nixrs-store", "nixrs-util", "nixrs-nix-store", "nixrs-ssh-store", "nix-docker-build" ]
