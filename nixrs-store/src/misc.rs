@@ -1,6 +1,6 @@
 use nixrs_util::compute_closure;
 
-use crate::{Error, StorePath, StorePathSet, Store};
+use crate::{Error, Store, StorePath, StorePathSet};
 
 pub async fn compute_fs_closure<S>(
     store: S,
@@ -91,7 +91,9 @@ where
         let mut store = store.clone();
         Box::pin(async move {
             let mut res = StorePathSet::new();
-            let info = store.query_path_info(&path).await?
+            let info = store
+                .query_path_info(&path)
+                .await?
                 .ok_or(Error::InvalidPath(path.to_string()))?;
             for reference in info.references {
                 if reference != path {

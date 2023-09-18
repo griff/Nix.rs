@@ -1,6 +1,6 @@
 use super::{ParseStorePathError, StoreDir, StorePath};
-use nixrs_util::StringSet;
 use nixrs_util::io::{StateParse, StatePrint};
+use nixrs_util::StringSet;
 
 /// A "derived path" is a very simple sort of expression that evaluates
 /// to (concrete) store path. It is either:
@@ -83,7 +83,7 @@ impl StatePrint<DerivedPath> for StoreDir {
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
     use crate::path::proptest::{arb_drv_store_path, arb_output_name};
-    use ::proptest::{collection::btree_set, prelude::*};
+    use proptest::{collection::btree_set, prelude::*};
 
     use super::*;
 

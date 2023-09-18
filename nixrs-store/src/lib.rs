@@ -31,5 +31,6 @@ pub use path_with_outputs::StorePathWithOutputs;
 pub use realisation::{DrvOutput, DrvOutputs, ParseDrvOutputError, Realisation};
 pub use store_api::{copy_paths, copy_paths_full, copy_store_path};
 pub use store_api::{
-    BuildResult, BuildStatus, CheckSignaturesFlag, Store, StoreDir, StoreDirProvider, SubstituteFlag,
+    BuildResult, BuildStatus, CheckSignaturesFlag, Store, StoreDir, StoreDirProvider,
+    SubstituteFlag,
 };

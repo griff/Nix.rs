@@ -8,7 +8,7 @@ use super::map_printed_state::{MapPrintedColl, MapPrintedState};
 use super::state_print::StatePrint;
 use super::write_int::WriteU64;
 use super::write_owned_string_coll::{write_owned_string_coll, WriteOwnedStringColl};
-use super::write_str::{write_str, WriteStr, write_buf};
+use super::write_str::{write_buf, write_str, WriteStr};
 use super::write_string::{write_string, WriteString};
 use super::write_string_coll::{write_string_coll, WriteStringColl};
 use super::CollectionSize;
@@ -35,11 +35,7 @@ pub trait AsyncSink {
     where
         C: CollectionSize + IntoIterator<Item = &'a String, IntoIter = I>,
         I: Iterator<Item = &'a String>;
-    fn write_printed<S, I>(
-        &mut self,
-        state: S,
-        item: &I,
-    ) -> WriteString<&mut Self>
+    fn write_printed<S, I>(&mut self, state: S, item: &I) -> WriteString<&mut Self>
     where
         S: StatePrint<I>;
     fn write_printed_coll<'async_trait, 'item, C, S, IT, I>(
@@ -123,11 +119,7 @@ where
         write_string_coll(self, coll)
     }
 
-    fn write_printed<S, I>(
-        &mut self,
-        state: S,
-        item: &I,
-    ) -> WriteString<&mut Self>
+    fn write_printed<S, I>(&mut self, state: S, item: &I) -> WriteString<&mut Self>
     where
         S: StatePrint<I>,
     {
@@ -147,7 +139,6 @@ where
         IT: Iterator<Item = &'item I> + 'async_trait,
         I: 'item,
     {
-
         write_owned_string_coll(self, MapPrintedColl { state, coll })
     }
 }

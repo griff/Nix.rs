@@ -1,11 +1,13 @@
-use log::{error, debug};
+use log::{debug, error};
 use tokio::io::AsyncReadExt;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
-use crate::crypto::{SignatureSet, ParseSignatureError};
+use crate::crypto::{ParseSignatureError, SignatureSet};
 use crate::get_protocol_minor;
+use crate::legacy_worker::{
+    LegacyStore, ServeCommand, SERVE_MAGIC_1, SERVE_MAGIC_2, SERVE_PROTOCOL_VERSION,
+};
 use crate::Error;
-use crate::legacy_worker::{SERVE_MAGIC_1, SERVE_MAGIC_2, SERVE_PROTOCOL_VERSION, ServeCommand, LegacyStore};
 use crate::{BasicDerivation, BuildSettings, CheckSignaturesFlag, DerivedPath};
 use crate::{RepairFlag, StorePath, StorePathSet, StorePathWithOutputs};
 use crate::{SubstituteFlag, ValidPathInfo};
@@ -48,7 +50,8 @@ where
                 } else {
                     SubstituteFlag::NoSubstitute
                 };
-                let ret = store.query_valid_paths_locked(&paths, lock, maybe_substitute)
+                let ret = store
+                    .query_valid_paths_locked(&paths, lock, maybe_substitute)
                     .await?;
                 out.write_printed_coll(&store_dir, &ret).await?;
             }
@@ -78,11 +81,12 @@ where
                                 } else {
                                     out.write_str("").await?;
                                 }
-                                let sigs : Vec<String> = info.sigs.iter().map(ToString::to_string).collect();
+                                let sigs: Vec<String> =
+                                    info.sigs.iter().map(ToString::to_string).collect();
                                 out.write_string_coll(&sigs).await?;
                             }
                         }
-                        Ok(None) => {},
+                        Ok(None) => {}
                         Err(err) => return Err(err),
                     }
                 }
@@ -130,7 +134,10 @@ where
                 // TODO: MonitorFdHup monitor(in.fd);
                 let drv_paths: Vec<DerivedPath> = paths.into_iter().map(|e| e.into()).collect();
 
-                match store.build_paths(&drv_paths, &settings, &mut build_log).await {
+                match store
+                    .build_paths(&drv_paths, &settings, &mut build_log)
+                    .await
+                {
                     Ok(_) => out.write_u64_le(0).await?,
                     Err(err) => {
                         assert!(err.exit_code() != 0);
@@ -167,7 +174,9 @@ where
                 settings.print_repeated_builds = false;
 
                 // TODO: MonitorFdHup monitor(in.fd);
-                let status = store.build_derivation(&drv_path, &drv, &settings, &mut build_log).await?;
+                let status = store
+                    .build_derivation(&drv_path, &drv, &settings, &mut build_log)
+                    .await?;
                 out.write_enum(status.status).await?;
                 out.write_str(&status.error_msg).await?;
                 if !status.success() {
@@ -212,8 +221,11 @@ where
                 let registration_time = source.read_time().await?;
                 let nar_size = source.read_u64_le().await?;
                 let ultimate = source.read_bool().await?;
-                let sigs : Vec<String> = source.read_string_coll().await?;
-                let sigs = sigs.iter().map(|s| s.parse() ).collect::<Result<SignatureSet, ParseSignatureError>>()?;
+                let sigs: Vec<String> = source.read_string_coll().await?;
+                let sigs = sigs
+                    .iter()
+                    .map(|s| s.parse())
+                    .collect::<Result<SignatureSet, ParseSignatureError>>()?;
                 let ca_s = source.read_string().await?;
                 let ca = if ca_s != "" {
                     Some(ca_s.parse()?)

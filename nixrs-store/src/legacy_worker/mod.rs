@@ -16,7 +16,6 @@ pub const SERVE_MAGIC_2: u64 = 0x5452eecb;
 
 pub const SERVE_PROTOCOL_VERSION: u64 = 2 << 8 | 6;
 
-
 num_enum! {
     #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, UpperHex, LowerHex)]
     pub enum ServeCommand {

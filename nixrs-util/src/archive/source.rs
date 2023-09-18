@@ -1,4 +1,3 @@
-
 enum ReadState {
     ReadStringSize(u8),
     ReadString(usize),

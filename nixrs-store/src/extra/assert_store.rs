@@ -339,7 +339,7 @@ impl Store for AssertStore {
                 build_log.write_all(&set).await?;
                 build_log.flush().await?;
                 Ok(res)
-            },
+            }
             e => panic!("Invalid response {:?} for build_derivation", e),
         }
     }
@@ -403,7 +403,7 @@ impl LegacyStore for AssertStore {
     }
     async fn import_paths<R: AsyncRead + Send + Unpin>(
         &mut self,
-        mut source: R
+        mut source: R,
     ) -> Result<(), Error> {
         let mut buf = Vec::new();
         source.read_to_end(&mut buf).await?;

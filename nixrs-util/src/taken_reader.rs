@@ -1,12 +1,11 @@
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
-use std::sync::{Mutex, Arc};
-use std::task::{Poll, Context};
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
 
 use tokio::io::AsyncRead;
 use tokio::sync::oneshot;
-
 
 enum Inner<R> {
     Invalid,
@@ -26,12 +25,15 @@ impl<R> TakenReader<R> {
     }
 
     pub fn taker(&self) -> Taker<R> {
-        Taker { inner: self.inner.clone() }
+        Taker {
+            inner: self.inner.clone(),
+        }
     }
 }
 
 impl<R> AsyncRead for TakenReader<R>
-    where R: AsyncRead + Unpin,
+where
+    R: AsyncRead + Unpin,
 {
     fn poll_read(
         self: Pin<&mut Self>,
@@ -42,23 +44,24 @@ impl<R> AsyncRead for TakenReader<R>
         loop {
             match std::mem::replace(&mut *guard, Inner::Invalid) {
                 Inner::Invalid => panic!("TakenReader is invalid"),
-                Inner::Taken(mut rec) => {
-                    match Pin::new(&mut rec).poll(cx) {
-                        Poll::Pending => return Poll::Pending,
-                        Poll::Ready(Ok(reader)) => {
-                            *guard = Inner::Available(reader);
-                        },
-                        Poll::Ready(Err(_)) => {
-                            return Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, "TakenReader sender was dropped")));
-                        }
+                Inner::Taken(mut rec) => match Pin::new(&mut rec).poll(cx) {
+                    Poll::Pending => return Poll::Pending,
+                    Poll::Ready(Ok(reader)) => {
+                        *guard = Inner::Available(reader);
+                    }
+                    Poll::Ready(Err(_)) => {
+                        return Poll::Ready(Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            "TakenReader sender was dropped",
+                        )));
                     }
                 },
                 Inner::Available(mut reader) => {
                     let res = Pin::new(&mut reader).poll_read(cx, buf);
                     *guard = Inner::Available(reader);
-                    return res
+                    return res;
                 }
-            }    
+            }
         }
     }
 }
@@ -69,7 +72,9 @@ pub struct Taker<R> {
 
 impl<R> Clone for Taker<R> {
     fn clone(&self) -> Self {
-        Self { inner: self.inner.clone() }
+        Self {
+            inner: self.inner.clone(),
+        }
     }
 }
 
@@ -107,7 +112,8 @@ impl<R> Drop for TakenGuard<R> {
 }
 
 impl<R> AsyncRead for TakenGuard<R>
-    where R: AsyncRead + Unpin
+where
+    R: AsyncRead + Unpin,
 {
     fn poll_read(
         mut self: Pin<&mut Self>,
@@ -116,9 +122,7 @@ impl<R> AsyncRead for TakenGuard<R>
     ) -> Poll<std::io::Result<()>> {
         match self.reader.as_mut() {
             None => panic!("poll_read called after drop"),
-            Some(r) => {
-                Pin::new(r).poll_read(cx, buf)
-            }
+            Some(r) => Pin::new(r).poll_read(cx, buf),
         }
     }
 }
@@ -127,7 +131,7 @@ impl<R> AsyncRead for TakenGuard<R>
 mod tests {
     use std::str::from_utf8;
 
-    use tokio::io::{AsyncWriteExt, AsyncReadExt};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::spawn;
 
     use super::*;
@@ -200,7 +204,6 @@ mod tests {
         take_reader.read_to_end(&mut buf).await.unwrap();
         assert_eq!(&buf, b"");
     }
-
 
     #[tokio::test]
     async fn interrupted_forward() {

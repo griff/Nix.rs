@@ -609,7 +609,9 @@ where
     S: Store,
     D: Store,
 {
-    let mut info = src_store.query_path_info(store_path).await?
+    let mut info = src_store
+        .query_path_info(store_path)
+        .await?
         .ok_or(Error::InvalidPath(store_path.to_string()))?;
 
     // recompute store path on the chance dstStore does it differently

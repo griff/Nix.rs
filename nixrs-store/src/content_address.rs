@@ -130,7 +130,7 @@ impl FromStr for ContentAddress {
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
     use super::*;
-    use ::proptest::prelude::*;
+    use proptest::prelude::*;
 
     impl Arbitrary for FileIngestionMethod {
         type Parameters = ();

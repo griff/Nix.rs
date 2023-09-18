@@ -42,7 +42,11 @@ impl Signature {
 
     pub fn from_parts(name: &str, signature: &[u8]) -> Result<Signature, ParseSignatureError> {
         if signature.len() != SIGNATURE_BYTES {
-            eprintln!("Signature wrong length {}!={}",signature.len(), SIGNATURE_BYTES);
+            eprintln!(
+                "Signature wrong length {}!={}",
+                signature.len(),
+                SIGNATURE_BYTES
+            );
             return Err(ParseSignatureError::InvalidSignature);
         }
         let mut data = [0u8; SIGNATURE_BYTES];
@@ -72,7 +76,11 @@ impl FromStr for Signature {
         let sig_s = sp.next().ok_or(ParseSignatureError::CorruptSignature)?;
         let sig_b = decode(&sig_s).map_err(|_| ParseSignatureError::InvalidSignature)?;
         if sig_b.len() != SIGNATURE_BYTES {
-            eprintln!("Signature wrong length {}!={}", sig_b.len(), SIGNATURE_BYTES);
+            eprintln!(
+                "Signature wrong length {}!={}",
+                sig_b.len(),
+                SIGNATURE_BYTES
+            );
             return Err(ParseSignatureError::InvalidSignature);
         }
         let mut sig_buf = [0u8; SIGNATURE_BYTES];
@@ -301,11 +309,9 @@ impl FromStr for SecretKey {
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
     use super::*;
-    use ::proptest::{arbitrary::Arbitrary, prelude::*};
+    use proptest::{arbitrary::Arbitrary, prelude::*};
 
-    pub fn arb_key_name(
-        max: u8,
-    ) -> impl Strategy<Value = String> {
+    pub fn arb_key_name(max: u8) -> impl Strategy<Value = String> {
         "[a-zA-Z0-9+\\-_?=][a-zA-Z0-9+\\-_?=.]{0,210}".prop_map(move |mut s| {
             if s.len() > max as usize {
                 s.truncate(max as usize);

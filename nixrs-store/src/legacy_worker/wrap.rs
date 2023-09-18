@@ -1,7 +1,10 @@
 use async_trait::async_trait;
-use tokio::io::{AsyncWrite, AsyncRead};
+use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::{Store, StorePathSet, SubstituteFlag, Error, ValidPathInfo, StorePath, RepairFlag, CheckSignaturesFlag, BasicDerivation, BuildSettings, BuildResult, DerivedPath, StoreDirProvider};
+use crate::{
+    BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, DerivedPath, Error,
+    RepairFlag, Store, StoreDirProvider, StorePath, StorePathSet, SubstituteFlag, ValidPathInfo,
+};
 
 use super::LegacyStore;
 
@@ -56,7 +59,8 @@ impl<S: Store + Send> Store for LegacyWrapStore<S> {
         settings: &BuildSettings,
         build_log: W,
     ) -> Result<BuildResult, Error> {
-        self.build_derivation(drv_path, drv, settings, build_log).await
+        self.build_derivation(drv_path, drv, settings, build_log)
+            .await
     }
 
     async fn build_paths<W: AsyncWrite + Send + Unpin>(
@@ -71,7 +75,8 @@ impl<S: Store + Send> Store for LegacyWrapStore<S> {
 
 #[async_trait]
 impl<S> LegacyStore for LegacyWrapStore<S>
-    where S: Store + Send
+where
+    S: Store + Send,
 {
     async fn query_valid_paths_locked(
         &mut self,
@@ -90,7 +95,7 @@ impl<S> LegacyStore for LegacyWrapStore<S>
     }
     async fn import_paths<SR: AsyncRead + Send + Unpin>(
         &mut self,
-        _source:SR
+        _source: SR,
     ) -> Result<(), Error> {
         Err(Error::UnsupportedOperation("import_paths".into()))
     }
@@ -101,5 +106,4 @@ impl<S> LegacyStore for LegacyWrapStore<S>
     ) -> Result<StorePathSet, Error> {
         Err(Error::UnsupportedOperation("query_closure".into()))
     }
-
 }

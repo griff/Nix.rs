@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
-use crate::{StoreDir, store_api::StoreDirProvider, Store, legacy_worker::LegacyStore};
+use crate::{legacy_worker::LegacyStore, store_api::StoreDirProvider, Store, StoreDir};
 
 #[derive(Clone)]
 pub struct MutexStore<S> {
@@ -19,7 +19,8 @@ impl<S> StoreDirProvider for MutexStore<S> {
 
 #[async_trait]
 impl<S> Store for MutexStore<S>
-    where S: Store + Send,
+where
+    S: Store + Send,
 {
     async fn query_valid_paths(
         &mut self,
@@ -66,7 +67,9 @@ impl<S> Store for MutexStore<S>
         build_log: W,
     ) -> Result<crate::BuildResult, crate::Error> {
         let mut store = self.store.lock().await;
-        store.build_derivation(drv_path, drv, settings, build_log).await
+        store
+            .build_derivation(drv_path, drv, settings, build_log)
+            .await
     }
 
     async fn build_paths<W: tokio::io::AsyncWrite + Send + Unpin>(
@@ -92,7 +95,9 @@ where
         maybe_substitute: crate::SubstituteFlag,
     ) -> Result<crate::StorePathSet, crate::Error> {
         let mut store = self.store.lock().await;
-        store.query_valid_paths_locked(paths, lock, maybe_substitute).await
+        store
+            .query_valid_paths_locked(paths, lock, maybe_substitute)
+            .await
     }
 
     async fn export_paths<W: tokio::io::AsyncWrite + Send + Unpin>(

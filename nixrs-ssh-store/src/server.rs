@@ -1,16 +1,19 @@
 use std::collections::HashMap;
-use std::path::Path;
 use std::io;
+use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use futures::{Future, FutureExt};
 use futures::future::Ready;
-use log::{debug, info, error};
+use futures::{Future, FutureExt};
+use log::{debug, error, info};
 use thrussh::server::Config;
-use thrussh::{server::{Handle, self}, ChannelId, CryptoVec, ChannelOpenFailure};
+use thrussh::{
+    server::{self, Handle},
+    ChannelId, ChannelOpenFailure, CryptoVec,
+};
 use thrussh_keys::key::{KeyPair, PublicKey};
-use thrussh_keys::{key, PublicKeyBase64, decode_secret_key, parse_public_key_base64};
+use thrussh_keys::{decode_secret_key, key, parse_public_key_base64, PublicKeyBase64};
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::select;
@@ -18,8 +21,8 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+use crate::io::{ChannelRead, DataWrite, ExtendedDataWrite};
 use crate::StoreProvider;
-use crate::io::{ChannelRead, ExtendedDataWrite, DataWrite};
 
 #[derive(Debug)]
 pub struct ServerConfig<S> {
@@ -35,14 +38,17 @@ async fn load_file(path: impl AsRef<Path>) -> io::Result<String> {
     Ok(s)
 }
 
-async fn load_secret_key(path: impl AsRef<Path>, password: Option<&str>) -> Result<KeyPair, thrussh_keys::Error> {
+async fn load_secret_key(
+    path: impl AsRef<Path>,
+    password: Option<&str>,
+) -> Result<KeyPair, thrussh_keys::Error> {
     let secret = load_file(path).await?;
     decode_secret_key(&secret, password)
 }
 
 async fn load_public_key(path: impl AsRef<Path>) -> Result<PublicKey, thrussh_keys::Error> {
     let pubkey = load_file(path).await?;
-    
+
     let mut split = pubkey.split_whitespace();
     match (split.next(), split.next()) {
         (Some(_), Some(key)) => parse_public_key_base64(key),
@@ -56,7 +62,7 @@ impl<S> ServerConfig<S> {
         ServerConfig {
             config: Default::default(),
             user_keys: Default::default(),
-            store_provider
+            store_provider,
         }
     }
 
@@ -65,43 +71,58 @@ impl<S> ServerConfig<S> {
         self
     }
 
-    pub async fn load_host_key(&mut self, path: impl AsRef<Path>) -> Result<(), thrussh_keys::Error> {
+    pub async fn load_host_key(
+        &mut self,
+        path: impl AsRef<Path>,
+    ) -> Result<(), thrussh_keys::Error> {
         match load_secret_key(path, None).await {
             Ok(key) => {
                 self.add_host_key(key);
                 Ok(())
-            },
-            Err(err) => Err(err)
+            }
+            Err(err) => Err(err),
         }
     }
 
     pub async fn load_host_keys(&mut self, config_dir: impl AsRef<Path>) {
         let config_dir = config_dir.as_ref();
-        self.load_host_key(config_dir.join("ssh_host_ed25519_key")).await.ok();
-        self.load_host_key(config_dir.join("ssh_host_rsa_key")).await.ok();
+        self.load_host_key(config_dir.join("ssh_host_ed25519_key"))
+            .await
+            .ok();
+        self.load_host_key(config_dir.join("ssh_host_rsa_key"))
+            .await
+            .ok();
     }
 
     pub fn add_user_key(&mut self, key: PublicKey, write_allowed: bool) -> &mut Self {
-        self.user_keys.insert(key.public_key_base64(), write_allowed);
+        self.user_keys
+            .insert(key.public_key_base64(), write_allowed);
         self
     }
 
-    pub async fn load_user_key(&mut self, path: impl AsRef<Path>, write_allowed: bool) -> Result<(), thrussh_keys::Error> {
+    pub async fn load_user_key(
+        &mut self,
+        path: impl AsRef<Path>,
+        write_allowed: bool,
+    ) -> Result<(), thrussh_keys::Error> {
         match load_public_key(path).await {
             Ok(key) => {
                 self.add_user_key(key, write_allowed);
                 Ok(())
-            },
-            Err(err) => Err(err)
+            }
+            Err(err) => Err(err),
         }
     }
 
     pub async fn load_default_keys(&mut self, config_dir: impl AsRef<Path>) {
         let config_dir = config_dir.as_ref();
         self.load_host_keys(&config_dir).await;
-        self.load_user_key(config_dir.join("id_ed25519.pub"), true).await.ok();
-        self.load_user_key(config_dir.join("id_rsa.pub"), true).await.ok();
-
+        self.load_user_key(config_dir.join("id_ed25519.pub"), true)
+            .await
+            .ok();
+        self.load_user_key(config_dir.join("id_rsa.pub"), true)
+            .await
+            .ok();
     }
 }
 
@@ -141,22 +162,26 @@ impl<S: Clone> Server<S> {
     pub fn state(&self) -> ServerState<S> {
         self.state.clone()
     }
-
 }
 
 impl<S> Server<S>
-    where S: StoreProvider + Clone + Send + 'static,
+where
+    S: StoreProvider + Clone + Send + 'static,
 {
-    pub  fn with_config(config: ServerConfig<S>) -> io::Result<Server<S>> {
+    pub fn with_config(config: ServerConfig<S>) -> io::Result<Server<S>> {
         let (serve_tx, serve_rx) = mpsc::unbounded_channel();
         let state = ServerState {
             serve_tx,
             user_keys: Arc::new(config.user_keys),
             config: Arc::new(config.config),
-            store_provider: config.store_provider
+            store_provider: config.store_provider,
         };
         let cancel = CancellationToken::new();
-        Ok(Server { state,  serve_rx, cancel })
+        Ok(Server {
+            state,
+            serve_rx,
+            cancel,
+        })
     }
 
     pub async fn run(self, addr: &str) -> io::Result<()> {
@@ -223,7 +248,8 @@ impl server::Handler for ServerHandler {
 
     type FutureAuth = Ready<Result<(Self, server::Auth), anyhow::Error>>;
 
-    type FutureUnit = Pin<Box<dyn Future<Output=Result<(Self, server::Session), anyhow::Error>> + Send>>;
+    type FutureUnit =
+        Pin<Box<dyn Future<Output = Result<(Self, server::Session), anyhow::Error>> + Send>>;
 
     type FutureBool = Ready<Result<(Self, server::Session, bool), anyhow::Error>>;
 
@@ -261,25 +287,30 @@ impl server::Handler for ServerHandler {
             debug!("Got EOF for {:?}", channel);
             ch.sender.send(Vec::new()).unwrap_or_default();
             if let Some(join) = ch.serve.take() {
-                return Box::pin(join.map(move |res| {
-                        match res {
-                            Ok(Ok(_)) => Ok((self, session)),
-                            Ok(Err(err)) => Err(err),
-                            Err(err) => Err(err.into()),
-                        }
-                    }))
+                return Box::pin(join.map(move |res| match res {
+                    Ok(Ok(_)) => Ok((self, session)),
+                    Ok(Err(err)) => Err(err),
+                    Err(err) => Err(err.into()),
+                }));
             }
         }
         self.finished(session)
     }
 
-    fn channel_open_session(mut self, channel: ChannelId, session: server::Session) -> Self::FutureUnit {
+    fn channel_open_session(
+        mut self,
+        channel: ChannelId,
+        session: server::Session,
+    ) -> Self::FutureUnit {
         let (stdin, sender) = ChannelRead::new();
-        self.channels.insert(channel, ServerChannel {
-            sender,
-            stdin: Some(stdin),
-            serve: None,
-        });
+        self.channels.insert(
+            channel,
+            ServerChannel {
+                sender,
+                stdin: Some(stdin),
+                serve: None,
+            },
+        );
         self.finished(session)
     }
 
@@ -290,7 +321,12 @@ impl server::Handler for ServerHandler {
         _originator_port: u32,
         mut session: server::Session,
     ) -> Self::FutureUnit {
-        session.channel_open_failure(channel, ChannelOpenFailure::UnknownChannelType, "Invalid channel type", "en");
+        session.channel_open_failure(
+            channel,
+            ChannelOpenFailure::UnknownChannelType,
+            "Invalid channel type",
+            "en",
+        );
         self.finished(session)
     }
 
@@ -303,7 +339,12 @@ impl server::Handler for ServerHandler {
         _originator_port: u32,
         mut session: server::Session,
     ) -> Self::FutureUnit {
-        session.channel_open_failure(channel, ChannelOpenFailure::UnknownChannelType, "Invalid channel type", "en");
+        session.channel_open_failure(
+            channel,
+            ChannelOpenFailure::UnknownChannelType,
+            "Invalid channel type",
+            "en",
+        );
         self.finished(session)
     }
 
@@ -358,7 +399,12 @@ impl server::Handler for ServerHandler {
         self.finished(session)
     }
 
-    fn exec_request(mut self, channel: ChannelId, data: &[u8], mut session: server::Session) -> Self::FutureUnit {
+    fn exec_request(
+        mut self,
+        channel: ChannelId,
+        data: &[u8],
+        mut session: server::Session,
+    ) -> Self::FutureUnit {
         let mut handle = session.handle();
         let mut write_allowed = match data {
             b"nix-store --serve --write" => true,
@@ -376,39 +422,61 @@ impl server::Handler for ServerHandler {
             write_allowed = write_allowed && *user_write_allowed;
         }
         if let Some(ch) = self.channels.get_mut(&channel) {
-            
             if let Some(source) = ch.stdin.take() {
                 let (reply, reply_rx) = oneshot::channel();
-                self.serve_tx.send(ChannelMsg { channel, handle: handle.clone(), source, write_allowed, reply }).unwrap_or_default();
+                self.serve_tx
+                    .send(ChannelMsg {
+                        channel,
+                        handle: handle.clone(),
+                        source,
+                        write_allowed,
+                        reply,
+                    })
+                    .unwrap_or_default();
                 let join = tokio::spawn(async move {
-                    
                     match reply_rx.await {
-                        Ok(join) => {
-                            match join.await {
-                                Ok(Ok(_)) => Ok(()),
-                                Ok(Err(err)) => {
-                                    let err_txt = format!("Exec failed {:?}", err);
-                                    error!("{}", err_txt);
-                                    handle.extended_data(channel, 1, CryptoVec::from(err_txt)).await.unwrap_or_default();
-                                    handle.exit_status_request(channel, 1).await.unwrap_or_default();
-                                    handle.close(channel).await.unwrap_or_default();
-                                    Err(err)
-                                }
-                                Err(err) => {
-                                    let err_txt = format!("Exec join failed {:?}", err);
-                                    error!("{}", err_txt);
-                                    handle.extended_data(channel, 1, CryptoVec::from(err_txt)).await.unwrap_or_default();
-                                    handle.exit_status_request(channel, 1).await.unwrap_or_default();
-                                    handle.close(channel).await.unwrap_or_default();
-                                    Err(err.into())
-                                }
+                        Ok(join) => match join.await {
+                            Ok(Ok(_)) => Ok(()),
+                            Ok(Err(err)) => {
+                                let err_txt = format!("Exec failed {:?}", err);
+                                error!("{}", err_txt);
+                                handle
+                                    .extended_data(channel, 1, CryptoVec::from(err_txt))
+                                    .await
+                                    .unwrap_or_default();
+                                handle
+                                    .exit_status_request(channel, 1)
+                                    .await
+                                    .unwrap_or_default();
+                                handle.close(channel).await.unwrap_or_default();
+                                Err(err)
                             }
-                        }
+                            Err(err) => {
+                                let err_txt = format!("Exec join failed {:?}", err);
+                                error!("{}", err_txt);
+                                handle
+                                    .extended_data(channel, 1, CryptoVec::from(err_txt))
+                                    .await
+                                    .unwrap_or_default();
+                                handle
+                                    .exit_status_request(channel, 1)
+                                    .await
+                                    .unwrap_or_default();
+                                handle.close(channel).await.unwrap_or_default();
+                                Err(err.into())
+                            }
+                        },
                         Err(err) => {
                             let err_txt = format!("Could not get join handle {:?}", err);
                             error!("{}", err_txt);
-                            handle.extended_data(channel, 1, CryptoVec::from(err_txt)).await.unwrap_or_default();
-                            handle.exit_status_request(channel, 1).await.unwrap_or_default();
+                            handle
+                                .extended_data(channel, 1, CryptoVec::from(err_txt))
+                                .await
+                                .unwrap_or_default();
+                            handle
+                                .exit_status_request(channel, 1)
+                                .await
+                                .unwrap_or_default();
                             handle.close(channel).await.unwrap_or_default();
                             Err(err.into())
                         }
@@ -438,7 +506,7 @@ impl server::Handler for ServerHandler {
     ) -> Self::FutureUnit {
         session.channel_failure(channel);
         self.finished(session)
-    }    
+    }
 }
 
 struct ServerChannel {
@@ -446,4 +514,3 @@ struct ServerChannel {
     stdin: Option<ChannelRead>,
     serve: Option<JoinHandle<Result<(), anyhow::Error>>>,
 }
-

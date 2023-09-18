@@ -147,38 +147,78 @@ pub fn dir_example() -> Vec<NAREvent> {
     // Size -> offset: 104 -> 536
 
     */
-    vec! [
+    vec![
         NAREvent::Magic(Arc::new(NAR_VERSION_MAGIC_1.to_owned())),
         NAREvent::Directory,
-            NAREvent::DirectoryEntry { name: Arc::new("dir".to_string()) },
-            NAREvent::Directory,
-                NAREvent::DirectoryEntry { name: Arc::new("more".to_string()) },
-                NAREvent::Directory,
-                    NAREvent::DirectoryEntry { name: Arc::new("Deep".into()) },
-                        NAREvent::RegularNode { executable: true, size: 15, offset: 536 },
-                        NAREvent::Contents { total: 15, index: 0, buf: Bytes::from_static(b"Very cool stuff") },
-                    NAREvent::EndDirectoryEntry,
-                    NAREvent::DirectoryEntry { name: Arc::new("deep".into() ) },
-                    NAREvent::Directory,
-                        NAREvent::DirectoryEntry { name: Arc::new("empty.keep".to_string()) },
-                        NAREvent::RegularNode { executable: false, size: 0, offset: 0 },
-                        NAREvent::EndDirectoryEntry,
-                        NAREvent::DirectoryEntry { name: Arc::new("loop".into()) },
-                        NAREvent::SymlinkNode { target: Arc::new("../deep".into()) },
-                        NAREvent::EndDirectoryEntry,
-                        NAREvent::DirectoryEntry { name: Arc::new("test".into()) },
-                        NAREvent::SymlinkNode { target: Arc::new("/etc/ssh/sshd_config".into()) },
-                        NAREvent::EndDirectoryEntry,
-                    NAREvent::EndDirectory,
-                    NAREvent::EndDirectoryEntry,
-                NAREvent::EndDirectory,
-                NAREvent::EndDirectoryEntry,
-            NAREvent::EndDirectory,
-            NAREvent::EndDirectoryEntry,
-            NAREvent::DirectoryEntry { name: Arc::new("testing.txt".into()) },
-            NAREvent::RegularNode { executable: false, size: 12, offset: 1568 },
-            NAREvent::Contents { total: 12, index: 0, buf: Bytes::from_static(b"Hello world!") },
-            NAREvent::EndDirectoryEntry,
+        NAREvent::DirectoryEntry {
+            name: Arc::new("dir".to_string()),
+        },
+        NAREvent::Directory,
+        NAREvent::DirectoryEntry {
+            name: Arc::new("more".to_string()),
+        },
+        NAREvent::Directory,
+        NAREvent::DirectoryEntry {
+            name: Arc::new("Deep".into()),
+        },
+        NAREvent::RegularNode {
+            executable: true,
+            size: 15,
+            offset: 536,
+        },
+        NAREvent::Contents {
+            total: 15,
+            index: 0,
+            buf: Bytes::from_static(b"Very cool stuff"),
+        },
+        NAREvent::EndDirectoryEntry,
+        NAREvent::DirectoryEntry {
+            name: Arc::new("deep".into()),
+        },
+        NAREvent::Directory,
+        NAREvent::DirectoryEntry {
+            name: Arc::new("empty.keep".to_string()),
+        },
+        NAREvent::RegularNode {
+            executable: false,
+            size: 0,
+            offset: 0,
+        },
+        NAREvent::EndDirectoryEntry,
+        NAREvent::DirectoryEntry {
+            name: Arc::new("loop".into()),
+        },
+        NAREvent::SymlinkNode {
+            target: Arc::new("../deep".into()),
+        },
+        NAREvent::EndDirectoryEntry,
+        NAREvent::DirectoryEntry {
+            name: Arc::new("test".into()),
+        },
+        NAREvent::SymlinkNode {
+            target: Arc::new("/etc/ssh/sshd_config".into()),
+        },
+        NAREvent::EndDirectoryEntry,
+        NAREvent::EndDirectory,
+        NAREvent::EndDirectoryEntry,
+        NAREvent::EndDirectory,
+        NAREvent::EndDirectoryEntry,
+        NAREvent::EndDirectory,
+        NAREvent::EndDirectoryEntry,
+        NAREvent::DirectoryEntry {
+            name: Arc::new("testing.txt".into()),
+        },
+        NAREvent::RegularNode {
+            executable: false,
+            size: 12,
+            offset: 1568,
+        },
+        NAREvent::Contents {
+            total: 12,
+            index: 0,
+            buf: Bytes::from_static(b"Hello world!"),
+        },
+        NAREvent::EndDirectoryEntry,
         NAREvent::EndDirectory,
     ]
 }

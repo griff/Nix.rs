@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
-pub mod cancelled_reader;
 pub mod archive;
 pub mod base32;
+pub mod cancelled_reader;
 mod closure;
 pub mod flag_enum;
 pub mod hash;

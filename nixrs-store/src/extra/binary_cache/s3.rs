@@ -1,4 +1,3 @@
-
 pub fn default_buffer_size() -> u64 {
     5 * 1024 * 1024
 }
@@ -12,7 +11,7 @@ struct XmlError {
 
 pub struct S3StoreError {
     msg: String,
-    source: RusotoError<>
+    source: RusotoError,
 }
 
 pub struct S3Config {
@@ -65,9 +64,8 @@ pub struct S3Config {
     //    (StoreConfig*) this, 5 * 1024 * 1024, "buffer-size", "size (in bytes) of each part in multi-part uploads"};
     /// size (in bytes) of each part in multi-part uploads
     #[serde(rename = "buffer-size")]
-    #[serde(default="default_buffer_size")]
+    #[serde(default = "default_buffer_size")]
     buffer_size: u64,
-
     //const std::string name() override { return "S3 Binary Cache Store"; }
 }
 
@@ -103,28 +101,22 @@ impl BinaryCache for S3BinaryCache {
         return true;
         */
 
-        let req : HeadObjectRequest = Default::default();
+        let req: HeadObjectRequest = Default::default();
         req.bucket = self.bucket_name.clone();
         req.key = path.to_owned();
         let res = self.client.head_object(req).await;
         if let Err(err) = res {
             match err {
                 RusotoError::Service(HeadObjectError::NoSuchKey(_)) => Ok(false),
-                RusotoError::Unknown(u) if u.status == StatusCode::FORBIDDEN => {
-                    Ok(false)
-                },
-                _ => {
-                    Err(Error::format("AWS error fetching '{}': {}", path, ))
-                }
+                RusotoError::Unknown(u) if u.status == StatusCode::FORBIDDEN => Ok(false),
+                _ => Err(Error::format("AWS error fetching '{}': {}", path)),
             }
         } else {
             Ok(true)
         }
     }
 
-    fn upsert_file<R:Read>(&self, path: &StorePath, stream: R, mime_type: &str) {
-
-    }
+    fn upsert_file<R: Read>(&self, path: &StorePath, stream: R, mime_type: &str) {}
 
     fn upsert_file(&self, path: &StorePath, data: &[u8], mime_type: &str) {
         let stream = Cursor::new(data);
@@ -132,11 +124,7 @@ impl BinaryCache for S3BinaryCache {
     }
 
     /* Dump the contents of the specified file to a sink. */
-    fn get_file(&self, path: &StorePath) -> Vec<u8> {
+    fn get_file(&self, path: &StorePath) -> Vec<u8> {}
 
-    }
-
-    fn query_all_valid_paths(&self) -> HashSet<StorePath> {
-
-    }
+    fn query_all_valid_paths(&self) -> HashSet<StorePath> {}
 }

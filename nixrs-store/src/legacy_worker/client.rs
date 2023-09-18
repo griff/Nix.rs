@@ -12,21 +12,22 @@ use nixrs_util::cancelled_reader::CancelledReader;
 use nixrs_util::hash::Hash;
 use nixrs_util::io::{AsyncSink, AsyncSource};
 use nixrs_util::taken_reader::{TakenReader, Taker};
-use tokio::io::{AsyncRead, AsyncWrite, copy, stderr};
+use tokio::io::{copy, stderr, AsyncRead, AsyncWrite};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::process::{ChildStdin, ChildStdout, ChildStderr, Command};
+use tokio::process::{ChildStderr, ChildStdin, ChildStdout, Command};
 use tokio::spawn;
 
-use crate::crypto::{SignatureSet, ParseSignatureError};
-use crate::legacy_worker::{LegacyStore, SERVE_MAGIC_1, SERVE_PROTOCOL_VERSION, SERVE_MAGIC_2, ServeCommand};
-use crate::store_api::{EXPORT_MAGIC, StoreDirProvider, Store};
+use crate::crypto::{ParseSignatureError, SignatureSet};
+use crate::legacy_worker::{
+    LegacyStore, ServeCommand, SERVE_MAGIC_1, SERVE_MAGIC_2, SERVE_PROTOCOL_VERSION,
+};
+use crate::store_api::{Store, StoreDirProvider, EXPORT_MAGIC};
 use crate::Error;
 use crate::StorePathWithOutputs;
 use crate::ValidPathInfo;
 use crate::{BasicDerivation, BuildResult, BuildStatus, CheckSignaturesFlag, DerivedPath};
 use crate::{BuildSettings, ParseStorePathError};
 use crate::{RepairFlag, StoreDir, StorePath, StorePathSet, SubstituteFlag};
-
 
 #[macro_export]
 macro_rules! get_protocol_major {
@@ -41,7 +42,6 @@ macro_rules! get_protocol_minor {
         ($x) & 0x00ff
     };
 }
-
 
 pub struct LegacyStoreBuilder {
     cmd: Command,
@@ -75,8 +75,12 @@ impl LegacyStoreBuilder {
         Ok(self)
     }
 
-    pub async fn connect_with_log<W>(self, mut build_log: W) -> Result<LegacyStoreClient<ChildStdout, ChildStdin, ChildStderr>, Error>
-        where W: AsyncWrite + Unpin + Send + 'static
+    pub async fn connect_with_log<W>(
+        self,
+        mut build_log: W,
+    ) -> Result<LegacyStoreClient<ChildStdout, ChildStdin, ChildStderr>, Error>
+    where
+        W: AsyncWrite + Unpin + Send + 'static,
     {
         let mut cmd = self.cmd;
         cmd.stdin(Stdio::piped());
@@ -88,16 +92,16 @@ impl LegacyStoreBuilder {
         let stderr = child.stderr.take().unwrap();
         let mut taken_reader = TakenReader::new(stderr);
         let stderr = taken_reader.taker();
-        spawn(async move {
-            copy(&mut taken_reader, &mut build_log).await
-        });
+        spawn(async move { copy(&mut taken_reader, &mut build_log).await });
 
         let mut store = LegacyStoreClient::new(self.store_dir, self.host, reader, writer, stderr);
         store.handshake().await?;
         Ok(store)
     }
 
-    pub async fn connect(self) -> Result<LegacyStoreClient<ChildStdout, ChildStdin, ChildStderr>, Error> {
+    pub async fn connect(
+        self,
+    ) -> Result<LegacyStoreClient<ChildStdout, ChildStdin, ChildStderr>, Error> {
         self.connect_with_log(stderr()).await
     }
 }
@@ -129,7 +133,13 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    pub fn new(store_dir: StoreDir, host: String, reader: R, writer: W, build_log: Taker<BR>) -> LegacyStoreClient<R, W, BR> {
+    pub fn new(
+        store_dir: StoreDir,
+        host: String,
+        reader: R,
+        writer: W,
+        build_log: Taker<BR>,
+    ) -> LegacyStoreClient<R, W, BR> {
         let sink = writer;
         let remote_version = None;
         LegacyStoreClient {
@@ -319,7 +329,7 @@ where
 
     async fn import_paths<SR: AsyncRead + Send + Unpin>(
         &mut self,
-        mut source: SR
+        mut source: SR,
     ) -> Result<(), Error> {
         debug!("Importing paths");
         let _remote_version = self.remote_version().await?;
@@ -384,7 +394,8 @@ where
         paths: &crate::StorePathSet,
         maybe_substitute: crate::SubstituteFlag,
     ) -> Result<crate::StorePathSet, crate::Error> {
-        self.query_valid_paths_locked(paths, false, maybe_substitute).await
+        self.query_valid_paths_locked(paths, false, maybe_substitute)
+            .await
     }
 
     async fn query_path_info(&mut self, path: &StorePath) -> Result<Option<ValidPathInfo>, Error> {
@@ -434,8 +445,11 @@ where
         } else {
             None
         };
-        let sigs : Vec<String> = self.source.read_string_coll().await?;
-        let sigs = sigs.iter().map(|s| s.parse() ).collect::<Result<SignatureSet, ParseSignatureError>>()?;
+        let sigs: Vec<String> = self.source.read_string_coll().await?;
+        let sigs = sigs
+            .iter()
+            .map(|s| s.parse())
+            .collect::<Result<SignatureSet, ParseSignatureError>>()?;
 
         let s = self.source.read_string().await?;
         assert_eq!(s, "");
@@ -503,7 +517,7 @@ where
             self.sink.write_time(info.registration_time).await?;
             self.sink.write_u64_le(info.nar_size).await?;
             self.sink.write_bool(info.ultimate).await?;
-            let sigs : Vec<String> = info.sigs.iter().map(ToString::to_string).collect();
+            let sigs: Vec<String> = info.sigs.iter().map(ToString::to_string).collect();
             self.sink.write_string_coll(&sigs).await?;
             if let Some(ca) = info.ca.as_ref() {
                 self.sink.write_str(&ca.to_string()).await?;
@@ -557,7 +571,6 @@ where
         Ok(())
     }
 
-    
     async fn build_derivation<BW: AsyncWrite + Send + Unpin>(
         &mut self,
         drv_path: &StorePath,
@@ -622,7 +635,6 @@ where
         Ok(status)
     }
 
-
     async fn build_paths<BW: AsyncWrite + Send + Unpin>(
         &mut self,
         drv_paths: &[DerivedPath],
@@ -674,7 +686,7 @@ where
             Ok(_) => {
                 eprintln!("Both completed");
                 Ok(())
-            },
+            }
             Err(err) => Err(err),
         }
     }

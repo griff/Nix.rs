@@ -1,15 +1,15 @@
 use async_trait::async_trait;
+use nixrs_store::legacy_worker::LegacyStore;
 use nixrs_store::Store;
 use nixrs_store::StoreDirProvider;
-use nixrs_store::legacy_worker::LegacyStore;
-use tokio::process::{ChildStdin, ChildStdout, ChildStderr};
+use tokio::process::{ChildStderr, ChildStdin, ChildStdout};
 
 use nixrs_store::copy_paths;
+use nixrs_store::legacy_worker::client::{LegacyStoreBuilder, LegacyStoreClient};
 use nixrs_store::Error;
 use nixrs_store::{BasicDerivation, CheckSignaturesFlag, DerivedPath, RepairFlag};
 use nixrs_store::{BuildResult, BuildSettings, StorePath, SubstituteFlag, ValidPathInfo};
 use nixrs_store::{StoreDir, StorePathSet};
-use nixrs_store::legacy_worker::client::{LegacyStoreClient, LegacyStoreBuilder};
 
 pub struct CachedStore {
     cache: LegacyStoreClient<ChildStdout, ChildStdin, ChildStderr>,
@@ -130,7 +130,9 @@ impl Store for CachedStore {
         let mut builder = b.connect().await?;
 
         copy_paths(&mut self.cache, &mut builder, &inputs).await?;
-        let result = builder.build_derivation(drv_path, drv, settings, build_log).await?;
+        let result = builder
+            .build_derivation(drv_path, drv, settings, build_log)
+            .await?;
 
         if result.success() {
             /*

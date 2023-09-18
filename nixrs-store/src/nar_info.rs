@@ -4,7 +4,7 @@ use nixrs_util::hash::{Hash, ParseHashError};
 use nixrs_util::io::StateParse;
 use thiserror::Error;
 
-use crate::crypto::{SignatureSet, ParseSignatureError};
+use crate::crypto::{ParseSignatureError, SignatureSet};
 use crate::{
     content_address::{ContentAddress, ParseContentAddressError},
     ParseStorePathError, StoreDir, StorePath, StorePathSet, ValidPathInfo,

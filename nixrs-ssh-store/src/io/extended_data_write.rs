@@ -1,10 +1,10 @@
 use std::io;
 use std::pin::Pin;
-use std::task::{Context, Poll, ready};
+use std::task::{ready, Context, Poll};
 
 use log::debug;
-use thrussh::{ChannelId, CryptoVec};
 use thrussh::server::Handle;
+use thrussh::{ChannelId, CryptoVec};
 use tokio::io::AsyncWrite;
 
 async fn make_ext_data_write_fut(
@@ -13,9 +13,7 @@ async fn make_ext_data_write_fut(
     data: Option<(Handle, CryptoVec)>,
 ) -> Result<(), CryptoVec> {
     match data {
-        Some((mut handle, data)) => {
-            handle.extended_data(id, ext, data).await
-        },
+        Some((mut handle, data)) => handle.extended_data(id, ext, data).await,
         None => unreachable!("this future should not be pollable in this state"),
     }
 }
@@ -31,9 +29,13 @@ pub struct ExtendedDataWrite {
 impl ExtendedDataWrite {
     pub fn new(id: ChannelId, ext: u32, handle: Handle) -> ExtendedDataWrite {
         ExtendedDataWrite {
-            id, ext, handle,
+            id,
+            ext,
+            handle,
             is_write_fut_valid: false,
-            write_fut: tokio_util::sync::ReusableBoxFuture::new(make_ext_data_write_fut(id, ext, None)),
+            write_fut: tokio_util::sync::ReusableBoxFuture::new(make_ext_data_write_fut(
+                id, ext, None,
+            )),
         }
     }
 }
@@ -55,8 +57,11 @@ impl AsyncWrite for ExtendedDataWrite {
         let id = self.id;
         let ext = self.ext;
         let handle = self.handle.clone();
-        self.write_fut
-            .set(make_ext_data_write_fut(id, ext, Some((handle, CryptoVec::from_slice(buf)))));
+        self.write_fut.set(make_ext_data_write_fut(
+            id,
+            ext,
+            Some((handle, CryptoVec::from_slice(buf))),
+        ));
         self.is_write_fut_valid = true;
         Poll::Ready(Ok(buf.len()))
     }

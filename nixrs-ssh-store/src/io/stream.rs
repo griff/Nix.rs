@@ -5,7 +5,7 @@
 use super::read_buffer::ReadBuffer;
 use std::io;
 use std::pin::Pin;
-use std::task::{Poll, ready};
+use std::task::{ready, Poll};
 
 use log::debug;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -17,12 +17,8 @@ pub struct ChannelRead {
     readbuf: ReadBuffer,
 }
 
-
 impl ChannelRead {
-    pub fn new() -> (
-        Self,
-        mpsc::UnboundedSender<Vec<u8>>,
-    ) {
+    pub fn new() -> (Self, mpsc::UnboundedSender<Vec<u8>>) {
         let (w_tx, w_rx) = mpsc::unbounded_channel();
         (
             ChannelRead {
@@ -42,10 +38,7 @@ pub struct ChannelWrite {
 }
 
 impl ChannelWrite {
-    pub fn new() -> (
-        Self,
-        mpsc::UnboundedReceiver<Vec<u8>>,
-    ) {
+    pub fn new() -> (Self, mpsc::UnboundedReceiver<Vec<u8>>) {
         let (r_tx, r_rx) = mpsc::unbounded_channel();
         (
             ChannelWrite {
@@ -113,7 +106,7 @@ impl AsyncWrite for ChannelWrite {
     ) -> Poll<Result<(), io::Error>> {
         if let Err(err) = self.outgoing.send("".into()) {
             let err = format!("{err:?}");
-            return Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, err)))
+            return Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, err)));
         }
         Poll::Ready(Ok(()))
     }

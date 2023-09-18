@@ -1,6 +1,9 @@
 use std::{future::Future, task::Poll};
 
-use futures::{future::{FusedFuture, Fuse}, FutureExt};
+use futures::{
+    future::{Fuse, FusedFuture},
+    FutureExt,
+};
 use pin_project_lite::pin_project;
 use tokio::{io::AsyncRead, sync::oneshot};
 
@@ -18,7 +21,7 @@ pin_project! {
         reader: R,
         #[pin]
         cancel: Fuse<oneshot::Receiver<()>>,
-    }   
+    }
 }
 impl<R> CancelledReader<R> {
     pub fn new(reader: R) -> (CancelledReader<R>, CancelToken) {
@@ -46,21 +49,19 @@ impl<R: AsyncRead> AsyncRead for CancelledReader<R> {
             Poll::Ready(Ok(_)) => {
                 eprintln!("Reader ready {}", buf.filled().len());
                 Poll::Ready(Ok(()))
-            },
+            }
             Poll::Ready(Err(err)) => {
                 eprintln!("Reader error {:?}", err);
                 Poll::Ready(Err(err))
-            },
-            Poll::Pending => {
-                match this.cancel.poll(cx) {
-                    Poll::Ready(_) => {
-                        eprintln!("Cancel ready");
-                        Poll::Ready(Ok(()))
-                    }
-                    Poll::Pending => {
-                        eprintln!("Both pending");
-                        Poll::Pending
-                    }
+            }
+            Poll::Pending => match this.cancel.poll(cx) {
+                Poll::Ready(_) => {
+                    eprintln!("Cancel ready");
+                    Poll::Ready(Ok(()))
+                }
+                Poll::Pending => {
+                    eprintln!("Both pending");
+                    Poll::Pending
                 }
             },
         }
@@ -71,7 +72,7 @@ impl<R: AsyncRead> AsyncRead for CancelledReader<R> {
 mod tests {
     use std::io;
 
-    use tokio::io::{AsyncWriteExt, AsyncReadExt, DuplexStream};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
     use tokio::spawn;
 
     use super::*;
@@ -94,7 +95,6 @@ mod tests {
         assert_eq!(&buf, b"completed");
     }
 
-
     #[tokio::test]
     async fn read_data2() {
         let (mut client, server) = tokio::io::duplex(64);
@@ -108,7 +108,7 @@ mod tests {
         let join = spawn(async move {
             let mut buf = Vec::new();
             reader.read_to_end(&mut buf).await?;
-            
+
             Ok((buf, reader.into_inner())) as io::Result<(Vec<u8>, DuplexStream)>
         });
         eprintln!("Cancel");
@@ -123,5 +123,5 @@ mod tests {
         let mut buf = Vec::new();
         reader.read_to_end(&mut buf).await.unwrap();
         assert_eq!(&buf, b"completed");
-}
+    }
 }

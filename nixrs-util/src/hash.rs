@@ -14,7 +14,7 @@ const MD5_SIZE: usize = 128 / 8;
 const SHA1_SIZE: usize = 160 / 8;
 const SHA256_SIZE: usize = 256 / 8;
 const SHA512_SIZE: usize = 512 / 8;
-const LARGEST_ALGORITHM : Algorithm = Algorithm::SHA512;
+const LARGEST_ALGORITHM: Algorithm = Algorithm::SHA512;
 const MAX_SIZE: usize = LARGEST_ALGORITHM.size();
 
 /// A digest algorithm.
@@ -58,7 +58,7 @@ impl Algorithm {
     /// Returns the length of a base-32 representation of this hash.
     #[inline]
     pub const fn base32_len(&self) -> usize {
-        return base32::encoded_len(self.size())
+        return base32::encoded_len(self.size());
     }
 
     /// Returns the length of a base-64 representation of this hash.
@@ -185,7 +185,7 @@ impl Hash {
 
     pub fn from_slice(algorithm: Algorithm, hash: &[u8]) -> Result<Hash, ParseHashError> {
         if hash.len() != algorithm.size() {
-            return Err(ParseHashError::WrongHashLength2(algorithm, hash.len()))
+            return Err(ParseHashError::WrongHashLength2(algorithm, hash.len()));
         }
         Ok(Hash::new(algorithm, hash))
     }
@@ -592,7 +592,7 @@ impl tokio::io::AsyncWrite for HashSink {
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
     use super::*;
-    use ::proptest::prelude::*;
+    use proptest::prelude::*;
 
     impl Arbitrary for Algorithm {
         type Parameters = ();

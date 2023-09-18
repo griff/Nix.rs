@@ -1,30 +1,23 @@
 use std::io;
 use std::pin::Pin;
-use std::task::{Context, Poll, ready};
+use std::task::{ready, Context, Poll};
 
-use log::{debug, trace, error};
-use thrussh::{ChannelId, CryptoVec};
+use log::{debug, error, trace};
 use thrussh::server::Handle;
+use thrussh::{ChannelId, CryptoVec};
 use tokio::io::AsyncWrite;
 
-
-async fn make_eof_fut(
-    id: ChannelId,
-    data: Option<Handle>,
-) -> Result<(), ()> {
+async fn make_eof_fut(id: ChannelId, data: Option<Handle>) -> Result<(), ()> {
     match data {
         Some(mut handle) => {
             debug!("Sending EOF on stdout");
             handle.eof(id).await
-        },
+        }
         None => unreachable!("this future should not be pollable in this state"),
     }
 }
 
-async fn make_data_write_fut(
-    id: ChannelId,
-    data: Option<(Handle, CryptoVec)>,
-) -> io::Result<()> {
+async fn make_data_write_fut(id: ChannelId, data: Option<(Handle, CryptoVec)>) -> io::Result<()> {
     match data {
         Some((mut handle, data)) => {
             let len = data.len();
@@ -39,7 +32,7 @@ async fn make_data_write_fut(
                     Err(io::Error::new(io::ErrorKind::BrokenPipe, "Channel closed"))
                 }
             }
-        },
+        }
         None => unreachable!("this future should not be pollable in this state"),
     }
 }
@@ -56,7 +49,8 @@ pub struct DataWrite {
 impl DataWrite {
     pub fn new(id: ChannelId, handle: Handle) -> DataWrite {
         DataWrite {
-            id, handle,
+            id,
+            handle,
             is_write_fut_valid: false,
             write_fut: tokio_util::sync::ReusableBoxFuture::new(make_data_write_fut(id, None)),
             is_eof_fut_valid: false,
@@ -76,8 +70,10 @@ impl AsyncWrite for DataWrite {
         trace!("Poll write DataWrite {}", buf.len());
         let id = self.id;
         let handle = self.handle.clone();
-        self.write_fut
-            .set(make_data_write_fut(id, Some((handle, CryptoVec::from_slice(buf)))));
+        self.write_fut.set(make_data_write_fut(
+            id,
+            Some((handle, CryptoVec::from_slice(buf))),
+        ));
         self.is_write_fut_valid = true;
         Poll::Ready(Ok(buf.len()))
     }
@@ -101,14 +97,16 @@ impl AsyncWrite for DataWrite {
         }
     }
 
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), io::Error>> {
         ready!(self.as_mut().poll_flush(cx))?;
 
         if !self.is_eof_fut_valid {
             let id = self.id;
             let handle = self.handle.clone();
-            self.eof_fut
-                .set(make_eof_fut(id, Some(handle)));
+            self.eof_fut.set(make_eof_fut(id, Some(handle)));
             self.is_eof_fut_valid = true;
         }
 

@@ -84,8 +84,8 @@ impl Default for BuildSettings {
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
     use super::*;
-    use ::proptest::prelude::*;
     use nixrs_util::proptest::arb_duration;
+    use proptest::prelude::*;
 
     impl Arbitrary for BuildSettings {
         type Parameters = ();

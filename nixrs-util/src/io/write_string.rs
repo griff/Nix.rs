@@ -12,12 +12,10 @@ use super::write_all::{write_all, WriteAll};
 use super::write_int::WriteU64;
 use super::STATIC_PADDING;
 
-
 pub(crate) fn write_string<W>(dst: W, s: String) -> WriteString<W> {
     let len = s.as_bytes().len();
     WriteString::WriteSize(s, WriteU64::new(dst, len as u64))
 }
-
 
 #[derive(Debug)]
 pub enum WriteString<W> {
@@ -27,7 +25,6 @@ pub enum WriteString<W> {
     WritePadding(WriteAll<'static, W>),
     Done(W),
 }
-
 
 impl<W> WriteString<W> {
     pub fn inner(self) -> W {
@@ -84,8 +81,10 @@ where
                             break;
                         }
                     }
-                    *self =
-                    WriteString::WritePadding(write_all(writer, &STATIC_PADDING[..padding as usize]));
+                    *self = WriteString::WritePadding(write_all(
+                        writer,
+                        &STATIC_PADDING[..padding as usize],
+                    ));
                 }
                 WriteString::WritePadding(mut writer) => {
                     match Pin::new(&mut writer).poll(cx) {
@@ -102,4 +101,3 @@ where
         }
     }
 }
-

@@ -1,8 +1,7 @@
-
 use async_trait::async_trait;
-use tokio::io::{AsyncWrite, AsyncRead};
+use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::{Error, store_api::Store, StorePathSet, SubstituteFlag};
+use crate::{store_api::Store, Error, StorePathSet, SubstituteFlag};
 
 #[async_trait]
 pub trait LegacyStore: Store {
@@ -25,7 +24,7 @@ pub trait LegacyStore: Store {
     ) -> Result<(), Error>;
     async fn import_paths<SR: AsyncRead + Send + Unpin>(
         &mut self,
-        mut source:SR
+        mut source: SR,
     ) -> Result<(), Error>;
     async fn query_closure(
         &mut self,
