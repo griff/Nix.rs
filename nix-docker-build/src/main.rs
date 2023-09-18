@@ -60,7 +60,7 @@ pub fn main() {
         .block_on(async move {
             let store =
                 CachedStore::connect(store_uri, docker_bin, nix_store_bin, write_allowed).await?;
-            nixrs_store::nix_store::serve(source, out, store, build_log, write_allowed).await
+            nixrs_store::legacy_worker::server::run(source, out, store, build_log, write_allowed).await
         });
 
     if let Err(e) = res {

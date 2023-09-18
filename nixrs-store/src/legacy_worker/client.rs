@@ -1,12 +1,10 @@
 use std::convert::TryInto;
 use std::ffi::OsStr;
-use std::fmt;
 use std::path::Path;
 use std::process::Stdio;
 use std::time::SystemTime;
 
 use async_trait::async_trait;
-use derive_more::{LowerHex, UpperHex};
 use futures::TryFutureExt;
 use log::{debug, trace};
 use nixrs_util::archive::copy_nar;
@@ -19,19 +17,16 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{ChildStdin, ChildStdout, ChildStderr, Command};
 use tokio::spawn;
 
-use crate::store_api::EXPORT_MAGIC;
+use crate::crypto::{SignatureSet, ParseSignatureError};
+use crate::legacy_worker::{LegacyStore, SERVE_MAGIC_1, SERVE_PROTOCOL_VERSION, SERVE_MAGIC_2, ServeCommand};
+use crate::store_api::{EXPORT_MAGIC, StoreDirProvider, Store};
 use crate::Error;
 use crate::StorePathWithOutputs;
 use crate::ValidPathInfo;
 use crate::{BasicDerivation, BuildResult, BuildStatus, CheckSignaturesFlag, DerivedPath};
 use crate::{BuildSettings, ParseStorePathError};
-use crate::{RepairFlag, Store, StoreDir, StorePath, StorePathSet, SubstituteFlag};
-use nixrs_util::num_enum;
+use crate::{RepairFlag, StoreDir, StorePath, StorePathSet, SubstituteFlag};
 
-pub const SERVE_MAGIC_1: u64 = 0x390c9deb;
-pub const SERVE_MAGIC_2: u64 = 0x5452eecb;
-
-pub const SERVE_PROTOCOL_VERSION: u64 = 2 << 8 | 6;
 
 #[macro_export]
 macro_rules! get_protocol_major {
@@ -47,39 +42,6 @@ macro_rules! get_protocol_minor {
     };
 }
 
-num_enum! {
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, UpperHex, LowerHex)]
-    pub enum ServeCommand {
-        Unknown(u64),
-        CmdQueryValidPaths = 1,
-        CmdQueryPathInfos = 2,
-        CmdDumpStorePath = 3,
-        CmdImportPaths = 4,
-        CmdExportPaths = 5,
-        CmdBuildPaths = 6,
-        CmdQueryClosure = 7,
-        CmdBuildDerivation = 8,
-        CmdAddToStoreNar = 9
-    }
-}
-
-impl fmt::Display for ServeCommand {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use ServeCommand::*;
-        match self {
-            Unknown(cmd) => write!(f, "unknown command {}", cmd),
-            CmdQueryValidPaths => write!(f, "query valid paths"),
-            CmdQueryPathInfos => write!(f, "query path infos"),
-            CmdDumpStorePath => write!(f, "dump store path"),
-            CmdImportPaths => write!(f, "import paths"),
-            CmdExportPaths => write!(f, "exports paths"),
-            CmdBuildPaths => write!(f, "build paths"),
-            CmdQueryClosure => write!(f, "query closure"),
-            CmdBuildDerivation => write!(f, "build derviation"),
-            CmdAddToStoreNar => write!(f, "add to store"),
-        }
-    }
-}
 
 pub struct LegacyStoreBuilder {
     cmd: Command,
@@ -113,7 +75,7 @@ impl LegacyStoreBuilder {
         Ok(self)
     }
 
-    pub async fn connect_with_log<W>(self, mut build_log: W) -> Result<LegacyLocalStore<ChildStdout, ChildStdin, ChildStderr>, Error>
+    pub async fn connect_with_log<W>(self, mut build_log: W) -> Result<LegacyStoreClient<ChildStdout, ChildStdin, ChildStderr>, Error>
         where W: AsyncWrite + Unpin + Send + 'static
     {
         let mut cmd = self.cmd;
@@ -130,17 +92,17 @@ impl LegacyStoreBuilder {
             copy(&mut taken_reader, &mut build_log).await
         });
 
-        let mut store = LegacyLocalStore::new(self.store_dir, self.host, reader, writer, stderr);
+        let mut store = LegacyStoreClient::new(self.store_dir, self.host, reader, writer, stderr);
         store.handshake().await?;
         Ok(store)
     }
 
-    pub async fn connect(self) -> Result<LegacyLocalStore<ChildStdout, ChildStdin, ChildStderr>, Error> {
+    pub async fn connect(self) -> Result<LegacyStoreClient<ChildStdout, ChildStdin, ChildStderr>, Error> {
         self.connect_with_log(stderr()).await
     }
 }
 
-pub struct LegacyLocalStore<R, W, BR> {
+pub struct LegacyStoreClient<R, W, BR> {
     host: String,
     store_dir: StoreDir,
     source: R,
@@ -149,10 +111,10 @@ pub struct LegacyLocalStore<R, W, BR> {
     build_log: Taker<BR>,
 }
 
-impl LegacyLocalStore<ChildStdout, ChildStdin, ChildStderr> {
+impl LegacyStoreClient<ChildStdout, ChildStdin, ChildStderr> {
     pub async fn connect(
         write_allowed: bool,
-    ) -> Result<LegacyLocalStore<ChildStdout, ChildStdin, ChildStderr>, Error> {
+    ) -> Result<LegacyStoreClient<ChildStdout, ChildStdin, ChildStderr>, Error> {
         let mut b = LegacyStoreBuilder::new("nix-store");
         b.command_mut().arg("--serve");
         if write_allowed {
@@ -162,15 +124,15 @@ impl LegacyLocalStore<ChildStdout, ChildStdin, ChildStderr> {
     }
 }
 
-impl<R, W, BR> LegacyLocalStore<R, W, BR>
+impl<R, W, BR> LegacyStoreClient<R, W, BR>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    pub fn new(store_dir: StoreDir, host: String, reader: R, writer: W, build_log: Taker<BR>) -> LegacyLocalStore<R, W, BR> {
+    pub fn new(store_dir: StoreDir, host: String, reader: R, writer: W, build_log: Taker<BR>) -> LegacyStoreClient<R, W, BR> {
         let sink = writer;
         let remote_version = None;
-        LegacyLocalStore {
+        LegacyStoreClient {
             store_dir,
             source: reader,
             sink,
@@ -208,95 +170,93 @@ where
     }
 }
 
-#[async_trait(?Send)]
-impl<R, W, BR> Store for LegacyLocalStore<R, W, BR>
-where
-    R: AsyncRead + Unpin,
-    W: AsyncWrite + Unpin,
-    BR: AsyncRead + Unpin + Send + 'static,
-{
+impl<R, W, BR> StoreDirProvider for LegacyStoreClient<R, W, BR> {
     fn store_dir(&self) -> StoreDir {
         self.store_dir.clone()
     }
+}
 
-    async fn query_path_info(&mut self, path: &StorePath) -> Result<ValidPathInfo, Error> {
+#[async_trait]
+impl<R, W, BR> LegacyStore for LegacyStoreClient<R, W, BR>
+where
+    R: AsyncRead + Send + Unpin + 'static,
+    W: AsyncWrite + Send + Unpin + 'static,
+    BR: AsyncRead + Send + Unpin + 'static,
+{
+    /*
+    async fn query_path_infos(
+        &mut self,
+        paths: &StorePathSet
+    ) -> Result<BTreeSet<ValidPathInfo>, Error> {
         let remote_version = self.remote_version().await?;
         /* No longer support missing NAR hash */
         assert!(get_protocol_minor!(remote_version) >= 4);
 
-        let store_dir = self.store_dir.clone();
-        debug!(
-            "querying remote host '{}' for info on '{}'",
-            self.host,
-            store_dir.print_path(path)
-        );
+        let mut ret = BTreeSet::new();
+        for path in paths.iter() {
+            let store_dir = self.store_dir.clone();
+            debug!(
+                "querying remote host '{}' for info on '{}'",
+                self.host,
+                store_dir.print_path(path)
+            );
 
-        self.sink
-            .write_enum(ServeCommand::CmdQueryPathInfos)
-            .await?;
-        self.sink.write_u64_le(1).await?;
-        self.sink.write_printed(&store_dir, path).await?;
-        self.sink.flush().await?;
+            self.sink
+                .write_enum(ServeCommand::CmdQueryPathInfos)
+                .await?;
+            self.sink.write_u64_le(1).await?;
+            self.sink.write_printed(&store_dir, path).await?;
+            self.sink.flush().await?;
 
-        let p = self.source.read_string().await?;
-        if p == "" {
-            return Err(Error::InvalidPath(store_dir.print_path(path)));
+            let p = self.source.read_string().await?;
+            if p != "" {
+                let path2 = store_dir.parse_path(&p)?;
+                assert_eq!(path, &path2);
+
+                let deriver = self.source.read_string().await?;
+                let deriver = if deriver != "" {
+                    Some(store_dir.parse_path(&deriver)?)
+                } else {
+                    None
+                };
+                let references = self.source.read_parsed_coll(&store_dir).await?;
+                self.source.read_u64_le().await?; // download size
+                let nar_size = self.source.read_u64_le().await?;
+
+                let s = self.source.read_string().await?;
+                if s == "" {
+                    return Err(Error::MandatoryNARHash);
+                }
+                let nar_hash: Hash = s.parse()?;
+                let ca_s = self.source.read_string().await?;
+                let ca = if ca_s != "" {
+                    Some(ca_s.parse()?)
+                } else {
+                    None
+                };
+                let sigs : Vec<String> = self.source.read_string_coll().await?;
+                let sigs = sigs.iter().map(|s| s.parse() ).collect::<Result<SignatureSet, ParseSignatureError>>()?;
+
+                let s = self.source.read_string().await?;
+                assert_eq!(s, "");
+                ret.insert(ValidPathInfo {
+                    path: path2,
+                    deriver,
+                    references,
+                    nar_size,
+                    nar_hash,
+                    ca,
+                    sigs,
+                    ultimate: false,
+                    registration_time: SystemTime::UNIX_EPOCH,
+                });
+            }
         }
-        let path2 = store_dir.parse_path(&p)?;
-        assert_eq!(path, &path2);
-
-        let deriver = self.source.read_string().await?;
-        let deriver = if deriver != "" {
-            Some(store_dir.parse_path(&deriver)?)
-        } else {
-            None
-        };
-        let references = self.source.read_parsed_coll(&store_dir).await?;
-        self.source.read_u64_le().await?; // download size
-        let nar_size = self.source.read_u64_le().await?;
-
-        let s = self.source.read_string().await?;
-        if s == "" {
-            return Err(Error::MandatoryNARHash);
-        }
-        let nar_hash: Hash = s.parse()?;
-        let ca_s = self.source.read_string().await?;
-        let ca = if ca_s != "" {
-            Some(ca_s.parse()?)
-        } else {
-            None
-        };
-        let sigs = self.source.read_string_coll().await?;
-
-        let s = self.source.read_string().await?;
-        assert_eq!(s, "");
-        Ok(ValidPathInfo {
-            path: path2,
-            deriver,
-            references,
-            nar_size,
-            nar_hash,
-            ca,
-            sigs,
-            ultimate: false,
-            registration_time: SystemTime::UNIX_EPOCH,
-        })
+        Ok(ret)
     }
+    */
 
-    async fn query_valid_paths(
-        &mut self,
-        paths: &StorePathSet,
-        maybe_substitute: SubstituteFlag,
-    ) -> Result<StorePathSet, Error> {
-        self.legacy_query_valid_paths(paths, false, maybe_substitute)
-            .await
-    }
-
-    async fn add_temp_root(&self, _path: &StorePath) {
-        unimplemented!()
-    }
-
-    async fn legacy_query_valid_paths(
+    async fn query_valid_paths_locked(
         &mut self,
         paths: &StorePathSet,
         lock: bool,
@@ -319,27 +279,7 @@ where
         Ok(paths)
     }
 
-    async fn nar_from_path<SW>(&mut self, path: &StorePath, writer: SW) -> Result<(), Error>
-    where
-        SW: AsyncWrite + Unpin,
-    {
-        debug!("Sending NAR for path {}", path);
-        let _remote_version = self.remote_version().await?;
-        let store_dir = self.store_dir.clone();
-        self.sink.write_enum(ServeCommand::CmdDumpStorePath).await?;
-        self.sink.write_printed(&store_dir, path).await?;
-        self.sink.flush().await?;
-
-        debug!("Write Command for {}", path);
-
-        copy_nar(&mut self.source, writer).await?;
-
-        debug!("Completed NAR for path {}", path);
-
-        Ok(())
-    }
-
-    async fn export_paths<SW: AsyncWrite + Unpin>(
+    async fn export_paths<SW: AsyncWrite + Send + Unpin>(
         &mut self,
         paths: &StorePathSet,
         mut sink: SW,
@@ -377,7 +317,10 @@ where
         Ok(())
     }
 
-    async fn import_paths<SR: AsyncRead + Unpin>(&mut self, mut source: SR) -> Result<(), Error> {
+    async fn import_paths<SR: AsyncRead + Send + Unpin>(
+        &mut self,
+        mut source: SR
+    ) -> Result<(), Error> {
         debug!("Importing paths");
         let _remote_version = self.remote_version().await?;
         let store_dir = self.store_dir.clone();
@@ -410,7 +353,212 @@ where
         Ok(())
     }
 
-    async fn build_derivation<BW: AsyncWrite + Unpin>(
+    async fn query_closure(
+        &mut self,
+        paths: &StorePathSet,
+        include_outputs: bool,
+    ) -> Result<StorePathSet, Error> {
+        debug!(
+            "Query the closure include_outputs={} of {:?}",
+            include_outputs, paths
+        );
+        let _remote_version = self.remote_version().await?;
+        let store_dir = self.store_dir.clone();
+        self.sink.write_enum(ServeCommand::CmdQueryClosure).await?;
+        self.sink.write_bool(include_outputs).await?;
+        self.sink.write_printed_coll(&store_dir, paths).await?;
+        self.sink.flush().await?;
+        Ok(self.source.read_parsed_coll(&store_dir).await?)
+    }
+}
+
+#[async_trait]
+impl<R, W, BR> Store for LegacyStoreClient<R, W, BR>
+where
+    R: AsyncRead + Unpin + Send + 'static,
+    W: AsyncWrite + Unpin + Send + 'static,
+    BR: AsyncRead + Unpin + Send + 'static,
+{
+    async fn query_valid_paths(
+        &mut self,
+        paths: &crate::StorePathSet,
+        maybe_substitute: crate::SubstituteFlag,
+    ) -> Result<crate::StorePathSet, crate::Error> {
+        self.query_valid_paths_locked(paths, false, maybe_substitute).await
+    }
+
+    async fn query_path_info(&mut self, path: &StorePath) -> Result<Option<ValidPathInfo>, Error> {
+        let remote_version = self.remote_version().await?;
+        /* No longer support missing NAR hash */
+        assert!(get_protocol_minor!(remote_version) >= 4);
+
+        let store_dir = self.store_dir.clone();
+        debug!(
+            "querying remote host '{}' for info on '{}'",
+            self.host,
+            store_dir.print_path(path)
+        );
+
+        self.sink
+            .write_enum(ServeCommand::CmdQueryPathInfos)
+            .await?;
+        self.sink.write_u64_le(1).await?;
+        self.sink.write_printed(&store_dir, path).await?;
+        self.sink.flush().await?;
+
+        let p = self.source.read_string().await?;
+        if p == "" {
+            return Ok(None);
+        }
+        let path2 = store_dir.parse_path(&p)?;
+        assert_eq!(path, &path2);
+
+        let deriver = self.source.read_string().await?;
+        let deriver = if deriver != "" {
+            Some(store_dir.parse_path(&deriver)?)
+        } else {
+            None
+        };
+        let references = self.source.read_parsed_coll(&store_dir).await?;
+        self.source.read_u64_le().await?; // download size
+        let nar_size = self.source.read_u64_le().await?;
+
+        let s = self.source.read_string().await?;
+        if s == "" {
+            return Err(Error::MandatoryNARHash);
+        }
+        let nar_hash: Hash = s.parse()?;
+        let ca_s = self.source.read_string().await?;
+        let ca = if ca_s != "" {
+            Some(ca_s.parse()?)
+        } else {
+            None
+        };
+        let sigs : Vec<String> = self.source.read_string_coll().await?;
+        let sigs = sigs.iter().map(|s| s.parse() ).collect::<Result<SignatureSet, ParseSignatureError>>()?;
+
+        let s = self.source.read_string().await?;
+        assert_eq!(s, "");
+        Ok(Some(ValidPathInfo {
+            path: path2,
+            deriver,
+            references,
+            nar_size,
+            nar_hash,
+            ca,
+            sigs,
+            ultimate: false,
+            registration_time: SystemTime::UNIX_EPOCH,
+        }))
+    }
+
+    async fn nar_from_path<SW>(&mut self, path: &StorePath, writer: SW) -> Result<(), Error>
+    where
+        SW: AsyncWrite + Send + Unpin,
+    {
+        debug!("Sending NAR for path {}", path);
+        let _remote_version = self.remote_version().await?;
+        let store_dir = self.store_dir.clone();
+        self.sink.write_enum(ServeCommand::CmdDumpStorePath).await?;
+        self.sink.write_printed(&store_dir, path).await?;
+        self.sink.flush().await?;
+
+        debug!("Write Command for {}", path);
+
+        copy_nar(&mut self.source, writer).await?;
+
+        debug!("Completed NAR for path {}", path);
+
+        Ok(())
+    }
+
+    async fn add_to_store<SR: AsyncRead + Send + Unpin>(
+        &mut self,
+        info: &ValidPathInfo,
+        source: SR,
+        _repair: RepairFlag,
+        _check_sigs: CheckSignaturesFlag,
+    ) -> Result<(), Error> {
+        let remote_version = self.remote_version().await?;
+        let store_dir = self.store_dir.clone();
+        debug!(
+            "adding path '{}' to remote host '{}'",
+            store_dir.print_path(&info.path),
+            self.host
+        );
+        if get_protocol_minor!(remote_version) >= 5 {
+            self.sink.write_enum(ServeCommand::CmdAddToStoreNar).await?;
+            self.sink.write_printed(&store_dir, &info.path).await?;
+            if let Some(deriver) = info.deriver.as_ref() {
+                self.sink.write_printed(&store_dir, deriver).await?;
+            } else {
+                self.sink.write_str("").await?;
+            }
+            self.sink
+                .write_str(&format!("{:#x}", info.nar_hash))
+                .await?;
+            self.sink
+                .write_printed_coll(&store_dir, &info.references)
+                .await?;
+            self.sink.write_time(info.registration_time).await?;
+            self.sink.write_u64_le(info.nar_size).await?;
+            self.sink.write_bool(info.ultimate).await?;
+            let sigs : Vec<String> = info.sigs.iter().map(ToString::to_string).collect();
+            self.sink.write_string_coll(&sigs).await?;
+            if let Some(ca) = info.ca.as_ref() {
+                self.sink.write_str(&ca.to_string()).await?;
+            } else {
+                self.sink.write_str("").await?;
+            }
+
+            // TODO: Handle exceptions
+            //try {
+            copy_nar(source, &mut self.sink).await?;
+            //} catch (...) {
+            //    conn->good = false;
+            //    throw;
+            //}
+
+            self.sink.flush().await?;
+        } else {
+            self.sink.write_enum(ServeCommand::CmdImportPaths).await?;
+            self.sink.write_u64_le(1).await?;
+
+            // TODO: Handle exceptions
+            //try {
+            copy_nar(source, &mut self.sink).await?;
+            //} catch (...) {
+            //    conn->good = false;
+            //    throw;
+            //}
+            self.sink.write_u64_le(EXPORT_MAGIC).await?;
+            self.sink.write_printed(&store_dir, &info.path).await?;
+            self.sink
+                .write_printed_coll(&store_dir, &info.references)
+                .await?;
+            if let Some(deriver) = info.deriver.as_ref() {
+                self.sink.write_printed(&store_dir, deriver).await?;
+            } else {
+                self.sink.write_str("").await?;
+            }
+            self.sink.write_u64_le(0).await?;
+            self.sink.write_u64_le(0).await?;
+            self.sink.flush().await?;
+        }
+
+        let success = self.source.read_u64_le().await?;
+        if success != 1 {
+            return Err(Error::FailedToAddToStore(
+                store_dir.print_path(&info.path),
+                self.host.clone(),
+            ));
+        }
+
+        Ok(())
+    }
+
+    
+    async fn build_derivation<BW: AsyncWrite + Send + Unpin>(
         &mut self,
         drv_path: &StorePath,
         drv: &BasicDerivation,
@@ -474,7 +622,8 @@ where
         Ok(status)
     }
 
-    async fn build_paths<BW: AsyncWrite + Unpin>(
+
+    async fn build_paths<BW: AsyncWrite + Send + Unpin>(
         &mut self,
         drv_paths: &[DerivedPath],
         settings: &BuildSettings,
@@ -528,109 +677,6 @@ where
             },
             Err(err) => Err(err),
         }
-
-    }
-
-    async fn add_to_store<SR: AsyncRead + Unpin>(
-        &mut self,
-        info: &ValidPathInfo,
-        source: SR,
-        _repair: RepairFlag,
-        _check_sigs: CheckSignaturesFlag,
-    ) -> Result<(), Error> {
-        let remote_version = self.remote_version().await?;
-        let store_dir = self.store_dir.clone();
-        debug!(
-            "adding path '{}' to remote host '{}'",
-            store_dir.print_path(&info.path),
-            self.host
-        );
-        if get_protocol_minor!(remote_version) >= 5 {
-            self.sink.write_enum(ServeCommand::CmdAddToStoreNar).await?;
-            self.sink.write_printed(&store_dir, &info.path).await?;
-            if let Some(deriver) = info.deriver.as_ref() {
-                self.sink.write_printed(&store_dir, deriver).await?;
-            } else {
-                self.sink.write_str("").await?;
-            }
-            self.sink
-                .write_str(&format!("{:#x}", info.nar_hash))
-                .await?;
-            self.sink
-                .write_printed_coll(&store_dir, &info.references)
-                .await?;
-            self.sink.write_time(info.registration_time).await?;
-            self.sink.write_u64_le(info.nar_size).await?;
-            self.sink.write_bool(info.ultimate).await?;
-            self.sink.write_string_coll(&info.sigs).await?;
-            if let Some(ca) = info.ca.as_ref() {
-                self.sink.write_str(&ca.to_string()).await?;
-            } else {
-                self.sink.write_str("").await?;
-            }
-
-            // TODO: Handle exceptions
-            //try {
-            copy_nar(source, &mut self.sink).await?;
-            //} catch (...) {
-            //    conn->good = false;
-            //    throw;
-            //}
-
-            self.sink.flush().await?;
-        } else {
-            self.sink.write_enum(ServeCommand::CmdImportPaths).await?;
-            self.sink.write_u64_le(1).await?;
-
-            // TODO: Handle exceptions
-            //try {
-            copy_nar(source, &mut self.sink).await?;
-            //} catch (...) {
-            //    conn->good = false;
-            //    throw;
-            //}
-            self.sink.write_u64_le(EXPORT_MAGIC).await?;
-            self.sink.write_printed(&store_dir, &info.path).await?;
-            self.sink
-                .write_printed_coll(&store_dir, &info.references)
-                .await?;
-            if let Some(deriver) = info.deriver.as_ref() {
-                self.sink.write_printed(&store_dir, deriver).await?;
-            } else {
-                self.sink.write_str("").await?;
-            }
-            self.sink.write_u64_le(0).await?;
-            self.sink.write_u64_le(0).await?;
-            self.sink.flush().await?;
-        }
-
-        let success = self.source.read_u64_le().await?;
-        if success != 1 {
-            return Err(Error::FailedToAddToStore(
-                store_dir.print_path(&info.path),
-                self.host.clone(),
-            ));
-        }
-
-        Ok(())
-    }
-
-    async fn query_closure(
-        &mut self,
-        paths: &StorePathSet,
-        include_outputs: bool,
-    ) -> Result<StorePathSet, Error> {
-        debug!(
-            "Query the closure include_outputs={} of {:?}",
-            include_outputs, paths
-        );
-        let _remote_version = self.remote_version().await?;
-        let store_dir = self.store_dir.clone();
-        self.sink.write_enum(ServeCommand::CmdQueryClosure).await?;
-        self.sink.write_bool(include_outputs).await?;
-        self.sink.write_printed_coll(&store_dir, paths).await?;
-        self.sink.flush().await?;
-        Ok(self.source.read_parsed_coll(&store_dir).await?)
     }
 }
 
@@ -674,12 +720,12 @@ mod tests {
                 copy(&mut taken_reader, &mut stderr()).await
             });
 
-            let mut test_store = LegacyLocalStore::new(store_dir.clone(), "localhost".into(), read, write, stdreader);
+            let mut test_store = LegacyStoreClient::new(store_dir.clone(), "localhost".into(), read, write, stdreader);
 
             r.block_on(async {
                 let store = AssertStore::$assert($ae $(, $ae2)*);
                 let (read, write) = tokio::io::split(server);
-                let server = crate::nix_store::serve(read, write, store, build_log_server, true);
+                let server = crate::legacy_worker::server::run(read, write, store, build_log_server, true);
 
                 let cmd = async {
                     let res = test_store.$cmd($ce $(, $ce2)*).await?;
@@ -695,7 +741,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_store_legacy_query_valid_paths(
+        fn test_store_query_valid_paths_locked(
             paths in any::<StorePathSet>(),
             lock in ::proptest::bool::ANY,
             maybe_substitute in ::proptest::bool::ANY,
@@ -703,8 +749,8 @@ mod tests {
         )
         {
             store_cmd!(
-                assert_legacy_query_valid_paths(&paths, lock, maybe_substitute.into(), Ok(result.clone())),
-                legacy_query_valid_paths(&paths, lock, maybe_substitute.into()),
+                assert_query_valid_paths_locked(&paths, lock, maybe_substitute.into(), Ok(result.clone())),
+                query_valid_paths_locked(&paths, lock, maybe_substitute.into()),
                 result
             );
         }

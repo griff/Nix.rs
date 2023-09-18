@@ -2,9 +2,9 @@ use std::{collections::BTreeMap, fmt, num::ParseIntError, time::SystemTime};
 
 use nixrs_util::hash::{Hash, ParseHashError};
 use nixrs_util::io::StateParse;
-use nixrs_util::StringSet;
 use thiserror::Error;
 
+use crate::crypto::{SignatureSet, ParseSignatureError};
 use crate::{
     content_address::{ContentAddress, ParseContentAddressError},
     ParseStorePathError, StoreDir, StorePath, StorePathSet, ValidPathInfo,
@@ -106,7 +106,7 @@ impl NarInfo {
         let mut nar_size = 0;
         let mut references = StorePathSet::new();
         let mut deriver = None;
-        let mut sigs = StringSet::new();
+        let mut sigs = SignatureSet::new();
         let mut ca = None;
         let mut extra = BTreeMap::new();
 
@@ -139,7 +139,7 @@ impl NarInfo {
                         }
                     }
                     "Sig" => {
-                        sigs.insert(value.into());
+                        sigs.insert(value.parse()?);
                     }
                     "CA" => {
                         if value != "" {
@@ -256,6 +256,12 @@ pub enum ParseNarInfoError {
         #[from]
         #[source]
         ParseHashError,
+    ),
+    #[error("error parsing signature {0}")]
+    ParseSignatureError(
+        #[from]
+        #[source]
+        ParseSignatureError,
     ),
     #[error("error parsing store path {0}")]
     ParseStorePathError(

@@ -134,7 +134,7 @@ impl From<StorePath> for String {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StorePathHash([u8; STORE_PATH_HASH_BYTES]);
 
 impl StorePathHash {
@@ -201,6 +201,12 @@ impl Ord for StorePathHash {
 impl PartialOrd for StorePathHash {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+impl From<StorePathHash> for [u8; STORE_PATH_HASH_BYTES] {
+    fn from(value: StorePathHash) -> Self {
+        value.0
     }
 }
 

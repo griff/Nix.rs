@@ -2,18 +2,17 @@ use log::{error, debug};
 use tokio::io::AsyncReadExt;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
+use crate::crypto::{SignatureSet, ParseSignatureError};
 use crate::get_protocol_minor;
-use crate::legacy_local_store::{
-    ServeCommand, SERVE_MAGIC_1, SERVE_MAGIC_2, SERVE_PROTOCOL_VERSION,
-};
 use crate::Error;
+use crate::legacy_worker::{SERVE_MAGIC_1, SERVE_MAGIC_2, SERVE_PROTOCOL_VERSION, ServeCommand, LegacyStore};
 use crate::{BasicDerivation, BuildSettings, CheckSignaturesFlag, DerivedPath};
-use crate::{RepairFlag, Store, StorePath, StorePathSet, StorePathWithOutputs};
+use crate::{RepairFlag, StorePath, StorePathSet, StorePathWithOutputs};
 use crate::{SubstituteFlag, ValidPathInfo};
 use nixrs_util::hash;
 use nixrs_util::io::{AsyncSink, AsyncSource};
 
-pub async fn serve<S, R, W, BW>(
+pub async fn run<S, R, W, BW>(
     mut source: R,
     mut out: W,
     mut store: S,
@@ -21,9 +20,9 @@ pub async fn serve<S, R, W, BW>(
     write_allowed: bool,
 ) -> Result<(), Error>
 where
-    S: Store,
-    R: AsyncRead + Unpin,
-    W: AsyncWrite + Unpin,
+    S: LegacyStore,
+    R: AsyncRead + Send + Unpin,
+    W: AsyncWrite + Send + Unpin,
     BW: AsyncWrite + Unpin + Send,
 {
     let store_dir = store.store_dir();
@@ -49,8 +48,7 @@ where
                 } else {
                     SubstituteFlag::NoSubstitute
                 };
-                let ret = store
-                    .legacy_query_valid_paths(&paths, lock, maybe_substitute)
+                let ret = store.query_valid_paths_locked(&paths, lock, maybe_substitute)
                     .await?;
                 out.write_printed_coll(&store_dir, &ret).await?;
             }
@@ -59,7 +57,7 @@ where
                 // !!! Maybe we want a queryPathInfos?
                 for i in paths {
                     match store.query_path_info(&i).await {
-                        Ok(info) => {
+                        Ok(Some(info)) => {
                             out.write_printed(&store_dir, &info.path).await?;
                             if let Some(deriver) = info.deriver.as_ref() {
                                 out.write_printed(&store_dir, deriver).await?;
@@ -80,11 +78,11 @@ where
                                 } else {
                                     out.write_str("").await?;
                                 }
-
-                                out.write_string_coll(&info.sigs).await?;
+                                let sigs : Vec<String> = info.sigs.iter().map(ToString::to_string).collect();
+                                out.write_string_coll(&sigs).await?;
                             }
                         }
-                        Err(Error::InvalidPath(_)) => (),
+                        Ok(None) => {},
                         Err(err) => return Err(err),
                     }
                 }
@@ -214,7 +212,8 @@ where
                 let registration_time = source.read_time().await?;
                 let nar_size = source.read_u64_le().await?;
                 let ultimate = source.read_bool().await?;
-                let sigs = source.read_string_coll().await?;
+                let sigs : Vec<String> = source.read_string_coll().await?;
+                let sigs = sigs.iter().map(|s| s.parse() ).collect::<Result<SignatureSet, ParseSignatureError>>()?;
                 let ca_s = source.read_string().await?;
                 let ca = if ca_s != "" {
                     Some(ca_s.parse()?)
@@ -254,7 +253,7 @@ where
                 out.write_u64_le(1).await?; // indicate success
             }
             ServeCommand::Unknown(cmd) => {
-                return Err(Error::Misc(format!("unknown serve command {}", cmd)));
+                return Err(Error::UnknownProtocolCommand(cmd));
             }
         }
         debug!("Flushing!");

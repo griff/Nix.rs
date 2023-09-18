@@ -3,8 +3,10 @@ use bytes::Bytes;
 use pretty_assertions::assert_eq;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-use crate::{BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, Error};
-use crate::{DerivedPath, RepairFlag, Store, StoreDir, StorePath, StorePathSet};
+use crate::legacy_worker::LegacyStore;
+use crate::store_api::StoreDirProvider;
+use crate::{BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, Error, Store};
+use crate::{DerivedPath, RepairFlag, StoreDir, StorePath, StorePathSet};
 use crate::{SubstituteFlag, ValidPathInfo};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
@@ -50,7 +52,7 @@ pub enum MessageResponse {
     StorePathSet(StorePathSet),
     BuildResult((BuildResult, Bytes)),
     Bytes(Bytes),
-    ValidPathInfo(ValidPathInfo),
+    ValidPathInfo(Option<ValidPathInfo>),
 }
 
 impl From<()> for MessageResponse {
@@ -73,8 +75,8 @@ impl From<Bytes> for MessageResponse {
         MessageResponse::Bytes(v)
     }
 }
-impl From<ValidPathInfo> for MessageResponse {
-    fn from(v: ValidPathInfo) -> Self {
+impl From<Option<ValidPathInfo>> for MessageResponse {
+    fn from(v: Option<ValidPathInfo>) -> Self {
         MessageResponse::ValidPathInfo(v)
     }
 }
@@ -109,7 +111,7 @@ impl AssertStore {
     }
     pub fn assert_query_path_info(
         path: &StorePath,
-        response: Result<ValidPathInfo, Error>,
+        response: Result<Option<ValidPathInfo>, Error>,
     ) -> AssertStore {
         let store_dir = StoreDir::new("/nix/store").unwrap();
         let expected = Message::QueryPathInfo(path.clone());
@@ -120,7 +122,7 @@ impl AssertStore {
             response,
         }
     }
-    pub fn assert_legacy_query_valid_paths(
+    pub fn assert_query_valid_paths_locked(
         paths: &StorePathSet,
         lock: bool,
         maybe_substitute: SubstituteFlag,
@@ -248,11 +250,14 @@ impl AssertStore {
     }
 }
 
-#[async_trait(?Send)]
-impl Store for AssertStore {
+impl StoreDirProvider for AssertStore {
     fn store_dir(&self) -> StoreDir {
         self.store_dir.clone()
     }
+}
+
+#[async_trait]
+impl Store for AssertStore {
     async fn query_valid_paths(
         &mut self,
         paths: &StorePathSet,
@@ -268,11 +273,8 @@ impl Store for AssertStore {
             e => panic!("Invalid response {:?} for query_valid_paths", e),
         }
     }
-    async fn add_temp_root(&self, path: &StorePath) {
-        let actual = Message::AddTempRoot(path.clone());
-        assert_eq!(self.expected, actual, "add_temp_root");
-    }
-    async fn query_path_info(&mut self, path: &StorePath) -> Result<ValidPathInfo, Error> {
+
+    async fn query_path_info(&mut self, path: &StorePath) -> Result<Option<ValidPathInfo>, Error> {
         let actual = Message::QueryPathInfo(path.clone());
         assert_eq!(self.expected, actual, "query_path_info");
         match take(&mut self.response)? {
@@ -281,25 +283,7 @@ impl Store for AssertStore {
         }
     }
 
-    async fn legacy_query_valid_paths(
-        &mut self,
-        paths: &StorePathSet,
-        lock: bool,
-        maybe_substitute: SubstituteFlag,
-    ) -> Result<StorePathSet, Error> {
-        let actual = Message::LegacyQueryValidPaths {
-            paths: paths.clone(),
-            lock,
-            maybe_substitute,
-        };
-        assert_eq!(self.expected, actual, "legacy_query_valid_paths");
-        match take(&mut self.response)? {
-            MessageResponse::StorePathSet(set) => Ok(set),
-            e => panic!("Invalid response {:?} for legacy_query_valid_paths", e),
-        }
-    }
-
-    async fn nar_from_path<W: AsyncWrite + Unpin>(
+    async fn nar_from_path<W: AsyncWrite + Send + Unpin>(
         &mut self,
         path: &StorePath,
         mut sink: W,
@@ -315,33 +299,29 @@ impl Store for AssertStore {
             e => panic!("Invalid response {:?} for nar_from_path", e),
         }
     }
-    async fn export_paths<W: AsyncWrite + Unpin>(
+
+    async fn add_to_store<R: AsyncRead + Send + Unpin>(
         &mut self,
-        paths: &StorePathSet,
-        mut sink: W,
+        info: &ValidPathInfo,
+        mut source: R,
+        repair: RepairFlag,
+        check_sigs: CheckSignaturesFlag,
     ) -> Result<(), Error> {
-        let actual = Message::ExportPaths(paths.clone());
-        assert_eq!(self.expected, actual, "export_paths");
-        match take(&mut self.response)? {
-            MessageResponse::Bytes(set) => {
-                sink.write_all(&set).await?;
-                sink.flush().await?;
-                Ok(())
-            }
-            e => panic!("Invalid response {:?} for export_paths", e),
-        }
-    }
-    async fn import_paths<R: AsyncRead + Unpin>(&mut self, mut source: R) -> Result<(), Error> {
         let mut buf = Vec::new();
         source.read_to_end(&mut buf).await?;
-        let actual = Message::ImportPaths(buf.into());
-        assert_eq!(self.expected, actual, "import_paths");
+        let actual = Message::AddToStore {
+            info: info.clone(),
+            source: buf.into(),
+            repair,
+            check_sigs,
+        };
+        assert_eq!(self.expected, actual, "add_to_store");
         match take(&mut self.response)? {
             MessageResponse::Empty => Ok(()),
-            e => panic!("Invalid response {:?} for import_paths", e),
+            e => panic!("Invalid response {:?} for add_to_store", e),
         }
     }
-    async fn build_derivation<W: AsyncWrite + Unpin>(
+    async fn build_derivation<W: AsyncWrite + Send + Unpin>(
         &mut self,
         drv_path: &StorePath,
         drv: &BasicDerivation,
@@ -363,7 +343,7 @@ impl Store for AssertStore {
             e => panic!("Invalid response {:?} for build_derivation", e),
         }
     }
-    async fn build_paths<W: AsyncWrite + Unpin>(
+    async fn build_paths<W: AsyncWrite + Send + Unpin>(
         &mut self,
         drv_paths: &[DerivedPath],
         settings: &BuildSettings,
@@ -384,26 +364,54 @@ impl Store for AssertStore {
             e => panic!("Invalid response {:?} for build_paths", e),
         }
     }
+}
 
-    async fn add_to_store<R: AsyncRead + Unpin>(
+#[async_trait]
+impl LegacyStore for AssertStore {
+    async fn query_valid_paths_locked(
         &mut self,
-        info: &ValidPathInfo,
-        mut source: R,
-        repair: RepairFlag,
-        check_sigs: CheckSignaturesFlag,
+        paths: &StorePathSet,
+        lock: bool,
+        maybe_substitute: SubstituteFlag,
+    ) -> Result<StorePathSet, Error> {
+        let actual = Message::LegacyQueryValidPaths {
+            paths: paths.clone(),
+            lock,
+            maybe_substitute,
+        };
+        assert_eq!(self.expected, actual, "legacy_query_valid_paths");
+        match take(&mut self.response)? {
+            MessageResponse::StorePathSet(set) => Ok(set),
+            e => panic!("Invalid response {:?} for legacy_query_valid_paths", e),
+        }
+    }
+    async fn export_paths<W: AsyncWrite + Send + Unpin>(
+        &mut self,
+        paths: &StorePathSet,
+        mut sink: W,
+    ) -> Result<(), Error> {
+        let actual = Message::ExportPaths(paths.clone());
+        assert_eq!(self.expected, actual, "export_paths");
+        match take(&mut self.response)? {
+            MessageResponse::Bytes(set) => {
+                sink.write_all(&set).await?;
+                sink.flush().await?;
+                Ok(())
+            }
+            e => panic!("Invalid response {:?} for export_paths", e),
+        }
+    }
+    async fn import_paths<R: AsyncRead + Send + Unpin>(
+        &mut self,
+        mut source: R
     ) -> Result<(), Error> {
         let mut buf = Vec::new();
         source.read_to_end(&mut buf).await?;
-        let actual = Message::AddToStore {
-            info: info.clone(),
-            source: buf.into(),
-            repair,
-            check_sigs,
-        };
-        assert_eq!(self.expected, actual, "add_to_store");
+        let actual = Message::ImportPaths(buf.into());
+        assert_eq!(self.expected, actual, "import_paths");
         match take(&mut self.response)? {
             MessageResponse::Empty => Ok(()),
-            e => panic!("Invalid response {:?} for add_to_store", e),
+            e => panic!("Invalid response {:?} for import_paths", e),
         }
     }
     async fn query_closure(

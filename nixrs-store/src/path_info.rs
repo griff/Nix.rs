@@ -1,10 +1,11 @@
 use std::fmt;
 use std::time::SystemTime;
 
+use crate::crypto::SignatureSet;
 use crate::path::StorePathSet;
 use crate::StorePath;
 use crate::{content_address::ContentAddress, StoreDir};
-use nixrs_util::{hash::Hash, StringSet};
+use nixrs_util::hash::Hash;
 use thiserror::Error;
 
 #[derive(Debug, Eq, PartialOrd, Ord, Hash, Clone)]
@@ -14,7 +15,7 @@ pub struct ValidPathInfo {
     pub nar_size: u64,
     pub nar_hash: Hash,
     pub references: StorePathSet,
-    pub sigs: StringSet,
+    pub sigs: SignatureSet,
     pub registration_time: SystemTime,
 
     /// Whether the path is ultimately trusted, that is, it's a
@@ -79,7 +80,7 @@ impl ValidPathInfo {
             deriver: None,
             nar_size: 0,
             references: StorePathSet::new(),
-            sigs: StringSet::new(),
+            sigs: SignatureSet::new(),
             registration_time: SystemTime::UNIX_EPOCH,
             ultimate: false,
             ca: None,
@@ -124,7 +125,7 @@ pub mod proptest {
             path in any::<StorePath>(),
             deriver in any::<Option<StorePath>>(),
             references in any::<StorePathSet>(),
-            sigs in any::<StringSet>(),
+            sigs in any::<SignatureSet>(),
             registration_time in arb_system_time(),
             ultimate in ::proptest::bool::ANY
         ) -> (ValidPathInfo, Bytes)

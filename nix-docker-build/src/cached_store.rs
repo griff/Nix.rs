@@ -1,15 +1,19 @@
 use async_trait::async_trait;
+use nixrs_store::Store;
+use nixrs_store::StoreDirProvider;
+use nixrs_store::legacy_worker::LegacyStore;
 use tokio::process::{ChildStdin, ChildStdout, ChildStderr};
 
 use nixrs_store::copy_paths;
 use nixrs_store::Error;
 use nixrs_store::{BasicDerivation, CheckSignaturesFlag, DerivedPath, RepairFlag};
 use nixrs_store::{BuildResult, BuildSettings, StorePath, SubstituteFlag, ValidPathInfo};
-use nixrs_store::{LegacyLocalStore, LegacyStoreBuilder, Store, StoreDir, StorePathSet};
+use nixrs_store::{StoreDir, StorePathSet};
+use nixrs_store::legacy_worker::client::{LegacyStoreClient, LegacyStoreBuilder};
 
 pub struct CachedStore {
-    cache: LegacyLocalStore<ChildStdout, ChildStdin, ChildStderr>,
-    builder: Option<LegacyLocalStore<ChildStdout, ChildStdin, ChildStderr>>,
+    cache: LegacyStoreClient<ChildStdout, ChildStdin, ChildStderr>,
+    builder: Option<LegacyStoreClient<ChildStdout, ChildStdin, ChildStderr>>,
     write_allowed: bool,
     docker_bin: String,
 }
@@ -37,74 +41,32 @@ impl CachedStore {
     }
 }
 
-#[async_trait(?Send)]
-impl Store for CachedStore {
+impl StoreDirProvider for CachedStore {
     fn store_dir(&self) -> StoreDir {
         self.cache.store_dir()
     }
+}
 
-    async fn legacy_query_valid_paths(
-        &mut self,
-        paths: &StorePathSet,
-        lock: bool,
-        maybe_substitute: SubstituteFlag,
-    ) -> Result<StorePathSet, Error> {
-        if let Some(builder) = self.builder.as_mut() {
-            let mut ret = builder
-                .legacy_query_valid_paths(&paths, lock, maybe_substitute)
-                .await?;
-            let mut local = self
-                .cache
-                .legacy_query_valid_paths(&paths, lock, maybe_substitute)
-                .await?;
-            ret.append(&mut local);
-            Ok(ret)
-        } else {
-            self.cache
-                .legacy_query_valid_paths(paths, lock, maybe_substitute)
-                .await
-        }
-    }
-
-    async fn query_valid_paths(
-        &mut self,
-        paths: &StorePathSet,
-        maybe_substitute: SubstituteFlag,
-    ) -> Result<StorePathSet, Error> {
-        if let Some(builder) = self.builder.as_mut() {
-            let mut ret = builder.query_valid_paths(&paths, maybe_substitute).await?;
-            let mut local = self
-                .cache
-                .query_valid_paths(&paths, maybe_substitute)
-                .await?;
-            ret.append(&mut local);
-            Ok(ret)
-        } else {
-            self.cache.query_valid_paths(paths, maybe_substitute).await
-        }
-    }
-
-    async fn add_temp_root(&self, _path: &StorePath) {}
-
-    async fn query_path_info(&mut self, path: &StorePath) -> Result<ValidPathInfo, Error> {
+#[async_trait]
+impl Store for CachedStore {
+    async fn query_path_info(&mut self, path: &StorePath) -> Result<Option<ValidPathInfo>, Error> {
         if let Some(builder) = self.builder.as_mut() {
             match builder.query_path_info(path).await {
-                Ok(ret) => Ok(ret),
-                Err(Error::InvalidPath(_)) => self.cache.query_path_info(path).await,
+                Ok(Some(ret)) => Ok(Some(ret)),
+                Ok(None) => self.cache.query_path_info(path).await,
                 Err(err) => Err(err),
             }
         } else {
             self.cache.query_path_info(path).await
         }
     }
-
-    async fn nar_from_path<W: tokio::io::AsyncWrite + Unpin>(
+    async fn nar_from_path<W: tokio::io::AsyncWrite + Send + Unpin>(
         &mut self,
         path: &StorePath,
         sink: W,
     ) -> Result<(), Error> {
         if let Some(builder) = self.builder.as_mut() {
-            if builder.is_valid_path(&path).await? {
+            if builder.query_path_info(&path).await?.is_some() {
                 builder.nar_from_path(&path, sink).await
             } else {
                 self.cache.nar_from_path(path, sink).await
@@ -114,22 +76,7 @@ impl Store for CachedStore {
         }
     }
 
-    async fn export_paths<W: tokio::io::AsyncWrite + Unpin>(
-        &mut self,
-        paths: &StorePathSet,
-        sink: W,
-    ) -> Result<(), Error> {
-        self.cache.export_paths(paths, sink).await
-    }
-
-    async fn import_paths<R: tokio::io::AsyncRead + Unpin>(
-        &mut self,
-        source: R,
-    ) -> Result<(), Error> {
-        self.cache.import_paths(source).await
-    }
-
-    async fn add_to_store<R: tokio::io::AsyncRead + Unpin>(
+    async fn add_to_store<R: tokio::io::AsyncRead + Send + Unpin>(
         &mut self,
         info: &ValidPathInfo,
         source: R,
@@ -141,24 +88,16 @@ impl Store for CachedStore {
             .await
     }
 
-    async fn query_closure(
-        &mut self,
-        paths: &StorePathSet,
-        include_outputs: bool,
-    ) -> Result<StorePathSet, Error> {
-        self.cache.query_closure(paths, include_outputs).await
-    }
-
-    async fn build_paths<W: tokio::io::AsyncWrite + Unpin>(
+    async fn build_paths<W: tokio::io::AsyncWrite + Send + Unpin>(
         &mut self,
         _drv_paths: &[DerivedPath],
         _settings: &BuildSettings,
         _build_log: W,
     ) -> Result<(), Error> {
-        unimplemented!("Unsupported operation 'build_paths'");
+        Err(Error::Misc("Unsupported operation 'build_paths'".into()))
     }
 
-    async fn build_derivation<W: tokio::io::AsyncWrite + Unpin>(
+    async fn build_derivation<W: tokio::io::AsyncWrite + Send + Unpin>(
         &mut self,
         drv_path: &StorePath,
         drv: &BasicDerivation,
@@ -211,5 +150,68 @@ impl Store for CachedStore {
         }
 
         Ok(result)
+    }
+}
+
+#[async_trait]
+impl LegacyStore for CachedStore {
+    /*
+    async fn query_path_infos(&mut self, paths: &StorePathSet) -> Result<BTreeSet<ValidPathInfo>, Error> {
+        if let Some(builder) = self.builder.as_mut() {
+            match builder.query_path_info(path).await {
+                Ok(ret) => Ok(ret),
+                Err(Error::InvalidPath(_)) => self.cache.query_path_info(path).await,
+                Err(err) => Err(err),
+            }
+        } else {
+            self.cache.query_path_info(path).await
+        }
+    }
+     */
+
+    async fn query_valid_paths_locked(
+        &mut self,
+        paths: &StorePathSet,
+        lock: bool,
+        maybe_substitute: SubstituteFlag,
+    ) -> Result<StorePathSet, Error> {
+        if let Some(builder) = self.builder.as_mut() {
+            let mut ret = builder
+                .query_valid_paths_locked(&paths, lock, maybe_substitute)
+                .await?;
+            let mut local = self
+                .cache
+                .query_valid_paths_locked(&paths, lock, maybe_substitute)
+                .await?;
+            ret.append(&mut local);
+            Ok(ret)
+        } else {
+            self.cache
+                .query_valid_paths_locked(paths, lock, maybe_substitute)
+                .await
+        }
+    }
+
+    async fn export_paths<W: tokio::io::AsyncWrite + Send + Unpin>(
+        &mut self,
+        paths: &StorePathSet,
+        sink: W,
+    ) -> Result<(), Error> {
+        self.cache.export_paths(paths, sink).await
+    }
+
+    async fn import_paths<R: tokio::io::AsyncRead + Send + Unpin>(
+        &mut self,
+        source: R,
+    ) -> Result<(), Error> {
+        self.cache.import_paths(source).await
+    }
+
+    async fn query_closure(
+        &mut self,
+        paths: &StorePathSet,
+        include_outputs: bool,
+    ) -> Result<StorePathSet, Error> {
+        self.cache.query_closure(paths, include_outputs).await
     }
 }

@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -21,7 +22,9 @@ pub enum ParseSignatureError {
     InvalidSignature,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+pub type SignatureSet = BTreeSet<Signature>;
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Signature(Arc<String>, [u8; SIGNATURE_BYTES]);
 
 impl Signature {
@@ -36,11 +39,22 @@ impl Signature {
     pub fn signature(&self) -> String {
         encode(self.signature_bytes())
     }
+
+    pub fn from_parts(name: &str, signature: &[u8]) -> Result<Signature, ParseSignatureError> {
+        if signature.len() != SIGNATURE_BYTES {
+            eprintln!("Signature wrong length {}!={}",signature.len(), SIGNATURE_BYTES);
+            return Err(ParseSignatureError::InvalidSignature);
+        }
+        let mut data = [0u8; SIGNATURE_BYTES];
+        data.copy_from_slice(&signature);
+
+        Ok(Self(Arc::new(name.to_string()), data))
+    }
 }
 
 impl fmt::Display for Signature {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let d = encode(self.signature());
+        let d = self.signature();
         write!(f, "{}:{}", self.name(), d)
     }
 }
@@ -58,6 +72,7 @@ impl FromStr for Signature {
         let sig_s = sp.next().ok_or(ParseSignatureError::CorruptSignature)?;
         let sig_b = decode(&sig_s).map_err(|_| ParseSignatureError::InvalidSignature)?;
         if sig_b.len() != SIGNATURE_BYTES {
+            eprintln!("Signature wrong length {}!={}", sig_b.len(), SIGNATURE_BYTES);
             return Err(ParseSignatureError::InvalidSignature);
         }
         let mut sig_buf = [0u8; SIGNATURE_BYTES];
@@ -283,6 +298,36 @@ impl FromStr for SecretKey {
     }
 }
 
+#[cfg(any(test, feature = "test"))]
+pub mod proptest {
+    use super::*;
+    use ::proptest::{arbitrary::Arbitrary, prelude::*};
+
+    pub fn arb_key_name(
+        max: u8,
+    ) -> impl Strategy<Value = String> {
+        "[a-zA-Z0-9+\\-_?=][a-zA-Z0-9+\\-_?=.]{0,210}".prop_map(move |mut s| {
+            if s.len() > max as usize {
+                s.truncate(max as usize);
+            }
+            s
+        })
+    }
+
+    pub fn arb_signature(max: u8) -> impl Strategy<Value = Signature> {
+        (arb_key_name(max), any::<[u8; SIGNATURE_BYTES]>())
+            .prop_map(|(name, signature)| Signature(Arc::new(name), signature))
+    }
+
+    impl Arbitrary for Signature {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<Signature>;
+        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+            arb_signature(211).boxed()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -320,6 +365,7 @@ mod tests {
         let data = "1;/nix/store/02bfycjg1607gpcnsg8l13lc45qa8qj3-libssh2-1.10.0;sha256:1l29f8r5q2739wnq4i7m2v545qx77b3wrdsw9xz2ajiy3hv1al8b;294664;/nix/store/02bfycjg1607gpcnsg8l13lc45qa8qj3-libssh2-1.10.0,/nix/store/1l4r0r4ab3v3a3ppir4jwiah3icalk9d-zlib-1.2.11,/nix/store/gf6j3k1flnhayvpnwnhikkg0s5dxrn1i-openssl-1.1.1l,/nix/store/z56jcx3j1gfyk4sv7g8iaan0ssbdkhz1-glibc-2.33-56";
         let s : Signature = "cache.nixos.org-1:0CpHca+06TwFp9VkMyz5OaphT3E8mnS+1SWymYlvFaghKSYPCMQ66TS1XPAr1+y9rfQZPLaHrBjjnIRktE/nAA==".parse().unwrap();
         assert_eq!("cache.nixos.org-1", s.name());
+        assert_eq!(s.to_string(), "cache.nixos.org-1:0CpHca+06TwFp9VkMyz5OaphT3E8mnS+1SWymYlvFaghKSYPCMQ66TS1XPAr1+y9rfQZPLaHrBjjnIRktE/nAA==");
         let pk: PublicKey = "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
             .parse()
             .unwrap();

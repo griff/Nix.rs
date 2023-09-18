@@ -1,12 +1,10 @@
 use nixrs_util::compute_closure;
 
-use crate::{Error, Store, StorePath, StorePathSet};
+use crate::{Error, StorePath, StorePathSet, Store};
 
 pub async fn compute_fs_closure<S>(
     store: S,
     start_paths: StorePathSet,
-    flip_direction: bool,
-    include_outputs: bool,
     include_derivers: bool,
 ) -> Result<StorePathSet, Error>
 where
@@ -93,7 +91,8 @@ where
         let mut store = store.clone();
         Box::pin(async move {
             let mut res = StorePathSet::new();
-            let info = store.query_path_info(&path).await?;
+            let info = store.query_path_info(&path).await?
+                .ok_or(Error::InvalidPath(path.to_string()))?;
             for reference in info.references {
                 if reference != path {
                     res.insert(reference);
@@ -101,7 +100,7 @@ where
             }
             if include_derivers {
                 if let Some(deriver) = info.deriver {
-                    if store.is_valid_path(&deriver).await? {
+                    if store.query_path_info(&deriver).await?.is_some() {
                         res.insert(deriver);
                     }
                 }

@@ -481,7 +481,7 @@ pub async fn copy_paths<S, D>(
 ) -> Result<(), Error>
 where
     S: Store,
-    D: Store,
+    D: Store + Send,
 {
     copy_paths_full(
         src_store,
@@ -507,7 +507,7 @@ pub async fn copy_paths_full<S, D>(
 ) -> Result<(), Error>
 where
     S: Store,
-    D: Store,
+    D: Store + Send,
 {
     let valid = dst_store.query_valid_paths(store_paths, substitute).await?;
 
@@ -523,41 +523,42 @@ where
     let mut rrefs: BTreeMap<StorePath, StorePathSet> = BTreeMap::new();
     let mut roots = StorePathSet::new();
     for store_path in missing {
-        let info = src_store.query_path_info(&store_path).await?;
-        let mut store_path_for_dst = store_path.clone();
-        if info.ca.is_some() && info.references.is_empty() {
-            store_path_for_dst = dst_store_dir.make_fixed_output_path_from_ca(
-                store_path.name.name(),
-                info.ca.unwrap(),
-                &StorePathSet::new(),
-                false,
-            )?;
-            if dst_store_dir == src_store_dir {
-                assert_eq!(store_path_for_dst, store_path)
-            }
-            if store_path_for_dst != store_path {
-                debug!(
-                    "replaced path '{}' to '{}' for substituter '{}'",
-                    src_store_dir.print_path(&store_path),
-                    dst_store_dir.print_path(&store_path_for_dst),
-                    "local"
-                );
-            }
-        }
-        paths_map.insert(store_path.clone(), store_path_for_dst);
-        if !dst_store.is_valid_path(&store_path).await? {
-            let mut edges = info.references;
-            edges.remove(&store_path);
-            if edges.is_empty() {
-                roots.insert(store_path.clone());
-            } else {
-                for m in edges.iter() {
-                    rrefs
-                        .entry(m.clone())
-                        .or_default()
-                        .insert(store_path.clone());
+        if let Some(info) = src_store.query_path_info(&store_path).await? {
+            let mut store_path_for_dst = store_path.clone();
+            if info.ca.is_some() && info.references.is_empty() {
+                store_path_for_dst = dst_store_dir.make_fixed_output_path_from_ca(
+                    store_path.name.name(),
+                    info.ca.unwrap(),
+                    &StorePathSet::new(),
+                    false,
+                )?;
+                if dst_store_dir == src_store_dir {
+                    assert_eq!(store_path_for_dst, store_path)
                 }
-                refs.insert(store_path, edges);
+                if store_path_for_dst != store_path {
+                    debug!(
+                        "replaced path '{}' to '{}' for substituter '{}'",
+                        src_store_dir.print_path(&store_path),
+                        dst_store_dir.print_path(&store_path_for_dst),
+                        "local"
+                    );
+                }
+            }
+            paths_map.insert(store_path.clone(), store_path_for_dst);
+            if !dst_store.query_path_info(&store_path).await?.is_some() {
+                let mut edges = info.references;
+                edges.remove(&store_path);
+                if edges.is_empty() {
+                    roots.insert(store_path.clone());
+                } else {
+                    for m in edges.iter() {
+                        rrefs
+                            .entry(m.clone())
+                            .or_default()
+                            .insert(store_path.clone());
+                    }
+                    refs.insert(store_path, edges);
+                }
             }
         }
     }
@@ -590,7 +591,7 @@ where
     })).await?;
      */
     for store_path in sorted {
-        if !dst_store.is_valid_path(&store_path).await? {
+        if !dst_store.query_path_info(&store_path).await?.is_some() {
             copy_store_path(src_store, dst_store, &store_path, repair, check_sigs).await?;
         }
     }
@@ -608,7 +609,8 @@ where
     S: Store,
     D: Store,
 {
-    let mut info = src_store.query_path_info(store_path).await?;
+    let mut info = src_store.query_path_info(store_path).await?
+        .ok_or(Error::InvalidPath(store_path.to_string()))?;
 
     // recompute store path on the chance dstStore does it differently
     if info.ca.is_some() && info.references.is_empty() {
@@ -650,78 +652,59 @@ where
     Ok(())
 }
 
-#[async_trait(?Send)]
-pub trait Store {
+pub trait StoreDirProvider {
     /// Root path of this store
     fn store_dir(&self) -> StoreDir;
+}
 
+#[async_trait]
+pub trait Store: StoreDirProvider {
     async fn query_valid_paths(
         &mut self,
         paths: &StorePathSet,
-        maybe_substitute: SubstituteFlag,
-    ) -> Result<StorePathSet, Error>;
-    async fn add_temp_root(&self, path: &StorePath);
-
-    async fn legacy_query_valid_paths(
-        &mut self,
-        paths: &StorePathSet,
-        lock: bool,
-        maybe_substitute: SubstituteFlag,
+        _maybe_substitute: SubstituteFlag,
     ) -> Result<StorePathSet, Error> {
-        if lock {
-            for path in paths.iter() {
-                self.add_temp_root(path).await;
+        let mut ret = StorePathSet::new();
+        for path in paths.iter() {
+            if self.query_path_info(path).await?.is_some() {
+                ret.insert(path.clone());
             }
         }
-        self.query_valid_paths(paths, maybe_substitute).await
-    }
-    async fn query_path_info(&mut self, path: &StorePath) -> Result<ValidPathInfo, Error>;
-    async fn is_valid_path(&mut self, path: &StorePath) -> Result<bool, Error> {
-        match self.query_path_info(path).await {
-            Err(Error::InvalidPath(_)) => Ok(false),
-            Err(err) => Err(err),
-            Ok(_) => Ok(true),
-        }
+        Ok(ret)
     }
 
-    async fn nar_from_path<W: AsyncWrite + Unpin>(
+    async fn query_path_info(&mut self, path: &StorePath) -> Result<Option<ValidPathInfo>, Error>;
+
+    /// Export path from the store
+    async fn nar_from_path<W: AsyncWrite + Send + Unpin>(
         &mut self,
         path: &StorePath,
         sink: W,
     ) -> Result<(), Error>;
-    async fn export_paths<W: AsyncWrite + Unpin>(
-        &mut self,
-        paths: &StorePathSet,
-        mut sink: W,
-    ) -> Result<(), Error>;
-    async fn import_paths<R: AsyncRead + Unpin>(&mut self, source: R) -> Result<(), Error>;
-    async fn build_derivation<W: AsyncWrite + Unpin>(
-        &mut self,
-        drv_path: &StorePath,
-        drv: &BasicDerivation,
-        settings: &BuildSettings,
-        build_log: W,
-    ) -> Result<BuildResult, Error>;
-    async fn build_paths<W: AsyncWrite + Unpin>(
-        &mut self,
-        drv_paths: &[DerivedPath],
-        settings: &BuildSettings,
-        build_log: W,
-    ) -> Result<(), Error>;
 
     /// Import a path into the store.
-    async fn add_to_store<R: AsyncRead + Unpin>(
+    async fn add_to_store<R: AsyncRead + Send + Unpin>(
         &mut self,
         info: &ValidPathInfo,
         source: R,
         repair: RepairFlag,
         check_sigs: CheckSignaturesFlag,
     ) -> Result<(), Error>;
-    async fn query_closure(
+
+    async fn build_derivation<W: AsyncWrite + Send + Unpin>(
         &mut self,
-        paths: &StorePathSet,
-        include_outputs: bool,
-    ) -> Result<StorePathSet, Error>;
+        drv_path: &StorePath,
+        drv: &BasicDerivation,
+        settings: &BuildSettings,
+        build_log: W,
+    ) -> Result<BuildResult, Error>;
+
+    async fn build_paths<W: AsyncWrite + Send + Unpin>(
+        &mut self,
+        drv_paths: &[DerivedPath],
+        settings: &BuildSettings,
+        build_log: W,
+    ) -> Result<(), Error>;
 }
 
 #[cfg(any(test, feature = "test"))]

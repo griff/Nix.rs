@@ -2,10 +2,10 @@ use nixrs_util::hash;
 use thiserror::Error;
 
 use crate::content_address::ParseContentAddressError;
-use crate::legacy_local_store::ServeCommand;
+use crate::legacy_worker::ServeCommand;
 use crate::{
     ParseDrvOutputError, ParseStorePathError, ReadDerivationError, ReadStorePathError,
-    WriteDerivationError,
+    WriteDerivationError, crypto,
 };
 
 #[derive(Debug, Error)]
@@ -80,6 +80,12 @@ pub enum Error {
         #[source]
         std::io::Error,
     ),
+    #[error("Join error: {0}")]
+    JoinError(
+        #[from]
+        #[source]
+        tokio::task::JoinError,
+    ),
     #[cfg(unused)]
     #[error("HTTP error: {0}")]
     HttpError(
@@ -89,6 +95,10 @@ pub enum Error {
     ),
     #[error("{0}")]
     Misc(String),
+    #[error("Unsupported operation '{0}'")]
+    UnsupportedOperation(String),
+    #[error("Unknown protocol command '{0}'")]
+    UnknownProtocolCommand(u64),
     #[error("JSON error: {0}")]
     JSONError(
         #[from]
@@ -114,6 +124,12 @@ pub enum Error {
         #[from]
         #[source]
         hash::ParseHashError,
+    ),
+    #[error("{0}")]
+    BadSignature(
+        #[from]
+        #[source]
+        crypto::ParseSignatureError,
     ),
     #[error("{0}")]
     BadContentAddress(

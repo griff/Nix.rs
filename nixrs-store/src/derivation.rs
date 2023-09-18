@@ -262,7 +262,8 @@ pub struct BasicDerivation {
     pub input_srcs: StorePathSet,   /* inputs that are sources */
     pub platform: String,
     pub builder: PathBuf,
-    pub args: Vec<String>,
+    //#[serde(rename = "args")]
+    pub arguments: Vec<String>,
     pub env: Vec<(String, String)>,
     pub name: String,
 }
@@ -305,7 +306,7 @@ impl BasicDerivation {
         let platform = source.read_string().await?;
         let builder_s = source.read_string().await?;
         let builder = PathBuf::from(builder_s);
-        let args = source.read_string_coll().await?;
+        let arguments = source.read_string_coll().await?;
 
         let nr = source.read_usize().await?;
         let mut env = Vec::with_capacity(nr);
@@ -317,7 +318,7 @@ impl BasicDerivation {
         Ok(BasicDerivation {
             env,
             name,
-            args,
+            arguments,
             builder,
             platform,
             input_srcs,
@@ -348,7 +349,7 @@ impl BasicDerivation {
                 .ok_or_else(|| WriteDerivationError::InvalidBuilder(self.builder.clone()))?,
         )
         .await?;
-        sink.write_string_coll(&self.args).await?;
+        sink.write_string_coll(&self.arguments).await?;
 
         sink.write_usize(self.env.len()).await?;
         for (name, value) in self.env.iter() {
@@ -402,13 +403,13 @@ pub mod proptest {
             input_srcs in any::<StorePathSet>(),
             platform in any::<String>(),
             builder in arb_path(),
-            args in any::<Vec<String>>(),
+            arguments in any::<Vec<String>>(),
             env in any::<Vec<(String, String)>>(),
             name in any::<String>()
         ) -> BasicDerivation
         {
             BasicDerivation {
-                outputs, input_srcs, platform, builder, args, env, name,
+                outputs, input_srcs, platform, builder, arguments, env, name,
             }
         }
     }
