@@ -12,8 +12,8 @@ mod dump;
 mod encoder;
 mod parser;
 mod restore;
-#[cfg(test)]
-mod test_data;
+#[cfg(any(test, feature = "test"))]
+pub mod test_data;
 mod validator;
 
 pub use case_hack::CaseHackStream;
