@@ -144,6 +144,8 @@ pub enum ParseHashError {
     BadSRIHash(String),
     #[error("hash '{1}' has wrong length for hash type '{0}'")]
     WrongHashLength(Algorithm, String),
+    #[error("hash has wrong length {1} for hash type '{0}'")]
+    WrongHashLength2(Algorithm, usize),
 }
 
 pub fn split_prefix<'a>(s: &'a str, prefix: &str) -> Option<(&'a str, &'a str)> {
@@ -179,6 +181,13 @@ impl Hash {
         let mut data = [0u8; MAX_SIZE];
         (&mut data[0..algorithm.size()]).copy_from_slice(&hash);
         Hash { algorithm, data }
+    }
+
+    pub fn from_slice(algorithm: Algorithm, hash: &[u8]) -> Result<Hash, ParseHashError> {
+        if hash.len() != algorithm.size() {
+            return Err(ParseHashError::WrongHashLength2(algorithm, hash.len()))
+        }
+        Ok(Hash::new(algorithm, hash))
     }
 
     fn from_str(rest: &str, a: Algorithm, is_sri: bool) -> Result<Hash, ParseHashError> {
