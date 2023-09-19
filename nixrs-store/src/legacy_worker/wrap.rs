@@ -49,7 +49,7 @@ impl<S: Store + Send> Store for LegacyWrapStore<S> {
         repair: RepairFlag,
         check_sigs: CheckSignaturesFlag,
     ) -> Result<(), Error> {
-        self.add_to_store(info, source, repair, check_sigs).await
+        self.store.add_to_store(info, source, repair, check_sigs).await
     }
 
     async fn build_derivation<W: AsyncWrite + Send + Unpin>(
@@ -59,7 +59,7 @@ impl<S: Store + Send> Store for LegacyWrapStore<S> {
         settings: &BuildSettings,
         build_log: W,
     ) -> Result<BuildResult, Error> {
-        self.build_derivation(drv_path, drv, settings, build_log)
+        self.store.build_derivation(drv_path, drv, settings, build_log)
             .await
     }
 
