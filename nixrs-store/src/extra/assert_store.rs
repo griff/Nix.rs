@@ -4,7 +4,7 @@ use pretty_assertions::assert_eq;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::legacy_worker::LegacyStore;
-use crate::store_api::StoreDirProvider;
+use crate::StoreDirProvider;
 use crate::{BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, Error, Store};
 use crate::{DerivedPath, RepairFlag, StoreDir, StorePath, StorePathSet};
 use crate::{SubstituteFlag, ValidPathInfo};

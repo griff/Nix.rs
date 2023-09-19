@@ -21,7 +21,7 @@ use crate::crypto::{ParseSignatureError, SignatureSet};
 use crate::legacy_worker::{
     LegacyStore, ServeCommand, SERVE_MAGIC_1, SERVE_MAGIC_2, SERVE_PROTOCOL_VERSION,
 };
-use crate::store_api::{Store, StoreDirProvider, EXPORT_MAGIC};
+use crate::{Store, StoreDirProvider, EXPORT_MAGIC};
 use crate::Error;
 use crate::StorePathWithOutputs;
 use crate::ValidPathInfo;
