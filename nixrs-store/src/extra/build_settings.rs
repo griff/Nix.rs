@@ -85,7 +85,7 @@ impl Default for BuildSettings {
 pub mod proptest {
     use super::*;
     use nixrs_util::proptest::arb_duration;
-    use proptest::prelude::*;
+    use ::proptest::prelude::*;
 
     impl Arbitrary for BuildSettings {
         type Parameters = ();

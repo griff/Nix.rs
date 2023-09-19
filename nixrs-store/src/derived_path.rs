@@ -83,7 +83,7 @@ impl StatePrint<DerivedPath> for StoreDir {
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
     use crate::path::proptest::{arb_drv_store_path, arb_output_name};
-    use proptest::{collection::btree_set, prelude::*};
+    use ::proptest::{collection::btree_set, prelude::*};
 
     use super::*;
 

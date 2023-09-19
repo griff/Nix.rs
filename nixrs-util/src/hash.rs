@@ -592,7 +592,7 @@ impl tokio::io::AsyncWrite for HashSink {
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
     use super::*;
-    use proptest::prelude::*;
+    use ::proptest::prelude::*;
 
     impl Arbitrary for Algorithm {
         type Parameters = ();

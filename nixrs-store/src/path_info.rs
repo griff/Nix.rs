@@ -113,7 +113,7 @@ pub mod proptest {
     use bytes::Bytes;
     use nixrs_util::archive::proptest::arb_nar_contents;
     use nixrs_util::proptest::arb_system_time;
-    use proptest::prelude::*;
+    use ::proptest::prelude::*;
 
     prop_compose! {
         pub fn arb_valid_info_and_content(
