@@ -12,6 +12,12 @@ pub struct LegacyWrapStore<S> {
     store: S,
 }
 
+impl<S> LegacyWrapStore<S> {
+    pub fn new(store: S) -> LegacyWrapStore<S> {
+        Self { store }
+    }
+}
+
 impl<S: StoreDirProvider> StoreDirProvider for LegacyWrapStore<S> {
     fn store_dir(&self) -> crate::StoreDir {
         self.store.store_dir()
