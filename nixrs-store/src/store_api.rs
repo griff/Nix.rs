@@ -442,6 +442,12 @@ impl StoreDir {
     }
 }
 
+impl Default for StoreDir {
+    fn default() -> Self {
+        StoreDir::new("/nix/store").unwrap()
+    }
+}
+
 impl StateParse<StorePath> for StoreDir {
     type Err = ReadStorePathError;
 
