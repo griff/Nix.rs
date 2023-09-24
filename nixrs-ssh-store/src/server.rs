@@ -114,15 +114,20 @@ impl<S> ServerConfig<S> {
         }
     }
 
-    pub async fn load_default_keys(&mut self, config_dir: impl AsRef<Path>) {
+    pub async fn load_user_keys(&mut self, config_dir: impl AsRef<Path>) {
         let config_dir = config_dir.as_ref();
-        self.load_host_keys(&config_dir).await;
         self.load_user_key(config_dir.join("id_ed25519.pub"), true)
             .await
             .ok();
         self.load_user_key(config_dir.join("id_rsa.pub"), true)
             .await
             .ok();
+    }
+
+    pub async fn load_default_keys(&mut self, config_dir: impl AsRef<Path>) {
+        let config_dir = config_dir.as_ref();
+        self.load_host_keys(&config_dir).await;
+        self.load_user_keys(&config_dir).await;
     }
 }
 
