@@ -129,7 +129,6 @@ impl<S> ServerConfig<S> {
 pub struct Server<S> {
     state: ServerState<S>,
     serve_rx: mpsc::UnboundedReceiver<ChannelMsg>,
-    cancel: CancellationToken,
 }
 
 struct ChannelMsg {
@@ -146,6 +145,16 @@ pub struct ServerState<S> {
     user_keys: Arc<HashMap<String, bool>>,
     serve_tx: mpsc::UnboundedSender<ChannelMsg>,
     store_provider: S,
+    shutdown: CancellationToken,
+}
+
+impl<S> ServerState<S> {
+    pub fn shutdown(&self) {
+        self.shutdown.cancel()
+    }
+    pub fn is_shutting_down(&self) -> bool {
+        self.shutdown.is_cancelled()
+    }
 }
 
 impl<S: Clone> ServerState<S> {
@@ -170,55 +179,80 @@ where
 {
     pub fn with_config(config: ServerConfig<S>) -> io::Result<Server<S>> {
         let (serve_tx, serve_rx) = mpsc::unbounded_channel();
+        let shutdown = CancellationToken::new();
         let state = ServerState {
-            serve_tx,
+            serve_tx, shutdown,
             user_keys: Arc::new(config.user_keys),
             config: Arc::new(config.config),
             store_provider: config.store_provider,
         };
-        let cancel = CancellationToken::new();
         Ok(Server {
             state,
             serve_rx,
-            cancel,
         })
     }
 
     pub async fn run(self, addr: &str) -> io::Result<()> {
         let local = tokio::task::LocalSet::new();
         let store_provider = self.state.store_provider.clone();
-        let cancel = self.cancel.clone();
+        let cancel = self.state.shutdown.clone();
+        let server_cancel = self.state.shutdown.clone();
         local.run_until(async move {
             let mut serve_rx = self.serve_rx;
             tokio::task::spawn_local(async move {
                 loop {
-                    match serve_rx.recv().await {
-                        Some(ChannelMsg { channel, handle, source, write_allowed, reply }) => {
-                            let cancel = cancel.clone();
-                            let store_provider = store_provider.clone();
-                            let join = tokio::task::spawn_local(async move {
-                                let stderr = ExtendedDataWrite::new(channel, 1, handle.clone());
-                                let out = DataWrite::new(channel, handle);
-                                let store = store_provider.get_store(stderr.clone()).await?;
-                                select! {
-                                    res = nixrs_store::legacy_worker::server::run(source, out, store, stderr, write_allowed) => {
-                                        res?;
-                                    }
-                                    _ = cancel.cancelled() => {
-                                        Err(io::Error::new(io::ErrorKind::BrokenPipe, "Shutting down"))?;
-                                    }
-                                }
-                                Ok(())
-                            });
-                            reply.send(join).unwrap_or_default();
-                        },
-                        None => break,
+                    select! {
+                        msg = serve_rx.recv() => {
+                            match msg {
+                                Some(ChannelMsg { channel, handle, source, write_allowed, reply }) => {
+                                    let cancel = cancel.clone();
+                                    let store_provider = store_provider.clone();
+                                    let join = tokio::task::spawn_local(async move {
+                                        let stderr = ExtendedDataWrite::new(channel, 1, handle.clone());
+                                        let out = DataWrite::new(channel, handle);
+                                        let store = store_provider.get_store(stderr.clone()).await?;
+                                        select! {
+                                            res = nixrs_store::legacy_worker::server::run(source, out, store, stderr, write_allowed) => {
+                                                match res {
+                                                    Ok(_) => {},
+                                                    Err(err) => {
+                                                        tracing::error!("Error in serve {:?}", err);
+                                                        return Err(err.into());
+                                                    }
+                                                }
+                                            }
+                                            _ = cancel.cancelled() => {
+                                                info!("Shutting down channel {:?}!", channel);
+                                                Err(io::Error::new(io::ErrorKind::BrokenPipe, "Shutting down"))?;
+                                            }
+                                        }
+                                        Ok(())
+                                    });
+                                    reply.send(join).unwrap_or_default();
+                                },
+                                None => break,
+                            }
+                        }
+                        _ = cancel.cancelled() => {
+                            info!("Shutting down channel handler!");
+                            break
+                        }
                     }
+
                 }
             });
             let config = self.state.config.clone();
             info!("Running SSH on {}", addr);
-            thrussh::server::run(config, addr, self.state).await
+            select! {
+                res = thrussh::server::run(config, addr, self.state) => {
+                    info!("SSH server completed");
+                    res
+                }
+                _ = server_cancel.cancelled() => {
+                    info!("Shutting down SSH server");
+                    Ok(())
+                }
+            }
         }).await
     }
 }
