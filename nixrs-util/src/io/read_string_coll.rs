@@ -47,7 +47,7 @@ where
                         Poll::Ready(Ok(v)) => v,
                     };
                     let src = reader.inner();
-                    let coll = C::make(len);
+                    let coll = C::with_capacity(len);
                     if len == 0 {
                         return Poll::Ready(Ok(coll));
                     } else {
