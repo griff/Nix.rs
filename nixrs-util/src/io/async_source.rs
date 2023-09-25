@@ -1,6 +1,7 @@
 use tokio::io::AsyncRead;
 
 use super::drain::{DrainAll, DrainExact};
+use super::read_bytes::ReadBytes;
 use super::read_int::{ReadBool, ReadEnum, ReadFlag, ReadSeconds, ReadTime, ReadUsize};
 use super::read_padding::ReadPadding;
 use super::read_parsed::ReadParsed;
@@ -23,6 +24,7 @@ pub trait AsyncSource {
     fn read_seconds(&mut self) -> ReadSeconds<&mut Self>;
     fn read_time(&mut self) -> ReadTime<&mut Self>;
     fn read_padding(&mut self, size: u64) -> ReadPadding<&mut Self>;
+    fn read_bytes(&mut self) -> ReadBytes<&mut Self>;
     fn read_string(&mut self) -> ReadString<&mut Self>;
     fn read_limited_string(&mut self, limit: usize) -> ReadString<&mut Self>;
     fn read_parsed<S, T>(&mut self, state: S) -> ReadParsed<&mut Self, S, T>
@@ -81,6 +83,10 @@ where
 
     fn read_padding(&mut self, size: u64) -> ReadPadding<&mut Self> {
         ReadPadding::new(self, size)
+    }
+
+    fn read_bytes(&mut self) -> ReadBytes<&mut Self> {
+        ReadBytes::new(self)
     }
 
     fn read_string(&mut self) -> ReadString<&mut Self> {

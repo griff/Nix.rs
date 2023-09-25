@@ -5,6 +5,7 @@ mod collection_size;
 mod drain;
 mod map_printed_state;
 mod offset_reader;
+mod read_bytes;
 mod read_exact;
 mod read_int;
 mod read_padding;
@@ -182,85 +183,46 @@ mod tests {
         assert_eq!(buf.len(), 8);
     }
 
-    #[tokio::test]
-    async fn test_write_string0() {
-        let mut buf = Vec::new();
-        buf.write_str("").await.unwrap();
-        assert_eq!((&buf[..]).read_string().await.unwrap(), "");
-        assert_eq!(buf.len(), 8);
+    macro_rules! write_byte_test {
+        ($name:ident, $value:expr, $len:expr) => {
+            #[tokio::test]
+            async fn $name() {
+                let mut buf = Vec::new();
+                buf.write_buf($value).await.unwrap();
+                assert_eq!((&buf[..]).read_bytes().await.unwrap().as_ref(), $value);
+                assert_eq!(buf.len(), $len);
+            }
+        };
     }
 
-    #[tokio::test]
-    async fn test_write_string1() {
-        let mut buf = Vec::new();
-        buf.write_str(")").await.unwrap();
-        assert_eq!((&buf[..]).read_string().await.unwrap(), ")");
-        assert_eq!(buf.len(), 16);
+    macro_rules! write_str_test {
+        ($name:ident, $value:expr, $len:expr) => {
+            #[tokio::test]
+            async fn $name() {
+                let mut buf = Vec::new();
+                buf.write_str($value).await.unwrap();
+                assert_eq!((&buf[..]).read_string().await.unwrap(), $value);
+                assert_eq!(buf.len(), $len);
+            }
+        };
     }
 
-    #[tokio::test]
-    async fn test_write_string2() {
-        let mut buf = Vec::new();
-        buf.write_str("it").await.unwrap();
-        assert_eq!((&buf[..]).read_string().await.unwrap(), "it");
-        assert_eq!(buf.len(), 16);
-    }
+    write_byte_test!(test_write_slice0, b"", 8);
+    write_byte_test!(test_write_slice1, b")", 16);
+    write_byte_test!(test_write_slice3, b"tea", 16);
+    write_byte_test!(test_write_slice8, b"read_tea", 16);
+    write_byte_test!(test_write_slice9, b"read_tess", 24);
 
-    #[tokio::test]
-    async fn test_write_string3() {
-        let mut buf = Vec::new();
-        buf.write_str("tea").await.unwrap();
-        assert_eq!((&buf[..]).read_string().await.unwrap(), "tea");
-        assert_eq!(buf.len(), 16);
-    }
-
-    #[tokio::test]
-    async fn test_write_string4() {
-        let mut buf = Vec::new();
-        buf.write_str("were").await.unwrap();
-        assert_eq!((&buf[..]).read_string().await.unwrap(), "were");
-        assert_eq!(buf.len(), 16);
-    }
-
-    #[tokio::test]
-    async fn test_write_string5() {
-        let mut buf = Vec::new();
-        buf.write_str("where").await.unwrap();
-        assert_eq!((&buf[..]).read_string().await.unwrap(), "where");
-        assert_eq!(buf.len(), 16);
-    }
-
-    #[tokio::test]
-    async fn test_write_string6() {
-        let mut buf = Vec::new();
-        buf.write_str("unwrap").await.unwrap();
-        assert_eq!((&buf[..]).read_string().await.unwrap(), "unwrap");
-        assert_eq!(buf.len(), 16);
-    }
-
-    #[tokio::test]
-    async fn test_write_string7() {
-        let mut buf = Vec::new();
-        buf.write_str("where's").await.unwrap();
-        assert_eq!((&buf[..]).read_string().await.unwrap(), "where's");
-        assert_eq!(buf.len(), 16);
-    }
-
-    #[tokio::test]
-    async fn test_write_string8() {
-        let mut buf = Vec::new();
-        buf.write_str("read_tea").await.unwrap();
-        assert_eq!((&buf[..]).read_string().await.unwrap(), "read_tea");
-        assert_eq!(buf.len(), 16);
-    }
-
-    #[tokio::test]
-    async fn test_write_string9() {
-        let mut buf = Vec::new();
-        buf.write_str("read_tess").await.unwrap();
-        assert_eq!((&buf[..]).read_string().await.unwrap(), "read_tess");
-        assert_eq!(buf.len(), 24);
-    }
+    write_str_test!(test_write_str0, "", 8);
+    write_str_test!(test_write_str1, ")", 16);
+    write_str_test!(test_write_str2, "it", 16);
+    write_str_test!(test_write_str3, "tea", 16);
+    write_str_test!(test_write_str4, "were", 16);
+    write_str_test!(test_write_str5, "where", 16);
+    write_str_test!(test_write_str6, "unwrap", 16);
+    write_str_test!(test_write_str7, "where's", 16);
+    write_str_test!(test_write_str8, "read_tea", 16);
+    write_str_test!(test_write_str9, "read_tess", 24);
 
     #[tokio::test]
     async fn test_write_strings0() {
