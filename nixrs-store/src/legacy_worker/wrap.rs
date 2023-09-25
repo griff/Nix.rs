@@ -8,6 +8,7 @@ use crate::{
 
 use super::LegacyStore;
 
+#[derive(Clone, Debug)]
 pub struct LegacyWrapStore<S> {
     store: S,
 }
