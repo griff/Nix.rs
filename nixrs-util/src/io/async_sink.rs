@@ -8,7 +8,7 @@ use super::map_printed_state::{MapPrintedColl, MapPrintedState};
 use super::state_print::StatePrint;
 use super::write_int::WriteU64;
 use super::write_owned_string_coll::{write_owned_string_coll, WriteOwnedStringColl};
-use super::write_str::{write_buf, write_str, WriteStr};
+use super::write_slice::{write_buf, write_str, WriteSlice};
 use super::write_string::{write_string, WriteString};
 use super::write_string_coll::{write_string_coll, WriteStringColl};
 use super::CollectionSize;
@@ -28,8 +28,8 @@ pub trait AsyncSink {
         &mut self,
         time: SystemTime,
     ) -> Either<WriteU64<&mut Self>, Ready<io::Result<()>>>;
-    fn write_buf<'a>(&mut self, buf: &'a [u8]) -> WriteStr<'a, &mut Self>;
-    fn write_str<'a>(&mut self, s: &'a str) -> WriteStr<'a, &mut Self>;
+    fn write_buf<'a>(&mut self, buf: &'a [u8]) -> WriteSlice<'a, &mut Self>;
+    fn write_str<'a>(&mut self, s: &'a str) -> WriteSlice<'a, &mut Self>;
     fn write_string(&mut self, s: String) -> WriteString<&mut Self>;
     fn write_string_coll<'a, C, I>(&mut self, coll: C) -> WriteStringColl<'a, &mut Self, I>
     where
@@ -99,11 +99,11 @@ where
         }
     }
 
-    fn write_buf<'a>(&mut self, buf: &'a [u8]) -> WriteStr<'a, &mut Self> {
+    fn write_buf<'a>(&mut self, buf: &'a [u8]) -> WriteSlice<'a, &mut Self> {
         write_buf(self, buf)
     }
 
-    fn write_str<'a>(&mut self, s: &'a str) -> WriteStr<'a, &mut Self> {
+    fn write_str<'a>(&mut self, s: &'a str) -> WriteSlice<'a, &mut Self> {
         write_str(self, s)
     }
 

@@ -17,7 +17,7 @@ mod state_print;
 mod write_all;
 mod write_int;
 mod write_owned_string_coll;
-mod write_str;
+mod write_slice;
 mod write_string;
 mod write_string_coll;
 

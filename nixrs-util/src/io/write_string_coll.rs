@@ -8,14 +8,14 @@ use std::task::{Context, Poll};
 use tokio::io::AsyncWrite;
 
 use super::write_int::WriteU64;
-use super::write_str::{write_str, WriteStr};
+use super::write_slice::{write_str, WriteSlice};
 use super::CollectionSize;
 
 #[derive(Debug)]
 pub enum WriteStringColl<'a, W, I> {
     Invalid,
     WriteSize(I, WriteU64<W>),
-    WriteData(I, WriteStr<'a, W>),
+    WriteData(I, WriteSlice<'a, W>),
     Done(W),
 }
 
