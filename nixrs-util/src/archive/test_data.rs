@@ -52,7 +52,7 @@ pub fn empty_file_in_dir() -> Vec<NAREvent> {
         NAREvent::Magic(Arc::new(NAR_VERSION_MAGIC_1.to_owned())),
         NAREvent::Directory,
         NAREvent::DirectoryEntry {
-            name: Arc::new("a=?.0.aA".into()),
+            name: Bytes::from_static(b"a=?.0.aA"),
         },
         NAREvent::RegularNode {
             executable: false,
@@ -77,7 +77,7 @@ pub fn empty_dir_in_dir() -> Vec<NAREvent> {
         NAREvent::Magic(Arc::new(NAR_VERSION_MAGIC_1.to_owned())),
         NAREvent::Directory,
         NAREvent::DirectoryEntry {
-            name: Arc::new("empty".into()),
+            name: Bytes::from_static(b"empty"),
         },
         NAREvent::Directory,
         NAREvent::EndDirectory,
@@ -90,7 +90,7 @@ pub fn symlink() -> Vec<NAREvent> {
     vec![
         NAREvent::Magic(Arc::new(NAR_VERSION_MAGIC_1.to_owned())),
         NAREvent::SymlinkNode {
-            target: Arc::new("../deep".into()),
+            target: Bytes::from_static(b"../deep"),
         },
     ]
 }
@@ -151,15 +151,15 @@ pub fn dir_example() -> Vec<NAREvent> {
         NAREvent::Magic(Arc::new(NAR_VERSION_MAGIC_1.to_owned())),
         NAREvent::Directory,
         NAREvent::DirectoryEntry {
-            name: Arc::new("dir".to_string()),
+            name: Bytes::from_static(b"dir"),
         },
         NAREvent::Directory,
         NAREvent::DirectoryEntry {
-            name: Arc::new("more".to_string()),
+            name: Bytes::from_static(b"more"),
         },
         NAREvent::Directory,
         NAREvent::DirectoryEntry {
-            name: Arc::new("Deep".into()),
+            name: Bytes::from_static(b"Deep"),
         },
         NAREvent::RegularNode {
             executable: true,
@@ -173,11 +173,11 @@ pub fn dir_example() -> Vec<NAREvent> {
         },
         NAREvent::EndDirectoryEntry,
         NAREvent::DirectoryEntry {
-            name: Arc::new("deep".into()),
+            name: Bytes::from_static(b"deep"),
         },
         NAREvent::Directory,
         NAREvent::DirectoryEntry {
-            name: Arc::new("empty.keep".to_string()),
+            name: Bytes::from_static(b"empty.keep"),
         },
         NAREvent::RegularNode {
             executable: false,
@@ -186,17 +186,17 @@ pub fn dir_example() -> Vec<NAREvent> {
         },
         NAREvent::EndDirectoryEntry,
         NAREvent::DirectoryEntry {
-            name: Arc::new("loop".into()),
+            name: Bytes::from_static(b"loop"),
         },
         NAREvent::SymlinkNode {
-            target: Arc::new("../deep".into()),
+            target: Bytes::from_static(b"../deep"),
         },
         NAREvent::EndDirectoryEntry,
         NAREvent::DirectoryEntry {
-            name: Arc::new("test".into()),
+            name: Bytes::from_static(b"test"),
         },
         NAREvent::SymlinkNode {
-            target: Arc::new("/etc/ssh/sshd_config".into()),
+            target: Bytes::from_static(b"/etc/ssh/sshd_config"),
         },
         NAREvent::EndDirectoryEntry,
         NAREvent::EndDirectory,
@@ -206,7 +206,7 @@ pub fn dir_example() -> Vec<NAREvent> {
         NAREvent::EndDirectory,
         NAREvent::EndDirectoryEntry,
         NAREvent::DirectoryEntry {
-            name: Arc::new("testing.txt".into()),
+            name: Bytes::from_static(b"testing.txt"),
         },
         NAREvent::RegularNode {
             executable: false,

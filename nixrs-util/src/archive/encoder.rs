@@ -52,11 +52,10 @@ impl NAREvent {
                 }
             }
             NAREvent::SymlinkNode { target } => {
-                let bytes = target.as_bytes();
-                let padding = calc_padding(bytes.len() as u64) as usize;
+                let padding = calc_padding(target.len() as u64) as usize;
                 // 6 * u64 = 48 bytes
                 // 40 bytes from strings
-                return 48 + 40 + bytes.len() + padding;
+                return 48 + 40 + target.len() + padding;
             }
             NAREvent::Directory => {
                 // 3 * u64 = 24 bytes
@@ -64,11 +63,10 @@ impl NAREvent {
                 return 24 + 32;
             }
             NAREvent::DirectoryEntry { name } => {
-                let bytes = name.as_bytes();
-                let padding = calc_padding(bytes.len() as u64) as usize;
+                let padding = calc_padding(name.len() as u64) as usize;
                 // 5 * u64 = 40 bytes
                 // 32 bytes from strings
-                return 40 + 32 + bytes.len() + padding;
+                return 40 + 32 + name.len() + padding;
             }
             NAREvent::EndDirectory | NAREvent::EndDirectoryEntry => {
                 // 1 * u64 = 8 bytes
@@ -132,8 +130,7 @@ impl NAREvent {
                 }
             }
             NAREvent::SymlinkNode { target } => {
-                let bytes = target.as_bytes();
-                let padding = calc_padding(bytes.len() as u64) as usize;
+                let padding = calc_padding(target.len() as u64) as usize;
                 dst.put_u64_le(1);
                 dst.put_slice(b"(\0\0\0\0\0\0\0");
                 dst.put_u64_le(4);
@@ -142,8 +139,8 @@ impl NAREvent {
                 dst.put_slice(b"symlink\0");
                 dst.put_u64_le(6);
                 dst.put_slice(b"target\0\0");
-                dst.put_u64_le(bytes.len() as u64);
-                dst.put_slice(bytes);
+                dst.put_u64_le(target.len() as u64);
+                dst.put_slice(target);
                 if padding > 0 {
                     let zero = [0u8; 8];
                     dst.put_slice(&zero[0..padding]);
@@ -160,16 +157,15 @@ impl NAREvent {
                 dst.put_slice(b"directory\0\0\0\0\0\0\0");
             }
             NAREvent::DirectoryEntry { name } => {
-                let bytes = name.as_bytes();
-                let padding = calc_padding(bytes.len() as u64) as usize;
+                let padding = calc_padding(name.len() as u64) as usize;
                 dst.put_u64_le(5);
                 dst.put_slice(b"entry\0\0\0");
                 dst.put_u64_le(1);
                 dst.put_slice(b"(\0\0\0\0\0\0\0");
                 dst.put_u64_le(4);
                 dst.put_slice(b"name\0\0\0\0");
-                dst.put_u64_le(bytes.len() as u64);
-                dst.put_slice(bytes);
+                dst.put_u64_le(name.len() as u64);
+                dst.put_slice(name);
                 if padding > 0 {
                     let zero = [0u8; 8];
                     dst.put_slice(&zero[..padding]);

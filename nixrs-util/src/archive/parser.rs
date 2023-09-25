@@ -2,6 +2,7 @@ use std::io;
 use std::sync::Arc;
 
 use async_stream::try_stream;
+use bytes::Bytes;
 use bytes::BytesMut;
 use futures::Stream;
 use log::trace;
@@ -66,8 +67,8 @@ where
         }
 
         let mut names = Vec::new();
-        let mut prev_names : Vec<Option<String>> = Vec::new();
-        let mut prev_name : Option<String> = None;
+        let mut prev_names : Vec<Option<Bytes>> = Vec::new();
+        let mut prev_name : Option<Bytes> = None;
         let mut file_type = None;
         let mut executable = false;
         let mut size = 0;
@@ -210,11 +211,11 @@ where
                                 "multiple name fields"))?;
                             return;
                         }
-                        let n = source.read_string().await?;
-                        if n.is_empty() || n == "." || n == ".." || n.contains("/") {
+                        let n = source.read_bytes().await?;
+                        if n.is_empty() || n == "." || n == ".." || n.contains(&b'/') {
                             Err(io::Error::new(
                                 io::ErrorKind::InvalidData,
-                                format!("NAR contains invalid file name '{}'", n)))?;
+                                format!("NAR contains invalid file name '{}'", bstr::BStr::new(&n))))?;
                             return;
                         }
                         if let Some(p_name) = prev_name.as_ref() {
@@ -226,7 +227,7 @@ where
                             }
                         }
                         prev_name = Some(n.clone());
-                        name = Some(Arc::new(n));
+                        name = Some(n);
 
                     } else if s == "node" {
                         if let Some(name) = name {
@@ -242,7 +243,7 @@ where
                             prev_names.push(prev_name);
                             prev_name = None;
                             file_type = None;
-                            trace!("{}DirEntry {} {}", " ".repeat(depth), name, names.len());
+                            trace!("{}DirEntry {} {}", " ".repeat(depth), bstr::BStr::new(&name), names.len());
                             depth += 1;
                             yield NAREvent::DirectoryEntry { name };
                             break;
@@ -261,7 +262,7 @@ where
                 }
 
             } else if s == "target" && file_type == Some(FileType::Symlink) {
-                let target = Arc::new(source.read_string().await?);
+                let target = source.read_bytes().await?;
                 trace!("{}Symlink {}", " ".repeat(depth), names.len());
                 yield NAREvent::SymlinkNode { target };
                 got_target = true;

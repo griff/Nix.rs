@@ -5,6 +5,7 @@ use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 
+use bstr::ByteSlice;
 use futures::Sink;
 use futures::Stream;
 use futures::StreamExt;
@@ -49,6 +50,8 @@ pub enum NARWriteErrorKind {
     CreateFile(PathBuf),
     #[error("writing file '{0:?}'")]
     WriteFile(PathBuf),
+    #[error("path contains invalid UTF-8 '{0:?}'")]
+    PathUTF8(PathBuf),
 }
 
 #[derive(Error, Debug)]
@@ -62,6 +65,12 @@ pub struct NARWriteError {
 impl NARWriteError {
     pub fn new(kind: NARWriteErrorKind, source: io::Error) -> Self {
         NARWriteError { kind, source }
+    }
+    pub fn path_utf8_error(path: PathBuf, err: bstr::Utf8Error) -> Self {
+        Self::new(
+            NARWriteErrorKind::PathUTF8(path),
+            io::Error::new(io::ErrorKind::InvalidData, err)
+        )
     }
     pub fn create_dir_error(path: PathBuf, err: io::Error) -> Self {
         Self::new(NARWriteErrorKind::CreateDirectory(path), err)
@@ -157,7 +166,13 @@ impl Sink<NAREvent> for NARRestorer {
                 this.path.pop();
             }
             NAREvent::DirectoryEntry { name } => {
-                this.path.push(name.as_ref());
+                let name_os = name.to_os_str()
+                    .map_err(|err| {
+                        let lossy = name.to_os_str_lossy();
+                        let path = this.path.join(lossy);
+                        NARWriteError::path_utf8_error(path, err)
+                    })?;
+                this.path.push(name_os);
             }
             NAREvent::Directory => {
                 let path = this.path.clone();
@@ -170,7 +185,13 @@ impl Sink<NAREvent> for NARRestorer {
                 }));
             }
             NAREvent::SymlinkNode { target } => {
-                let src = PathBuf::from(target.as_ref());
+                let target_os = target.to_os_str()
+                    .map_err(|err| {
+                        let lossy = target.to_os_str_lossy().into_owned();
+                        let path = PathBuf::from(lossy);
+                        NARWriteError::path_utf8_error(path, err)
+                    })?;
+                let src = PathBuf::from(target_os);
                 let path = this.path.clone();
                 this.writing = State::Working(Box::pin(async move {
                     if let Err(err) = symlink(src, &path).await {

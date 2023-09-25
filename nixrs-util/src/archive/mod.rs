@@ -40,11 +40,11 @@ pub enum NAREvent {
         buf: Bytes,
     },
     SymlinkNode {
-        target: Arc<String>,
+        target: Bytes,
     },
     Directory,
     DirectoryEntry {
-        name: Arc<String>,
+        name: Bytes,
     },
     EndDirectoryEntry,
     EndDirectory,
@@ -115,7 +115,7 @@ pub mod proptest {
                 }
                 NarTree::Symlink(target) => {
                     let e = NAREvent::SymlinkNode {
-                        target: Arc::new(target),
+                        target: Bytes::from(target),
                     };
                     offset += e.encoded_size() as u64;
                     ls.push(e);
@@ -126,7 +126,7 @@ pub mod proptest {
                     ls.push(e);
                     for (name, node) in tree {
                         let e = NAREvent::DirectoryEntry {
-                            name: Arc::new(name),
+                            name: Bytes::from(name),
                         };
                         offset += e.encoded_size() as u64;
                         ls.push(e);

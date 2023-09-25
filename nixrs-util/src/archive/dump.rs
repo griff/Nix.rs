@@ -9,7 +9,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_stream::try_stream;
-use bytes::BytesMut;
+use bstr::{ByteVec, ByteSlice};
+use bytes::{BytesMut, Bytes};
 use futures::future::Ready;
 use futures::Stream;
 use log::debug;
@@ -27,7 +28,7 @@ struct Item {
 }
 
 enum Entry {
-    Entry(String, Item),
+    Entry(Bytes, Item),
     Single(Item),
 }
 
@@ -43,7 +44,7 @@ impl Entry {
 enum Process {
     Done,
     Single(Item),
-    Dir(IntoIter<String, Item>),
+    Dir(IntoIter<Vec<u8>, Item>),
 }
 
 impl Iterator for Process {
@@ -59,7 +60,7 @@ impl Iterator for Process {
             Process::Dir(mut it) => {
                 let (name, item) = it.next()?;
                 *self = Process::Dir(it);
-                Some(Entry::Entry(name, item))
+                Some(Entry::Entry(Bytes::from(name), item))
             }
         }
     }
@@ -170,10 +171,9 @@ where
                 let (item, mut close) = match item {
                     Entry::Single(item) => (item, false),
                     Entry::Entry(name, item) => {
-                        let name = Arc::new(name);
                         depth += 1;
                         let event = NAREvent::DirectoryEntry { name: name.clone() };
-                        trace!("{}DirEntry {} {} {}", " ".repeat(depth), name, offset, event.encoded_size());
+                        trace!("{}DirEntry {} {} {}", " ".repeat(depth), bstr::BStr::new(&name), offset, event.encoded_size());
                         offset += event.encoded_size() as u64;
                         yield event;
                         (item, true)
@@ -258,7 +258,7 @@ where
                     let mut unhacked = BTreeMap::new();
                     let mut rd = read_dir(&parent_path).await?;
                     while let Some(entry) = rd.next_entry().await? {
-                        let mut name = entry.file_name().into_string()
+                        let mut name = Vec::from_os_string(entry.file_name())
                             .map_err(|s| io::Error::new(io::ErrorKind::Other, format!("filename {:?} not valid UTF-8", s) ))?;
                         let file_type = entry.file_type().await?;
                         let path = entry.path();
@@ -270,9 +270,10 @@ where
                                 debug!("removing case hack suffix from '{:?}'", entry.path());
                                 name = name[..pos].to_owned();
                                 if unhacked.contains_key(&name) {
+                                    let name_s = String::from_utf8_lossy(&name);
                                     Err(io::Error::new(io::ErrorKind::Other,
                                         format!("file name collision in between '{:?}' and '{:?}'",
-                                            parent_path.join(name),
+                                            parent_path.join(name_s.as_ref()),
                                             entry.path())))?;
                                     return;
                                 }

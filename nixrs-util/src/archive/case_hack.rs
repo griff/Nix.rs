@@ -1,11 +1,12 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::fmt;
 use std::hash::Hash;
+use std::io::Write;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use derive_more::Display;
+use bytes::Bytes;
 use futures::Stream;
 use log::debug;
 use pin_project_lite::pin_project;
@@ -15,12 +16,16 @@ use crate::ready;
 
 use super::NAREvent;
 
-#[derive(Display)]
-#[display(fmt = "{}", _0)]
-struct CIString(Arc<String>, String);
+struct CIString(Bytes, String);
 impl PartialEq for CIString {
     fn eq(&self, other: &Self) -> bool {
         self.1.eq(&other.1)
+    }
+}
+impl fmt::Display for CIString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let bstr = bstr::BStr::new(&self.0);
+        write!(f, "{}", bstr)
     }
 }
 impl Eq for CIString {}
@@ -67,16 +72,18 @@ impl<Err, S: Stream<Item = Result<NAREvent, Err>>> Stream for CaseHackStream<S> 
                     re
                 }
                 NAREvent::DirectoryEntry { name } => {
-                    let lower = name.to_lowercase();
+                    let lower = String::from_utf8_lossy(&name).to_lowercase();
                     let ci_str = CIString(name.clone(), lower);
                     match this.entries.entry(ci_str) {
                         Entry::Occupied(mut o) => {
-                            debug!("case collision between '{}' and '{}'", o.key(), name);
+                            let b_name = bstr::BStr::new(&name);
+                            debug!("case collision between '{}' and '{}'", o.key(), b_name);
                             let idx = o.get() + 1;
-                            let new_name = format!("{}{}{}", name, CASE_HACK_SUFFIX, idx);
+                            let mut new_name = name.to_vec();
+                            write!(new_name, "{}{}", CASE_HACK_SUFFIX, idx).unwrap();
                             o.insert(idx);
                             NAREvent::DirectoryEntry {
-                                name: Arc::new(new_name),
+                                name: Bytes::from(new_name),
                             }
                         }
                         Entry::Vacant(v) => {
