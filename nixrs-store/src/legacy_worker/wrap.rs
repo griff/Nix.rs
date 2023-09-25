@@ -3,7 +3,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::{
     BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, DerivedPath, Error,
-    RepairFlag, Store, StoreDirProvider, StorePath, StorePathSet, SubstituteFlag, ValidPathInfo,
+    RepairFlag, Store, StoreDirProvider, StorePath, StorePathSet, SubstituteFlag, ValidPathInfo, misc::compute_fs_closure_slow,
 };
 
 use super::LegacyStore;
@@ -107,9 +107,13 @@ where
     }
     async fn query_closure(
         &mut self,
-        _paths: &StorePathSet,
-        _include_outputs: bool,
+        paths: &StorePathSet,
+        include_outputs: bool,
     ) -> Result<StorePathSet, Error> {
-        Err(Error::UnsupportedOperation("query_closure".into()))
+        if include_outputs {
+            Err(Error::UnsupportedOperation("query_closure".into()))
+        } else {
+            compute_fs_closure_slow(&mut self.store, paths, false).await
+        }
     }
 }

@@ -112,3 +112,61 @@ where
     })
     .await
 }
+
+pub async fn compute_fs_closure_slow<S>(
+    store: &mut S,
+    start_paths: &StorePathSet,
+    include_derivers: bool,
+) -> Result<StorePathSet, Error>
+where
+    S: Store,
+{
+    let mut res = StorePathSet::new();
+    let mut pending = Vec::with_capacity(start_paths.len());
+    for path in start_paths {
+        let mut edges = StorePathSet::new();
+        let info = store
+            .query_path_info(&path)
+            .await?
+            .ok_or(Error::InvalidPath(path.to_string()))?;
+        for reference in info.references {
+            if reference != *path {
+                edges.insert(reference);
+            }
+        }
+        if include_derivers {
+            if let Some(deriver) = info.deriver {
+                if store.query_path_info(&deriver).await?.is_some() {
+                    edges.insert(deriver);
+                }
+            }
+        }
+        pending.push(edges);
+    }
+    while !pending.is_empty() {
+        let edges = pending.pop().unwrap();
+        for edge in edges {
+            if res.insert(edge.clone()) {
+                let mut edges = StorePathSet::new();
+                let info = store
+                    .query_path_info(&edge)
+                    .await?
+                    .ok_or(Error::InvalidPath(edge.to_string()))?;
+                for reference in info.references {
+                    if reference != edge {
+                        edges.insert(reference);
+                    }
+                }
+                if include_derivers {
+                    if let Some(deriver) = info.deriver {
+                        if store.query_path_info(&deriver).await?.is_some() {
+                            edges.insert(deriver);
+                        }
+                    }
+                }
+                pending.push(edges);
+            }
+        }
+    }
+    Ok(res)
+}
