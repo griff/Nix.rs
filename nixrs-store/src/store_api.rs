@@ -689,18 +689,22 @@ pub trait Store: StoreDirProvider {
 
     async fn build_derivation<W: AsyncWrite + Send + Unpin>(
         &mut self,
-        drv_path: &StorePath,
-        drv: &BasicDerivation,
-        settings: &BuildSettings,
-        build_log: W,
-    ) -> Result<BuildResult, Error>;
+        _drv_path: &StorePath,
+        _drv: &BasicDerivation,
+        _settings: &BuildSettings,
+        _build_log: W,
+    ) -> Result<BuildResult, Error> {
+        Err(Error::UnsupportedOperation("build_derivation".into()))
+    }
 
     async fn build_paths<W: AsyncWrite + Send + Unpin>(
         &mut self,
-        drv_paths: &[DerivedPath],
-        settings: &BuildSettings,
-        build_log: W,
-    ) -> Result<(), Error>;
+        _drv_paths: &[DerivedPath],
+        _settings: &BuildSettings,
+        _build_log: W,
+    ) -> Result<(), Error> {
+        Err(Error::UnsupportedOperation("build_paths".into()))
+    }
 }
 
 #[cfg(any(test, feature = "test"))]
