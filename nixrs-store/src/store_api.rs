@@ -584,18 +584,6 @@ where
             }
         }
     }
-    /*
-    try_join_all(sorted.into_iter().map(|store_path| {
-        let mut dst_store = dst_store.clone();
-        let mut src_store = src_store.clone();
-        async move {
-            if !dst_store.is_valid_path(&store_path).await? {
-                copy_store_path(&mut src_store, &mut dst_store, &store_path, repair, check_sigs).await?;
-            }
-            Ok(()) as Result<(), Error>
-        }
-    })).await?;
-     */
     for store_path in sorted {
         if !dst_store.query_path_info(&store_path).await?.is_some() {
             copy_store_path(src_store, dst_store, &store_path, repair, check_sigs).await?;
