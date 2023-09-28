@@ -1,3 +1,5 @@
+use std::convert::Infallible;
+use std::str::FromStr;
 use std::{collections::BTreeMap, fmt, num::ParseIntError, time::SystemTime};
 
 use nixrs_util::hash::{Hash, ParseHashError};
@@ -10,11 +12,111 @@ use crate::{
     ParseStorePathError, StoreDir, StorePath, StorePathSet, ValidPathInfo,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Compression {
+    None,
+    BZip2,
+    Compress,
+    GRZip,
+    GZip,
+    LRZip,
+    LZ4,
+    LZip,
+    LZMA,
+    LZOP,
+    XZ,
+    ZStd,
+    BR,
+    Unknown(String)
+}
+
+impl Compression {
+    pub fn is_none(&self) -> bool {
+        if let Self::None = self {
+            true
+        } else {
+            false
+        }
+    }
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::None => "none",
+            Self::BZip2 => "bzip2",
+            Self::Compress => "compress",
+            Self::GRZip => "grzip",
+            Self::GZip => "gzip",
+            Self::LRZip => "lrzip",
+            Self::LZ4 => "lz4",
+            Self::LZip => "lzip",
+            Self::LZMA => "lzma",
+            Self::LZOP => "lzop",
+            Self::XZ => "xz",
+            Self::ZStd => "zstd",
+            Self::BR => "br",
+            Self::Unknown(s) => s
+        }
+    }
+}
+
+impl Default for Compression {
+    fn default() -> Self {
+        Self::BZip2
+    }
+}
+
+impl fmt::Display for Compression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl From<String> for Compression {
+    fn from(value: String) -> Self {
+        From::from(value.as_ref())
+    }
+}
+
+impl<'a> From<&'a str> for Compression {
+    fn from(value: &'a str) -> Self {
+        match value {
+            "none" => Self::None,
+            "" => Self::BZip2,
+            "bzip2" => Self::BZip2,
+            "compress" => Self::Compress,
+            "grzip" => Self::GRZip,
+            "gzip" => Self::GZip,
+            "lrzip" => Self::LRZip,
+            "lz4" => Self::LZ4,
+            "lzip" => Self::LZip,
+            "lzma" => Self::LZMA,
+            "lzop" => Self::LZOP,
+            "xz" => Self::XZ,
+            "zstd" => Self::ZStd,
+            "br" => Self::BR,
+            s => {
+                Self::Unknown(s.to_string())
+            }
+        }
+    }
+}
+
+impl FromStr for Compression {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            s => {
+                Ok(s.into())
+            }
+        }
+    }
+}
+
 #[derive(Debug, Eq, PartialOrd, Ord, Clone)]
 pub struct NarInfo {
     pub path_info: ValidPathInfo,
     pub url: String,
-    pub compression: String,
+    pub compression: Compression,
     pub file_hash: Option<Hash>,
     pub file_size: u64,
     pub extra: BTreeMap<String, String>,
@@ -34,7 +136,7 @@ impl<'a> fmt::Display for DisplayNarInfo<'a> {
         )?;
         write!(f, "URL: {}\n", self.nar_info.url)?;
         //assert!(self.nar_info.compression != "");
-        if self.nar_info.compression != "" {
+        if !self.nar_info.compression.is_none() {
             write!(f, "Compression: {}\n", self.nar_info.compression)?;
         }
         //let file_hash = self.nar_info.file_hash.as_ref().unwrap();
@@ -89,7 +191,7 @@ impl NarInfo {
         NarInfo {
             path_info,
             url: String::new(),
-            compression: String::new(),
+            compression: Default::default(),
             file_hash: None,
             file_size: 0,
             extra: BTreeMap::new(),
@@ -99,7 +201,7 @@ impl NarInfo {
     pub fn parse(store_dir: &StoreDir, s: &str) -> Result<NarInfo, ParseNarInfoError> {
         let mut path = None;
         let mut url = String::new();
-        let mut compression = String::new();
+        let mut compression = Default::default();
         let mut file_hash = None;
         let mut file_size = 0;
         let mut nar_hash = None;
@@ -166,9 +268,6 @@ impl NarInfo {
         if nar_size == 0 {
             return Err(ParseNarInfoError::MissingNarSize);
         }
-        if compression == "" {
-            compression = "bzip2".into();
-        }
         let path = path.unwrap();
         let nar_hash = nar_hash.unwrap();
         let path_info = ValidPathInfo {
@@ -227,7 +326,7 @@ impl From<ValidPathInfo> for NarInfo {
         NarInfo {
             path_info,
             url: String::new(),
-            compression: String::new(),
+            compression: Default::default(),
             file_hash: None,
             file_size: 0,
             extra: BTreeMap::new(),

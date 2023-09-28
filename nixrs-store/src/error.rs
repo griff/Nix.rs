@@ -3,6 +3,7 @@ use thiserror::Error;
 
 use crate::content_address::ParseContentAddressError;
 use crate::legacy_worker::ServeCommand;
+use crate::nar_info::Compression;
 use crate::{
     crypto, ParseDrvOutputError, ParseStorePathError, ReadDerivationError, ReadStorePathError,
     WriteDerivationError,
