@@ -224,20 +224,19 @@ impl NarInfo {
                     "Compression" => compression = value.into(),
                     "FileHash" => file_hash = Some(Hash::parse_any_prefixed(value)?),
                     "FileSize" => file_size = value.parse::<u64>()?,
-                    "NarHash" => nar_hash = Some(Hash::parse_any_prefixed(s)?),
+                    "NarHash" => nar_hash = Some(Hash::parse_any_prefixed(value)?),
                     "NarSize" => nar_size = value.parse::<u64>()?,
                     "References" => {
-                        for reference in value.split(" ") {
-                            let ref_path = store_dir.parse_path(reference)?;
-                            references.insert(ref_path);
-                        }
-                        if references.is_empty() {
-                            return Err(ParseNarInfoError::MissingReferences);
+                        if !value.trim().is_empty() {
+                            for reference in value.split(" ") {
+                                let ref_path = StorePath::new_from_base_name(reference)?;
+                                references.insert(ref_path);
+                            }
                         }
                     }
                     "Deriver" => {
                         if value != "unknown-deriver" {
-                            deriver = Some(store_dir.parse_path(value)?);
+                            deriver = Some(StorePath::new_from_base_name(value)?);
                         }
                     }
                     "Sig" => {
@@ -253,7 +252,9 @@ impl NarInfo {
                     }
                 }
             } else {
-                return Err(ParseNarInfoError::InvalidLine(line.into()));
+                if !line.trim().is_empty() {
+                    return Err(ParseNarInfoError::InvalidLine(line.into()));
+                }
             }
         }
         if path.is_none() {
@@ -386,4 +387,80 @@ pub enum ParseNarInfoError {
     MissingNarSize,
     #[error("missing references")]
     MissingReferences,
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{StoreDir, StorePath, crypto::{Signature, PublicKey}};
+
+    use super::*;
+
+    #[test]
+    fn test_narinfo_parse_gcc() {
+        let store_dir = StoreDir::new("/nix/store").unwrap();
+        let data = std::fs::read("test-data/7rjj86a15146cq1d3qy068lml7n7ykzm.narinfo").unwrap();
+        let data_s = String::from_utf8(data).unwrap();
+        let info = NarInfo::parse(&store_dir, &data_s).unwrap();
+        assert_eq!(info.path_info.path, StorePath::new_from_base_name("7rjj86a15146cq1d3qy068lml7n7ykzm-gcc-wrapper-12.3.0").unwrap());
+        assert_eq!(info.path_info.nar_hash, "sha256:0kq5fqd4kqf898517kzkk2c60fk6kfx6ly0inwmsk4p5xnxzxkkx".parse::<Hash>().unwrap());
+        assert_eq!(info.path_info.nar_size, 57_024);
+        assert_eq!(info.path_info.deriver, Some(StorePath::new_from_base_name("bkvcpfrw9l7xk6kq1jdcxwkzz6vzlq4x-gcc-wrapper-12.3.0.drv").unwrap()));
+
+        let mut paths = StorePathSet::new();
+        paths.insert(StorePath::new_from_base_name("1a6gwg8f25jii16sjsw0icb586g81d7h-coreutils-9.3").unwrap());
+        paths.insert(StorePath::new_from_base_name("7rjj86a15146cq1d3qy068lml7n7ykzm-gcc-wrapper-12.3.0").unwrap());
+        paths.insert(StorePath::new_from_base_name("avpf9xk8zh78r45v1sypnj3wa1bm1cd2-gnugrep-3.11").unwrap());
+        paths.insert(StorePath::new_from_base_name("axqkmprf67z895q5dk3gval6hc28nkxp-expand-response-params").unwrap());
+        paths.insert(StorePath::new_from_base_name("d2dcqvhpmi22c06xh9mbm4q9kg1vijr7-cctools-binutils-darwin-wrapper-973.0.1").unwrap());
+        paths.insert(StorePath::new_from_base_name("hlxsqazc1ggvlh9cha75mn881hc0d7ai-gcc-12.3.0-lib").unwrap());
+        paths.insert(StorePath::new_from_base_name("rik0icxjshvcq6z9ccf8rlg147abisgn-gcc-12.3.0").unwrap());
+        paths.insert(StorePath::new_from_base_name("s2ps2rq1k0k7sqw47yc7mi5311y1kqfl-bash-5.2-p15").unwrap());
+        paths.insert(StorePath::new_from_base_name("vw0zbvb4n6c1mwfj5x4ggngqlkfgb070-Libsystem-1238.60.2").unwrap());
+        assert_eq!(info.path_info.references, paths);
+
+        let mut sigs = SignatureSet::new();
+        let sig = "cache.nixos.org-1:NWIUOETMPCgFRRR00C40Zxc4mzBhdP9LLSUbshFuoSsVPJhxy8LMcSVlM3Up51izrOuZPa6jtqBLkTpUG3TNDA==".parse::<Signature>().unwrap();
+        sigs.insert(sig.clone());
+        assert_eq!(info.path_info.sigs, sigs);
+
+        assert_eq!(info.url, "nar/187yfzibyhdcv024a1aj6kmxdcwbrd3rqdrkdrkbw8l41wc79gpn.nar.xz");
+        assert_eq!(info.compression, Compression::XZ);
+        assert_eq!(info.file_hash, Some("sha256:187yfzibyhdcv024a1aj6kmxdcwbrd3rqdrkdrkbw8l41wc79gpn".parse::<Hash>().unwrap()));
+        assert_eq!(info.file_size, 9_360);
+        assert_eq!(info.extra, BTreeMap::new());
+
+        let key = "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=".parse::<PublicKey>().unwrap();
+        let fingerprint = info.path_info.fingerprint(&store_dir).unwrap().to_string();
+
+        assert_eq!(key.verify(fingerprint, &sig), true);
+    }
+
+    #[test]
+    fn test_narinfo_parse_hello() {
+        let store_dir = StoreDir::new("/nix/store").unwrap();
+        let data = std::fs::read("test-data/ycbqd7822qcnasaqy0mmiv2j9n9m62yl.narinfo").unwrap();
+        let data_s = String::from_utf8(data).unwrap();
+        let info = NarInfo::parse(&store_dir, &data_s).unwrap();
+        assert_eq!(info.path_info.path, StorePath::new_from_base_name("ycbqd7822qcnasaqy0mmiv2j9n9m62yl-hello-2.12.1").unwrap());
+        assert_eq!(info.path_info.nar_hash, "sha256:1bnz0km10yckg8808px5ifdbd7hwkl8fhi2hbvzdlnf269xmb55a".parse::<Hash>().unwrap());
+        assert_eq!(info.path_info.nar_size, 74_704);
+        assert_eq!(info.path_info.deriver, Some(StorePath::new_from_base_name("niifikxjcqw16azkyii083q0wzbbz0gk-hello-2.12.1.drv").unwrap()));
+        assert_eq!(info.path_info.references, StorePathSet::new());
+
+        let mut sigs = SignatureSet::new();
+        let sig = "cache.nixos.org-1:eeCTVmM4dOCaEx2bJIszz+/3Vdkr/w1Xgy2hmknmifaMieBbUL5wi0TWlIkPNalGB5VRD4p9l8LCPjWKwaXPDQ==".parse::<Signature>().unwrap();
+        sigs.insert(sig.clone());
+        assert_eq!(info.path_info.sigs, sigs);
+
+        assert_eq!(info.url, "nar/0vpy0ghvb98n2s928ldw855rnk2qadi4pyqmy74fvwnl2x086kyc.nar.xz");
+        assert_eq!(info.compression, Compression::XZ);
+        assert_eq!(info.file_hash, Some("sha256:0vpy0ghvb98n2s928ldw855rnk2qadi4pyqmy74fvwnl2x086kyc".parse::<Hash>().unwrap()));
+        assert_eq!(info.file_size, 25_288);
+        assert_eq!(info.extra, BTreeMap::new());
+
+        let key = "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=".parse::<PublicKey>().unwrap();
+        let fingerprint = info.path_info.fingerprint(&store_dir).unwrap().to_string();
+
+        assert_eq!(key.verify(fingerprint, &sig), true);
+    }
 }

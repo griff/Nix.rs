@@ -1,0 +1,10 @@
+StorePath: /nix/store/7rjj86a15146cq1d3qy068lml7n7ykzm-gcc-wrapper-12.3.0
+URL: nar/187yfzibyhdcv024a1aj6kmxdcwbrd3rqdrkdrkbw8l41wc79gpn.nar.xz
+Compression: xz
+FileHash: sha256:187yfzibyhdcv024a1aj6kmxdcwbrd3rqdrkdrkbw8l41wc79gpn
+FileSize: 9360
+NarHash: sha256:0kq5fqd4kqf898517kzkk2c60fk6kfx6ly0inwmsk4p5xnxzxkkx
+NarSize: 57024
+References: 1a6gwg8f25jii16sjsw0icb586g81d7h-coreutils-9.3 7rjj86a15146cq1d3qy068lml7n7ykzm-gcc-wrapper-12.3.0 avpf9xk8zh78r45v1sypnj3wa1bm1cd2-gnugrep-3.11 axqkmprf67z895q5dk3gval6hc28nkxp-expand-response-params d2dcqvhpmi22c06xh9mbm4q9kg1vijr7-cctools-binutils-darwin-wrapper-973.0.1 hlxsqazc1ggvlh9cha75mn881hc0d7ai-gcc-12.3.0-lib rik0icxjshvcq6z9ccf8rlg147abisgn-gcc-12.3.0 s2ps2rq1k0k7sqw47yc7mi5311y1kqfl-bash-5.2-p15 vw0zbvb4n6c1mwfj5x4ggngqlkfgb070-Libsystem-1238.60.2
+Deriver: bkvcpfrw9l7xk6kq1jdcxwkzz6vzlq4x-gcc-wrapper-12.3.0.drv
+Sig: cache.nixos.org-1:NWIUOETMPCgFRRR00C40Zxc4mzBhdP9LLSUbshFuoSsVPJhxy8LMcSVlM3Up51izrOuZPa6jtqBLkTpUG3TNDA==
