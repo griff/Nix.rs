@@ -10,7 +10,7 @@ pub mod io;
 pub mod server;
 
 pub trait StoreProvider {
-    type Store: LegacyStore;
+    type Store: LegacyStore + Send;
     type Error: StdError + Send + Sync;
     type Future: Future<Output = Result<Self::Store, Self::Error>>;
 

@@ -22,7 +22,7 @@ pub async fn run<S, R, W, BW>(
     write_allowed: bool,
 ) -> Result<(), Error>
 where
-    S: LegacyStore,
+    S: LegacyStore + Send,
     R: AsyncRead + Send + Unpin,
     W: AsyncWrite + Send + Unpin,
     BW: AsyncWrite + Unpin + Send,
