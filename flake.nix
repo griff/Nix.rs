@@ -21,7 +21,7 @@
           libsodium
           pkg-config
           fuse
-          protobuf
+          protobuf libarchive
         ] ++ lib.optionals stdenv.isDarwin [
           darwin.apple_sdk.frameworks.CoreServices
           darwin.apple_sdk.frameworks.Security

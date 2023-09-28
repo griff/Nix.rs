@@ -87,19 +87,32 @@ pub enum Error {
         #[source]
         tokio::task::JoinError,
     ),
-    #[cfg(unused)]
-    #[error("HTTP error: {0}")]
-    HttpError(
+    #[error("URL error: {0}")]
+    URLError(
         #[from]
         #[source]
-        hyper::error::Error,
+        url::ParseError,
+    ),
+    #[error("HTTP error: {0}")]
+    ReqwestError(
+        #[from]
+        #[source]
+        reqwest::Error,
     ),
     #[error("{0}")]
     Misc(String),
+    #[error("Unsupported compression '{0}'")]
+    UnsupportedCompression(Compression),
     #[error("Unsupported operation '{0}'")]
     UnsupportedOperation(String),
     #[error("Unknown protocol command '{0}'")]
     UnknownProtocolCommand(u64),
+    #[error("Compression error {0}")]
+    CompressionError(
+        #[from]
+        #[source]
+        compress_tools::Error
+    ),
     #[error("JSON error: {0}")]
     JSONError(
         #[from]

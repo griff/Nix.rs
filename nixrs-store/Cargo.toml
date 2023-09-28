@@ -16,11 +16,13 @@ async-trait = "0.1.50"
 base64 = "0.13.0"
 byteorder = "1.4.3"
 bytes = "^1.4.0"
+compress-tools = { version = "^0.14.3", features = ["tokio_support"] }
 derive_more = "0.99.16"
 futures = "0.3"
 lazy_static = "1.4.0"
 log = "0.4.14"
 pin-project-lite = "0.2"
+reqwest = "0.11.20"
 ring = "0.16.20"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -31,6 +33,7 @@ proptest = {version = "1.2.0", optional = true }
 pretty_assertions = {version = "0.7.2", optional = true }
 nixrs-util = { version = "0.1.0", path = "../nixrs-util" }
 caches = "0.2.4"
+url = "2.4.1"
 
 [dev-dependencies]
 assert_matches = "1.5.0"

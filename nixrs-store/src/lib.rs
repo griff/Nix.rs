@@ -1,6 +1,7 @@
 mod error;
 pub(crate) mod extra;
 
+pub mod binary_cache;
 pub mod content_address;
 pub mod crypto;
 mod derivation;
