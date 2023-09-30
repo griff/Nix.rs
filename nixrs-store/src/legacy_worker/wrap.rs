@@ -3,7 +3,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::{
     BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, DerivedPath, Error,
-    RepairFlag, Store, StoreDirProvider, StorePath, StorePathSet, SubstituteFlag, ValidPathInfo, misc::compute_fs_closure_slow,
+    RepairFlag, Store, StoreDirProvider, StorePath, StorePathSet, SubstituteFlag, ValidPathInfo, compute_fs_closure_slow,
 };
 
 use super::LegacyStore;
