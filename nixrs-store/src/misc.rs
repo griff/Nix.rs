@@ -142,6 +142,7 @@ where
             }
         }
         pending.push(edges);
+        res.insert(path.clone());
     }
     while !pending.is_empty() {
         let edges = pending.pop().unwrap();
@@ -169,4 +170,212 @@ where
         }
     }
     Ok(res)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::BTreeMap, time::SystemTime};
+
+    use assert_matches::assert_matches;
+    use tokio::io::AsyncWrite;
+
+    use super::*;
+    use crate::{
+        path::STORE_PATH_HASH_BYTES, Error, Store, StoreDirProvider, StorePath, StorePathSet,
+        ValidPathInfo,
+    };
+
+    macro_rules! store_path {
+        ($l:expr) => {{
+            let mut hash = [0u8; STORE_PATH_HASH_BYTES];
+            let b = $l.repeat(STORE_PATH_HASH_BYTES);
+            hash.copy_from_slice(&b);
+            let name = std::str::from_utf8($l).unwrap();
+            $crate::StorePath::from_parts(hash, name).unwrap()
+        }};
+    }
+
+    #[macro_export]
+    macro_rules! set {
+        () => { std::collections::BTreeSet::new() };
+        ($($x:expr),+ $(,)?) => {{
+            let mut ret = std::collections::BTreeSet::new();
+            $(
+                ret.insert($x.clone());
+            )+
+            ret
+        }};
+    }
+
+    macro_rules! graph {
+        ($($a:expr => [$($x:expr),* $(,)?]),+ $(,)?) => {{
+            let mut ret = std::collections::BTreeMap::new();
+            $(
+                ret.insert($a.clone(), set![$($x ,)*]);
+            )+
+            ret
+        }};
+    }
+
+    #[derive(Clone)]
+    struct QueryStore {
+        references: BTreeMap<StorePath, StorePathSet>,
+    }
+
+    impl StoreDirProvider for QueryStore {
+        fn store_dir(&self) -> crate::StoreDir {
+            crate::StoreDir::default()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl Store for QueryStore {
+        async fn query_path_info(
+            &mut self,
+            path: &StorePath,
+        ) -> Result<Option<ValidPathInfo>, Error> {
+            if let Some(refs) = self.references.get(path) {
+                let info = ValidPathInfo {
+                    path: path.clone(),
+                    deriver: None,
+                    nar_size: 0,
+                    nar_hash: "sha256:ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0="
+                        .parse()
+                        .unwrap(),
+                    references: refs.clone(),
+                    sigs: Default::default(),
+                    registration_time: SystemTime::now(),
+                    ultimate: false,
+                    ca: None,
+                };
+                Ok(Some(info))
+            } else {
+                Ok(None)
+            }
+        }
+
+        /// Export path from the store
+        async fn nar_from_path<W: AsyncWrite + Send + Unpin>(
+            &mut self,
+            _path: &StorePath,
+            _sink: W,
+        ) -> Result<(), Error> {
+            Err(Error::UnsupportedOperation("nar_from_path".into()))
+        }
+
+        /// Import a path into the store.
+        async fn add_to_store<R: tokio::io::AsyncRead + Send + Unpin>(
+            &mut self,
+            _info: &ValidPathInfo,
+            _source: R,
+            _repair: crate::RepairFlag,
+            _check_sigs: crate::CheckSignaturesFlag,
+        ) -> Result<(), Error> {
+            Err(Error::UnsupportedOperation("nar_from_path".into()))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_closure() {
+        let a = store_path!(b"a");
+        let b = store_path!(b"b");
+        let c = store_path!(b"c");
+        let d = store_path!(b"d");
+        let e = store_path!(b"e");
+        let f = store_path!(b"f");
+        let g = store_path!(b"g");
+        let references = graph! {
+            a => [b, c, g],
+            b => [a], // Loops back to A
+            c => [f], // Indirect reference
+            d => [a], // Not reachable, but has backreferences
+            e => [], // Just not reachable
+            f => [],
+            g => [g] // Self reference
+        };
+        let expected_closure = set! {a, b, c, f, g};
+
+        let store = QueryStore { references };
+        let actual = compute_fs_closure(store, set![a], false).await.unwrap();
+        assert_eq!(expected_closure, actual);
+    }
+
+    #[tokio::test]
+    async fn test_closure_no_loops() {
+        let a = store_path!(b"a");
+        let b = store_path!(b"b");
+        let c = store_path!(b"c");
+        let d = store_path!(b"d");
+        let e = store_path!(b"e");
+        let f = store_path!(b"f");
+        let g = store_path!(b"g");
+        let references = graph! {
+            a => [b, c, g],
+            b => [],
+            c => [f], // Indirect reference
+            d => [a], // Not reachable, but has backreferences
+            e => [], // Just not reachable
+            f => [],
+            g => [g] // Self reference
+        };
+        let expected_closure = set! {a, b, c, f, g};
+
+        let store = QueryStore { references };
+        let actual = compute_fs_closure(store, set![a], false).await.unwrap();
+        assert_eq!(expected_closure, actual);
+    }
+
+    #[tokio::test]
+    async fn test_closure_slow() {
+        let a = store_path!(b"a");
+        let b = store_path!(b"b");
+        let c = store_path!(b"c");
+        let d = store_path!(b"d");
+        let e = store_path!(b"e");
+        let f = store_path!(b"f");
+        let g = store_path!(b"g");
+        let references = graph! {
+            a => [b, c, g],
+            b => [a], // Loops back to A
+            c => [f], // Indirect reference
+            d => [a], // Not reachable, but has backreferences
+            e => [], // Just not reachable
+            f => [],
+            g => [g] // Self reference
+        };
+        let expected_closure = set! {a, b, c, f, g};
+
+        let mut store = QueryStore { references };
+        let actual = compute_fs_closure_slow(&mut store, &set![a], false)
+            .await
+            .unwrap();
+        assert_eq!(expected_closure, actual);
+    }
+
+    #[tokio::test]
+    async fn test_closure_no_loops_slow() {
+        let a = store_path!(b"a");
+        let b = store_path!(b"b");
+        let c = store_path!(b"c");
+        let d = store_path!(b"d");
+        let e = store_path!(b"e");
+        let f = store_path!(b"f");
+        let g = store_path!(b"g");
+        let references = graph! {
+            a => [b, c, g],
+            b => [],
+            c => [f], // Indirect reference
+            d => [a], // Not reachable, but has backreferences
+            e => [], // Just not reachable
+            f => [],
+            g => [g] // Self reference
+        };
+        let expected_closure = set! {a, b, c, f, g};
+
+        let mut store = QueryStore { references };
+        let actual = compute_fs_closure_slow(&mut store, &set![a], false)
+            .await
+            .unwrap();
+        assert_eq!(expected_closure, actual);
+    }
 }
