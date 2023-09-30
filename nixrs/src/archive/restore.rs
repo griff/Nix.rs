@@ -385,7 +385,7 @@ mod tests {
     }
 
     #[test]
-    fn test_restore_dump() {
+    fn proptest_restore_dump() {
         let r = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()

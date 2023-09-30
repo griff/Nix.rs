@@ -506,7 +506,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_string_parse(path in any::<StorePath>()) {
+        fn proptest_string_parse(path in any::<StorePath>()) {
             let s = path.to_string();
             let parsed = StorePath::new_from_base_name(&s).unwrap();
             prop_assert_eq!(path, parsed);

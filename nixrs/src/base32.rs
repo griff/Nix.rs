@@ -156,7 +156,7 @@ mod tests {
     proptest! {
 
         #[test]
-        fn roundtrip(s: Vec<u8>) {
+        fn proptest_roundtrip(s: Vec<u8>) {
             prop_assert_eq!(&s, &decode(&encode(&s)).unwrap());
         }
     }

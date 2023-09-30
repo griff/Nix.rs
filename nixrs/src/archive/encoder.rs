@@ -285,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_parse() {
+    fn proptest_encode_parse() {
         let r = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()

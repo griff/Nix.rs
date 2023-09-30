@@ -751,7 +751,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_store_query_valid_paths_locked(
+        fn proptest_store_query_valid_paths_locked(
             paths in any::<StorePathSet>(),
             lock in ::proptest::bool::ANY,
             maybe_substitute in ::proptest::bool::ANY,
@@ -768,7 +768,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_store_nar_from_path(
+        fn proptest_store_nar_from_path(
             (nar_size, nar_hash, contents) in arb_nar_contents(8, 256, 10),
             path in any::<StorePath>(),
         )
@@ -789,7 +789,7 @@ mod tests {
     proptest! {
         #[test]
         #[cfg(feature="slowtests")]
-        fn test_store_build_derivation(
+        fn proptest_store_build_derivation(
             drv_path in arb_drv_store_path(),
             mut drv in any::<BasicDerivation>(),
             settings in any::<BuildSettings>(),
@@ -813,7 +813,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_store_build_paths(
+        fn proptest_store_build_paths(
             drv_paths in any::<Vec<DerivedPath>>(),
             settings in any::<BuildSettings>(),
             build_log in any::<Vec<u8>>()
@@ -833,7 +833,7 @@ mod tests {
 
     proptest! {
        #[test]
-       fn test_store_add_to_store(
+       fn proptest_store_add_to_store(
             (info, source) in arb_valid_info_and_content(8, 256, 10),
         )
         {
@@ -847,7 +847,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_store_query_closure(
+        fn proptest_store_query_closure(
             paths in any::<StorePathSet>(),
             include_outputs in ::proptest::bool::ANY,
             result in any::<StorePathSet>(),

@@ -1055,7 +1055,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_string_parse(path in any::<StorePath>()) {
+        fn proptest_string_parse(path in any::<StorePath>()) {
             let store_dir = StoreDir::new("/nix/store").unwrap();
             let s = store_dir.print_path(&path);
             let parsed = store_dir.parse_path(&s).unwrap();
