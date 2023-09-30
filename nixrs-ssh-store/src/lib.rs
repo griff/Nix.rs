@@ -2,7 +2,7 @@ use std::error::Error as StdError;
 use std::future::Future;
 
 use self::io::ExtendedDataWrite;
-use nixrs_store::legacy_worker::LegacyStore;
+use nixrs::store::legacy_worker::LegacyStore;
 
 mod error;
 

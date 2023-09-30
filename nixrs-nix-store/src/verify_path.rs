@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 use log::{error, info};
-use nixrs_store::Error;
-use nixrs_store::Store;
-use nixrs_util::hash;
+use nixrs::hash;
+use nixrs::store::Error;
+use nixrs::store::Store;
 
 /// Verify whether the contents of the given store path have not changed.
 pub async fn verify_path<S: Store>(mut store: S, paths: &[PathBuf]) -> Result<(), Error> {

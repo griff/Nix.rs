@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
+use nixrs::store::legacy_worker::client::LegacyStoreClient;
 use nixrs_nix_store::verify_path::verify_path;
-use nixrs_store::legacy_worker::client::LegacyStoreClient;
 
 pub fn main() {
     let runtime = tokio::runtime::Builder::new_multi_thread()

@@ -215,7 +215,7 @@ where
                                         let out = DataWrite::new(channel, handle);
                                         let store = store_provider.get_store(stderr.clone()).await?;
                                         select! {
-                                            res = nixrs_store::legacy_worker::server::run(source, out, store, stderr, write_allowed) => {
+                                            res = nixrs::store::legacy_worker::server::run(source, out, store, stderr, write_allowed) => {
                                                 match res {
                                                     Ok(_) => {},
                                                     Err(err) => {
