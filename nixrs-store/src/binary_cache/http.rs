@@ -5,35 +5,36 @@ use tokio::io::{AsyncRead, AsyncWrite, AsyncReadExt, AsyncWriteExt};
 use crate::{StoreDir, StoreDirProvider, Error};
 use super::BinaryCache;
 
-pub struct HTTPBinaryCache {
+#[derive(Clone, Debug)]
+pub struct HttpBinaryCache {
     store_dir: StoreDir,
     client: Client,
     base_url: Url,
 }
 
-impl HTTPBinaryCache {
-    pub fn new<U: IntoUrl>(url: U) -> Result<HTTPBinaryCache, Error> {
+impl HttpBinaryCache {
+    pub fn new<U: IntoUrl>(url: U) -> Result<HttpBinaryCache, Error> {
         let store_dir = Default::default();
         Self::with_store(url, store_dir)
     }
 
-    pub fn with_store<U: IntoUrl>(url: U, store_dir: StoreDir) -> Result<HTTPBinaryCache, Error> {
+    pub fn with_store<U: IntoUrl>(url: U, store_dir: StoreDir) -> Result<HttpBinaryCache, Error> {
         let client = reqwest::Client::builder().build()?;
         let base_url = url.into_url()?;
-        Ok(HTTPBinaryCache {
+        Ok(HttpBinaryCache {
             store_dir, client, base_url
         })
     }
 }
 
-impl StoreDirProvider for HTTPBinaryCache {
+impl StoreDirProvider for HttpBinaryCache {
     fn store_dir(&self) -> StoreDir {
         self.store_dir.clone()
     }
 }
 
 #[async_trait]
-impl BinaryCache for HTTPBinaryCache {
+impl BinaryCache for HttpBinaryCache {
     async fn file_exists(&self, path: &str) -> Result<bool, Error> {
         let url = self.base_url.join(path)?;
         let resp = self.client.head(url).send().await?;
@@ -97,7 +98,7 @@ mod tests {
 
     async fn test_info_missing() {
         let path = StorePath::new_from_base_name("7rjj86a15146cq1d3qy068lml7n8ykzm-plakker-12.3.0").unwrap();
-        let mut store = BinaryStoreWrap::new(HTTPBinaryCache::new("https://cache.nixos.org").unwrap());
+        let mut store = BinaryStoreWrap::new(HttpBinaryCache::new("https://cache.nixos.org").unwrap());
         let info = store.query_path_info(&path).await.unwrap();
         assert_eq!(None, info);
     }
@@ -105,7 +106,7 @@ mod tests {
     #[tokio::test]
     async fn test_info_gcc() {
         let path = StorePath::new_from_base_name("7rjj86a15146cq1d3qy068lml7n7ykzm-gcc-wrapper-12.3.0").unwrap();
-        let mut store = BinaryStoreWrap::new(HTTPBinaryCache::new("https://cache.nixos.org").unwrap());
+        let mut store = BinaryStoreWrap::new(HttpBinaryCache::new("https://cache.nixos.org").unwrap());
         let info = store.query_path_info(&path).await.unwrap().unwrap();
         assert_eq!(info.path, path);
     }
@@ -113,7 +114,7 @@ mod tests {
     #[tokio::test]
     async fn test_nar_from_path_gcc() {
         let path = StorePath::new_from_base_name("7rjj86a15146cq1d3qy068lml7n7ykzm-gcc-wrapper-12.3.0").unwrap();
-        let mut store = BinaryStoreWrap::new(HTTPBinaryCache::new("https://cache.nixos.org").unwrap());
+        let mut store = BinaryStoreWrap::new(HttpBinaryCache::new("https://cache.nixos.org").unwrap());
         let info = store.query_path_info(&path).await.unwrap().unwrap();
 
         let mut sink = HashSink::new(Algorithm::SHA256);
@@ -124,7 +125,7 @@ mod tests {
     #[tokio::test]
     async fn test_nar_from_path_hello() {
         let path = StorePath::new_from_base_name("ycbqd7822qcnasaqy0mmiv2j9n9m62yl-hello-2.12.1").unwrap();
-        let mut store = BinaryStoreWrap::new(HTTPBinaryCache::new("https://cache.nixos.org").unwrap());
+        let mut store = BinaryStoreWrap::new(HttpBinaryCache::new("https://cache.nixos.org").unwrap());
         let info = store.query_path_info(&path).await.unwrap().unwrap();
 
         let mut sink = HashSink::new(Algorithm::SHA256);
