@@ -14,7 +14,7 @@ use crate::store::{
 };
 use crate::store_path::{StorePath, StorePathSet};
 
-pub async fn run<S, R, W, BW>(
+pub async fn run_server<S, R, W, BW>(
     mut source: R,
     mut out: W,
     mut store: S,

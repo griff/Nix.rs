@@ -1,1 +1,1 @@
-pub use nixrs::store::legacy_worker::server::run;
+pub use nixrs::store::legacy_worker::run_server;

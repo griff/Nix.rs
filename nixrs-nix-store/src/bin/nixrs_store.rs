@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use nixrs::store::legacy_worker::client::LegacyStoreClient;
+use nixrs::store::legacy_worker::LegacyStoreClient;
 use nixrs_nix_store::verify_path::verify_path;
 
 pub fn main() {

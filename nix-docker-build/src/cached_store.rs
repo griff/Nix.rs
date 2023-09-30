@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use nixrs::path_info::ValidPathInfo;
 use nixrs::store::copy_paths;
-use nixrs::store::legacy_worker::client::{LegacyStoreBuilder, LegacyStoreClient};
-use nixrs::store::legacy_worker::LegacyStore;
+use nixrs::store::legacy_worker::{LegacyStore, LegacyStoreBuilder, LegacyStoreClient};
 use nixrs::store::{
     BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, DerivedPath, Error,
     RepairFlag, Store, SubstituteFlag,

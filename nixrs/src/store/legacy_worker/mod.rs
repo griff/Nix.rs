@@ -4,11 +4,13 @@ use derive_more::{LowerHex, UpperHex};
 
 use crate::num_enum::num_enum;
 
-pub mod client;
-pub mod server;
+mod client;
+mod server;
 mod traits;
 mod wrap;
 
+pub use self::client::{LegacyStoreBuilder, LegacyStoreClient};
+pub use self::server::run_server;
 pub use self::traits::LegacyStore;
 pub use self::wrap::LegacyWrapStore;
 

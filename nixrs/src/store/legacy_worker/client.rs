@@ -734,7 +734,7 @@ mod tests {
             r.block_on(async {
                 let store = AssertStore::$assert($ae $(, $ae2)*);
                 let (read, write) = tokio::io::split(server);
-                let server = crate::store::legacy_worker::server::run(read, write, store, build_log_server, true);
+                let server = crate::store::legacy_worker::run_server(read, write, store, build_log_server, true);
 
                 let cmd = async {
                     let res = test_store.$cmd($ce $(, $ce2)*).await?;
