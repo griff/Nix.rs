@@ -2,8 +2,7 @@ use std::future::Future;
 use std::io;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::task::Context;
-use std::task::Poll;
+use std::task::{ready, Context, Poll};
 
 use bstr::ByteSlice;
 use futures::Sink;
@@ -16,8 +15,6 @@ use tokio::fs::symlink;
 use tokio::fs::File;
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
-
-use crate::ready;
 
 use super::{CaseHackStream, NAREvent};
 

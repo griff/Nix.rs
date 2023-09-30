@@ -17,11 +17,13 @@ use super::Error;
 use super::RepairFlag;
 use super::{BasicDerivation, DrvOutputs, StorePath, StorePathSet, ValidPathInfo};
 use super::{BuildSettings, DerivedPath, ParseStorePathError, ReadStorePathError};
+use crate::flag_enum::flag_enum;
+use crate::hash;
 use crate::io::{StateParse, StatePrint};
+use crate::num_enum::num_enum;
 use crate::path::absolute_path_from_current;
 use crate::path::clean_path;
 use crate::path::resolve_link;
-use crate::{flag_enum, hash, num_enum};
 
 /* Magic header of exportPath() output (obsolete). */
 pub const EXPORT_MAGIC: u64 = 0x4558494e;

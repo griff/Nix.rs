@@ -1,11 +1,9 @@
 use std::io;
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{ready, Context, Poll};
 
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncBufRead, AsyncRead, ReadBuf};
-
-use crate::ready;
 
 pin_project! {
     pub struct OffsetReader<R> {

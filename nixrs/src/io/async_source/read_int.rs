@@ -3,17 +3,13 @@ use std::io;
 use std::io::ErrorKind::UnexpectedEof;
 use std::marker::PhantomData;
 use std::pin::Pin;
-use std::task::Context;
-use std::task::Poll;
-use std::time::Duration;
-use std::time::SystemTime;
+use std::task::{ready, Context, Poll};
+use std::time::{Duration, SystemTime};
 
 use bytes::Buf;
 use pin_project_lite::pin_project;
 use tokio::io::AsyncRead;
 use tokio::io::ReadBuf;
-
-use crate::ready;
 
 pin_project! {
     #[derive(Debug)]

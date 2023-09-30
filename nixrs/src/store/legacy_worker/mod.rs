@@ -2,7 +2,7 @@ use std::fmt;
 
 use derive_more::{LowerHex, UpperHex};
 
-use crate::num_enum;
+use crate::num_enum::num_enum;
 
 pub mod client;
 pub mod server;

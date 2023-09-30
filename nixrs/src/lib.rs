@@ -32,18 +32,6 @@ macro_rules! string_set {
     }}
 }
 
-#[macro_export]
-macro_rules! ready {
-    ($e:expr) => {
-        match $e {
-            std::task::Poll::Ready(t) => t,
-            std::task::Poll::Pending => {
-                return std::task::Poll::Pending;
-            }
-        }
-    };
-}
-
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
     use std::{

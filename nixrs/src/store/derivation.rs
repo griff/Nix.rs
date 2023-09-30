@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::flag_enum;
+use crate::flag_enum::flag_enum;
 use crate::hash;
 use crate::hash::Hash;
 use crate::io::{AsyncSink, AsyncSource};

@@ -4,7 +4,7 @@ use std::fmt;
 use std::hash::Hash;
 use std::io::Write;
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{ready, Context, Poll};
 
 use bytes::Bytes;
 use futures::Stream;
@@ -12,7 +12,6 @@ use log::debug;
 use pin_project_lite::pin_project;
 
 use crate::archive::CASE_HACK_SUFFIX;
-use crate::ready;
 
 use super::NAREvent;
 

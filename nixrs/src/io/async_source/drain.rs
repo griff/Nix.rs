@@ -1,13 +1,11 @@
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{ready, Context, Poll};
 
 use pin_project_lite::pin_project;
 use tokio::io::AsyncRead;
 use tokio::io::ReadBuf;
-
-use crate::ready;
 
 const BUF_SIZE: usize = 64_000;
 

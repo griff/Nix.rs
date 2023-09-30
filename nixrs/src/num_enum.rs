@@ -6,7 +6,6 @@ pub trait NumEnum: Sized {
     fn members() -> Vec<(Self, Self::Rep)>;
 }
 
-#[macro_export]
 macro_rules! num_enum {
     (
         $( #[$meta:meta] )*
@@ -58,3 +57,4 @@ macro_rules! num_enum {
         }
     }
 }
+pub(crate) use num_enum;

@@ -3,14 +3,11 @@ use std::io;
 use std::io::ErrorKind::UnexpectedEof;
 use std::mem;
 use std::pin::Pin;
-use std::task::Context;
-use std::task::Poll;
+use std::task::{ready, Context, Poll};
 
 use bytes::BufMut;
 use pin_project_lite::pin_project;
 use tokio::io::AsyncRead;
-
-use crate::ready;
 
 pin_project! {
     #[derive(Debug)]
