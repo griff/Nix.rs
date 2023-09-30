@@ -3,12 +3,12 @@ use bytes::Bytes;
 use pretty_assertions::assert_eq;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
+use crate::path_info::ValidPathInfo;
 use crate::store::legacy_worker::LegacyStore;
 use crate::store::{
     BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, Error, Store,
 };
-use crate::store::{DerivedPath, RepairFlag};
-use crate::store::{SubstituteFlag, ValidPathInfo};
+use crate::store::{DerivedPath, RepairFlag, SubstituteFlag};
 use crate::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]

@@ -6,14 +6,9 @@ use tokio::{
     try_join,
 };
 
-use crate::store_path::{StoreDirProvider, StorePath};
-use crate::{
-    store::{
-        nar_info::Compression, CheckSignaturesFlag, Error, NarInfo, RepairFlag, Store,
-        ValidPathInfo,
-    },
-    store_path::StoreDir,
-};
+use crate::path_info::{Compression, NarInfo, ValidPathInfo};
+use crate::store::{CheckSignaturesFlag, Error, RepairFlag, Store};
+use crate::store_path::{StoreDir, StoreDirProvider, StorePath};
 
 use super::BinaryCache;
 

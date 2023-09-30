@@ -4,10 +4,11 @@ use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::Mutex;
 
+use crate::path_info::ValidPathInfo;
 use crate::store::{legacy_worker::LegacyStore, Store};
 use crate::store::{
     BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, DerivedPath, Error,
-    RepairFlag, SubstituteFlag, ValidPathInfo,
+    RepairFlag, SubstituteFlag,
 };
 use crate::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
 

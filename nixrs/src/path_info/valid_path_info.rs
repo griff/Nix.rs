@@ -3,8 +3,8 @@ use std::time::SystemTime;
 
 use thiserror::Error;
 
-use crate::signature::SignatureSet;
 use crate::hash::Hash;
+use crate::signature::SignatureSet;
 use crate::store_path::{ContentAddress, StoreDir, StorePath, StorePathSet};
 
 #[derive(Debug, Eq, PartialOrd, Ord, Hash, Clone)]

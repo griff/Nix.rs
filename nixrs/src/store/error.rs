@@ -1,10 +1,10 @@
 use thiserror::Error;
 
 use super::legacy_worker::ServeCommand;
-use super::nar_info::Compression;
 use super::{ParseDrvOutputError, ReadDerivationError, WriteDerivationError};
-use crate::signature;
 use crate::hash;
+use crate::path_info::Compression;
+use crate::signature;
 use crate::store_path::ParseContentAddressError;
 use crate::store_path::{ParseStorePathError, ReadStorePathError};
 

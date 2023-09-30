@@ -18,13 +18,12 @@ use crate::hash::Hash;
 use crate::io::CancelledReader;
 use crate::io::{AsyncSink, AsyncSource};
 use crate::io::{TakenReader, Taker};
+use crate::path_info::ValidPathInfo;
 use crate::signature::{ParseSignatureError, SignatureSet};
-use crate::store::Error;
-use crate::store::StorePathWithOutputs;
-use crate::store::ValidPathInfo;
-use crate::store::{BasicDerivation, BuildResult, BuildStatus, CheckSignaturesFlag, DerivedPath};
-use crate::store::{BuildSettings, RepairFlag, SubstituteFlag};
-use crate::store::{Store, EXPORT_MAGIC};
+use crate::store::{
+    BasicDerivation, BuildResult, BuildSettings, BuildStatus, CheckSignaturesFlag, DerivedPath,
+    Error, RepairFlag, Store, StorePathWithOutputs, SubstituteFlag, EXPORT_MAGIC,
+};
 use crate::store_path::{ParseStorePathError, StoreDir, StoreDirProvider, StorePath, StorePathSet};
 
 #[macro_export]
@@ -705,10 +704,10 @@ mod tests {
     use ::proptest::proptest;
     use futures::future::try_join;
 
+    use crate::path_info::proptest::arb_valid_info_and_content;
     use crate::store::assert_store::AssertStore;
     #[cfg(feature = "slowtests")]
-    use crate::store::path::proptest::arb_drv_store_path;
-    use crate::store::path_info::proptest::arb_valid_info_and_content;
+    use crate::store_path::proptest::arb_drv_store_path;
 
     macro_rules! store_cmd {
         (

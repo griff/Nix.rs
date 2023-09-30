@@ -11,11 +11,10 @@ use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 
 use super::topo_sort_paths_slow;
-use super::Error;
-use super::RepairFlag;
-use super::{BasicDerivation, BuildSettings, DerivedPath, DrvOutputs, ValidPathInfo};
+use super::{BasicDerivation, BuildSettings, DerivedPath, DrvOutputs, Error, RepairFlag};
 use crate::flag_enum::flag_enum;
 use crate::num_enum::num_enum;
+use crate::path_info::ValidPathInfo;
 use crate::store_path::{StoreDirProvider, StorePath, StorePathSet};
 
 /* Magic header of exportPath() output (obsolete). */

@@ -1,9 +1,10 @@
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 
+use crate::path_info::ValidPathInfo;
 use crate::store::{
     compute_fs_closure_slow, BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag,
-    DerivedPath, Error, RepairFlag, Store, SubstituteFlag, ValidPathInfo,
+    DerivedPath, Error, RepairFlag, Store, SubstituteFlag,
 };
 use crate::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
 

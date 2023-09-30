@@ -4,10 +4,10 @@ use std::{collections::BTreeMap, fmt, num::ParseIntError, time::SystemTime};
 
 use thiserror::Error;
 
-use crate::signature::{ParseSignatureError, SignatureSet};
 use super::ValidPathInfo;
 use crate::hash::{Hash, ParseHashError};
 use crate::io::StateParse;
+use crate::signature::{ParseSignatureError, SignatureSet};
 use crate::store_path::{
     ContentAddress, ParseContentAddressError, ParseStorePathError, StoreDir, StorePath,
     StorePathSet,

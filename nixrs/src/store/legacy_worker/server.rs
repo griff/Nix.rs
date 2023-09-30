@@ -6,11 +6,12 @@ use super::{LegacyStore, ServeCommand, SERVE_MAGIC_1, SERVE_MAGIC_2, SERVE_PROTO
 use crate::get_protocol_minor;
 use crate::hash;
 use crate::io::{AsyncSink, AsyncSource};
+use crate::path_info::ValidPathInfo;
 use crate::signature::{ParseSignatureError, SignatureSet};
-use crate::store::Error;
-use crate::store::{BasicDerivation, BuildSettings, CheckSignaturesFlag, DerivedPath};
-use crate::store::{RepairFlag, StorePathWithOutputs};
-use crate::store::{SubstituteFlag, ValidPathInfo};
+use crate::store::{
+    BasicDerivation, BuildSettings, CheckSignaturesFlag, DerivedPath, Error, RepairFlag,
+    StorePathWithOutputs, SubstituteFlag,
+};
 use crate::store_path::{StorePath, StorePathSet};
 
 pub async fn run<S, R, W, BW>(

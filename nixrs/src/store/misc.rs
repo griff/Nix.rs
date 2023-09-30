@@ -231,7 +231,8 @@ mod tests {
     use tokio::io::AsyncWrite;
 
     use super::*;
-    use crate::store::{Error, Store, ValidPathInfo};
+    use crate::path_info::ValidPathInfo;
+    use crate::store::{Error, Store};
     use crate::store_path::{
         StoreDir, StoreDirProvider, StorePath, StorePathSet, STORE_PATH_HASH_BYTES,
     };

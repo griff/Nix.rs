@@ -1,10 +1,11 @@
 use async_trait::async_trait;
+use nixrs::path_info::ValidPathInfo;
 use nixrs::store::copy_paths;
 use nixrs::store::legacy_worker::client::{LegacyStoreBuilder, LegacyStoreClient};
 use nixrs::store::legacy_worker::LegacyStore;
 use nixrs::store::{
     BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, DerivedPath, Error,
-    RepairFlag, Store, SubstituteFlag, ValidPathInfo,
+    RepairFlag, Store, SubstituteFlag,
 };
 use nixrs::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout};

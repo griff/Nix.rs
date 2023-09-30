@@ -5,10 +5,11 @@ use caches::{lru::CacheError, Cache, LRUCache, RawLRU};
 use lazy_static::lazy_static;
 use tokio::io::{AsyncRead, AsyncWrite};
 
+use crate::path_info::ValidPathInfo;
 use crate::store::legacy_worker::LegacyStore;
 use crate::store::{
     BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, DerivedPath, Error,
-    RepairFlag, Store, SubstituteFlag, ValidPathInfo,
+    RepairFlag, Store, SubstituteFlag,
 };
 use crate::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
 
