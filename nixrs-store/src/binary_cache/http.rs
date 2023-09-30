@@ -1,9 +1,9 @@
 use async_trait::async_trait;
-use reqwest::{Client, Url, StatusCode, header::CONTENT_TYPE, IntoUrl};
-use tokio::io::{AsyncRead, AsyncWrite, AsyncReadExt, AsyncWriteExt};
+use reqwest::{header::CONTENT_TYPE, Client, IntoUrl, StatusCode, Url};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-use crate::{StoreDir, StoreDirProvider, Error};
 use super::BinaryCache;
+use crate::{Error, StoreDir, StoreDirProvider};
 
 #[derive(Clone, Debug)]
 pub struct HttpBinaryCache {
@@ -22,7 +22,9 @@ impl HttpBinaryCache {
         let client = reqwest::Client::builder().build()?;
         let base_url = url.into_url()?;
         Ok(HttpBinaryCache {
-            store_dir, client, base_url
+            store_dir,
+            client,
+            base_url,
         })
     }
 }
@@ -48,16 +50,19 @@ impl BinaryCache for HttpBinaryCache {
         }
     }
     async fn upsert_file<R>(&self, path: &str, mut stream: R, mime_type: &str) -> Result<(), Error>
-        where R: AsyncRead + Send + Unpin
+    where
+        R: AsyncRead + Send + Unpin,
     {
         let mut content = Vec::new();
         stream.read_to_end(&mut content).await?;
         let url = self.base_url.join(path)?;
-        let resp = self.client
+        let resp = self
+            .client
             .put(url)
             .body(content)
             .header(CONTENT_TYPE, mime_type)
-            .send().await?;
+            .send()
+            .await?;
         if resp.status().is_success() {
             Ok(())
         } else {
@@ -67,12 +72,11 @@ impl BinaryCache for HttpBinaryCache {
 
     /// Dump the contents of the specified file to a sink.
     async fn get_file<W>(&self, path: &str, mut sink: W) -> Result<(), Error>
-        where W: AsyncWrite + Send + Unpin
+    where
+        W: AsyncWrite + Send + Unpin,
     {
         let url = self.base_url.join(path)?;
-        let mut resp = self.client
-            .get(url)
-            .send().await?;
+        let mut resp = self.client.get(url).send().await?;
         if resp.status().is_success() {
             while let Some(chunk) = resp.chunk().await? {
                 sink.write_all(&chunk).await?;
@@ -84,37 +88,44 @@ impl BinaryCache for HttpBinaryCache {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use nixrs_util::hash::{HashSink, Algorithm};
+    use nixrs_util::hash::{Algorithm, HashSink};
 
-    use crate::{StorePath, Store};
     use crate::binary_cache::BinaryStoreWrap;
+    use crate::{Store, StorePath};
 
     use super::*;
 
     #[tokio::test]
 
     async fn test_info_missing() {
-        let path = StorePath::new_from_base_name("7rjj86a15146cq1d3qy068lml7n8ykzm-plakker-12.3.0").unwrap();
-        let mut store = BinaryStoreWrap::new(HttpBinaryCache::new("https://cache.nixos.org").unwrap());
+        let path = StorePath::new_from_base_name("7rjj86a15146cq1d3qy068lml7n8ykzm-plakker-12.3.0")
+            .unwrap();
+        let mut store =
+            BinaryStoreWrap::new(HttpBinaryCache::new("https://cache.nixos.org").unwrap());
         let info = store.query_path_info(&path).await.unwrap();
         assert_eq!(None, info);
     }
 
     #[tokio::test]
     async fn test_info_gcc() {
-        let path = StorePath::new_from_base_name("7rjj86a15146cq1d3qy068lml7n7ykzm-gcc-wrapper-12.3.0").unwrap();
-        let mut store = BinaryStoreWrap::new(HttpBinaryCache::new("https://cache.nixos.org").unwrap());
+        let path =
+            StorePath::new_from_base_name("7rjj86a15146cq1d3qy068lml7n7ykzm-gcc-wrapper-12.3.0")
+                .unwrap();
+        let mut store =
+            BinaryStoreWrap::new(HttpBinaryCache::new("https://cache.nixos.org").unwrap());
         let info = store.query_path_info(&path).await.unwrap().unwrap();
         assert_eq!(info.path, path);
     }
 
     #[tokio::test]
     async fn test_nar_from_path_gcc() {
-        let path = StorePath::new_from_base_name("7rjj86a15146cq1d3qy068lml7n7ykzm-gcc-wrapper-12.3.0").unwrap();
-        let mut store = BinaryStoreWrap::new(HttpBinaryCache::new("https://cache.nixos.org").unwrap());
+        let path =
+            StorePath::new_from_base_name("7rjj86a15146cq1d3qy068lml7n7ykzm-gcc-wrapper-12.3.0")
+                .unwrap();
+        let mut store =
+            BinaryStoreWrap::new(HttpBinaryCache::new("https://cache.nixos.org").unwrap());
         let info = store.query_path_info(&path).await.unwrap().unwrap();
 
         let mut sink = HashSink::new(Algorithm::SHA256);
@@ -124,8 +135,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_nar_from_path_hello() {
-        let path = StorePath::new_from_base_name("ycbqd7822qcnasaqy0mmiv2j9n9m62yl-hello-2.12.1").unwrap();
-        let mut store = BinaryStoreWrap::new(HttpBinaryCache::new("https://cache.nixos.org").unwrap());
+        let path =
+            StorePath::new_from_base_name("ycbqd7822qcnasaqy0mmiv2j9n9m62yl-hello-2.12.1").unwrap();
+        let mut store =
+            BinaryStoreWrap::new(HttpBinaryCache::new("https://cache.nixos.org").unwrap());
         let info = store.query_path_info(&path).await.unwrap().unwrap();
 
         let mut sink = HashSink::new(Algorithm::SHA256);

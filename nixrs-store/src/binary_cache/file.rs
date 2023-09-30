@@ -1,9 +1,15 @@
-use std::{path::{PathBuf, Path}, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
-use tokio::{io::{AsyncRead, AsyncWrite}, fs};
+use tokio::{
+    fs,
+    io::{AsyncRead, AsyncWrite},
+};
 
-use crate::{StoreDir, StoreDirProvider, Error};
+use crate::{Error, StoreDir, StoreDirProvider};
 
 use super::BinaryCache;
 
@@ -20,7 +26,8 @@ impl FileBinaryCache {
     pub fn with_store(base_path: impl AsRef<Path>, store_dir: StoreDir) -> FileBinaryCache {
         let base_path = Arc::new(base_path.as_ref().to_owned());
         FileBinaryCache {
-            base_path, store_dir
+            base_path,
+            store_dir,
         }
     }
 }
@@ -38,7 +45,8 @@ impl BinaryCache for FileBinaryCache {
         Ok(fs::try_exists(path).await?)
     }
     async fn upsert_file<R>(&self, path: &str, mut stream: R, _mime_type: &str) -> Result<(), Error>
-        where R: AsyncRead + Send + Unpin
+    where
+        R: AsyncRead + Send + Unpin,
     {
         let path = self.base_path.join(path);
         let mut f = fs::File::create(path).await?;
@@ -48,7 +56,8 @@ impl BinaryCache for FileBinaryCache {
 
     /// Dump the contents of the specified file to a sink.
     async fn get_file<W>(&self, path: &str, mut sink: W) -> Result<(), Error>
-        where W: AsyncWrite + Send + Unpin
+    where
+        W: AsyncWrite + Send + Unpin,
     {
         let path = self.base_path.join(path);
         let mut f = fs::File::open(path).await?;

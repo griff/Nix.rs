@@ -21,13 +21,13 @@ use crate::crypto::{ParseSignatureError, SignatureSet};
 use crate::legacy_worker::{
     LegacyStore, ServeCommand, SERVE_MAGIC_1, SERVE_MAGIC_2, SERVE_PROTOCOL_VERSION,
 };
-use crate::{Store, StoreDirProvider, EXPORT_MAGIC};
 use crate::Error;
 use crate::StorePathWithOutputs;
 use crate::ValidPathInfo;
 use crate::{BasicDerivation, BuildResult, BuildStatus, CheckSignaturesFlag, DerivedPath};
 use crate::{BuildSettings, ParseStorePathError};
 use crate::{RepairFlag, StoreDir, StorePath, StorePathSet, SubstituteFlag};
+use crate::{Store, StoreDirProvider, EXPORT_MAGIC};
 
 #[macro_export]
 macro_rules! get_protocol_major {

@@ -5,8 +5,7 @@ use caches::{lru::CacheError, Cache, LRUCache, RawLRU};
 use lazy_static::lazy_static;
 
 use crate::{
-    legacy_worker::LegacyStore, StoreDirProvider, Store, StoreDir, StorePath,
-    ValidPathInfo,
+    legacy_worker::LegacyStore, Store, StoreDir, StoreDirProvider, StorePath, ValidPathInfo,
 };
 
 lazy_static! {

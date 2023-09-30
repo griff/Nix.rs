@@ -46,19 +46,11 @@ impl<R: AsyncRead> AsyncRead for CancelledReader<R> {
         }
         let mut this = self.project();
         match this.reader.as_mut().poll_read(cx, buf) {
-            Poll::Ready(Ok(_)) => {
-                Poll::Ready(Ok(()))
-            }
-            Poll::Ready(Err(err)) => {
-                Poll::Ready(Err(err))
-            }
+            Poll::Ready(Ok(_)) => Poll::Ready(Ok(())),
+            Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
             Poll::Pending => match this.cancel.poll(cx) {
-                Poll::Ready(_) => {
-                    Poll::Ready(Ok(()))
-                }
-                Poll::Pending => {
-                    Poll::Pending
-                }
+                Poll::Ready(_) => Poll::Ready(Ok(())),
+                Poll::Pending => Poll::Pending,
             },
         }
     }

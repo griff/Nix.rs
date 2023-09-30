@@ -349,12 +349,12 @@ pub mod proptest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_matches::assert_matches;
-    use nixrs_util::base32::BadBase32;
-    use pretty_assertions::assert_eq;
     use ::proptest::arbitrary::any;
     use ::proptest::prop_assert_eq;
     use ::proptest::proptest;
+    use assert_matches::assert_matches;
+    use nixrs_util::base32::BadBase32;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn test_parse() {

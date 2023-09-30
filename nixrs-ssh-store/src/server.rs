@@ -186,15 +186,13 @@ where
         let (serve_tx, serve_rx) = mpsc::unbounded_channel();
         let shutdown = CancellationToken::new();
         let state = ServerState {
-            serve_tx, shutdown,
+            serve_tx,
+            shutdown,
             user_keys: Arc::new(config.user_keys),
             config: Arc::new(config.config),
             store_provider: config.store_provider,
         };
-        Ok(Server {
-            state,
-            serve_rx,
-        })
+        Ok(Server { state, serve_rx })
     }
 
     pub async fn run(self, addr: &str) -> io::Result<()> {

@@ -113,7 +113,7 @@ pub enum Error {
     CompressionError(
         #[from]
         #[source]
-        compress_tools::Error
+        compress_tools::Error,
     ),
     #[error("JSON error: {0}")]
     JSONError(

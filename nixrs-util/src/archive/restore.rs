@@ -69,7 +69,7 @@ impl NARWriteError {
     pub fn path_utf8_error(path: PathBuf, err: bstr::Utf8Error) -> Self {
         Self::new(
             NARWriteErrorKind::PathUTF8(path),
-            io::Error::new(io::ErrorKind::InvalidData, err)
+            io::Error::new(io::ErrorKind::InvalidData, err),
         )
     }
     pub fn create_dir_error(path: PathBuf, err: io::Error) -> Self {
@@ -166,12 +166,11 @@ impl Sink<NAREvent> for NARRestorer {
                 this.path.pop();
             }
             NAREvent::DirectoryEntry { name } => {
-                let name_os = name.to_os_str()
-                    .map_err(|err| {
-                        let lossy = name.to_os_str_lossy();
-                        let path = this.path.join(lossy);
-                        NARWriteError::path_utf8_error(path, err)
-                    })?;
+                let name_os = name.to_os_str().map_err(|err| {
+                    let lossy = name.to_os_str_lossy();
+                    let path = this.path.join(lossy);
+                    NARWriteError::path_utf8_error(path, err)
+                })?;
                 this.path.push(name_os);
             }
             NAREvent::Directory => {
@@ -185,12 +184,11 @@ impl Sink<NAREvent> for NARRestorer {
                 }));
             }
             NAREvent::SymlinkNode { target } => {
-                let target_os = target.to_os_str()
-                    .map_err(|err| {
-                        let lossy = target.to_os_str_lossy().into_owned();
-                        let path = PathBuf::from(lossy);
-                        NARWriteError::path_utf8_error(path, err)
-                    })?;
+                let target_os = target.to_os_str().map_err(|err| {
+                    let lossy = target.to_os_str_lossy().into_owned();
+                    let path = PathBuf::from(lossy);
+                    NARWriteError::path_utf8_error(path, err)
+                })?;
                 let src = PathBuf::from(target_os);
                 let path = this.path.clone();
                 this.writing = State::Working(Box::pin(async move {

@@ -110,10 +110,10 @@ impl PartialEq for ValidPathInfo {
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
     use super::*;
+    use ::proptest::prelude::*;
     use bytes::Bytes;
     use nixrs_util::archive::proptest::arb_nar_contents;
     use nixrs_util::proptest::arb_system_time;
-    use ::proptest::prelude::*;
 
     prop_compose! {
         pub fn arb_valid_info_and_content(

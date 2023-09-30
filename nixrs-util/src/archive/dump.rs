@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_stream::try_stream;
-use bstr::{ByteVec, ByteSlice};
-use bytes::{BytesMut, Bytes};
+use bstr::{ByteSlice, ByteVec};
+use bytes::{Bytes, BytesMut};
 use futures::future::Ready;
 use futures::Stream;
 use log::debug;

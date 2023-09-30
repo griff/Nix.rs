@@ -80,8 +80,10 @@ where
                         Poll::Ready(res) => res?,
                     }
                     let dst = writer.inner();
-                    *self =
-                        WriteSlice::WritePadding(write_all(dst, &STATIC_PADDING[..padding as usize]));
+                    *self = WriteSlice::WritePadding(write_all(
+                        dst,
+                        &STATIC_PADDING[..padding as usize],
+                    ));
                 }
                 WriteSlice::WritePadding(mut writer) => {
                     match Pin::new(&mut writer).poll(cx) {

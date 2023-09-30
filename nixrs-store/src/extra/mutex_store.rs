@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
-use crate::{legacy_worker::LegacyStore, StoreDirProvider, Store, StoreDir};
+use crate::{legacy_worker::LegacyStore, Store, StoreDir, StoreDirProvider};
 
 #[derive(Clone)]
 pub struct MutexStore<S> {

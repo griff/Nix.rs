@@ -2,8 +2,9 @@ use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::{
-    BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, DerivedPath, Error,
-    RepairFlag, Store, StoreDirProvider, StorePath, StorePathSet, SubstituteFlag, ValidPathInfo, compute_fs_closure_slow,
+    compute_fs_closure_slow, BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag,
+    DerivedPath, Error, RepairFlag, Store, StoreDirProvider, StorePath, StorePathSet,
+    SubstituteFlag, ValidPathInfo,
 };
 
 use super::LegacyStore;
@@ -56,7 +57,9 @@ impl<S: Store + Send> Store for LegacyWrapStore<S> {
         repair: RepairFlag,
         check_sigs: CheckSignaturesFlag,
     ) -> Result<(), Error> {
-        self.store.add_to_store(info, source, repair, check_sigs).await
+        self.store
+            .add_to_store(info, source, repair, check_sigs)
+            .await
     }
 
     async fn build_derivation<W: AsyncWrite + Send + Unpin>(
@@ -66,7 +69,8 @@ impl<S: Store + Send> Store for LegacyWrapStore<S> {
         settings: &BuildSettings,
         build_log: W,
     ) -> Result<BuildResult, Error> {
-        self.store.build_derivation(drv_path, drv, settings, build_log)
+        self.store
+            .build_derivation(drv_path, drv, settings, build_log)
             .await
     }
 
