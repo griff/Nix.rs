@@ -1,19 +1,23 @@
 mod error;
 pub(crate) mod extra;
 
+#[cfg(any(feature = "test", test))]
+pub mod assert_store;
 pub mod binary_cache;
+mod build_settings;
+mod cached_store;
 mod derivation;
 mod derived_path;
 pub mod legacy_worker;
 mod misc;
+mod mutex_store;
 mod path_with_outputs;
 mod realisation;
 mod store_api;
 
-#[cfg(any(feature = "test", test))]
-pub use extra::assert_store;
-pub use extra::build_settings::BuildSettings;
-pub use extra::cached_store::CachedStore;
+pub use build_settings::BuildSettings;
+pub use cached_store::CachedStore;
+pub use mutex_store::MutexStore;
 
 pub use derivation::{BasicDerivation, DerivationOutput, ParseDerivationError};
 pub use derivation::{ReadDerivationError, RepairFlag, WriteDerivationError};
