@@ -539,6 +539,7 @@ where
     S: Store,
     D: Store,
 {
+    debug!("Copying path {}", store_path);
     let mut info = src_store
         .query_path_info(store_path)
         .await?
