@@ -1,4 +1,4 @@
-use std::path::{PathBuf, Path};
+use std::{path::{PathBuf, Path}, sync::Arc};
 
 use async_trait::async_trait;
 use tokio::{io::{AsyncRead, AsyncWrite}, fs};
@@ -7,10 +7,10 @@ use crate::{StoreDir, StoreDirProvider, Error};
 
 use super::BinaryCache;
 
-
+#[derive(Clone, Debug)]
 pub struct FileBinaryCache {
     store_dir: StoreDir,
-    base_path: PathBuf,
+    base_path: Arc<PathBuf>,
 }
 
 impl FileBinaryCache {
@@ -18,7 +18,7 @@ impl FileBinaryCache {
         Self::with_store(base_path, Default::default())
     }
     pub fn with_store(base_path: impl AsRef<Path>, store_dir: StoreDir) -> FileBinaryCache {
-        let base_path = base_path.as_ref().to_owned();
+        let base_path = Arc::new(base_path.as_ref().to_owned());
         FileBinaryCache {
             base_path, store_dir
         }
