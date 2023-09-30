@@ -13,6 +13,18 @@ use crate::StoreDir;
 
 pub type StorePathSet = BTreeSet<StorePath>;
 
+#[macro_export]
+macro_rules! store_paths {
+    () => { $crate::StorePathSet::new() };
+    ($($x:expr),+ $(,)?) => {{
+        let mut ret = $crate::StorePathSet::new();
+        $(
+            ret.insert($x);
+        )+
+        ret
+    }};
+}
+
 #[derive(Error, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum ParseStorePathError {
     #[error("path '{}' is not a store path", .0.display())]
