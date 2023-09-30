@@ -3,7 +3,7 @@ pub(crate) mod extra;
 
 pub mod binary_cache;
 pub mod content_address;
-pub mod crypto;
+pub mod signature;
 mod derivation;
 mod derived_path;
 pub mod legacy_worker;

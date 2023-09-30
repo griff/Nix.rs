@@ -2,7 +2,7 @@ use log::{debug, error};
 use tokio::io::AsyncReadExt;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
-use crate::crypto::{ParseSignatureError, SignatureSet};
+use crate::signature::{ParseSignatureError, SignatureSet};
 use crate::get_protocol_minor;
 use crate::legacy_worker::{
     LegacyStore, ServeCommand, SERVE_MAGIC_1, SERVE_MAGIC_2, SERVE_PROTOCOL_VERSION,

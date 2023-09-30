@@ -6,7 +6,7 @@ use nixrs_util::hash::{Hash, ParseHashError};
 use nixrs_util::io::StateParse;
 use thiserror::Error;
 
-use crate::crypto::{ParseSignatureError, SignatureSet};
+use crate::signature::{ParseSignatureError, SignatureSet};
 use crate::{
     content_address::{ContentAddress, ParseContentAddressError},
     ParseStorePathError, StoreDir, StorePath, StorePathSet, ValidPathInfo,
@@ -388,7 +388,7 @@ pub enum ParseNarInfoError {
 #[cfg(test)]
 mod tests {
     use crate::{
-        crypto::{PublicKey, Signature},
+        signature::{PublicKey, Signature},
         StoreDir, StorePath,
     };
 

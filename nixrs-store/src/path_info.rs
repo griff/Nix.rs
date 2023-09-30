@@ -1,7 +1,7 @@
 use std::fmt;
 use std::time::SystemTime;
 
-use crate::crypto::SignatureSet;
+use crate::signature::SignatureSet;
 use crate::path::StorePathSet;
 use crate::StorePath;
 use crate::{content_address::ContentAddress, StoreDir};

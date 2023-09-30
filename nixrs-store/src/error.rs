@@ -5,7 +5,7 @@ use crate::content_address::ParseContentAddressError;
 use crate::legacy_worker::ServeCommand;
 use crate::nar_info::Compression;
 use crate::{
-    crypto, ParseDrvOutputError, ParseStorePathError, ReadDerivationError, ReadStorePathError,
+    signature, ParseDrvOutputError, ParseStorePathError, ReadDerivationError, ReadStorePathError,
     WriteDerivationError,
 };
 
@@ -145,7 +145,7 @@ pub enum Error {
     BadSignature(
         #[from]
         #[source]
-        crypto::ParseSignatureError,
+        signature::ParseSignatureError,
     ),
     #[error("{0}")]
     BadContentAddress(
