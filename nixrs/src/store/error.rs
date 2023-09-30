@@ -1,13 +1,11 @@
 use thiserror::Error;
 
-use super::content_address::ParseContentAddressError;
 use super::legacy_worker::ServeCommand;
 use super::nar_info::Compression;
-use super::{
-    signature, ParseDrvOutputError, ParseStorePathError, ReadDerivationError, ReadStorePathError,
-    WriteDerivationError,
-};
+use super::{signature, ParseDrvOutputError, ReadDerivationError, WriteDerivationError};
 use crate::hash;
+use crate::store_path::ParseContentAddressError;
+use crate::store_path::{ParseStorePathError, ReadStorePathError};
 
 #[derive(Debug, Error)]
 pub enum Error {

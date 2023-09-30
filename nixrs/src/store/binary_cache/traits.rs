@@ -3,7 +3,8 @@ use std::io::Cursor;
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::store::{Error, StoreDirProvider};
+use crate::store::Error;
+use crate::store_path::StoreDirProvider;
 
 #[async_trait]
 pub trait BinaryCache: StoreDirProvider {

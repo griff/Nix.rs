@@ -9,8 +9,9 @@ use crate::io::{AsyncSink, AsyncSource};
 use crate::store::signature::{ParseSignatureError, SignatureSet};
 use crate::store::Error;
 use crate::store::{BasicDerivation, BuildSettings, CheckSignaturesFlag, DerivedPath};
-use crate::store::{RepairFlag, StorePath, StorePathSet, StorePathWithOutputs};
+use crate::store::{RepairFlag, StorePathWithOutputs};
 use crate::store::{SubstituteFlag, ValidPathInfo};
+use crate::store_path::{StorePath, StorePathSet};
 
 pub async fn run<S, R, W, BW>(
     mut source: R,

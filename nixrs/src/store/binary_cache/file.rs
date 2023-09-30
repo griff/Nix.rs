@@ -9,7 +9,8 @@ use tokio::{
     io::{AsyncRead, AsyncWrite},
 };
 
-use crate::store::{Error, StoreDir, StoreDirProvider};
+use crate::store::Error;
+use crate::store_path::{StoreDir, StoreDirProvider};
 
 use super::BinaryCache;
 

@@ -3,11 +3,9 @@ use std::time::SystemTime;
 
 use thiserror::Error;
 
-use super::path::StorePathSet;
 use super::signature::SignatureSet;
-use super::StorePath;
-use super::{content_address::ContentAddress, StoreDir};
 use crate::hash::Hash;
+use crate::store_path::{ContentAddress, StoreDir, StorePath, StorePathSet};
 
 #[derive(Debug, Eq, PartialOrd, Ord, Hash, Clone)]
 pub struct ValidPathInfo {

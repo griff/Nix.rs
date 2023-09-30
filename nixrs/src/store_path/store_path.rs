@@ -15,9 +15,9 @@ pub type StorePathSet = BTreeSet<StorePath>;
 
 #[macro_export]
 macro_rules! store_paths {
-    () => { $crate::store::StorePathSet::new() };
+    () => { $crate::store_path::StorePathSet::new() };
     ($($x:expr),+ $(,)?) => {{
-        let mut ret = $crate::store::StorePathSet::new();
+        let mut ret = $crate::store_path::StorePathSet::new();
         $(
             ret.insert($x);
         )+

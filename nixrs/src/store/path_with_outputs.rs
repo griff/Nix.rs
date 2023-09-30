@@ -1,7 +1,8 @@
 use std::convert::{TryFrom, TryInto};
 
-use super::{DerivedPath, ParseStorePathError, ReadStorePathError, StoreDir, StorePath};
+use super::DerivedPath;
 use crate::io::{StateParse, StatePrint};
+use crate::store_path::{ParseStorePathError, ReadStorePathError, StoreDir, StorePath};
 use crate::StringSet;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]

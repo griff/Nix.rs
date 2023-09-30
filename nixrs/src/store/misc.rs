@@ -1,7 +1,8 @@
 use std::collections::{btree_map::Entry, BTreeMap};
 
-use super::{Error, Store, StorePath, StorePathSet};
+use super::{Error, Store};
 use crate::compute_closure;
+use crate::store_path::{StorePath, StorePathSet};
 
 pub async fn compute_fs_closure<S>(
     store: S,
@@ -230,9 +231,9 @@ mod tests {
     use tokio::io::AsyncWrite;
 
     use super::*;
-    use crate::store::{
-        path::STORE_PATH_HASH_BYTES, Error, Store, StoreDirProvider, StorePath, StorePathSet,
-        ValidPathInfo,
+    use crate::store::{Error, Store, ValidPathInfo};
+    use crate::store_path::{
+        StoreDir, StoreDirProvider, StorePath, StorePathSet, STORE_PATH_HASH_BYTES,
     };
 
     macro_rules! store_path {
@@ -241,7 +242,7 @@ mod tests {
             let b = $l.repeat(STORE_PATH_HASH_BYTES);
             hash.copy_from_slice(&b);
             let name = std::str::from_utf8($l).unwrap();
-            $crate::store::StorePath::from_parts(hash, name).unwrap()
+            $crate::store_path::StorePath::from_parts(hash, name).unwrap()
         }};
     }
 
@@ -273,8 +274,8 @@ mod tests {
     }
 
     impl StoreDirProvider for QueryStore {
-        fn store_dir(&self) -> crate::store::StoreDir {
-            crate::store::StoreDir::default()
+        fn store_dir(&self) -> StoreDir {
+            StoreDir::default()
         }
     }
 

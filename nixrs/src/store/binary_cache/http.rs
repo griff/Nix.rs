@@ -3,7 +3,8 @@ use reqwest::{header::CONTENT_TYPE, Client, IntoUrl, StatusCode, Url};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use super::BinaryCache;
-use crate::store::{Error, StoreDir, StoreDirProvider};
+use crate::store::Error;
+use crate::store_path::{StoreDir, StoreDirProvider};
 
 #[derive(Clone, Debug)]
 pub struct HttpBinaryCache {
@@ -93,7 +94,8 @@ mod tests {
     use crate::hash::{Algorithm, HashSink};
 
     use crate::store::binary_cache::BinaryStoreWrap;
-    use crate::store::{Store, StorePath};
+    use crate::store::Store;
+    use crate::store_path::StorePath;
 
     use super::*;
 

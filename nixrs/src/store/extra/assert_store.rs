@@ -4,12 +4,12 @@ use pretty_assertions::assert_eq;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::store::legacy_worker::LegacyStore;
-use crate::store::StoreDirProvider;
 use crate::store::{
     BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, Error, Store,
 };
-use crate::store::{DerivedPath, RepairFlag, StoreDir, StorePath, StorePathSet};
+use crate::store::{DerivedPath, RepairFlag};
 use crate::store::{SubstituteFlag, ValidPathInfo};
+use crate::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum Message {

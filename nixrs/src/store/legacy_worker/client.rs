@@ -23,9 +23,9 @@ use crate::store::Error;
 use crate::store::StorePathWithOutputs;
 use crate::store::ValidPathInfo;
 use crate::store::{BasicDerivation, BuildResult, BuildStatus, CheckSignaturesFlag, DerivedPath};
-use crate::store::{BuildSettings, ParseStorePathError};
-use crate::store::{RepairFlag, StoreDir, StorePath, StorePathSet, SubstituteFlag};
-use crate::store::{Store, StoreDirProvider, EXPORT_MAGIC};
+use crate::store::{BuildSettings, RepairFlag, SubstituteFlag};
+use crate::store::{Store, EXPORT_MAGIC};
+use crate::store_path::{ParseStorePathError, StoreDir, StoreDirProvider, StorePath, StorePathSet};
 
 #[macro_export]
 macro_rules! get_protocol_major {

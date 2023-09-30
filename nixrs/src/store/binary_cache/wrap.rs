@@ -6,9 +6,13 @@ use tokio::{
     try_join,
 };
 
-use crate::store::{
-    nar_info::Compression, CheckSignaturesFlag, Error, NarInfo, RepairFlag, Store,
-    StoreDirProvider, StorePath, ValidPathInfo,
+use crate::store_path::{StoreDirProvider, StorePath};
+use crate::{
+    store::{
+        nar_info::Compression, CheckSignaturesFlag, Error, NarInfo, RepairFlag, Store,
+        ValidPathInfo,
+    },
+    store_path::StoreDir,
 };
 
 use super::BinaryCache;
@@ -43,7 +47,7 @@ where
 }
 
 impl<B: StoreDirProvider> StoreDirProvider for BinaryStoreWrap<B> {
-    fn store_dir(&self) -> crate::store::StoreDir {
+    fn store_dir(&self) -> StoreDir {
         self.cache.store_dir()
     }
 }
@@ -103,7 +107,7 @@ mod tests {
     use crate::hash::{Algorithm, HashSink};
 
     use crate::store::binary_cache::file::FileBinaryCache;
-    use crate::store::StorePath;
+    use crate::store_path::StorePath;
 
     use super::*;
 

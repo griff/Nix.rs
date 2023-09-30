@@ -3,10 +3,14 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use caches::{lru::CacheError, Cache, LRUCache, RawLRU};
 use lazy_static::lazy_static;
+use tokio::io::{AsyncRead, AsyncWrite};
 
+use crate::store::legacy_worker::LegacyStore;
 use crate::store::{
-    legacy_worker::LegacyStore, Store, StoreDir, StoreDirProvider, StorePath, ValidPathInfo,
+    BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, DerivedPath, Error,
+    RepairFlag, Store, SubstituteFlag, ValidPathInfo,
 };
+use crate::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
 
 lazy_static! {
     static ref TTL_POSITIVE_NAR_INFO_CACHE: Duration = Duration::from_secs(30 * 24 * 3600);
@@ -74,16 +78,13 @@ where
 {
     async fn query_valid_paths(
         &mut self,
-        paths: &crate::store::StorePathSet,
-        maybe_substitute: crate::store::SubstituteFlag,
-    ) -> Result<crate::store::StorePathSet, crate::store::Error> {
+        paths: &StorePathSet,
+        maybe_substitute: SubstituteFlag,
+    ) -> Result<StorePathSet, Error> {
         self.store.query_valid_paths(paths, maybe_substitute).await
     }
 
-    async fn query_path_info(
-        &mut self,
-        path: &crate::store::StorePath,
-    ) -> Result<Option<crate::store::ValidPathInfo>, crate::store::Error> {
+    async fn query_path_info(&mut self, path: &StorePath) -> Result<Option<ValidPathInfo>, Error> {
         if let Some(cache) = self.cache.get(path) {
             if cache.is_known_now() {
                 if let Some(value) = cache.value.as_ref() {
@@ -110,44 +111,44 @@ where
         }
     }
 
-    async fn nar_from_path<W: tokio::io::AsyncWrite + Send + Unpin>(
+    async fn nar_from_path<W: AsyncWrite + Send + Unpin>(
         &mut self,
-        path: &crate::store::StorePath,
+        path: &StorePath,
         sink: W,
-    ) -> Result<(), crate::store::Error> {
+    ) -> Result<(), Error> {
         self.store.nar_from_path(path, sink).await
     }
 
-    async fn add_to_store<R: tokio::io::AsyncRead + Send + Unpin>(
+    async fn add_to_store<R: AsyncRead + Send + Unpin>(
         &mut self,
-        info: &crate::store::ValidPathInfo,
+        info: &ValidPathInfo,
         source: R,
-        repair: crate::store::RepairFlag,
-        check_sigs: crate::store::CheckSignaturesFlag,
-    ) -> Result<(), crate::store::Error> {
+        repair: RepairFlag,
+        check_sigs: CheckSignaturesFlag,
+    ) -> Result<(), Error> {
         self.store
             .add_to_store(info, source, repair, check_sigs)
             .await
     }
 
-    async fn build_derivation<W: tokio::io::AsyncWrite + Send + Unpin>(
+    async fn build_derivation<W: AsyncWrite + Send + Unpin>(
         &mut self,
-        drv_path: &crate::store::StorePath,
-        drv: &crate::store::BasicDerivation,
-        settings: &crate::store::BuildSettings,
+        drv_path: &StorePath,
+        drv: &BasicDerivation,
+        settings: &BuildSettings,
         build_log: W,
-    ) -> Result<crate::store::BuildResult, crate::store::Error> {
+    ) -> Result<BuildResult, Error> {
         self.store
             .build_derivation(drv_path, drv, settings, build_log)
             .await
     }
 
-    async fn build_paths<W: tokio::io::AsyncWrite + Send + Unpin>(
+    async fn build_paths<W: AsyncWrite + Send + Unpin>(
         &mut self,
-        drv_paths: &[crate::store::DerivedPath],
-        settings: &crate::store::BuildSettings,
+        drv_paths: &[DerivedPath],
+        settings: &BuildSettings,
         build_log: W,
-    ) -> Result<(), crate::store::Error> {
+    ) -> Result<(), Error> {
         self.store.build_paths(drv_paths, settings, build_log).await
     }
 }
@@ -159,35 +160,32 @@ where
 {
     async fn query_valid_paths_locked(
         &mut self,
-        paths: &crate::store::StorePathSet,
+        paths: &StorePathSet,
         lock: bool,
-        maybe_substitute: crate::store::SubstituteFlag,
-    ) -> Result<crate::store::StorePathSet, crate::store::Error> {
+        maybe_substitute: SubstituteFlag,
+    ) -> Result<StorePathSet, Error> {
         self.store
             .query_valid_paths_locked(paths, lock, maybe_substitute)
             .await
     }
 
-    async fn export_paths<W: tokio::io::AsyncWrite + Send + Unpin>(
+    async fn export_paths<W: AsyncWrite + Send + Unpin>(
         &mut self,
-        paths: &crate::store::StorePathSet,
+        paths: &StorePathSet,
         sink: W,
-    ) -> Result<(), crate::store::Error> {
+    ) -> Result<(), Error> {
         self.store.export_paths(paths, sink).await
     }
 
-    async fn import_paths<R: tokio::io::AsyncRead + Send + Unpin>(
-        &mut self,
-        source: R,
-    ) -> Result<(), crate::store::Error> {
+    async fn import_paths<R: AsyncRead + Send + Unpin>(&mut self, source: R) -> Result<(), Error> {
         self.store.import_paths(source).await
     }
 
     async fn query_closure(
         &mut self,
-        paths: &crate::store::StorePathSet,
+        paths: &StorePathSet,
         include_outputs: bool,
-    ) -> Result<crate::store::StorePathSet, crate::store::Error> {
+    ) -> Result<StorePathSet, Error> {
         self.store.query_closure(paths, include_outputs).await
     }
 }

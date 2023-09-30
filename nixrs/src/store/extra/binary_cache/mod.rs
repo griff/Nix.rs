@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::io::{Cursor, Read};
 use std::path::PathBuf;
 
-use crate::store::StorePath;
+use crate::store_path::StorePath;
 use serde::{Deserialize, Serialize};
 
 //mod s3;

@@ -1,5 +1,5 @@
-use super::{ParseStorePathError, StoreDir, StorePath};
 use crate::io::{StateParse, StatePrint};
+use crate::store_path::{ParseStorePathError, StoreDir, StorePath};
 use crate::StringSet;
 
 /// A "derived path" is a very simple sort of expression that evaluates
@@ -82,7 +82,7 @@ impl StatePrint<DerivedPath> for StoreDir {
 
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
-    use crate::store::path::proptest::{arb_drv_store_path, arb_output_name};
+    use crate::store_path::proptest::{arb_drv_store_path, arb_output_name};
     use ::proptest::{collection::btree_set, prelude::*};
 
     use super::*;

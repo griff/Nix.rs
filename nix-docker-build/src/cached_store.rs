@@ -2,12 +2,11 @@ use async_trait::async_trait;
 use nixrs::store::copy_paths;
 use nixrs::store::legacy_worker::client::{LegacyStoreBuilder, LegacyStoreClient};
 use nixrs::store::legacy_worker::LegacyStore;
-use nixrs::store::Error;
-use nixrs::store::Store;
-use nixrs::store::StoreDirProvider;
-use nixrs::store::{BasicDerivation, CheckSignaturesFlag, DerivedPath, RepairFlag};
-use nixrs::store::{BuildResult, BuildSettings, StorePath, SubstituteFlag, ValidPathInfo};
-use nixrs::store::{StoreDir, StorePathSet};
+use nixrs::store::{
+    BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, DerivedPath, Error,
+    RepairFlag, Store, SubstituteFlag, ValidPathInfo,
+};
+use nixrs::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout};
 
 pub struct CachedStore {

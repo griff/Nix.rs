@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::store::{Error, Store, StorePathSet, SubstituteFlag};
+use crate::store::{Error, Store, SubstituteFlag};
+use crate::store_path::StorePathSet;
 
 #[async_trait]
 pub trait LegacyStore: Store {

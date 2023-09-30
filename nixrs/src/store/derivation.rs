@@ -8,14 +8,8 @@ use crate::flag_enum::flag_enum;
 use crate::hash;
 use crate::hash::Hash;
 use crate::io::{AsyncSink, AsyncSource};
-
-use super::content_address::FileIngestionMethod;
-use super::content_address::FixedOutputHash;
-use super::path::StorePathSet;
-use super::ParseStorePathError;
-use super::ReadStorePathError;
-use super::StoreDir;
-use super::StorePath;
+use crate::store_path::{FileIngestionMethod, FixedOutputHash, StorePathSet};
+use crate::store_path::{ParseStorePathError, ReadStorePathError, StoreDir, StorePath};
 
 flag_enum! {
     #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
@@ -364,7 +358,7 @@ impl BasicDerivation {
 pub mod proptest {
     use super::*;
     use crate::proptest::arb_path;
-    use crate::store::path::proptest::arb_output_name;
+    use crate::store_path::proptest::arb_output_name;
     use ::proptest::prelude::*;
 
     impl Arbitrary for DerivationOutput {

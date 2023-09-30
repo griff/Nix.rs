@@ -3,9 +3,9 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::store::{
     compute_fs_closure_slow, BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag,
-    DerivedPath, Error, RepairFlag, Store, StoreDir, StoreDirProvider, StorePath, StorePathSet,
-    SubstituteFlag, ValidPathInfo,
+    DerivedPath, Error, RepairFlag, Store, SubstituteFlag, ValidPathInfo,
 };
+use crate::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
 
 use super::LegacyStore;
 

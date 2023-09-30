@@ -6,9 +6,10 @@ mod closure;
 mod flag_enum;
 pub mod hash;
 pub mod io;
-pub mod num_enum;
+mod num_enum;
 pub mod path;
 pub mod store;
+pub mod store_path;
 
 pub use closure::compute_closure;
 

@@ -6,8 +6,8 @@ use derive_more::Display;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use super::StorePath;
 use crate::hash;
+use crate::store_path::StorePath;
 use crate::StringSet;
 
 #[derive(Error, Debug, PartialEq, Clone)]
@@ -113,7 +113,7 @@ pub type DrvOutputs = BTreeMap<DrvOutput, Realisation>;
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
     use super::*;
-    use crate::store::path::proptest::arb_output_name;
+    use crate::store_path::proptest::arb_output_name;
     use ::proptest::prelude::*;
 
     impl Arbitrary for DrvOutput {
