@@ -24,6 +24,7 @@ pub use derivation::{BasicDerivation, DerivationOutput, ParseDerivationError};
 pub use derivation::{ReadDerivationError, RepairFlag, WriteDerivationError};
 pub use derived_path::DerivedPath;
 pub use error::Error;
+pub use misc::topo_sort_paths_slow;
 pub use nar_info::NarInfo;
 pub use path::{ParseStorePathError, ReadStorePathError, StorePath};
 pub use path::{StorePathHash, StorePathName, StorePathSet};

@@ -11,6 +11,8 @@ use crate::{
 
 #[derive(Debug, Error)]
 pub enum Error {
+    #[error("Store path set forms a cycle")]
+    CycleDetected,
     #[error("wanted to fetch '{0}' but the legacy ssh protocol doesn't support merely substituting drv files via the build paths command. It would build them instead. Try using ssh-ng://")]
     WantedFetchInLegacy(String),
     #[error("{0}")]

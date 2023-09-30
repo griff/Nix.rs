@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Path, PathBuf, MAIN_SEPARATOR};
 use std::sync::Arc;
@@ -21,6 +20,7 @@ use super::content_address::{ContentAddress, FileIngestionMethod};
 use super::RepairFlag;
 use super::{BasicDerivation, DrvOutputs, StorePath, StorePathSet, ValidPathInfo};
 use super::{BuildSettings, DerivedPath, ParseStorePathError, ReadStorePathError};
+use crate::topo_sort_paths_slow;
 use crate::Error;
 
 /* Magic header of exportPath() output (obsolete). */
@@ -519,71 +519,7 @@ where
 
     let missing: StorePathSet = store_paths.difference(&valid).map(|s| s.clone()).collect();
 
-    let mut paths_map = BTreeMap::new();
-    for path in store_paths.iter() {
-        paths_map.insert(path.clone(), path.clone());
-    }
-    let dst_store_dir = dst_store.store_dir();
-    let src_store_dir = src_store.store_dir();
-    let mut refs = BTreeMap::new();
-    let mut rrefs: BTreeMap<StorePath, StorePathSet> = BTreeMap::new();
-    let mut roots = StorePathSet::new();
-    for store_path in missing {
-        if let Some(info) = src_store.query_path_info(&store_path).await? {
-            let mut store_path_for_dst = store_path.clone();
-            if info.ca.is_some() && info.references.is_empty() {
-                store_path_for_dst = dst_store_dir.make_fixed_output_path_from_ca(
-                    store_path.name.name(),
-                    info.ca.unwrap(),
-                    &StorePathSet::new(),
-                    false,
-                )?;
-                if dst_store_dir == src_store_dir {
-                    assert_eq!(store_path_for_dst, store_path)
-                }
-                if store_path_for_dst != store_path {
-                    debug!(
-                        "replaced path '{}' to '{}' for substituter '{}'",
-                        src_store_dir.print_path(&store_path),
-                        dst_store_dir.print_path(&store_path_for_dst),
-                        "local"
-                    );
-                }
-            }
-            paths_map.insert(store_path.clone(), store_path_for_dst);
-            if !dst_store.query_path_info(&store_path).await?.is_some() {
-                let mut edges = info.references;
-                edges.remove(&store_path);
-                if edges.is_empty() {
-                    roots.insert(store_path.clone());
-                } else {
-                    for m in edges.iter() {
-                        rrefs
-                            .entry(m.clone())
-                            .or_default()
-                            .insert(store_path.clone());
-                    }
-                    refs.insert(store_path, edges);
-                }
-            }
-        }
-    }
-    let mut sorted = Vec::new();
-    while !roots.is_empty() {
-        let n = roots.iter().next().unwrap().to_owned();
-        roots.remove(&n);
-        sorted.push(n.clone());
-        if let Some(edges) = rrefs.get(&n) {
-            for m in edges {
-                if let Some(references) = refs.get_mut(m) {
-                    references.remove(&n);
-                    if references.is_empty() {
-                        roots.insert(m.clone());
-                    }
-                }
-            }
-        }
-    }
+    let sorted = topo_sort_paths_slow(src_store, &missing).await?;
     for store_path in sorted {
         if !dst_store.query_path_info(&store_path).await?.is_some() {
             copy_store_path(src_store, dst_store, &store_path, repair, check_sigs).await?;

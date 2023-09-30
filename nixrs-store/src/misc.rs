@@ -1,3 +1,5 @@
+use std::collections::{btree_map::Entry, BTreeMap};
+
 use nixrs_util::compute_closure;
 
 use crate::{Error, Store, StorePath, StorePathSet};
@@ -170,6 +172,55 @@ where
         }
     }
     Ok(res)
+}
+
+pub async fn topo_sort_paths_slow<S: Store>(
+    store: &mut S,
+    store_paths: &StorePathSet,
+) -> Result<Vec<StorePath>, Error> {
+    let mut refs = BTreeMap::new();
+    let mut rrefs: BTreeMap<StorePath, StorePathSet> = BTreeMap::new();
+    let mut roots = StorePathSet::new();
+    for store_path in store_paths.iter() {
+        if let Some(info) = store.query_path_info(&store_path).await? {
+            let mut edges = info.references;
+            edges.remove(&store_path);
+            let edges: StorePathSet = edges.intersection(&store_paths).cloned().collect();
+            if edges.is_empty() {
+                roots.insert(store_path.clone());
+            } else {
+                for m in edges.iter() {
+                    rrefs
+                        .entry(m.clone())
+                        .or_default()
+                        .insert(store_path.clone());
+                }
+                refs.insert(store_path, edges);
+            }
+        }
+    }
+    let mut sorted = Vec::with_capacity(store_paths.len());
+    while !roots.is_empty() {
+        let n = roots.pop_first().unwrap();
+        sorted.push(n.clone());
+        if let Some(edges) = rrefs.get(&n) {
+            for m in edges {
+                if let Entry::Occupied(mut oci) = refs.entry(m) {
+                    let references = oci.get_mut();
+                    references.remove(&n);
+                    if references.is_empty() {
+                        oci.remove_entry();
+                        roots.insert(m.clone());
+                    }
+                }
+            }
+        }
+    }
+    if refs.is_empty() {
+        Ok(sorted)
+    } else {
+        Err(Error::CycleDetected)
+    }
 }
 
 #[cfg(test)]
@@ -377,5 +428,198 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(expected_closure, actual);
+    }
+
+    macro_rules! vec_clone {
+        () => {Vec::new()};
+        ($($x:expr),+ $(,)?) => {{
+            vec![$($x.clone() ,)+]
+        }};
+    }
+
+    #[tokio::test]
+    async fn test_topo_sort_cycle() {
+        let a = store_path!(b"a");
+        let b = store_path!(b"b");
+        let c = store_path!(b"c");
+        let d = store_path!(b"d");
+        let e = store_path!(b"e");
+        let f = store_path!(b"f");
+        let g = store_path!(b"g");
+        let references = graph! {
+            a => [b, c, g],
+            b => [a], // Loops back to A
+            c => [f], // Indirect reference
+            d => [a], // Not reachable, but has backreferences
+            e => [], // Just not reachable
+            f => [],
+            g => [g] // Self reference
+        };
+        let mut store = QueryStore { references };
+        let actual = topo_sort_paths_slow(&mut store, &set! {a, b, c, f, g})
+            .await
+            .unwrap_err();
+        assert_matches!(actual, Error::CycleDetected);
+    }
+
+    #[tokio::test]
+    async fn test_topo_sort() {
+        let a = store_path!(b"a");
+        let b = store_path!(b"b");
+        let c = store_path!(b"c");
+        let d = store_path!(b"d");
+        let e = store_path!(b"e");
+        let f = store_path!(b"f");
+        let g = store_path!(b"g");
+        let references = graph! {
+            a => [b, c, g],
+            b => [],
+            c => [f], // Indirect reference
+            d => [a], // Not reachable, but has backreferences
+            e => [], // Just not reachable
+            f => [],
+            g => [g] // Self reference
+        };
+        let mut store = QueryStore { references };
+        let expected = vec_clone![b, f, c, g, a];
+        let actual = topo_sort_paths_slow(&mut store, &set! {a, b, c, f, g})
+            .await
+            .unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    #[tokio::test]
+    async fn test_topo_sort_full_closure() {
+        let a = store_path!(b"a");
+        let b = store_path!(b"b");
+        let c = store_path!(b"c");
+        let d = store_path!(b"d");
+        let e = store_path!(b"e");
+        let f = store_path!(b"f");
+        let g = store_path!(b"g");
+        let references = graph! {
+            a => [b, c, g],
+            b => [],
+            c => [f], // Indirect reference
+            d => [a], // Not reachable, but has backreferences
+            e => [], // Just not reachable
+            f => [],
+            g => [g] // Self reference
+        };
+        let mut store = QueryStore { references };
+        let expected = vec_clone![b, f, c, g, a];
+        let actual = topo_sort_paths_slow(&mut store, &set! {a, b, c, f, g})
+            .await
+            .unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    #[tokio::test]
+    async fn test_topo_sort_missing_leaf() {
+        let a = store_path!(b"a");
+        let b = store_path!(b"b");
+        let c = store_path!(b"c");
+        let d = store_path!(b"d");
+        let e = store_path!(b"e");
+        let f = store_path!(b"f");
+        let g = store_path!(b"g");
+        let references = graph! {
+            a => [b, c, g],
+            b => [],
+            c => [f], // Indirect reference
+            d => [a], // Not reachable, but has backreferences
+            e => [], // Just not reachable
+            f => [],
+            g => [g] // Self reference
+        };
+        let mut store = QueryStore { references };
+        let expected = vec_clone![f, c, g, a];
+        let actual = topo_sort_paths_slow(&mut store, &set! {a, c, f, g})
+            .await
+            .unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    #[tokio::test]
+    async fn test_topo_sort_indirect() {
+        let a = store_path!(b"a");
+        let b = store_path!(b"b");
+        let c = store_path!(b"c");
+        let d = store_path!(b"d");
+        let e = store_path!(b"e");
+        let f = store_path!(b"f");
+        let g = store_path!(b"g");
+        let references = graph! {
+            a => [b, c, g],
+            b => [],
+            c => [f], // Indirect reference
+            d => [a], // Not reachable, but has backreferences
+            e => [], // Just not reachable
+            f => [],
+            g => [g] // Self reference
+        };
+        let mut store = QueryStore { references };
+        let expected = vec_clone![b, f, g, a];
+        let actual = topo_sort_paths_slow(&mut store, &set! {a, b, f, g})
+            .await
+            .unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    #[tokio::test]
+    async fn test_topo_sort_indirect_disjoint() {
+        let a = store_path!(b"a");
+        let b = store_path!(b"b");
+        let c = store_path!(b"c");
+        let d = store_path!(b"d");
+        let e = store_path!(b"e");
+        let f = store_path!(b"f");
+        let g = store_path!(b"g");
+        let h = store_path!(b"h");
+        let references = graph! {
+            a => [b, c, g],
+            b => [],
+            c => [f], // Indirect reference
+            d => [a], // Not reachable, but has backreferences
+            e => [], // Just not reachable
+            f => [h],
+            g => [g], // Self reference
+            h => [],
+        };
+        let mut store = QueryStore { references };
+        let expected = vec_clone![b, f, g, a];
+        let actual = topo_sort_paths_slow(&mut store, &set! {a, b, f, g})
+            .await
+            .unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    #[tokio::test]
+    async fn test_topo_sort_indirect_disjoint2() {
+        let a = store_path!(b"a");
+        let b = store_path!(b"b");
+        let c = store_path!(b"c");
+        let d = store_path!(b"d");
+        let e = store_path!(b"e");
+        let f = store_path!(b"f");
+        let g = store_path!(b"g");
+        let h = store_path!(b"h");
+        let references = graph! {
+            a => [b, c, g],
+            b => [],
+            c => [f], // Indirect reference
+            d => [a], // Not reachable, but has backreferences
+            e => [], // Just not reachable
+            f => [h],
+            g => [g], // Self reference
+            h => [],
+        };
+        let mut store = QueryStore { references };
+        // Is this correct? Nix does it like this but is it right?
+        let expected = vec_clone![b, g, a, h, f];
+        let actual = topo_sort_paths_slow(&mut store, &set! {a, b, f, h, g})
+            .await
+            .unwrap();
+        assert_eq!(actual, expected);
     }
 }
