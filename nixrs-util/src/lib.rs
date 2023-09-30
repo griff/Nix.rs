@@ -2,14 +2,12 @@ use std::collections::BTreeSet;
 
 pub mod archive;
 pub mod base32;
-pub mod cancelled_reader;
 mod closure;
-pub mod flag_enum;
+mod flag_enum;
 pub mod hash;
 pub mod io;
 pub mod num_enum;
 pub mod path;
-pub mod taken_reader;
 
 pub use closure::compute_closure;
 

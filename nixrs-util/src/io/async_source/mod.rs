@@ -1,15 +1,26 @@
 use tokio::io::AsyncRead;
 
-use super::drain::{DrainAll, DrainExact};
-use super::read_bytes::ReadBytes;
-use super::read_int::{ReadBool, ReadEnum, ReadFlag, ReadSeconds, ReadTime, ReadUsize};
-use super::read_padding::ReadPadding;
-use super::read_parsed::ReadParsed;
-use super::read_parsed_coll::ReadParsedColl;
-use super::read_string::ReadString;
-use super::read_string_coll::ReadStringColl;
-use super::state_parse::StateParse;
+use super::StateParse;
 use super::CollectionRead;
+
+mod drain;
+mod read_bytes;
+mod read_exact;
+mod read_int;
+mod read_padding;
+mod read_parsed;
+mod read_parsed_coll;
+mod read_string;
+mod read_string_coll;
+
+use self::drain::{DrainAll, DrainExact};
+use self::read_bytes::ReadBytes;
+use self::read_int::{ReadBool, ReadEnum, ReadFlag, ReadSeconds, ReadTime, ReadUsize};
+use self::read_padding::ReadPadding;
+use self::read_parsed::ReadParsed;
+use self::read_parsed_coll::ReadParsedColl;
+use self::read_string::ReadString;
+use self::read_string_coll::ReadStringColl;
 
 pub trait AsyncSource {
     //fn read_u64(&mut self) -> ReadU64<&mut Self>;

@@ -4,14 +4,25 @@ use std::time::{Duration, SystemTime};
 use futures::future::{self, Either, Ready};
 use tokio::io::AsyncWrite;
 
-use super::map_printed_state::{MapPrintedColl, MapPrintedState};
 use super::state_print::StatePrint;
-use super::write_int::WriteU64;
-use super::write_owned_string_coll::{write_owned_string_coll, WriteOwnedStringColl};
-use super::write_slice::{write_buf, write_str, WriteSlice};
-use super::write_string::{write_string, WriteString};
-use super::write_string_coll::{write_string_coll, WriteStringColl};
 use super::CollectionSize;
+
+mod map_printed_state;
+mod write_all;
+mod write_int;
+mod write_owned_string_coll;
+mod write_slice;
+mod write_string;
+mod write_string_coll;
+
+use self::map_printed_state::{MapPrintedColl, MapPrintedState};
+use self::write_int::WriteU64;
+use self::write_owned_string_coll::{write_owned_string_coll, WriteOwnedStringColl};
+use self::write_slice::{write_buf, write_str, WriteSlice};
+use self::write_string::{write_string, WriteString};
+use self::write_string_coll::{write_string_coll, WriteStringColl};
+
+
 
 fn write_u64<W>(dst: &mut W, value: u64) -> WriteU64<&mut W> {
     WriteU64::new(dst, value)

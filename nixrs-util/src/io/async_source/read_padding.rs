@@ -9,7 +9,7 @@ use pin_project_lite::pin_project;
 use tokio::io::AsyncRead;
 use tokio::io::ReadBuf;
 
-use super::calc_padding;
+use crate::io::calc_padding;
 
 fn invalid_data(s: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, s)
