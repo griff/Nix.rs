@@ -18,7 +18,7 @@ use crate::hash::Hash;
 use crate::io::CancelledReader;
 use crate::io::{AsyncSink, AsyncSource};
 use crate::io::{TakenReader, Taker};
-use crate::store::signature::{ParseSignatureError, SignatureSet};
+use crate::signature::{ParseSignatureError, SignatureSet};
 use crate::store::Error;
 use crate::store::StorePathWithOutputs;
 use crate::store::ValidPathInfo;

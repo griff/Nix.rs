@@ -3,7 +3,7 @@ use std::time::SystemTime;
 
 use thiserror::Error;
 
-use super::signature::SignatureSet;
+use crate::signature::SignatureSet;
 use crate::hash::Hash;
 use crate::store_path::{ContentAddress, StoreDir, StorePath, StorePathSet};
 

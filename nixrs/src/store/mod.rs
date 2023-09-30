@@ -10,7 +10,6 @@ mod nar_info;
 mod path_info;
 mod path_with_outputs;
 mod realisation;
-pub mod signature;
 mod store_api;
 
 #[cfg(any(feature = "test", test))]

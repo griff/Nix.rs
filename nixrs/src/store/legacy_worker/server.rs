@@ -6,7 +6,7 @@ use super::{LegacyStore, ServeCommand, SERVE_MAGIC_1, SERVE_MAGIC_2, SERVE_PROTO
 use crate::get_protocol_minor;
 use crate::hash;
 use crate::io::{AsyncSink, AsyncSource};
-use crate::store::signature::{ParseSignatureError, SignatureSet};
+use crate::signature::{ParseSignatureError, SignatureSet};
 use crate::store::Error;
 use crate::store::{BasicDerivation, BuildSettings, CheckSignaturesFlag, DerivedPath};
 use crate::store::{RepairFlag, StorePathWithOutputs};

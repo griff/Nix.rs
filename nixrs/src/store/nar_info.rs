@@ -4,7 +4,7 @@ use std::{collections::BTreeMap, fmt, num::ParseIntError, time::SystemTime};
 
 use thiserror::Error;
 
-use super::signature::{ParseSignatureError, SignatureSet};
+use crate::signature::{ParseSignatureError, SignatureSet};
 use super::ValidPathInfo;
 use crate::hash::{Hash, ParseHashError};
 use crate::io::StateParse;
@@ -388,7 +388,7 @@ pub enum ParseNarInfoError {
 
 #[cfg(test)]
 mod tests {
-    use crate::store::signature::{PublicKey, Signature};
+    use crate::signature::{PublicKey, Signature};
     use crate::store_path::{StoreDir, StorePath};
 
     use super::*;

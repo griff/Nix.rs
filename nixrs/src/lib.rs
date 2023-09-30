@@ -8,6 +8,7 @@ pub mod hash;
 pub mod io;
 mod num_enum;
 pub mod path;
+pub mod signature;
 pub mod store;
 pub mod store_path;
 
