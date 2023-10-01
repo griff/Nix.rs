@@ -2,8 +2,10 @@ use log::{debug, error};
 use tokio::io::AsyncReadExt;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
-use super::{LegacyStore, ServeCommand, SERVE_MAGIC_1, SERVE_MAGIC_2, SERVE_PROTOCOL_VERSION};
-use crate::get_protocol_minor;
+use super::{
+    get_protocol_minor, LegacyStore, ServeCommand, SERVE_MAGIC_1, SERVE_MAGIC_2,
+    SERVE_PROTOCOL_VERSION,
+};
 use crate::hash;
 use crate::io::{AsyncSink, AsyncSource};
 use crate::path_info::ValidPathInfo;

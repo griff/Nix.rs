@@ -19,6 +19,20 @@ pub const SERVE_MAGIC_2: u64 = 0x5452eecb;
 
 pub const SERVE_PROTOCOL_VERSION: u64 = 2 << 8 | 6;
 
+macro_rules! get_protocol_major {
+    ($x:expr) => {
+        ($x) & 0xff00
+    };
+}
+pub(crate) use get_protocol_major;
+
+macro_rules! get_protocol_minor {
+    ($x:expr) => {
+        ($x) & 0x00ff
+    };
+}
+pub(crate) use get_protocol_minor;
+
 num_enum! {
     #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, UpperHex, LowerHex)]
     pub enum ServeCommand {

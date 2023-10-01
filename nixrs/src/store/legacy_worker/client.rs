@@ -12,7 +12,10 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout, Command};
 use tokio::spawn;
 
-use super::{LegacyStore, ServeCommand, SERVE_MAGIC_1, SERVE_MAGIC_2, SERVE_PROTOCOL_VERSION};
+use super::{
+    get_protocol_major, get_protocol_minor, LegacyStore, ServeCommand, SERVE_MAGIC_1,
+    SERVE_MAGIC_2, SERVE_PROTOCOL_VERSION,
+};
 use crate::archive::copy_nar;
 use crate::hash::Hash;
 use crate::io::CancelledReader;
@@ -25,20 +28,6 @@ use crate::store::{
     Error, RepairFlag, Store, StorePathWithOutputs, SubstituteFlag, EXPORT_MAGIC,
 };
 use crate::store_path::{ParseStorePathError, StoreDir, StoreDirProvider, StorePath, StorePathSet};
-
-#[macro_export]
-macro_rules! get_protocol_major {
-    ($x:expr) => {
-        ($x) & 0xff00
-    };
-}
-
-#[macro_export]
-macro_rules! get_protocol_minor {
-    ($x:expr) => {
-        ($x) & 0x00ff
-    };
-}
 
 pub struct LegacyStoreBuilder {
     cmd: Command,
