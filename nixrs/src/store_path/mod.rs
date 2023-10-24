@@ -3,11 +3,13 @@ mod store_dir;
 mod store_path;
 
 pub use content_address::{
-    ContentAddress, FileIngestionMethod, FixedOutputHash, ParseContentAddressError,
+    ContentAddress, ContentAddressMethod, ContentAddressWithReferences, FileIngestionMethod, ParseContentAddressError,
+    StoreReferences, FixedOutputInfo, TextInfo,
 };
 pub use store_dir::{StoreDir, StoreDirProvider};
 pub use store_path::{
-    ParseStorePathError, ReadStorePathError, StorePath, StorePathHash, StorePathName, StorePathSet,
+    is_name,
+    ParseStorePathError, ReadStorePathError, StorePath, StorePathHash, StorePathName, StorePathSet, StorePathSetExt,
     STORE_PATH_HASH_BYTES, STORE_PATH_HASH_CHARS,
 };
 

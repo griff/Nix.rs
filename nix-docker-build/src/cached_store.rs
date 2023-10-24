@@ -1,17 +1,19 @@
+use std::fmt;
+
 use async_trait::async_trait;
 use nixrs::path_info::ValidPathInfo;
-use nixrs::store::copy_paths;
+use nixrs::store::{copy_paths, BuildMode};
 use nixrs::store::legacy_worker::{LegacyStore, LegacyStoreBuilder, LegacyStoreClient};
 use nixrs::store::{
-    BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, DerivedPath, Error,
+    BasicDerivation, BuildResult, CheckSignaturesFlag, DerivedPath, Error,
     RepairFlag, Store, SubstituteFlag,
 };
 use nixrs::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
-use tokio::process::{ChildStderr, ChildStdin, ChildStdout};
+use tokio::process::{ChildStdin, ChildStdout};
 
 pub struct CachedStore {
-    cache: LegacyStoreClient<ChildStdout, ChildStdin, ChildStderr>,
-    builder: Option<LegacyStoreClient<ChildStdout, ChildStdin, ChildStderr>>,
+    cache: LegacyStoreClient<ChildStdout, ChildStdin>,
+    builder: Option<LegacyStoreClient<ChildStdout, ChildStdin>>,
     write_allowed: bool,
     docker_bin: String,
 }
@@ -58,7 +60,7 @@ impl Store for CachedStore {
             self.cache.query_path_info(path).await
         }
     }
-    async fn nar_from_path<W: tokio::io::AsyncWrite + Send + Unpin>(
+    async fn nar_from_path<W: tokio::io::AsyncWrite + fmt::Debug + Send + Unpin>(
         &mut self,
         path: &StorePath,
         sink: W,
@@ -74,7 +76,7 @@ impl Store for CachedStore {
         }
     }
 
-    async fn add_to_store<R: tokio::io::AsyncRead + Send + Unpin>(
+    async fn add_to_store<R: tokio::io::AsyncRead + fmt::Debug + Send + Unpin>(
         &mut self,
         info: &ValidPathInfo,
         source: R,
@@ -86,21 +88,19 @@ impl Store for CachedStore {
             .await
     }
 
-    async fn build_paths<W: tokio::io::AsyncWrite + Send + Unpin>(
+    async fn build_paths(
         &mut self,
         _drv_paths: &[DerivedPath],
-        _settings: &BuildSettings,
-        _build_log: W,
+        _build_mode: BuildMode,
     ) -> Result<(), Error> {
         Err(Error::Misc("Unsupported operation 'build_paths'".into()))
     }
 
-    async fn build_derivation<W: tokio::io::AsyncWrite + Send + Unpin>(
+    async fn build_derivation(
         &mut self,
         drv_path: &StorePath,
         drv: &BasicDerivation,
-        settings: &BuildSettings,
-        build_log: W,
+        build_mode: BuildMode,
     ) -> Result<BuildResult, Error> {
         //let store_dir = self.store_dir();
         let inputs = self.cache.query_closure(&drv.input_srcs, false).await?;
@@ -129,7 +129,7 @@ impl Store for CachedStore {
 
         copy_paths(&mut self.cache, &mut builder, &inputs).await?;
         let result = builder
-            .build_derivation(drv_path, drv, settings, build_log)
+            .build_derivation(drv_path, drv, build_mode)
             .await?;
 
         if result.success() {
@@ -192,7 +192,7 @@ impl LegacyStore for CachedStore {
         }
     }
 
-    async fn export_paths<W: tokio::io::AsyncWrite + Send + Unpin>(
+    async fn export_paths<W: tokio::io::AsyncWrite + fmt::Debug + Send + Unpin>(
         &mut self,
         paths: &StorePathSet,
         sink: W,
@@ -200,7 +200,7 @@ impl LegacyStore for CachedStore {
         self.cache.export_paths(paths, sink).await
     }
 
-    async fn import_paths<R: tokio::io::AsyncRead + Send + Unpin>(
+    async fn import_paths<R: tokio::io::AsyncRead + fmt::Debug + Send + Unpin>(
         &mut self,
         source: R,
     ) -> Result<(), Error> {

@@ -20,6 +20,7 @@ macro_rules! num_enum {
             $u($t),
         }
         impl $name {
+            #[allow(unused)]
             pub fn value(&self) -> $t {
                 self.into()
             }

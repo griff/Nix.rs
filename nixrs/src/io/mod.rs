@@ -3,20 +3,25 @@ mod async_source;
 mod cancelled_reader;
 mod collection_read;
 mod collection_size;
+mod framed;
 mod offset_reader;
+mod state_display;
 mod state_parse;
 mod state_print;
-mod taken_reader;
+mod taken_stream;
 
 pub use async_sink::AsyncSink;
-pub use async_source::AsyncSource;
+pub use async_source::{AsyncSource, DrainAll, DrainExact, ReadBytes, ReadBool, ReadEnum, ReadFlag, ReadSeconds, ReadTime, ReadUsize, ReadPadding, ReadParsedColl, ReadParsed, ReadStringColl, ReadString};
 pub use cancelled_reader::{CancelToken, CancelledReader};
 pub use collection_read::CollectionRead;
 pub use collection_size::CollectionSize;
+pub use framed::framed_sink::FramedSink;
+pub use framed::framed_source::FramedSource;
 pub use offset_reader::OffsetReader;
+pub use state_display::StateDisplay;
 pub use state_parse::StateParse;
 pub use state_print::StatePrint;
-pub use taken_reader::{TakenGuard, TakenReader, Taker};
+pub use taken_stream::{TakenGuard, TakenStream, Taker};
 
 pub(crate) const STATIC_PADDING: &[u8] = &[0u8; 8];
 

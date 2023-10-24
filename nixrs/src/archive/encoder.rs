@@ -2,7 +2,7 @@ use std::io;
 
 use bytes::BufMut;
 use bytes::BytesMut;
-use log::debug;
+use tracing::debug;
 use tokio_util::codec::Encoder;
 
 use crate::io::calc_padding;

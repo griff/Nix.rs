@@ -1,3 +1,4 @@
+use std::fmt;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -7,7 +8,7 @@ use tokio::sync::Mutex;
 use crate::path_info::ValidPathInfo;
 use crate::store::{legacy_worker::LegacyStore, Store};
 use crate::store::{
-    BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, DerivedPath, Error,
+    BasicDerivation, BuildMode, BuildResult, CheckSignaturesFlag, DerivedPath, Error,
     RepairFlag, SubstituteFlag,
 };
 use crate::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
@@ -43,7 +44,7 @@ where
         store.query_path_info(path).await
     }
 
-    async fn nar_from_path<W: AsyncWrite + Send + Unpin>(
+    async fn nar_from_path<W: AsyncWrite + fmt::Debug + Send + Unpin>(
         &mut self,
         path: &StorePath,
         sink: W,
@@ -52,7 +53,7 @@ where
         store.nar_from_path(path, sink).await
     }
 
-    async fn add_to_store<R: AsyncRead + Send + Unpin>(
+    async fn add_to_store<R: AsyncRead + fmt::Debug + Send + Unpin>(
         &mut self,
         info: &ValidPathInfo,
         source: R,
@@ -63,27 +64,25 @@ where
         store.add_to_store(info, source, repair, check_sigs).await
     }
 
-    async fn build_derivation<W: AsyncWrite + Send + Unpin>(
+    async fn build_derivation(
         &mut self,
         drv_path: &StorePath,
         drv: &BasicDerivation,
-        settings: &BuildSettings,
-        build_log: W,
+        build_mode: BuildMode,
     ) -> Result<BuildResult, Error> {
         let mut store = self.store.lock().await;
         store
-            .build_derivation(drv_path, drv, settings, build_log)
+            .build_derivation(drv_path, drv, build_mode)
             .await
     }
 
-    async fn build_paths<W: AsyncWrite + Send + Unpin>(
+    async fn build_paths(
         &mut self,
         drv_paths: &[DerivedPath],
-        settings: &BuildSettings,
-        build_log: W,
+        build_mode: BuildMode,
     ) -> Result<(), Error> {
         let mut store = self.store.lock().await;
-        store.build_paths(drv_paths, settings, build_log).await
+        store.build_paths(drv_paths, build_mode).await
     }
 }
 
@@ -104,7 +103,7 @@ where
             .await
     }
 
-    async fn export_paths<W: AsyncWrite + Send + Unpin>(
+    async fn export_paths<W: AsyncWrite + fmt::Debug + Send + Unpin>(
         &mut self,
         paths: &StorePathSet,
         sink: W,
@@ -113,7 +112,7 @@ where
         store.export_paths(paths, sink).await
     }
 
-    async fn import_paths<R: AsyncRead + Send + Unpin>(&mut self, source: R) -> Result<(), Error> {
+    async fn import_paths<R: AsyncRead + fmt::Debug + Send + Unpin>(&mut self, source: R) -> Result<(), Error> {
         let mut store = self.store.lock().await;
         store.import_paths(source).await
     }

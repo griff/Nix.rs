@@ -18,6 +18,7 @@ pub(crate) fn write_string<W>(dst: W, s: String) -> WriteString<W> {
 }
 
 #[derive(Debug)]
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub enum WriteString<W> {
     Invalid,
     WriteSize(String, WriteU64<W>),

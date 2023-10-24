@@ -3,12 +3,13 @@ use std::fmt;
 use std::path::{Path, PathBuf, MAIN_SEPARATOR};
 use std::sync::Arc;
 
-use log::trace;
+use tracing::trace;
 use tokio::fs;
 
+use super::content_address::FixedOutputInfo;
 use super::{
-    ContentAddress, FileIngestionMethod, ParseStorePathError, ReadStorePathError, StorePath,
-    StorePathSet,
+    FileIngestionMethod, ParseStorePathError, ReadStorePathError, StorePath,
+    StoreReferences, ContentAddressWithReferences, TextInfo,
 };
 use crate::hash;
 use crate::io::{StateParse, StatePrint};
@@ -108,14 +109,13 @@ impl StoreDir {
     fn make_type(
         &self,
         mut path_type: String,
-        references: &StorePathSet,
-        has_self_reference: bool,
+        references: &StoreReferences,
     ) -> String {
-        for reference in references {
+        for reference in references.others.iter() {
             path_type.push_str(":");
             path_type.push_str(&self.print_path(reference));
         }
-        if has_self_reference {
+        if references.self_ref {
             path_type.push_str(":self");
         }
         path_type
@@ -142,25 +142,22 @@ impl StoreDir {
 
     pub fn make_fixed_output_path(
         &self,
-        method: FileIngestionMethod,
-        hash: hash::Hash,
         name: &str,
-        references: &StorePathSet,
-        has_self_reference: bool,
+        info: &FixedOutputInfo,
     ) -> Result<StorePath, ParseStorePathError> {
         if let (hash::Algorithm::SHA256, FileIngestionMethod::Recursive) =
-            (hash.algorithm(), method)
+            (info.hash.algorithm(), info.method)
         {
             self.make_store_path(
-                &self.make_type("source".into(), references, has_self_reference),
-                hash,
+                &self.make_type("source".into(), &info.references),
+                info.hash,
                 name,
             )
         } else {
-            assert!(references.is_empty());
+            assert!(info.references.is_empty());
             let hash = hash::digest(
                 hash::Algorithm::SHA256,
-                &format!("fixed:out:{:#}{:x}:", method, hash),
+                &format!("fixed:out:{:#}{:x}:", info.method, info.hash),
             );
             trace!("Output hash {:x}", hash);
             self.make_store_path("output:out", hash, name)
@@ -170,35 +167,26 @@ impl StoreDir {
     pub fn make_fixed_output_path_from_ca(
         &self,
         name: &str,
-        ca: ContentAddress,
-        references: &StorePathSet,
-        has_self_reference: bool,
+        ca: &ContentAddressWithReferences,
     ) -> Result<StorePath, ParseStorePathError> {
-        use ContentAddress::*;
+        use ContentAddressWithReferences::*;
         match ca {
-            TextHash(hash) => self.make_text_path(name, hash, references),
-            FixedOutputHash(fsh) => self.make_fixed_output_path(
-                fsh.method,
-                fsh.hash,
-                name,
-                references,
-                has_self_reference,
-            ),
+            Text(info) => self.make_text_path(name, info),
+            Fixed(info) => self.make_fixed_output_path(name, info),
         }
     }
 
     pub fn make_text_path(
         &self,
         name: &str,
-        hash: hash::Hash,
-        references: &StorePathSet,
+        info: &TextInfo,
     ) -> Result<StorePath, ParseStorePathError> {
-        assert_eq!(hash.algorithm(), hash::Algorithm::SHA256);
+        assert_eq!(info.hash.algorithm(), hash::Algorithm::SHA256);
         // Stuff the references (if any) into the type.  This is a bit
         // hacky, but we can't put them in `s' since that would be
         // ambiguous.
-        let path_type = self.make_type("text".into(), references, false);
-        self.make_store_path(&path_type, hash, name)
+        let path_type = self.make_type("text".into(), &StoreReferences { others: info.references.clone(), self_ref: false });
+        self.make_store_path(&path_type, info.hash, name)
     }
 
     fn strip_store_path<'a>(&self, path: &'a Path) -> Result<Cow<'a, Path>, &'a Path> {
@@ -386,10 +374,28 @@ pub trait StoreDirProvider {
     fn store_dir(&self) -> StoreDir;
 }
 
+impl<T: ?Sized + StoreDirProvider> StoreDirProvider for Box<T> {
+    fn store_dir(&self) -> StoreDir {
+        (**self).store_dir()
+    }
+}
+
+impl<T: ?Sized + StoreDirProvider> StoreDirProvider for &T {
+    fn store_dir(&self) -> StoreDir {
+        (**self).store_dir()
+    }
+}
+
+impl<T: ?Sized + StoreDirProvider> StoreDirProvider for &mut T {
+    fn store_dir(&self) -> StoreDir {
+        (**self).store_dir()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hash;
+    use crate::{hash, store_path::StorePathSet};
     use ::proptest::{arbitrary::any, prop_assert_eq, proptest};
     use pretty_assertions::assert_eq;
 
@@ -487,13 +493,15 @@ mod tests {
         let hash = "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
             .parse::<hash::Hash>()
             .unwrap();
+        let info = FixedOutputInfo {
+            method: FileIngestionMethod::Recursive,
+            hash,
+            references: StoreReferences::new(),
+        };
         let p2 = store_dir
             .make_fixed_output_path(
-                FileIngestionMethod::Recursive,
-                hash,
                 "konsole-18.12.3",
-                &StorePathSet::new(),
-                false,
+                &info,
             )
             .unwrap();
         assert_eq!(p2, p);
@@ -520,13 +528,19 @@ mod tests {
             StorePath::new_from_base_name("7h7qgvs4kgzsn8a6rb274saxyqh4jxlz-konsole-18.12.3.drv")
                 .unwrap(),
         );
+        let references = StoreReferences {
+            others: set,
+            self_ref: true
+        };
+        let info = FixedOutputInfo {
+            method: FileIngestionMethod::Recursive,
+            hash,
+            references,
+        };
         let p2 = store_dir
             .make_fixed_output_path(
-                FileIngestionMethod::Recursive,
-                hash,
                 "konsole-18.12.3",
-                &set,
-                true,
+                &info,
             )
             .unwrap();
         assert_eq!(p2, p);
@@ -553,13 +567,15 @@ mod tests {
             .parse::<hash::Hash>()
             .unwrap();
 
+        let info = FixedOutputInfo {
+            method: FileIngestionMethod::Flat,
+            hash,
+            references: StoreReferences::new(),
+        };
         let p2 = store_dir
             .make_fixed_output_path(
-                FileIngestionMethod::Flat,
-                hash,
                 "konsole-18.12.3",
-                &StorePathSet::new(),
-                false,
+                &info,
             )
             .unwrap();
         assert_eq!(p2, p);
@@ -586,13 +602,15 @@ mod tests {
             .parse::<hash::Hash>()
             .unwrap();
 
+        let info = FixedOutputInfo {
+            method: FileIngestionMethod::Recursive,
+            hash,
+            references: StoreReferences::new(),
+        };
         let p2 = store_dir
             .make_fixed_output_path(
-                FileIngestionMethod::Recursive,
-                hash,
                 "konsole-18.12.3",
-                &StorePathSet::new(),
-                false,
+                &info,
             )
             .unwrap();
         assert_eq!(p2, p);

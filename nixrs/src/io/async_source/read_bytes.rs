@@ -5,6 +5,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use bytes::Bytes;
+use bytes::BytesMut;
 use tokio::io::AsyncRead;
 
 use super::read_exact::ReadExact;
@@ -12,25 +13,26 @@ use super::read_int::ReadUsize;
 use super::read_padding::ReadPadding;
 
 #[derive(Debug)]
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub enum ReadBytes<R> {
     Invalid,
-    ReadSize(usize, ReadUsize<R>),
+    ReadSize(BytesMut, usize, ReadUsize<R>),
     ReadData(ReadExact<R>),
-    ReadPadding(Vec<u8>, ReadPadding<R>),
+    ReadPadding(Bytes, ReadPadding<R>),
     Done(R),
 }
 
 impl<R> ReadBytes<R> {
-    pub fn new(src: R) -> Self {
-        Self::ReadSize(usize::MAX, ReadUsize::new(src))
+    pub fn new(src: R, buf: BytesMut) -> Self {
+        Self::ReadSize(buf, usize::MAX, ReadUsize::new(src))
     }
-    pub fn with_limit(src: R, limit: usize) -> Self {
-        Self::ReadSize(limit, ReadUsize::new(src))
+    pub fn with_limit(src: R, limit: usize, buf: BytesMut) -> Self {
+        Self::ReadSize(buf, limit, ReadUsize::new(src))
     }
     pub fn inner(self) -> R {
         match self {
             Self::Invalid => panic!("invalid state"),
-            Self::ReadSize(_, r) => r.inner(),
+            Self::ReadSize(_, _, r) => r.inner(),
             Self::ReadData(r) => r.inner(),
             Self::ReadPadding(_, r) => r.inner(),
             Self::Done(r) => r,
@@ -49,10 +51,10 @@ where
             match mem::replace(&mut *self, Self::Invalid) {
                 Self::Invalid => panic!("invalid state"),
                 Self::Done(_) => panic!("polling completed future"),
-                Self::ReadSize(limit, mut reader) => {
+                Self::ReadSize(mut buffer, limit, mut reader) => {
                     let len = match Pin::new(&mut reader).poll(cx) {
                         Poll::Pending => {
-                            *self = Self::ReadSize(limit, reader);
+                            *self = Self::ReadSize(buffer, limit, reader);
                             return Poll::Pending;
                         }
                         Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
@@ -69,7 +71,8 @@ where
                         *self = Self::Done(src);
                         return Poll::Ready(Ok(Bytes::new()));
                     }
-                    *self = Self::ReadData(ReadExact::new(src, Vec::with_capacity(len)));
+                    buffer.reserve(len);
+                    *self = Self::ReadData(ReadExact::new(src, len, buffer));
                 }
                 Self::ReadData(mut reader) => {
                     let v = match Pin::new(&mut reader).poll(cx) {

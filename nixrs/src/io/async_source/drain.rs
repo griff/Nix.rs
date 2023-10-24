@@ -11,6 +11,7 @@ const BUF_SIZE: usize = 64_000;
 
 pin_project! {
     #[derive(Debug)]
+    #[must_use = "futures do nothing unless you `.await` or poll them"]
     pub struct DrainAll<R> {
         #[pin]
         reader: R,

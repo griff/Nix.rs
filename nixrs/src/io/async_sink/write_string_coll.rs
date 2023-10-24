@@ -12,6 +12,7 @@ use super::write_slice::{write_str, WriteSlice};
 use super::CollectionSize;
 
 #[derive(Debug)]
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub enum WriteStringColl<'a, W, I> {
     Invalid,
     WriteSize(I, WriteU64<W>),

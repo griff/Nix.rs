@@ -1,3 +1,4 @@
+use std::fmt;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -5,8 +6,7 @@ use futures::{SinkExt, TryStreamExt};
 use nixrs::archive::{parse_nar, NAREncoder};
 use nixrs::path_info::ValidPathInfo;
 use nixrs::store::{
-    BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, DerivedPath, Error,
-    RepairFlag, Store,
+    CheckSignaturesFlag, Error, RepairFlag, Store,
 };
 use nixrs::store_path::{StoreDir, StoreDirProvider, StorePath};
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -25,6 +25,12 @@ pub struct TvixStore {
     pub blob_service: Arc<dyn BlobService>,
     pub directory_service: Arc<dyn DirectoryService>,
     pub path_info_service: Arc<dyn PathInfoService>,
+}
+
+impl fmt::Debug for TvixStore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TvixStore").field("store_dir", &self.store_dir).finish()
+    }
 }
 
 impl StoreDirProvider for TvixStore {
@@ -102,22 +108,5 @@ impl Store for TvixStore {
             .await
             .map_err(|err| Error::Misc(format!("tvix store error {:?}", err)))?;
         Ok(())
-    }
-    async fn build_derivation<W: AsyncWrite + Send + Unpin>(
-        &mut self,
-        _drv_path: &StorePath,
-        _drv: &BasicDerivation,
-        _settings: &BuildSettings,
-        _build_log: W,
-    ) -> Result<BuildResult, Error> {
-        Err(Error::UnsupportedOperation("build_derivation".into()))
-    }
-    async fn build_paths<W: AsyncWrite + Send + Unpin>(
-        &mut self,
-        _drv_paths: &[DerivedPath],
-        _settings: &BuildSettings,
-        _build_log: W,
-    ) -> Result<(), Error> {
-        Err(Error::UnsupportedOperation("build_paths".into()))
     }
 }

@@ -520,6 +520,12 @@ impl Context {
     }
 }
 
+impl fmt::Debug for Context {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Context").field(&self.0).finish()
+    }
+}
+
 /// A hash sink that implements [`AsyncWrite`].
 ///
 /// # Examples
@@ -544,6 +550,7 @@ impl Context {
 /// ```
 ///
 /// [`AsyncWrite`]: tokio::io::AsyncWrite
+#[derive(Debug)]
 pub struct HashSink(Option<(u64, Context)>);
 impl HashSink {
     /// Constructs a new sink with `algorithm`.

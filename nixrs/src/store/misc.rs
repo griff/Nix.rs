@@ -1,7 +1,12 @@
 use std::collections::{btree_map::Entry, BTreeMap};
+use std::fmt;
 
-use super::{Error, Store};
+use tokio::io::{AsyncRead, AsyncReadExt};
+use tracing::{instrument, trace};
+
+use super::{Error, Store, CheckSignaturesFlag, RepairFlag};
 use crate::compute_closure;
+use crate::path_info::ValidPathInfo;
 use crate::store_path::{StorePath, StorePathSet};
 
 pub async fn compute_fs_closure<S>(
@@ -221,6 +226,24 @@ pub async fn topo_sort_paths_slow<S: Store>(
     } else {
         Err(Error::CycleDetected)
     }
+}
+
+#[instrument(skip_all)]
+pub async fn add_multiple_to_store_old<S, R>(mut store: S, mut source: R, repair: RepairFlag, check_sigs: CheckSignaturesFlag) -> Result<(), Error>
+where
+    S: Store,
+    R: AsyncRead + fmt::Debug + Unpin + Send,
+{
+    let store_dir = store.store_dir();
+    let expected = source.read_u64_le().await?;
+    trace!(expected, "Reading stores {}", expected);
+    for _i in 0..expected {
+        let mut info = ValidPathInfo::read(&mut source, &store_dir, 16).await?;
+        info.ultimate = false;
+        trace!(?info, "Reading info for {}", info.path);
+        store.add_to_store(&info, &mut source, repair, check_sigs).await?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

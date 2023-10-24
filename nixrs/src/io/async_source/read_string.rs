@@ -4,6 +4,7 @@ use std::mem;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use bytes::{Bytes, BytesMut};
 use tokio::io::AsyncRead;
 
 use super::read_exact::ReadExact;
@@ -11,25 +12,26 @@ use super::read_int::ReadUsize;
 use super::read_padding::ReadPadding;
 
 #[derive(Debug)]
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub enum ReadString<R> {
     Invalid,
-    ReadSize(usize, ReadUsize<R>),
+    ReadSize(BytesMut, usize, ReadUsize<R>),
     ReadData(ReadExact<R>),
-    ReadPadding(Vec<u8>, ReadPadding<R>),
+    ReadPadding(Bytes, ReadPadding<R>),
     Done(R),
 }
 
 impl<R> ReadString<R> {
     pub fn new(src: R) -> ReadString<R> {
-        ReadString::ReadSize(usize::MAX, ReadUsize::new(src))
+        ReadString::ReadSize(BytesMut::new(), usize::MAX, ReadUsize::new(src))
     }
     pub fn with_limit(src: R, limit: usize) -> ReadString<R> {
-        ReadString::ReadSize(limit, ReadUsize::new(src))
+        ReadString::ReadSize(BytesMut::new(), limit, ReadUsize::new(src))
     }
     pub fn inner(self) -> R {
         match self {
             ReadString::Invalid => panic!("invalid state"),
-            ReadString::ReadSize(_, r) => r.inner(),
+            ReadString::ReadSize(_, _, r) => r.inner(),
             ReadString::ReadData(r) => r.inner(),
             ReadString::ReadPadding(_, r) => r.inner(),
             ReadString::Done(r) => r,
@@ -48,10 +50,10 @@ where
             match mem::replace(&mut *self, ReadString::Invalid) {
                 ReadString::Invalid => panic!("invalid state"),
                 ReadString::Done(_) => panic!("polling completed future"),
-                ReadString::ReadSize(limit, mut reader) => {
+                ReadString::ReadSize(mut buffer, limit, mut reader) => {
                     let len = match Pin::new(&mut reader).poll(cx) {
                         Poll::Pending => {
-                            *self = ReadString::ReadSize(limit, reader);
+                            *self = ReadString::ReadSize(buffer, limit, reader);
                             return Poll::Pending;
                         }
                         Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
@@ -68,7 +70,8 @@ where
                         *self = ReadString::Done(src);
                         return Poll::Ready(Ok(String::new()));
                     }
-                    *self = ReadString::ReadData(ReadExact::new(src, Vec::with_capacity(len)));
+                    buffer.reserve(len);
+                    *self = ReadString::ReadData(ReadExact::new(src, len, buffer));
                 }
                 ReadString::ReadData(mut reader) => {
                     let v = match Pin::new(&mut reader).poll(cx) {
@@ -91,7 +94,7 @@ where
                         }
                         Poll::Ready(res) => res?,
                     }
-                    let s = String::from_utf8(buf).map_err(|_| {
+                    let s = String::from_utf8(buf.to_vec()).map_err(|_| {
                         io::Error::new(io::ErrorKind::InvalidData, "String is not UTF-8")
                     })?;
                     *self = ReadString::Done(padding.inner());

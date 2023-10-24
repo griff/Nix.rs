@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
+use nixrs::store::FailStore;
 use nixrs::store::legacy_worker::LegacyWrapStore;
 use nixrs::store_path::StoreDir;
 use nixrs_ssh_store::server::{Server, ServerConfig};
@@ -24,11 +25,13 @@ struct TvixStoreProvider {
 }
 
 impl StoreProvider for TvixStoreProvider {
-    type Store = LegacyWrapStore<TvixStore>;
     type Error = nixrs::store::Error;
-    type Future = Ready<Result<Self::Store, Self::Error>>;
+    type LegacyStore = LegacyWrapStore<TvixStore>;
+    type LegacyFuture = Ready<Result<Option<Self::LegacyStore>, Self::Error>>;
+    type DaemonStore = FailStore;
+    type DaemonFuture = Ready<Result<Option<Self::DaemonStore>, Self::Error>>;
 
-    fn get_store(&self, _stderr: nixrs_ssh_store::io::ExtendedDataWrite) -> Self::Future {
+    fn get_legacy_store(&self, _stderr: nixrs_ssh_store::io::ExtendedDataWrite) -> Self::LegacyFuture {
         let tvix_store = TvixStore {
             store_dir: self.store_dir.clone(),
             blob_service: self.blob_service.clone(),
@@ -36,7 +39,11 @@ impl StoreProvider for TvixStoreProvider {
             path_info_service: self.path_info_service.clone(),
         };
         let store = LegacyWrapStore::new(tvix_store);
-        ready(Ok(store))
+        ready(Ok(Some(store)))
+    }
+
+    fn get_daemon_store(&self) -> Self::DaemonFuture {
+        ready(Ok(None))
     }
 }
 

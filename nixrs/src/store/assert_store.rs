@@ -6,10 +6,13 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use crate::path_info::ValidPathInfo;
 use crate::store::legacy_worker::LegacyStore;
 use crate::store::{
-    BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, Error, Store,
+    BasicDerivation, BuildMode, BuildResult, CheckSignaturesFlag, Error, Store,
 };
 use crate::store::{DerivedPath, RepairFlag, SubstituteFlag};
+use crate::store::settings::BuildSettings;
 use crate::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
+
+use super::daemon::{DaemonStore, TrustedFlag, QueryMissingResult};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum Message {
@@ -30,10 +33,12 @@ pub enum Message {
     BuildDerivation {
         drv_path: StorePath,
         drv: BasicDerivation,
+        build_mode: BuildMode,
         settings: BuildSettings,
     },
     BuildPaths {
         drv_paths: Vec<DerivedPath>,
+        build_mode: BuildMode,
         settings: BuildSettings,
     },
     AddToStore {
@@ -46,15 +51,24 @@ pub enum Message {
         paths: StorePathSet,
         include_outputs: bool,
     },
+    QueryMissing(Vec<DerivedPath>),
+    IsValidPath(StorePath),
+    AddMultipleToStore {
+        source: Bytes,
+        repair: RepairFlag,
+        check_sigs: CheckSignaturesFlag,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum MessageResponse {
     Empty,
+    Bool(bool),
     StorePathSet(StorePathSet),
-    BuildResult((BuildResult, Bytes)),
+    BuildResult(BuildResult),
     Bytes(Bytes),
     ValidPathInfo(Option<ValidPathInfo>),
+    QueryMissingResult(QueryMissingResult),
 }
 
 impl From<()> for MessageResponse {
@@ -62,13 +76,19 @@ impl From<()> for MessageResponse {
         MessageResponse::Empty
     }
 }
+impl From<bool> for MessageResponse {
+    fn from(val: bool) -> Self {
+        MessageResponse::Bool(val)
+    }
+}
+
 impl From<StorePathSet> for MessageResponse {
     fn from(v: StorePathSet) -> Self {
         MessageResponse::StorePathSet(v)
     }
 }
-impl From<(BuildResult, Bytes)> for MessageResponse {
-    fn from(v: (BuildResult, Bytes)) -> Self {
+impl From<BuildResult> for MessageResponse {
+    fn from(v: BuildResult) -> Self {
         MessageResponse::BuildResult(v)
     }
 }
@@ -82,12 +102,19 @@ impl From<Option<ValidPathInfo>> for MessageResponse {
         MessageResponse::ValidPathInfo(v)
     }
 }
+impl From<QueryMissingResult> for MessageResponse {
+    fn from(v: QueryMissingResult) -> Self {
+        MessageResponse::QueryMissingResult(v)
+    }
+}
 
 fn take(dest: &mut Result<MessageResponse, Error>) -> Result<MessageResponse, Error> {
     std::mem::replace(dest, Ok(MessageResponse::Empty))
 }
 
+#[derive(Debug)]
 pub struct AssertStore {
+    trusted_client: Option<TrustedFlag>,
     store_dir: StoreDir,
     expected: Message,
     response: Result<MessageResponse, Error>,
@@ -95,30 +122,34 @@ pub struct AssertStore {
 
 impl AssertStore {
     pub fn assert_query_valid_paths(
+        trusted_client: Option<TrustedFlag>,
         paths: &StorePathSet,
         maybe_substitute: SubstituteFlag,
         response: Result<StorePathSet, Error>,
     ) -> AssertStore {
-        let store_dir = StoreDir::new("/nix/store").unwrap();
+        let store_dir = Default::default();
         let expected = Message::QueryValidPaths {
             paths: paths.clone(),
             maybe_substitute,
         };
         let response = response.map(|e| e.into());
         AssertStore {
+            trusted_client,
             store_dir,
             expected,
             response,
         }
     }
     pub fn assert_query_path_info(
+        trusted_client: Option<TrustedFlag>,
         path: &StorePath,
         response: Result<Option<ValidPathInfo>, Error>,
     ) -> AssertStore {
-        let store_dir = StoreDir::new("/nix/store").unwrap();
+        let store_dir = Default::default();
         let expected = Message::QueryPathInfo(path.clone());
         let response = response.map(|e| e.into());
         AssertStore {
+            trusted_client,
             store_dir,
             expected,
             response,
@@ -130,7 +161,7 @@ impl AssertStore {
         maybe_substitute: SubstituteFlag,
         response: Result<StorePathSet, Error>,
     ) -> AssertStore {
-        let store_dir = StoreDir::new("/nix/store").unwrap();
+        let store_dir = Default::default();
         let expected = Message::LegacyQueryValidPaths {
             paths: paths.clone(),
             lock,
@@ -138,88 +169,110 @@ impl AssertStore {
         };
         let response = response.map(|e| e.into());
         AssertStore {
+            trusted_client: None,
             store_dir,
             expected,
             response,
         }
     }
-    pub fn assert_nar_from_path(path: &StorePath, response: Result<Bytes, Error>) -> AssertStore {
-        let store_dir = StoreDir::new("/nix/store").unwrap();
+    pub fn assert_nar_from_path(
+        trusted_client: Option<TrustedFlag>,
+        path: &StorePath,
+        response: Result<Bytes, Error>
+    ) -> AssertStore {
+        let store_dir = Default::default();
         let expected = Message::NarFromPath(path.clone());
         let response = response.map(|e| e.into());
         AssertStore {
+            trusted_client,
             store_dir,
             expected,
             response,
         }
     }
     pub fn assert_export_paths(
+        trusted_client: Option<TrustedFlag>,
         paths: &StorePathSet,
         response: Result<Bytes, Error>,
     ) -> AssertStore {
-        let store_dir = StoreDir::new("/nix/store").unwrap();
+        let store_dir = Default::default();
         let expected = Message::ExportPaths(paths.clone());
         let response = response.map(|e| e.into());
         AssertStore {
+            trusted_client,
             store_dir,
             expected,
             response,
         }
     }
-    pub fn assert_import_paths(buf: Bytes, response: Result<(), Error>) -> AssertStore {
-        let store_dir = StoreDir::new("/nix/store").unwrap();
+    pub fn assert_import_paths(
+        trusted_client: Option<TrustedFlag>,
+        buf: Bytes,
+        response: Result<(), Error>
+    ) -> AssertStore {
+        let store_dir = Default::default();
         let expected = Message::ImportPaths(buf);
         let response = response.map(|e| e.into());
         AssertStore {
+            trusted_client,
             store_dir,
             expected,
             response,
         }
     }
     pub fn assert_build_derivation(
+        trusted_client: Option<TrustedFlag>,
         drv_path: &StorePath,
         drv: &BasicDerivation,
+        build_mode: BuildMode,
         settings: &BuildSettings,
-        response: Result<(BuildResult, Bytes), Error>,
+        response: Result<BuildResult, Error>,
     ) -> AssertStore {
-        let store_dir = StoreDir::new("/nix/store").unwrap();
+        let store_dir = Default::default();
         let expected = Message::BuildDerivation {
             drv_path: drv_path.clone(),
             drv: drv.clone(),
+            build_mode,
             settings: settings.clone(),
         };
         let response = response.map(|e| e.into());
         AssertStore {
+            trusted_client,
             store_dir,
             expected,
             response,
         }
     }
     pub fn assert_build_paths(
+        trusted_client: Option<TrustedFlag>,
         drv_paths: &[DerivedPath],
+        build_mode: BuildMode,
         settings: &BuildSettings,
-        response: Result<Bytes, Error>,
+        response: Result<(), Error>,
     ) -> AssertStore {
-        let store_dir = StoreDir::new("/nix/store").unwrap();
+        let store_dir = Default::default();
         let expected = Message::BuildPaths {
             drv_paths: drv_paths.into(),
+            build_mode,
             settings: settings.clone(),
         };
         let response = response.map(|e| e.into());
         AssertStore {
+            trusted_client,
             store_dir,
             expected,
             response,
         }
     }
     pub fn assert_add_to_store(
+        trusted_client: Option<TrustedFlag>,
         info: &ValidPathInfo,
         source: Bytes,
         repair: RepairFlag,
         check_sigs: CheckSignaturesFlag,
         response: Result<(), Error>,
     ) -> AssertStore {
-        let store_dir = StoreDir::new("/nix/store").unwrap();
+        let store_dir = Default::default();
         let expected = Message::AddToStore {
             info: info.clone(),
             source,
@@ -228,6 +281,7 @@ impl AssertStore {
         };
         let response = response.map(|e| e.into());
         AssertStore {
+            trusted_client,
             store_dir,
             expected,
             response,
@@ -238,13 +292,65 @@ impl AssertStore {
         include_outputs: bool,
         response: Result<StorePathSet, Error>,
     ) -> AssertStore {
-        let store_dir = StoreDir::new("/nix/store").unwrap();
+        let store_dir = Default::default();
         let expected = Message::QueryClosure {
             paths: paths.clone(),
             include_outputs,
         };
         let response = response.map(|e| e.into());
         AssertStore {
+            trusted_client: None,
+            store_dir,
+            expected,
+            response,
+        }
+    }
+
+    pub fn assert_is_valid_path(
+        path: &StorePath,
+        response: Result<bool, Error>,
+    ) -> AssertStore {
+        let store_dir = Default::default();
+        let expected = Message::IsValidPath(path.clone());
+        let response = response.map(|e| e.into());
+        AssertStore {
+            trusted_client: None,
+            store_dir,
+            expected,
+            response,
+        }
+    }
+
+    pub fn assert_add_multiple_to_store(
+        trusted_client: Option<TrustedFlag>,
+        source: Bytes,
+        repair: RepairFlag,
+        check_sigs: CheckSignaturesFlag,
+        response: Result<(), Error>,
+    ) -> AssertStore {
+        let store_dir = Default::default();
+        let expected = Message::AddMultipleToStore {
+            source,
+            repair,
+            check_sigs,
+        };
+        let response = response.map(|e| e.into());
+        AssertStore {
+            trusted_client,
+            store_dir,
+            expected,
+            response,
+        }
+    }
+    pub fn assert_query_missing(
+        targets: &[DerivedPath],
+        response: Result<QueryMissingResult, Error>,
+    ) -> AssertStore {
+        let store_dir = Default::default();
+        let expected = Message::QueryMissing(targets.into());
+        let response = response.map(|e| e.into());
+        AssertStore {
+            trusted_client: None,
             store_dir,
             expected,
             response,
@@ -323,45 +429,38 @@ impl Store for AssertStore {
             e => panic!("Invalid response {:?} for add_to_store", e),
         }
     }
-    async fn build_derivation<W: AsyncWrite + Send + Unpin>(
+    async fn build_derivation(
         &mut self,
         drv_path: &StorePath,
         drv: &BasicDerivation,
-        settings: &BuildSettings,
-        mut build_log: W,
+        build_mode: BuildMode,
     ) -> Result<BuildResult, Error> {
         let actual = Message::BuildDerivation {
             drv_path: drv_path.clone(),
             drv: drv.clone(),
-            settings: settings.clone(),
+            build_mode,
+            settings: BuildSettings::default(),
         };
         assert_eq!(self.expected, actual, "build_derivation");
         match take(&mut self.response)? {
-            MessageResponse::BuildResult((res, set)) => {
-                build_log.write_all(&set).await?;
-                build_log.flush().await?;
+            MessageResponse::BuildResult(res) => {
                 Ok(res)
             }
             e => panic!("Invalid response {:?} for build_derivation", e),
         }
     }
-    async fn build_paths<W: AsyncWrite + Send + Unpin>(
+    async fn build_paths(
         &mut self,
         drv_paths: &[DerivedPath],
-        settings: &BuildSettings,
-        mut build_log: W,
+        build_mode: BuildMode,
     ) -> Result<(), Error> {
         let actual = Message::BuildPaths {
             drv_paths: drv_paths.into(),
-            settings: settings.clone(),
+            build_mode,
+            settings: BuildSettings::default(),
         };
         assert_eq!(self.expected, actual, "build_paths");
         match take(&mut self.response)? {
-            MessageResponse::Bytes(set) => {
-                build_log.write_all(&set).await?;
-                build_log.flush().await?;
-                Ok(())
-            }
             MessageResponse::Empty => Ok(()),
             e => panic!("Invalid response {:?} for build_paths", e),
         }
@@ -431,4 +530,54 @@ impl LegacyStore for AssertStore {
             e => panic!("Invalid response {:?} for query_closure", e),
         }
     }
+}
+
+#[async_trait]
+impl DaemonStore for AssertStore {
+    fn is_trusted_client(&self) -> Option<TrustedFlag> {
+        self.trusted_client
+    }
+
+    async fn set_options(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+
+    async fn is_valid_path(&mut self, path: &StorePath) -> Result<bool, Error> {
+        let actual = Message::IsValidPath(path.clone());
+        assert_eq!(self.expected, actual, "is_valid_path");
+        match take(&mut self.response)? {
+            MessageResponse::Bool(res) => Ok(res),
+            e => panic!("Invalid response {:?} for is_valid_path", e),
+        }
+    }
+
+    async fn add_multiple_to_store<R: AsyncRead + Send + Unpin>(
+        &mut self,
+        mut source: R,
+        repair: RepairFlag,
+        check_sigs: CheckSignaturesFlag,
+    ) -> Result<(), Error> {
+        let mut buf = Vec::new();
+        source.read_to_end(&mut buf).await?;
+        let actual = Message::AddMultipleToStore {
+            source: buf.into(),
+            repair,
+            check_sigs,
+        };
+        assert_eq!(self.expected, actual, "add_multiple_to_store");
+        match take(&mut self.response)? {
+            MessageResponse::Empty => Ok(()),
+            e => panic!("Invalid response {:?} for add_multiple_to_store", e),
+        }
+    }
+
+    async fn query_missing(&mut self, targets: &[DerivedPath]) -> Result<QueryMissingResult, Error> {
+        let actual = Message::QueryMissing(targets.into());
+        assert_eq!(self.expected, actual, "query_missing");
+        match take(&mut self.response)? {
+            MessageResponse::QueryMissingResult(res) => Ok(res),
+            e => panic!("Invalid response {:?} for query_missing", e),
+        }
+    }
+
 }

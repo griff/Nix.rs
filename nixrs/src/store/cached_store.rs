@@ -1,3 +1,4 @@
+use std::fmt;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -8,10 +9,12 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use crate::path_info::ValidPathInfo;
 use crate::store::legacy_worker::LegacyStore;
 use crate::store::{
-    BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag, DerivedPath, Error,
+    BasicDerivation, BuildResult, CheckSignaturesFlag, DerivedPath, Error,
     RepairFlag, Store, SubstituteFlag,
 };
 use crate::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
+
+use super::store_api::BuildMode;
 
 lazy_static! {
     static ref TTL_POSITIVE_NAR_INFO_CACHE: Duration = Duration::from_secs(30 * 24 * 3600);
@@ -112,7 +115,7 @@ where
         }
     }
 
-    async fn nar_from_path<W: AsyncWrite + Send + Unpin>(
+    async fn nar_from_path<W: AsyncWrite + fmt::Debug + Send + Unpin>(
         &mut self,
         path: &StorePath,
         sink: W,
@@ -120,7 +123,7 @@ where
         self.store.nar_from_path(path, sink).await
     }
 
-    async fn add_to_store<R: AsyncRead + Send + Unpin>(
+    async fn add_to_store<R: AsyncRead + fmt::Debug + Send + Unpin>(
         &mut self,
         info: &ValidPathInfo,
         source: R,
@@ -132,25 +135,23 @@ where
             .await
     }
 
-    async fn build_derivation<W: AsyncWrite + Send + Unpin>(
+    async fn build_derivation(
         &mut self,
         drv_path: &StorePath,
         drv: &BasicDerivation,
-        settings: &BuildSettings,
-        build_log: W,
+        build_mode: BuildMode,
     ) -> Result<BuildResult, Error> {
         self.store
-            .build_derivation(drv_path, drv, settings, build_log)
+            .build_derivation(drv_path, drv, build_mode)
             .await
     }
 
-    async fn build_paths<W: AsyncWrite + Send + Unpin>(
+    async fn build_paths(
         &mut self,
         drv_paths: &[DerivedPath],
-        settings: &BuildSettings,
-        build_log: W,
+        build_mode: BuildMode,
     ) -> Result<(), Error> {
-        self.store.build_paths(drv_paths, settings, build_log).await
+        self.store.build_paths(drv_paths, build_mode).await
     }
 }
 
@@ -170,7 +171,7 @@ where
             .await
     }
 
-    async fn export_paths<W: AsyncWrite + Send + Unpin>(
+    async fn export_paths<W: AsyncWrite + fmt::Debug + Send + Unpin>(
         &mut self,
         paths: &StorePathSet,
         sink: W,
@@ -178,7 +179,7 @@ where
         self.store.export_paths(paths, sink).await
     }
 
-    async fn import_paths<R: AsyncRead + Send + Unpin>(&mut self, source: R) -> Result<(), Error> {
+    async fn import_paths<R: AsyncRead + fmt::Debug + Send + Unpin>(&mut self, source: R) -> Result<(), Error> {
         self.store.import_paths(source).await
     }
 

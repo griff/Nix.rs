@@ -1,6 +1,11 @@
-use log::{debug, error};
+use std::fmt;
+
+use tracing::{debug, error};
 use tokio::io::AsyncReadExt;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use tracing::Level;
+use tracing_appender::non_blocking::NonBlocking;
+use tracing_futures::WithSubscriber;
 
 use super::{
     get_protocol_minor, LegacyStore, ServeCommand, SERVE_MAGIC_1, SERVE_MAGIC_2,
@@ -10,25 +15,104 @@ use crate::hash;
 use crate::io::{AsyncSink, AsyncSource};
 use crate::path_info::ValidPathInfo;
 use crate::signature::{ParseSignatureError, SignatureSet};
+use crate::store::error::Verbosity;
+use crate::store::store_api::BuildMode;
 use crate::store::{
-    BasicDerivation, BuildSettings, CheckSignaturesFlag, DerivedPath, Error, RepairFlag,
+    BasicDerivation, CheckSignaturesFlag, DerivedPath, Error, RepairFlag,
     StorePathWithOutputs, SubstituteFlag,
 };
+use crate::store::settings::{BuildSettings, get_mut_settings, get_settings, WithSettings};
 use crate::store_path::{StorePath, StorePathSet};
 
-pub async fn run_server<S, R, W, BW>(
-    mut source: R,
-    mut out: W,
-    mut store: S,
-    mut build_log: BW,
+async fn read_build_settings<R>(source: &mut R, client_version: u64) -> Result<(), Error>
+    where R: AsyncRead + Send + Unpin,
+{
+    let (mut max_log_size,
+        mut run_diff_hook,
+        mut keep_failed) = 
+        get_settings(|s| {
+            (s.max_log_size,
+                s.run_diff_hook,
+                s.keep_failed)
+    });
+    let max_silent_time = source.read_seconds().await?;
+    let build_timeout = source.read_seconds().await?;
+    if get_protocol_minor!(client_version) >= 2 {
+        max_log_size = source.read_u64_le().await?;
+    }
+    
+    if get_protocol_minor!(client_version) >= 3 {
+        let nr_repeats = source.read_u64_le().await?;
+        if nr_repeats != 0 {
+            return Err(Error::RepeatingBuildsUnsupported);
+        }
+        // Ignore 'enforceDeterminism'. It used to be true by
+        // default, but also only never had any effect when
+        // `nrRepeats == 0`.  We have already asserted that
+        // `nrRepeats` in fact is 0, so we can safely ignore this
+        // without doing something other than what the client
+        // asked for.
+        source.read_bool().await?;
+        run_diff_hook = true;
+    }
+    if get_protocol_minor!(client_version) >= 7 {
+        keep_failed = source.read_bool().await?;
+    }
+    get_mut_settings(|settings| {
+        if let Some(settings) = settings {
+            settings.verbosity = Verbosity::Error;
+            settings.keep_log = false;
+            settings.use_substitutes = false;
+            settings.max_silent_time = max_silent_time;
+            settings.build_timeout = build_timeout;
+            settings.max_log_size = max_log_size;
+            settings.run_diff_hook = run_diff_hook;
+            settings.keep_failed = keep_failed;
+        }
+    });
+    Ok(())
+}
+
+pub async fn run_server_with_log<S, R, W, BW>(
+    source: R,
+    out: W,
+    store: S,
+    build_log: BW,
     write_allowed: bool,
 ) -> Result<(), Error>
 where
     S: LegacyStore + Send,
-    R: AsyncRead + Send + Unpin,
-    W: AsyncWrite + Send + Unpin,
-    BW: AsyncWrite + Unpin + Send,
+    R: AsyncRead + fmt::Debug + Send + Unpin,
+    W: AsyncWrite + fmt::Debug + Send + Unpin,
+    BW: AsyncWrite + fmt::Debug + Unpin + Send + Sync + 'static,
 {
+    let sync_io = tokio_util::io::SyncIoBridge::new(build_log);
+    let (writer, _guard) = NonBlocking::new(sync_io);
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(Level::ERROR)
+        .with_level(false)
+        .without_time()
+        .with_target(false)
+        .with_writer(writer)
+        .finish();
+
+    let settings = BuildSettings::default();
+
+    let fut = run_server_logged(source, out, store, write_allowed);
+    fut.with_subscriber(subscriber).with_settings(settings).await
+}
+
+async fn run_server_logged<S, R, W>(
+    mut source: R,
+    mut out: W,
+    mut store: S,
+    write_allowed: bool,
+) -> Result<(), Error>
+where
+    S: LegacyStore + Send,
+    R: AsyncRead + fmt::Debug + Send + Unpin,
+    W: AsyncWrite + fmt::Debug + Send + Unpin,
+{    
     let store_dir = store.store_dir();
     let magic = source.read_u64_le().await?;
     if magic != SERVE_MAGIC_1 {
@@ -117,27 +201,12 @@ where
 
                 let paths: Vec<StorePathWithOutputs> = source.read_parsed_coll(&store_dir).await?;
 
-                let mut settings = BuildSettings::default();
-                // TODO: let verbosity = Error;
-                settings.keep_log = false;
-                settings.use_substitutes = false;
-                settings.max_silent_time = source.read_seconds().await?;
-                settings.build_timeout = source.read_seconds().await?;
-                if get_protocol_minor!(client_version) >= 2 {
-                    settings.max_log_size = source.read_u64_le().await?;
-                }
-                if get_protocol_minor!(client_version) >= 3 {
-                    settings.build_repeat = source.read_u64_le().await?;
-                    settings.enforce_determinism = source.read_bool().await?;
-                    settings.run_diff_hook = true;
-                }
-                settings.print_repeated_builds = false;
-
+                read_build_settings(&mut source, client_version).await?;
                 // TODO: MonitorFdHup monitor(in.fd);
                 let drv_paths: Vec<DerivedPath> = paths.into_iter().map(|e| e.into()).collect();
 
                 match store
-                    .build_paths(&drv_paths, &settings, &mut build_log)
+                    .build_paths(&drv_paths, BuildMode::Normal)
                     .await
                 {
                     Ok(_) => out.write_u64_le(0).await?,
@@ -159,25 +228,10 @@ where
                     BasicDerivation::read_drv(&mut source, &store_dir, &drv_path.name_from_drv())
                         .await?;
 
-                let mut settings = BuildSettings::default();
-                // TODO: let verbosity = Error;
-                settings.keep_log = false;
-                settings.use_substitutes = false;
-                settings.max_silent_time = source.read_seconds().await?;
-                settings.build_timeout = source.read_seconds().await?;
-                if get_protocol_minor!(client_version) >= 2 {
-                    settings.max_log_size = source.read_u64_le().await?;
-                }
-                if get_protocol_minor!(client_version) >= 3 {
-                    settings.build_repeat = source.read_u64_le().await?;
-                    settings.enforce_determinism = source.read_bool().await?;
-                    settings.run_diff_hook = true;
-                }
-                settings.print_repeated_builds = false;
-
+                read_build_settings(&mut source, client_version).await?;
                 // TODO: MonitorFdHup monitor(in.fd);
                 let status = store
-                    .build_derivation(&drv_path, &drv, &settings, &mut build_log)
+                    .build_derivation(&drv_path, &drv, BuildMode::Normal)
                     .await?;
                 out.write_enum(status.status).await?;
                 out.write_str(&status.error_msg).await?;

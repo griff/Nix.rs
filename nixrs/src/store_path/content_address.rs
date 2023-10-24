@@ -5,6 +5,8 @@ use thiserror::Error;
 
 use crate::hash::{self, Algorithm, Hash, ParseHashError};
 
+use super::StorePathSet;
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub enum FileIngestionMethod {
     Flat,
@@ -25,6 +27,49 @@ impl fmt::Display for FileIngestionMethod {
             }
         }
         Ok(())
+    }
+}
+
+/// An enumeration of all the ways we can serialize file system objects.
+///
+/// Just the type of a content address. Combine with the hash itself, and
+/// we have a `ContentAddress` as defined below. Combine that, in turn,
+/// with info on references, and we have `ContentAddressWithReferences`,
+/// as defined further below.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+pub enum ContentAddressMethod {
+    Text,
+    Fixed(FileIngestionMethod),
+}
+
+impl ContentAddressMethod {
+    pub fn parse_prefix(m: &str) -> (ContentAddressMethod, &str) {
+        if let Some(ret) = m.strip_prefix("r:") {
+            (
+                ContentAddressMethod::Fixed(FileIngestionMethod::Recursive),
+                ret
+            )
+        } else if let Some(ret) = m.strip_prefix("text:") {
+            (
+                ContentAddressMethod::Text,
+                ret
+            )
+        } else {
+            (
+                ContentAddressMethod::Fixed(FileIngestionMethod::Flat),
+                m
+            )
+        }
+    }
+}
+
+impl fmt::Display for ContentAddressMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ContentAddressMethod::Text => write!(f, "text:"),
+            ContentAddressMethod::Fixed(FileIngestionMethod::Recursive) => write!(f, "r:"),
+            ContentAddressMethod::Fixed(FileIngestionMethod::Flat) => Ok(()),
+        }
     }
 }
 
@@ -67,12 +112,24 @@ pub enum ParseContentAddressError {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
-pub enum ContentAddress {
-    TextHash(Hash),
-    FixedOutputHash(FixedOutputHash),
+pub struct ContentAddress {
+    pub method: ContentAddressMethod,
+    pub hash: Hash,
 }
 
 impl ContentAddress {
+    pub fn text(hash: Hash) -> ContentAddress {
+        ContentAddress {
+            method: ContentAddressMethod::Text,
+            hash
+        }
+    }
+    pub fn fixed(fim: FileIngestionMethod, hash: Hash) -> ContentAddress {
+        ContentAddress {
+            method: ContentAddressMethod::Fixed(fim),
+            hash
+        }
+    }
     pub fn parse(s: &str) -> Result<ContentAddress, ParseContentAddressError> {
         if s.starts_with("text:") {
             let hash = Hash::parse_non_sri_prefixed(&s[5..])?;
@@ -82,7 +139,10 @@ impl ContentAddress {
                     actual: hash.algorithm(),
                 });
             }
-            Ok(ContentAddress::TextHash(hash))
+            Ok(ContentAddress {
+                method: ContentAddressMethod::Text,
+                hash
+            })
         } else if s.starts_with("fixed:") {
             let mut rest = &s[6..];
             let method = if rest.starts_with("r:") {
@@ -92,10 +152,10 @@ impl ContentAddress {
                 FileIngestionMethod::Flat
             };
             let hash = Hash::parse_non_sri_prefixed(rest)?;
-            Ok(ContentAddress::FixedOutputHash(FixedOutputHash {
+            Ok(ContentAddress {
+                method: ContentAddressMethod::Fixed(method),
                 hash,
-                method,
-            }))
+            })
         } else {
             if let Some((prefix, _rest)) = hash::split_prefix(s, ":") {
                 Err(ParseContentAddressError::UnknownPrefix(prefix.to_string()))
@@ -108,12 +168,12 @@ impl ContentAddress {
 
 impl fmt::Display for ContentAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ContentAddress::TextHash(hash) => {
-                write!(f, "text:{}", hash.to_base32())
+        match self.method {
+            ContentAddressMethod::Text => {
+                write!(f, "text:{}", self.hash.to_base32())
             }
-            &ContentAddress::FixedOutputHash(foh) => {
-                write!(f, "fixed:{:#}{}", foh.method, foh.hash.to_base32())
+            ContentAddressMethod::Fixed(fim) => {
+                write!(f, "fixed:{:#}{}", fim, self.hash.to_base32())
             }
         }
     }
@@ -126,6 +186,118 @@ impl FromStr for ContentAddress {
         Self::parse(s)
     }
 }
+
+/// A set of references to other store objects.
+/// 
+/// References to other store objects are tracked with store paths, self
+/// references however are tracked with a boolean.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoreReferences {
+    /// References to other store objects
+    pub others: StorePathSet,
+    /// Reference to this store object
+    pub self_ref: bool,
+}
+
+impl StoreReferences {
+    pub fn new() -> StoreReferences {
+        StoreReferences {
+            others: StorePathSet::new(),
+            self_ref: false,
+        }
+    }
+    /// true iff no references, i.e. others is empty and self_ref is false.
+    pub fn is_empty(&self) -> bool {
+        !self.self_ref && self.others.is_empty()
+    }
+
+    /// Returns the numbers of references, i.e. the len of others + 1
+    /// if self_ref is true.
+    pub fn len(&self) -> usize {
+        if self.self_ref {
+            self.others.len() + 1
+        } else {
+            self.others.len()
+        }
+    }
+}
+
+/// This matches the additional info that we need for makeTextPath
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextInfo {
+    /// Hash of the contents of the text/file.
+    pub hash: Hash,
+    /// References to other store objects only; self references disallowed
+    pub references: StorePathSet,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FixedOutputInfo {
+    /// How the file system objects are serialized
+    pub method: FileIngestionMethod,
+    /// Hash of that serialization
+    pub hash: Hash,
+    /// References to other store objects or this one.
+    pub references: StoreReferences
+}
+
+/// Ways of content addressing but not a complete ContentAddress.
+/// 
+/// A ContentAddress without a Hash.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContentAddressWithReferences {
+    /// This matches the additional info that we need for makeTextPath
+    Text(TextInfo),
+    Fixed(FixedOutputInfo),
+}
+
+impl ContentAddressWithReferences {
+    /// Create a `ContentAddressWithReferences` from a mere
+    /// `ContentAddress`, by claiming no references.
+    pub fn without_refs(ca: ContentAddress) -> ContentAddressWithReferences {
+        use ContentAddressMethod::*;
+        match ca.method {
+            Text => {
+                Self::Text(TextInfo { hash: ca.hash, references: StorePathSet::new() })
+            },
+            Fixed(method) => {
+                Self::Fixed(FixedOutputInfo { method, hash: ca.hash, references: StoreReferences::new() })
+            }
+        }
+    }
+
+    /// Create a `ContentAddressWithReferences` from 3 parts:
+    /// 
+    /// Do note that not all combinations are supported; `None` is 
+    /// returns for invalid combinations.
+    pub fn from_parts_opt(method: ContentAddressMethod, hash: Hash, references: StoreReferences) -> Option<ContentAddressWithReferences> {
+        use ContentAddressMethod::*;
+        match method {
+            Text => {
+                if references.self_ref {
+                    return None
+                }
+                Some(Self::Text(TextInfo { hash, references: references.others }))
+            }
+            Fixed(method) => {
+                Some(Self::Fixed(FixedOutputInfo { method, hash, references }))
+            }
+        }
+    }
+
+    pub fn method(&self) -> ContentAddressMethod {
+        use ContentAddressWithReferences::*;
+        match self {
+            Text(_) => {
+                ContentAddressMethod::Text
+            },
+            Fixed(foi) => {
+                ContentAddressMethod::Fixed(foi.method)
+            }
+        }
+    }
+}
+
 
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
@@ -142,6 +314,30 @@ pub mod proptest {
                 Just(FileIngestionMethod::Recursive)
             ]
             .boxed()
+        }
+    }
+
+    impl Arbitrary for ContentAddressMethod {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<ContentAddressMethod>;
+
+        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+            prop_oneof![
+                Just(ContentAddressMethod::Text),
+                any::<FileIngestionMethod>().prop_map(|m| ContentAddressMethod::Fixed(m))
+            ]
+            .boxed()
+        }
+    }
+
+    impl Arbitrary for ContentAddress {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<ContentAddress>;
+
+        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+            (any::<ContentAddressMethod>(), any::<hash::Hash>())
+                .prop_map(|(method, hash)| ContentAddress { method, hash })
+                .boxed()
         }
     }
 
@@ -239,7 +435,7 @@ mod tests {
     fn test_text_content_address() {
         let s1 = "abc";
         let hash = hash::digest(Algorithm::SHA256, s1);
-        let content_address = ContentAddress::TextHash(hash);
+        let content_address = ContentAddress::text(hash);
 
         let v = "text:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s";
         assert_eq!(content_address.to_string(), v);
@@ -250,10 +446,7 @@ mod tests {
     fn test_fixed_content_address_1() {
         let s1 = "abc";
         let hash = hash::digest(Algorithm::SHA256, s1);
-        let content_address = ContentAddress::FixedOutputHash(FixedOutputHash {
-            hash,
-            method: FileIngestionMethod::Flat,
-        });
+        let content_address = ContentAddress::fixed(FileIngestionMethod::Flat, hash);
 
         let v = "fixed:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s";
         assert_eq!(content_address.to_string(), v);
@@ -264,10 +457,7 @@ mod tests {
     fn test_fixed_content_address_2() {
         let s1 = "abc";
         let hash = hash::digest(Algorithm::SHA256, s1);
-        let content_address = ContentAddress::FixedOutputHash(FixedOutputHash {
-            hash,
-            method: FileIngestionMethod::Recursive,
-        });
+        let content_address = ContentAddress::fixed(FileIngestionMethod::Recursive, hash);
 
         let v = "fixed:r:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s";
         assert_eq!(content_address.to_string(), v);

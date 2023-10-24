@@ -1,9 +1,13 @@
+use std::fmt;
+
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
+use tracing::instrument;
 
 use crate::path_info::ValidPathInfo;
+use crate::store::store_api::BuildMode;
 use crate::store::{
-    compute_fs_closure_slow, BasicDerivation, BuildResult, BuildSettings, CheckSignaturesFlag,
+    compute_fs_closure_slow, BasicDerivation, BuildResult, CheckSignaturesFlag,
     DerivedPath, Error, RepairFlag, Store, SubstituteFlag,
 };
 use crate::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
@@ -42,7 +46,7 @@ impl<S: Store + Send> Store for LegacyWrapStore<S> {
     }
 
     /// Export path from the store
-    async fn nar_from_path<W: AsyncWrite + Send + Unpin>(
+    async fn nar_from_path<W: AsyncWrite + fmt::Debug + Send + Unpin>(
         &mut self,
         path: &StorePath,
         sink: W,
@@ -51,7 +55,7 @@ impl<S: Store + Send> Store for LegacyWrapStore<S> {
     }
 
     /// Import a path into the store.
-    async fn add_to_store<R: AsyncRead + Send + Unpin>(
+    async fn add_to_store<R: AsyncRead + fmt::Debug + Send + Unpin>(
         &mut self,
         info: &ValidPathInfo,
         source: R,
@@ -63,32 +67,30 @@ impl<S: Store + Send> Store for LegacyWrapStore<S> {
             .await
     }
 
-    async fn build_derivation<W: AsyncWrite + Send + Unpin>(
+    async fn build_derivation(
         &mut self,
         drv_path: &StorePath,
         drv: &BasicDerivation,
-        settings: &BuildSettings,
-        build_log: W,
+        build_mode: BuildMode,
     ) -> Result<BuildResult, Error> {
         self.store
-            .build_derivation(drv_path, drv, settings, build_log)
+            .build_derivation(drv_path, drv, build_mode)
             .await
     }
 
-    async fn build_paths<W: AsyncWrite + Send + Unpin>(
+    async fn build_paths(
         &mut self,
         drv_paths: &[DerivedPath],
-        settings: &BuildSettings,
-        build_log: W,
+        build_mode: BuildMode,
     ) -> Result<(), Error> {
-        self.store.build_paths(drv_paths, settings, build_log).await
+        self.store.build_paths(drv_paths, build_mode).await
     }
 }
 
 #[async_trait]
 impl<S> LegacyStore for LegacyWrapStore<S>
 where
-    S: Store + Send,
+    S: Store + fmt::Debug + Send,
 {
     async fn query_valid_paths_locked(
         &mut self,
@@ -98,6 +100,7 @@ where
     ) -> Result<StorePathSet, Error> {
         self.store.query_valid_paths(paths, maybe_substitute).await
     }
+
     async fn export_paths<SW: AsyncWrite + Send + Unpin>(
         &mut self,
         _paths: &StorePathSet,
@@ -105,12 +108,15 @@ where
     ) -> Result<(), Error> {
         Err(Error::UnsupportedOperation("export_paths".into()))
     }
+
     async fn import_paths<SR: AsyncRead + Send + Unpin>(
         &mut self,
         _source: SR,
     ) -> Result<(), Error> {
         Err(Error::UnsupportedOperation("import_paths".into()))
     }
+
+    #[instrument(skip_all)]
     async fn query_closure(
         &mut self,
         paths: &StorePathSet,

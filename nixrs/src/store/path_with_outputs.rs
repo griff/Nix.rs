@@ -1,10 +1,14 @@
-use std::convert::{TryFrom, TryInto};
-
-use super::DerivedPath;
+use super::{DerivedPath, SingleDerivedPath, OutputSpec};
 use crate::io::{StateParse, StatePrint};
 use crate::store_path::{ParseStorePathError, ReadStorePathError, StoreDir, StorePath};
 use crate::StringSet;
 
+/// This is a deprecated old type just for use by the old CLI, and older
+/// versions of the RPC protocols. In new code don't use it; you want
+/// `DerivedPath` instead.
+///
+/// `DerivedPath` is better because it handles more cases, and does so more
+/// explicitly without devious punning tricks.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub struct StorePathWithOutputs {
     path: StorePath,
@@ -48,33 +52,52 @@ impl StorePathWithOutputs {
     }
 }
 
-impl TryFrom<DerivedPath> for StorePathWithOutputs {
-    type Error = StorePath;
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
+pub enum SPWOParseResult {
+    Unsupported,
+    StorePath(StorePath),
+    StorePathWithOutputs(StorePathWithOutputs),
+}
 
-    fn try_from(value: DerivedPath) -> Result<Self, Self::Error> {
+impl From<DerivedPath> for SPWOParseResult {
+    fn from(value: DerivedPath) -> Self {
         match value {
-            DerivedPath::Built {
-                drv_path: path,
-                outputs,
-            } => Ok(StorePathWithOutputs { path, outputs }),
             DerivedPath::Opaque(path) => {
                 if path.is_derivation() {
-                    Err(path)
+                    // drv path gets interpreted as "build", not "get drv file itself"
+                    SPWOParseResult::StorePath(path)
                 } else {
-                    Ok(StorePathWithOutputs {
+                    SPWOParseResult::StorePathWithOutputs(StorePathWithOutputs {
                         outputs: StringSet::new(),
                         path,
                     })
                 }
             }
+            DerivedPath::Built {
+                drv_path,
+                outputs,
+            } => {
+                match drv_path {
+                    SingleDerivedPath::Opaque(path) => {
+                        let outputs = if let OutputSpec::Names(names) = outputs {
+                            names
+                        } else {
+                            StringSet::new()
+                        };
+                        SPWOParseResult::StorePathWithOutputs(StorePathWithOutputs { path, outputs })
+                    }
+                    SingleDerivedPath::Built { .. } => {
+                        SPWOParseResult::Unsupported
+                    }
+                }
+            },
         }
     }
 }
-impl<'a> TryFrom<&'a DerivedPath> for StorePathWithOutputs {
-    type Error = StorePath;
 
-    fn try_from(value: &'a DerivedPath) -> Result<Self, Self::Error> {
-        value.clone().try_into()
+impl<'a> From<&'a DerivedPath> for SPWOParseResult {
+    fn from(value: &'a DerivedPath) -> Self {
+        value.clone().into()
     }
 }
 
@@ -94,21 +117,51 @@ impl StatePrint<StorePathWithOutputs> for StoreDir {
 
 impl From<StorePathWithOutputs> for DerivedPath {
     fn from(path: StorePathWithOutputs) -> DerivedPath {
-        if path.path.is_derivation() {
+        if !path.outputs.is_empty() {
             DerivedPath::Built {
-                drv_path: path.path,
-                outputs: path.outputs,
+                drv_path: SingleDerivedPath::Opaque(path.path),
+                outputs: OutputSpec::Names(path.outputs),
+            }
+
+        } else if path.path.is_derivation() {
+            DerivedPath::Built {
+                drv_path: SingleDerivedPath::Opaque(path.path),
+                outputs: OutputSpec::All,
             }
         } else {
             DerivedPath::Opaque(path.path)
         }
     }
 }
+#[cfg(any(test, feature = "test"))]
+pub mod proptest {
+    use crate::store_path::proptest::{arb_drv_store_path, arb_output_name};
+    use ::proptest::{prelude::*, collection::btree_set};
+
+    use super::*;
+
+    impl Arbitrary for StorePathWithOutputs {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<StorePathWithOutputs>;
+
+        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+            arb_store_path_with_outputs().boxed()
+        }
+    }
+
+    pub fn arb_store_path_with_outputs() -> impl Strategy<Value = StorePathWithOutputs> {
+        prop_oneof![
+            any::<StorePath>().prop_map(|path| StorePathWithOutputs{ path, outputs: StringSet::new()}),
+            (arb_drv_store_path(), btree_set(arb_output_name(), 0..5))
+                .prop_map(|(path, outputs)| StorePathWithOutputs { path, outputs })
+        ]
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::string_set;
+    use crate::{string_set, store::{SingleDerivedPath, OutputSpec}};
 
     #[test]
     fn test_parse() {
@@ -251,17 +304,17 @@ mod tests {
         let path = store_dir
             .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv")
             .unwrap();
-        let sp2 = StorePathWithOutputs {
+        let sp2 = SPWOParseResult::StorePathWithOutputs(StorePathWithOutputs {
             path: path.clone(),
             outputs: StringSet::new(),
-        };
+        });
         let dp = DerivedPath::Built {
-            drv_path: path.clone(),
-            outputs: StringSet::new(),
+            drv_path: SingleDerivedPath::Opaque(path.clone()),
+            outputs: OutputSpec::All,
         };
-        let sp: StorePathWithOutputs = StorePathWithOutputs::try_from(&dp).unwrap();
+        let sp = SPWOParseResult::from(&dp);
         assert_eq!(sp, sp2);
-        let sp: StorePathWithOutputs = dp.try_into().unwrap();
+        let sp : SPWOParseResult = dp.into();
         assert_eq!(sp, sp2);
     }
 
@@ -271,17 +324,17 @@ mod tests {
         let path = store_dir
             .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv")
             .unwrap();
-        let sp2 = StorePathWithOutputs {
+        let sp2 = SPWOParseResult::StorePathWithOutputs(StorePathWithOutputs {
             path: path.clone(),
             outputs: string_set!["out", "dev", "bin"],
-        };
+        });
         let dp = DerivedPath::Built {
-            drv_path: path.clone(),
-            outputs: string_set!["out", "dev", "bin"],
+            drv_path: SingleDerivedPath::Opaque(path.clone()),
+            outputs: string_set!["out", "dev", "bin"].try_into().unwrap(),
         };
-        let sp: StorePathWithOutputs = StorePathWithOutputs::try_from(&dp).unwrap();
+        let sp = SPWOParseResult::from(&dp);
         assert_eq!(sp, sp2);
-        let sp: StorePathWithOutputs = dp.try_into().unwrap();
+        let sp: SPWOParseResult = dp.into();
         assert_eq!(sp, sp2);
     }
 
@@ -291,14 +344,14 @@ mod tests {
         let path = store_dir
             .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3")
             .unwrap();
-        let sp2 = StorePathWithOutputs {
+        let sp2 = SPWOParseResult::StorePathWithOutputs(StorePathWithOutputs {
             path: path.clone(),
             outputs: StringSet::new(),
-        };
+        });
         let dp = DerivedPath::Opaque(path.clone());
-        let sp: StorePathWithOutputs = StorePathWithOutputs::try_from(&dp).unwrap();
+        let sp = SPWOParseResult::from(&dp);
         assert_eq!(sp, sp2);
-        let sp: StorePathWithOutputs = dp.try_into().unwrap();
+        let sp: SPWOParseResult = dp.into();
         assert_eq!(sp, sp2);
     }
 
@@ -309,23 +362,8 @@ mod tests {
             .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv")
             .unwrap();
         let dp = DerivedPath::Opaque(path.clone());
-        let sp: Result<StorePathWithOutputs, StorePath> = dp.try_into();
-        assert_eq!(sp, Err(path));
-    }
-
-    #[test]
-    fn test_to_derived_path() {
-        let store_dir = StoreDir::new("/nix/store").unwrap();
-        let path = store_dir
-            .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3")
-            .unwrap();
-        let dp = DerivedPath::Opaque(path.clone());
-        let sp = StorePathWithOutputs {
-            path,
-            outputs: string_set!["bin", "dev", "out"],
-        };
-        let dp2: DerivedPath = sp.into();
-        assert_eq!(dp, dp2);
+        let sp: SPWOParseResult = dp.into();
+        assert_eq!(sp, SPWOParseResult::StorePath(path));
     }
 
     #[test]
@@ -335,8 +373,8 @@ mod tests {
             .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv")
             .unwrap();
         let dp = DerivedPath::Built {
-            drv_path: path.clone(),
-            outputs: StringSet::new(),
+            drv_path: SingleDerivedPath::Opaque(path.clone()),
+            outputs: OutputSpec::All,
         };
         let sp = StorePathWithOutputs {
             path,
@@ -353,8 +391,8 @@ mod tests {
             .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv")
             .unwrap();
         let dp = DerivedPath::Built {
-            drv_path: path.clone(),
-            outputs: string_set!["out"],
+            drv_path: SingleDerivedPath::Opaque(path.clone()),
+            outputs: string_set!["out"].try_into().unwrap(),
         };
         let sp = StorePathWithOutputs {
             path,
@@ -371,8 +409,8 @@ mod tests {
             .parse_path("/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv")
             .unwrap();
         let dp = DerivedPath::Built {
-            drv_path: path.clone(),
-            outputs: string_set!["bin", "dev", "out"],
+            drv_path: SingleDerivedPath::Opaque(path.clone()),
+            outputs: string_set!["bin", "dev", "out"].try_into().unwrap(),
         };
         let sp = StorePathWithOutputs {
             path,

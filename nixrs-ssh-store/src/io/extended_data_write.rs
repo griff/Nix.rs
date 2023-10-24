@@ -1,8 +1,9 @@
+use std::fmt;
 use std::io;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
-use log::debug;
+use tracing::debug;
 use thrussh::server::Handle;
 use thrussh::{ChannelId, CryptoVec};
 use tokio::io::AsyncWrite;
@@ -43,6 +44,12 @@ impl ExtendedDataWrite {
 impl Clone for ExtendedDataWrite {
     fn clone(&self) -> Self {
         ExtendedDataWrite::new(self.id, self.ext, self.handle.clone())
+    }
+}
+
+impl fmt::Debug for ExtendedDataWrite {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ExtendedDataWrite").field("id", &self.id).field("ext", &self.ext).field("is_write_fut_valid", &self.is_write_fut_valid).field("write_fut", &self.write_fut).finish()
     }
 }
 

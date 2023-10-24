@@ -1,33 +1,99 @@
-use std::convert::TryInto;
 use std::ffi::OsStr;
+use std::{io, fmt};
 use std::path::Path;
 use std::process::Stdio;
+use std::sync::{Mutex, Arc};
 use std::time::SystemTime;
 
 use async_trait::async_trait;
-use futures::TryFutureExt;
-use log::{debug, trace};
-use tokio::io::{copy, stderr, AsyncRead, AsyncWrite};
+use tracing::{debug, trace, instrument};
+use tokio::io::{AsyncRead, AsyncWrite, BufReader, AsyncBufReadExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::process::{ChildStderr, ChildStdin, ChildStdout, Command};
+use tokio::process::{ChildStdin, ChildStdout, Command};
 use tokio::spawn;
+use tracing::{Dispatch,  error};
+use tracing::dispatcher::{get_default, with_default};
+use tracing::Instrument;
 
 use super::{
     get_protocol_major, get_protocol_minor, LegacyStore, ServeCommand, SERVE_MAGIC_1,
     SERVE_MAGIC_2, SERVE_PROTOCOL_VERSION,
 };
+use crate::activity;
 use crate::archive::copy_nar;
 use crate::hash::Hash;
-use crate::io::CancelledReader;
 use crate::io::{AsyncSink, AsyncSource};
-use crate::io::{TakenReader, Taker};
 use crate::path_info::ValidPathInfo;
 use crate::signature::{ParseSignatureError, SignatureSet};
+use crate::store::activity::{RESULT_TARGET, ResultType, ActivityType};
+use crate::store::error::Verbosity;
 use crate::store::{
-    BasicDerivation, BuildResult, BuildSettings, BuildStatus, CheckSignaturesFlag, DerivedPath,
-    Error, RepairFlag, Store, StorePathWithOutputs, SubstituteFlag, EXPORT_MAGIC,
+    BasicDerivation, BuildResult, BuildStatus, CheckSignaturesFlag, DerivedPath,
+    Error, RepairFlag, Store, SubstituteFlag, EXPORT_MAGIC, SPWOParseResult, BuildMode,
 };
+use crate::store::settings::get_settings;
 use crate::store_path::{ParseStorePathError, StoreDir, StoreDirProvider, StorePath, StorePathSet};
+
+#[derive(Debug, Clone)]
+struct DispatchInner {
+    dispatch: Dispatch,
+    span: Option<tracing::span::Id>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LogDispatch(Arc<Mutex<DispatchInner>>);
+
+impl LogDispatch {
+    pub fn new() -> LogDispatch {
+        let (dispatch, current) = get_default(|d| (d.clone(), d.current_span()));
+        let inner = DispatchInner {
+            dispatch,
+            span: current.id().map(|s| s.clone()),
+        };
+        LogDispatch(Arc::new(Mutex::new(inner)))
+    }
+    fn replace(&self) -> ReplaceDispatch {
+        let (dispatch, current) = get_default(|d| (d.clone(), d.current_span()));
+        let logger = self.clone();
+        let mut inner = self.0.lock().unwrap();
+        let old = inner.clone();
+        inner.dispatch = dispatch;
+        inner.span = current.id().map(|id| id.clone());
+        ReplaceDispatch { old, logger }
+    }
+}
+
+struct ReplaceDispatch {
+    logger: LogDispatch,
+    old: DispatchInner,
+}
+
+impl ReplaceDispatch {
+}
+
+impl Drop for ReplaceDispatch {
+    fn drop(&mut self) {
+        let mut inner = self.logger.0.lock().unwrap();
+        *inner = self.old.clone();
+    }
+}
+
+async fn dump_log<R: AsyncRead + Unpin>(build_log: R, dispatcher: LogDispatch) {
+    let mut reader = BufReader::new(build_log);
+    let mut message = String::new();
+    while let Ok(read) = reader.read_line(&mut message).await {
+        if read == 0 {
+            break;
+        }
+        let d = dispatcher.0.lock().unwrap();
+        with_default(&d.dispatch, || {
+            eprintln!("Build log: {}", message);
+            let result_type : u64 = ResultType::BuildLogLine.into();
+            error!(target: RESULT_TARGET, parent: d.span.clone(), result_type, message);
+        });    
+        message.clear()
+    }
+}
 
 pub struct LegacyStoreBuilder {
     cmd: Command,
@@ -39,7 +105,7 @@ impl LegacyStoreBuilder {
     pub fn new<P: AsRef<OsStr>>(program: P) -> LegacyStoreBuilder {
         LegacyStoreBuilder {
             cmd: Command::new(program),
-            store_dir: StoreDir::new("/nix/store").unwrap(),
+            store_dir: StoreDir::default(),
             host: "localhost".into(),
         }
     }
@@ -61,12 +127,9 @@ impl LegacyStoreBuilder {
         Ok(self)
     }
 
-    pub async fn connect_with_log<W>(
+    pub async fn connect(
         self,
-        mut build_log: W,
-    ) -> Result<LegacyStoreClient<ChildStdout, ChildStdin, ChildStderr>, Error>
-    where
-        W: AsyncWrite + Unpin + Send + 'static,
+    ) -> Result<LegacyStoreClient<ChildStdout, ChildStdin>, Error>
     {
         let mut cmd = self.cmd;
         cmd.stdin(Stdio::piped());
@@ -76,35 +139,26 @@ impl LegacyStoreBuilder {
         let reader = child.stdout.take().unwrap();
         let writer = child.stdin.take().unwrap();
         let stderr = child.stderr.take().unwrap();
-        let mut taken_reader = TakenReader::new(stderr);
-        let stderr = taken_reader.taker();
-        spawn(async move { copy(&mut taken_reader, &mut build_log).await });
-
-        let mut store = LegacyStoreClient::new(self.store_dir, self.host, reader, writer, stderr);
+        let mut store = LegacyStoreClient::new(self.store_dir, self.host, reader, writer, stderr).await;
         store.handshake().await?;
         Ok(store)
     }
-
-    pub async fn connect(
-        self,
-    ) -> Result<LegacyStoreClient<ChildStdout, ChildStdin, ChildStderr>, Error> {
-        self.connect_with_log(stderr()).await
-    }
 }
 
-pub struct LegacyStoreClient<R, W, BR> {
+#[derive(Debug)]
+pub struct LegacyStoreClient<R, W> {
     host: String,
     store_dir: StoreDir,
     source: R,
     sink: W,
     remote_version: Option<u64>,
-    build_log: Taker<BR>,
+    log_dispatch: LogDispatch,
 }
 
-impl LegacyStoreClient<ChildStdout, ChildStdin, ChildStderr> {
+impl LegacyStoreClient<ChildStdout, ChildStdin> {
     pub async fn connect(
         write_allowed: bool,
-    ) -> Result<LegacyStoreClient<ChildStdout, ChildStdin, ChildStderr>, Error> {
+    ) -> Result<LegacyStoreClient<ChildStdout, ChildStdin>, Error> {
         let mut b = LegacyStoreBuilder::new("nix-store");
         b.command_mut().arg("--serve");
         if write_allowed {
@@ -114,18 +168,24 @@ impl LegacyStoreClient<ChildStdout, ChildStdin, ChildStderr> {
     }
 }
 
-impl<R, W, BR> LegacyStoreClient<R, W, BR>
+impl<R, W> LegacyStoreClient<R, W>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    pub fn new(
+    pub async fn new<BR>(
         store_dir: StoreDir,
         host: String,
         reader: R,
         writer: W,
-        build_log: Taker<BR>,
-    ) -> LegacyStoreClient<R, W, BR> {
+        build_log: BR,
+    ) -> LegacyStoreClient<R, W>
+        where BR: AsyncRead + Send + Unpin + 'static
+    {
+        let log_dispatch = LogDispatch::new();
+        let dispatcher = log_dispatch.clone();
+        spawn(async move { dump_log(build_log, dispatcher).await });
+
         let sink = writer;
         let remote_version = None;
         LegacyStoreClient {
@@ -134,16 +194,16 @@ where
             sink,
             remote_version,
             host,
-            build_log,
+            log_dispatch,
         }
     }
-    async fn remote_version(&mut self) -> Result<u64, Error> {
+    pub async fn remote_version(&mut self) -> Result<u64, Error> {
         if self.remote_version.is_none() {
             self.handshake().await?;
         }
         Ok(*self.remote_version.as_ref().unwrap())
     }
-    async fn handshake(&mut self) -> Result<(), Error> {
+    pub async fn handshake(&mut self) -> Result<(), Error> {
         self.sink.write_u64_le(SERVE_MAGIC_1).await?;
         self.sink.write_u64_le(SERVE_PROTOCOL_VERSION).await?;
         self.sink.flush().await?;
@@ -164,20 +224,42 @@ where
         self.sink.shutdown().await?;
         Ok(())
     }
+
+    async fn write_build_settings(&mut self) -> io::Result<()> {
+        let remote_version = self.remote_version.unwrap();
+
+        let (max_silent_time, build_timeout, max_log_size, keep_failed)
+            = get_settings(|s| {
+                (s.max_silent_time, s.build_timeout, s.max_log_size, s.keep_failed)
+        });
+
+        self.sink.write_seconds(max_silent_time).await?;
+        self.sink.write_seconds(build_timeout).await?;
+        if get_protocol_minor!(remote_version) >= 2 {
+            self.sink.write_u64_le(max_log_size).await?;
+        }
+        if get_protocol_minor!(remote_version) >= 3 {
+            self.sink.write_u64_le(0).await?; // buildRepeat hasn't worked for ages anyway
+            self.sink.write_bool(false).await?;
+        }
+        if get_protocol_minor!(remote_version) >= 7 {
+            self.sink.write_bool(keep_failed).await?;
+        }
+        Ok(())
+    }
 }
 
-impl<R, W, BR> StoreDirProvider for LegacyStoreClient<R, W, BR> {
+impl<R, W> StoreDirProvider for LegacyStoreClient<R, W> {
     fn store_dir(&self) -> StoreDir {
         self.store_dir.clone()
     }
 }
 
 #[async_trait]
-impl<R, W, BR> LegacyStore for LegacyStoreClient<R, W, BR>
+impl<R, W> LegacyStore for LegacyStoreClient<R, W>
 where
-    R: AsyncRead + Send + Unpin + 'static,
-    W: AsyncWrite + Send + Unpin + 'static,
-    BR: AsyncRead + Send + Unpin + 'static,
+    R: AsyncRead + fmt::Debug + Send + Unpin + 'static,
+    W: AsyncWrite + fmt::Debug + Send + Unpin + 'static,
 {
     /*
     async fn query_path_infos(
@@ -252,6 +334,7 @@ where
     }
     */
 
+    #[instrument(skip_all)]
     async fn query_valid_paths_locked(
         &mut self,
         paths: &StorePathSet,
@@ -313,7 +396,8 @@ where
         Ok(())
     }
 
-    async fn import_paths<SR: AsyncRead + Send + Unpin>(
+    #[instrument(skip_all)]
+    async fn import_paths<SR: AsyncRead + fmt::Debug + Send + Unpin>(
         &mut self,
         mut source: SR,
     ) -> Result<(), Error> {
@@ -349,6 +433,7 @@ where
         Ok(())
     }
 
+    #[instrument(skip_all)]
     async fn query_closure(
         &mut self,
         paths: &StorePathSet,
@@ -369,12 +454,12 @@ where
 }
 
 #[async_trait]
-impl<R, W, BR> Store for LegacyStoreClient<R, W, BR>
+impl<R, W> Store for LegacyStoreClient<R, W>
 where
-    R: AsyncRead + Unpin + Send + 'static,
-    W: AsyncWrite + Unpin + Send + 'static,
-    BR: AsyncRead + Unpin + Send + 'static,
+    R: AsyncRead + fmt::Debug + Unpin + Send + 'static,
+    W: AsyncWrite + fmt::Debug + Unpin + Send + 'static,
 {
+    #[instrument(skip_all)]
     async fn query_valid_paths(
         &mut self,
         paths: &StorePathSet,
@@ -384,6 +469,7 @@ where
             .await
     }
 
+    #[instrument(skip(self), fields(%path))]
     async fn query_path_info(&mut self, path: &StorePath) -> Result<Option<ValidPathInfo>, Error> {
         let remote_version = self.remote_version().await?;
         /* No longer support missing NAR hash */
@@ -452,9 +538,10 @@ where
         }))
     }
 
+    #[instrument(skip(self, writer), fields(%path))]
     async fn nar_from_path<SW>(&mut self, path: &StorePath, writer: SW) -> Result<(), Error>
     where
-        SW: AsyncWrite + Send + Unpin,
+        SW: AsyncWrite + fmt::Debug + Send + Unpin,
     {
         debug!("Sending NAR for path {}", path);
         let _remote_version = self.remote_version().await?;
@@ -472,7 +559,8 @@ where
         Ok(())
     }
 
-    async fn add_to_store<SR: AsyncRead + Send + Unpin>(
+    #[instrument(skip_all)]
+    async fn add_to_store<SR: AsyncRead + fmt::Debug + Send + Unpin>(
         &mut self,
         info: &ValidPathInfo,
         source: SR,
@@ -557,123 +645,99 @@ where
         Ok(())
     }
 
-    async fn build_derivation<BW: AsyncWrite + Send + Unpin>(
+    #[instrument(skip(self, drv), fields(%drv_path, drv.name))]
+    async fn build_derivation(
         &mut self,
         drv_path: &StorePath,
         drv: &BasicDerivation,
-        settings: &BuildSettings,
-        mut build_log: BW,
+        build_mode: BuildMode,
     ) -> Result<BuildResult, Error> {
-        debug!("Build derivation {} with path {}", drv.name, drv_path);
-        let taker = self.build_log.clone();
-        let reader = taker.take();
-
-        let remote_version = self.remote_version().await?;
         let store_dir = self.store_dir.clone();
-        self.sink
-            .write_enum(ServeCommand::CmdBuildDerivation)
-            .await?;
 
-        trace!("Write drv_path {}", drv_path);
-        self.sink.write_printed(&store_dir, drv_path).await?;
-        drv.write_drv(&mut self.sink, &store_dir).await?;
+        let full_drv_path = store_dir.print_path(drv_path);
+        let msg = match build_mode {
+            BuildMode::Repair => format!("repairing outputs of '{}' on {}", full_drv_path, self.host),
+            BuildMode::Check => format!("checking outputs of '{}' on {}", full_drv_path, self.host),
+            _ => format!("building '{}' on {}", full_drv_path, self.host),
+        };
+        let act = activity!(Verbosity::Info, ActivityType::Build, msg,
+            field0=full_drv_path, field1=self.host, field2=1, field3=1);
+    
+        let fut = async {
 
-        self.sink.write_seconds(settings.max_silent_time).await?;
-        self.sink.write_seconds(settings.build_timeout).await?;
-        if get_protocol_minor!(remote_version) >= 2 {
-            self.sink.write_u64_le(settings.max_log_size).await?;
-        }
-        if get_protocol_minor!(remote_version) >= 3 {
-            self.sink.write_u64_le(settings.build_repeat).await?;
-            self.sink.write_bool(settings.enforce_determinism).await?;
-        }
+            let _log = self.log_dispatch.replace();
 
-        self.sink.flush().await?;
-
-        let (mut creader, build_log_token) = CancelledReader::new(reader);
-        let copy_fut = copy(&mut creader, &mut build_log).map_err(Error::from);
-        let status_fut = async {
-            let status: BuildStatus = self.source.read_enum().await?;
-            build_log_token.cancel();
+            let remote_version = self.remote_version().await?;
+            self.sink
+                .write_enum(ServeCommand::CmdBuildDerivation)
+                .await?;
+    
+            trace!("Write drv_path {}", drv_path);
+            self.sink.write_printed(&store_dir, drv_path).await?;
+            drv.write_drv(&mut self.sink, &store_dir).await?;
+            self.write_build_settings().await?;
+            self.sink.flush().await?;
+    
+            let status = self.source.read_enum().await?;
+            let error_msg = self.source.read_string().await?;
+            let mut status = BuildResult::new(status, error_msg);
+            if get_protocol_minor!(remote_version) >= 3 {
+                status.times_built = self.source.read_u64_le().await?;
+                status.is_non_deterministic = self.source.read_bool().await?;
+                status.start_time = self.source.read_time().await?;
+                status.stop_time = self.source.read_time().await?;
+            }
+            if get_protocol_minor!(remote_version) >= 6 {
+                let count = self.source.read_usize().await?;
+                for _i in 0..count {
+                    let id = self.source.read_string().await?.parse()?;
+                    let realisation = self.source.read_string().await?.parse()?;
+                    status.built_outputs.insert(id, realisation);
+                }
+            }
             Ok(status)
         };
-        let status = match tokio::try_join!(status_fut, copy_fut) {
-            Ok((status, _)) => status,
-            Err(err) => return Err(err),
-        };
-
-        let error_msg = self.source.read_string().await?;
-        let mut status = BuildResult::new(status, error_msg);
-        if get_protocol_minor!(remote_version) >= 3 {
-            status.times_built = self.source.read_u64_le().await?;
-            status.is_non_deterministic = self.source.read_bool().await?;
-            status.start_time = self.source.read_time().await?;
-            status.stop_time = self.source.read_time().await?;
-        }
-        if get_protocol_minor!(remote_version) >= 6 {
-            let count = self.source.read_usize().await?;
-            for _i in 0..count {
-                let id = self.source.read_string().await?.parse()?;
-                let realisation = self.source.read_string().await?.parse()?;
-                status.built_outputs.insert(id, realisation);
-            }
-        }
-        Ok(status)
+        fut.instrument(act.span).await
     }
 
-    async fn build_paths<BW: AsyncWrite + Send + Unpin>(
+    #[instrument(skip(self, drv_paths))]
+    async fn build_paths(
         &mut self,
         drv_paths: &[DerivedPath],
-        settings: &BuildSettings,
-        mut build_log: BW,
+        _build_mode: BuildMode,
     ) -> Result<(), Error> {
         debug!("Build paths {:?}", drv_paths);
 
-        let taker = self.build_log.clone();
-        let reader = taker.take();
+        let _log = self.log_dispatch.replace();
 
-        let remote_version = self.remote_version().await?;
+        let _remote_version = self.remote_version().await?;
         let store_dir = self.store_dir.clone();
         self.sink.write_enum(ServeCommand::CmdBuildPaths).await?;
+
         self.sink.write_usize(drv_paths.len()).await?;
         for p in drv_paths {
-            let res: Result<StorePathWithOutputs, StorePath> = p.try_into();
-            match res {
-                Ok(sp) => self.sink.write_printed(&store_dir, &sp).await?,
-                Err(path) => Err(Error::WantedFetchInLegacy(store_dir.print_path(&path)))?,
+            match p.into() {
+                SPWOParseResult::StorePathWithOutputs(sp) => {
+                    self.sink.write_printed(&store_dir, &sp).await?
+                }
+                SPWOParseResult::StorePath(path) => {
+                    Err(Error::WantedFetchInLegacy(store_dir.print_path(&path)))?
+                }
+                SPWOParseResult::Unsupported => {
+                    Err(Error::DerivationIsBuildProduct)?
+                }
             }
         }
 
-        self.sink.write_seconds(settings.max_silent_time).await?;
-        self.sink.write_seconds(settings.build_timeout).await?;
-        if get_protocol_minor!(remote_version) >= 2 {
-            self.sink.write_u64_le(settings.max_log_size).await?;
-        }
-        if get_protocol_minor!(remote_version) >= 3 {
-            self.sink.write_u64_le(settings.build_repeat).await?;
-            self.sink.write_bool(settings.enforce_determinism).await?;
-        }
-
+        self.write_build_settings().await?;
         self.sink.flush().await?;
 
-        let (mut creader, build_log_token) = CancelledReader::new(reader);
-        let copy_fut = copy(&mut creader, &mut build_log).map_err(Error::from);
-        let result_fut = async {
-            let status: BuildStatus = self.source.read_enum().await?;
-            build_log_token.cancel();
-            if status.success() {
-                Ok(())
-            } else {
-                let error_msg = self.source.read_string().await?;
-                Err(Error::Custom(status.into(), error_msg))
-            }
-        };
-        match tokio::try_join!(result_fut, copy_fut) {
-            Ok(_) => {
-                eprintln!("Both completed");
-                Ok(())
-            }
-            Err(err) => Err(err),
+        let status: BuildStatus = self.source.read_enum().await?;
+        if status.success() {
+            Ok(())
+        } else {
+            let error_msg = self.source.read_string().await?;
+            Err(Error::Custom(status.into(), error_msg))
         }
     }
 }
@@ -689,10 +753,13 @@ mod tests {
     use crate::archive::proptest::arb_nar_contents;
     use crate::hash;
     use crate::pretty_prop_assert_eq;
+    use crate::store::StorePathWithOutputs;
+    use crate::store::error::Verbosity;
     use ::proptest::arbitrary::any;
     use ::proptest::proptest;
     use futures::future::try_join;
 
+    use crate::store::settings::{BuildSettings, WithSettings};
     use crate::path_info::proptest::arb_valid_info_and_content;
     use crate::store::assert_store::AssertStore;
     #[cfg(feature = "slowtests")]
@@ -700,6 +767,18 @@ mod tests {
 
     macro_rules! store_cmd {
         (
+            $assert:ident($ae:expr$(,$ae2:expr)*$(,)?),
+            $cmd:ident($ce:expr$(,$ce2:expr)*$(,)?),
+            $res:expr
+        ) => {{
+            store_cmd!(BuildSettings::default(),
+                $assert($ae $(,$ae2)*),
+                $cmd($ce $(, $ce2)*),
+                $res)
+
+        }};
+        (
+            $settings:expr,
             $assert:ident($ae:expr$(,$ae2:expr)*$(,)?),
             $cmd:ident($ce:expr$(,$ce2:expr)*$(,)?),
             $res:expr
@@ -712,21 +791,18 @@ mod tests {
             let (client, server) = tokio::io::duplex(1_000_000);
             let (read, write) = tokio::io::split(client);
             let (build_log_client, build_log_server) = tokio::io::duplex(1_000_000);
-            let mut taken_reader = TakenReader::new(build_log_client);
-            let stdreader = taken_reader.taker();
-            r.spawn(async move {
-                copy(&mut taken_reader, &mut stderr()).await
-            });
-
-            let mut test_store = LegacyStoreClient::new(store_dir.clone(), "localhost".into(), read, write, stdreader);
 
             r.block_on(async {
+                let mut test_store = LegacyStoreClient::new(store_dir.clone(), "localhost".into(), read, write, build_log_client).await;
+
                 let store = AssertStore::$assert($ae $(, $ae2)*);
                 let (read, write) = tokio::io::split(server);
-                let server = crate::store::legacy_worker::run_server(read, write, store, build_log_server, true);
+                let server = crate::store::legacy_worker::run_server_with_log(read, write, store, build_log_server, true);
 
                 let cmd = async {
-                    let res = test_store.$cmd($ce $(, $ce2)*).await?;
+                    let res = test_store.$cmd($ce $(, $ce2)*)
+                        .with_settings($settings)
+                        .await?;
                     test_store.close().await?;
                     Ok(res)
                 };
@@ -763,7 +839,7 @@ mod tests {
         {
             let mut buf = Vec::new();
             store_cmd!(
-                assert_nar_from_path(&path, Ok(contents.clone())),
+                assert_nar_from_path(None, &path, Ok(contents.clone())),
                 nar_from_path(&path, Cursor::new(&mut buf)),
                 ()
             );
@@ -780,18 +856,16 @@ mod tests {
         fn proptest_store_build_derivation(
             drv_path in arb_drv_store_path(),
             mut drv in any::<BasicDerivation>(),
-            settings in any::<BuildSettings>(),
+            mut settings in any::<BuildSettings>(),
             result in any::<BuildResult>(),
-            build_log in any::<Vec<u8>>()
         )
         {
+            settings.verbosity = Verbosity::Error;
             let now = Instant::now();
-            let build_log = bytes::Bytes::from(build_log);
-            let mut buf = Vec::new();
             eprintln!("Run test {}", drv_path);
             drv.name = drv_path.name_from_drv();
             store_cmd!(
-                assert_build_derivation(&drv_path, &drv, &settings, Ok((result.clone(), build_log.clone()))),
+                assert_build_derivation(&drv_path, &drv, &settings, Ok(result.clone())),
                 build_derivation(&drv_path, &drv, &settings, Cursor::new(&mut buf)),
                 result
             );
@@ -802,23 +876,35 @@ mod tests {
     proptest! {
         #[test]
         fn proptest_store_build_paths(
-            drv_paths in any::<Vec<DerivedPath>>(),
-            settings in any::<BuildSettings>(),
-            build_log in any::<Vec<u8>>()
+            drv_paths in any::<Vec<StorePathWithOutputs>>(),
+            mut settings in any::<BuildSettings>(),
         )
         {
-            let build_log = bytes::Bytes::from(build_log);
-            let mut buf = Vec::new();
+            settings.verbosity = Verbosity::Error;
+            let drv_paths : Vec<DerivedPath> = drv_paths.into_iter().map(|path| path.into()).collect();
             store_cmd!(
-                assert_build_paths(&drv_paths, &settings, Ok(build_log.clone())),
-                build_paths(&drv_paths, &settings, Cursor::new(&mut buf)),
+                settings,
+                assert_build_paths(None, &drv_paths, BuildMode::Normal, &settings, Ok(())),
+                build_paths(&drv_paths, BuildMode::Normal),
                 ()
             );
-            pretty_prop_assert_eq!(buf.len(), build_log.len(), "Build log length");
-            pretty_prop_assert_eq!(buf, build_log, "Build log");
         }
     }
 
+    proptest! {
+        #[test]
+        fn proptest_store_query_path_info(
+             (info, _source) in arb_valid_info_and_content(8, 256, 10),
+         )
+         {
+             store_cmd!(
+                 assert_query_path_info(None, &info.path.clone(), Ok(Some(info.clone()))),
+                 query_path_info(&info.path),
+                 Some(info)
+             );
+         }
+     }
+ 
     proptest! {
        #[test]
        fn proptest_store_add_to_store(
@@ -826,7 +912,7 @@ mod tests {
         )
         {
             store_cmd!(
-                assert_add_to_store(&info, source.clone(), RepairFlag::NoRepair, CheckSignaturesFlag::NoCheckSigs, Ok(())),
+                assert_add_to_store(None, &info, source.clone(), RepairFlag::NoRepair, CheckSignaturesFlag::NoCheckSigs, Ok(())),
                 add_to_store(&info, Cursor::new(source), RepairFlag::Repair, CheckSignaturesFlag::CheckSigs),
                 ()
             );

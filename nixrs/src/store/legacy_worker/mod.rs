@@ -10,14 +10,14 @@ mod traits;
 mod wrap;
 
 pub use self::client::{LegacyStoreBuilder, LegacyStoreClient};
-pub use self::server::run_server;
+pub use self::server::run_server_with_log;
 pub use self::traits::LegacyStore;
 pub use self::wrap::LegacyWrapStore;
 
 pub const SERVE_MAGIC_1: u64 = 0x390c9deb;
 pub const SERVE_MAGIC_2: u64 = 0x5452eecb;
 
-pub const SERVE_PROTOCOL_VERSION: u64 = 2 << 8 | 6;
+pub const SERVE_PROTOCOL_VERSION: u64 = 2 << 8 | 7;
 
 macro_rules! get_protocol_major {
     ($x:expr) => {

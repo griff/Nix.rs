@@ -13,6 +13,7 @@ use super::write_all::{write_all, WriteAll};
 use super::write_int::WriteU64;
 
 #[derive(Debug)]
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub enum WriteSlice<'a, W> {
     Invalid,
     WriteSize(&'a [u8], WriteU64<W>),

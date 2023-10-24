@@ -5,7 +5,7 @@ use async_stream::try_stream;
 use bytes::Bytes;
 use bytes::BytesMut;
 use futures::Stream;
-use log::trace;
+use tracing::trace;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 

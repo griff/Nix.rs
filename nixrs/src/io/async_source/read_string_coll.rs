@@ -11,6 +11,7 @@ use super::read_string::ReadString;
 use super::CollectionRead;
 
 #[derive(Debug)]
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub enum ReadStringColl<R, C> {
     Invalid,
     ReadSize(ReadUsize<R>),

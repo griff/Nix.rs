@@ -1,3 +1,4 @@
+use bytes::BytesMut;
 use tokio::io::AsyncRead;
 
 use super::CollectionRead;
@@ -13,14 +14,14 @@ mod read_parsed_coll;
 mod read_string;
 mod read_string_coll;
 
-use self::drain::{DrainAll, DrainExact};
-use self::read_bytes::ReadBytes;
-use self::read_int::{ReadBool, ReadEnum, ReadFlag, ReadSeconds, ReadTime, ReadUsize};
-use self::read_padding::ReadPadding;
-use self::read_parsed::ReadParsed;
-use self::read_parsed_coll::ReadParsedColl;
-use self::read_string::ReadString;
-use self::read_string_coll::ReadStringColl;
+pub use self::drain::{DrainAll, DrainExact};
+pub use self::read_bytes::ReadBytes;
+pub use self::read_int::{ReadBool, ReadEnum, ReadFlag, ReadSeconds, ReadTime, ReadUsize};
+pub use self::read_padding::ReadPadding;
+pub use self::read_parsed::ReadParsed;
+pub use self::read_parsed_coll::ReadParsedColl;
+pub use self::read_string::ReadString;
+pub use self::read_string_coll::ReadStringColl;
 
 pub trait AsyncSource {
     //fn read_u64(&mut self) -> ReadU64<&mut Self>;
@@ -36,6 +37,7 @@ pub trait AsyncSource {
     fn read_time(&mut self) -> ReadTime<&mut Self>;
     fn read_padding(&mut self, size: u64) -> ReadPadding<&mut Self>;
     fn read_bytes(&mut self) -> ReadBytes<&mut Self>;
+    fn read_bytes_buf(&mut self, buf: BytesMut) -> ReadBytes<&mut Self>;
     fn read_string(&mut self) -> ReadString<&mut Self>;
     fn read_limited_string(&mut self, limit: usize) -> ReadString<&mut Self>;
     fn read_parsed<S, T>(&mut self, state: S) -> ReadParsed<&mut Self, S, T>
@@ -97,7 +99,11 @@ where
     }
 
     fn read_bytes(&mut self) -> ReadBytes<&mut Self> {
-        ReadBytes::new(self)
+        ReadBytes::new(self, BytesMut::new())
+    }
+
+    fn read_bytes_buf(&mut self, buf: BytesMut) -> ReadBytes<&mut Self> {
+        ReadBytes::new(self, buf)
     }
 
     fn read_string(&mut self) -> ReadString<&mut Self> {

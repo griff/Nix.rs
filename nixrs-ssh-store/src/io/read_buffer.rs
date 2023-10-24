@@ -6,7 +6,7 @@ use std::task::Poll;
 
 /// Helper used when converting Future interfaces to poll-based interfaces.
 /// Stores excess data that can be reused on future polls.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct ReadBuffer(Option<(Vec<u8>, usize)>);
 
 impl ReadBuffer {

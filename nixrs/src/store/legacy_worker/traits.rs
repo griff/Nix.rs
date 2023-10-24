@@ -1,3 +1,5 @@
+use std::fmt;
+
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite};
 
@@ -18,12 +20,12 @@ pub trait LegacyStore: Store {
         lock: bool,
         maybe_substitute: SubstituteFlag,
     ) -> Result<StorePathSet, Error>;
-    async fn export_paths<SW: AsyncWrite + Send + Unpin>(
+    async fn export_paths<SW: AsyncWrite + fmt::Debug + Send + Unpin>(
         &mut self,
         paths: &StorePathSet,
         mut sink: SW,
     ) -> Result<(), Error>;
-    async fn import_paths<SR: AsyncRead + Send + Unpin>(
+    async fn import_paths<SR: AsyncRead + fmt::Debug + Send + Unpin>(
         &mut self,
         mut source: SR,
     ) -> Result<(), Error>;

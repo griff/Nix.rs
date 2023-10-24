@@ -22,6 +22,8 @@
           pkg-config
           fuse
           protobuf libarchive
+          jq
+          rustc.llvmPackages.llvm
         ] ++ lib.optionals stdenv.isDarwin [
           darwin.apple_sdk.frameworks.CoreServices
           darwin.apple_sdk.frameworks.Security

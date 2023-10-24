@@ -26,6 +26,15 @@ macro_rules! flag_enum {
             $it,
             $if
         }
+        impl std::ops::Not for $name {
+            type Output = $name;
+            fn not(self) -> Self::Output {
+                match self {
+                    $name::$it => $name::$if,
+                    $name::$if => $name::$it,
+                }
+            }
+        }
         impl From<bool> for $name {
             fn from(v: bool) -> $name {
                 if v {

@@ -1,13 +1,14 @@
+use std::fmt;
 use std::time::SystemTime;
 
 use async_trait::async_trait;
 use futures::future::try_join;
-use log::debug;
+use tracing::debug;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 
 use super::topo_sort_paths_slow;
-use super::{BasicDerivation, BuildSettings, DerivedPath, DrvOutputs, Error, RepairFlag};
+use super::{BasicDerivation, DerivedPath, DrvOutputs, Error, RepairFlag};
 use crate::flag_enum::flag_enum;
 use crate::num_enum::num_enum;
 use crate::path_info::ValidPathInfo;
@@ -15,6 +16,16 @@ use crate::store_path::{StoreDirProvider, StorePath, StorePathSet};
 
 /* Magic header of exportPath() output (obsolete). */
 pub const EXPORT_MAGIC: u64 = 0x4558494e;
+
+num_enum! {
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+    pub enum BuildMode {
+        Unknown(u64),
+        Normal = 0,
+        Repair = 1,
+        Check = 2,
+    }
+}
 
 flag_enum! {
     #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
@@ -171,9 +182,7 @@ where
     if info.ca.is_some() && info.references.is_empty() {
         let path = dst_store.store_dir().make_fixed_output_path_from_ca(
             info.path.name.name(),
-            info.ca.unwrap(),
-            &StorePathSet::new(),
-            false,
+            &info.content_address_with_references().unwrap(),
         )?;
         if dst_store.store_dir() == src_store.store_dir() {
             assert_eq!(info.path, path);
@@ -226,14 +235,14 @@ pub trait Store: StoreDirProvider {
     async fn query_path_info(&mut self, path: &StorePath) -> Result<Option<ValidPathInfo>, Error>;
 
     /// Export path from the store
-    async fn nar_from_path<W: AsyncWrite + Send + Unpin>(
+    async fn nar_from_path<W: AsyncWrite + fmt::Debug + Send + Unpin>(
         &mut self,
         path: &StorePath,
         sink: W,
     ) -> Result<(), Error>;
 
     /// Import a path into the store.
-    async fn add_to_store<R: AsyncRead + Send + Unpin>(
+    async fn add_to_store<R: AsyncRead + fmt::Debug + Send + Unpin>(
         &mut self,
         info: &ValidPathInfo,
         source: R,
@@ -241,24 +250,59 @@ pub trait Store: StoreDirProvider {
         check_sigs: CheckSignaturesFlag,
     ) -> Result<(), Error>;
 
-    async fn build_derivation<W: AsyncWrite + Send + Unpin>(
+    async fn build_derivation(
         &mut self,
-        _drv_path: &StorePath,
-        _drv: &BasicDerivation,
-        _settings: &BuildSettings,
-        _build_log: W,
+        drv_path: &StorePath,
+        drv: &BasicDerivation,
+        build_mode: BuildMode,
     ) -> Result<BuildResult, Error> {
+        let _ = (drv_path, drv, build_mode);
         Err(Error::UnsupportedOperation("build_derivation".into()))
     }
 
-    async fn build_paths<W: AsyncWrite + Send + Unpin>(
+    async fn build_paths(
         &mut self,
-        _drv_paths: &[DerivedPath],
-        _settings: &BuildSettings,
-        _build_log: W,
+        drv_paths: &[DerivedPath],
+        build_mode: BuildMode,
     ) -> Result<(), Error> {
+        let _ = (drv_paths, build_mode);
         Err(Error::UnsupportedOperation("build_paths".into()))
     }
+}
+
+macro_rules! deref_store {
+    () => {
+        fn query_valid_paths<'life0,'life1,'async_trait>(&'life0 mut self,paths: &'life1 StorePathSet,maybe_substitute:SubstituteFlag,) ->  ::core::pin::Pin<Box<dyn ::core::future::Future<Output = Result<StorePathSet,Error> > + ::core::marker::Send+'async_trait> >where 'life0:'async_trait,'life1:'async_trait,Self: ::core::marker::Send+'async_trait{
+            (**self).query_valid_paths(paths, maybe_substitute)
+        }
+
+        fn query_path_info<'life0,'life1,'async_trait>(&'life0 mut self,path: &'life1 StorePath) ->  ::core::pin::Pin<Box<dyn ::core::future::Future<Output = Result<Option<ValidPathInfo> ,Error> > + ::core::marker::Send+'async_trait> >where 'life0:'async_trait,'life1:'async_trait,Self:'async_trait {
+            (**self).query_path_info(path)
+        }
+
+        fn nar_from_path<'life0,'life1,'async_trait,W, >(&'life0 mut self,path: &'life1 StorePath,sink:W,) ->  ::core::pin::Pin<Box<dyn ::core::future::Future<Output = Result<(),Error> > + ::core::marker::Send+'async_trait> >where W:'async_trait+AsyncWrite + fmt::Debug+Send+Unpin,'life0:'async_trait,'life1:'async_trait,Self:'async_trait {
+            (**self).nar_from_path(path, sink)
+        }
+    
+        fn add_to_store<'life0,'life1,'async_trait,R, >(&'life0 mut self,info: &'life1 ValidPathInfo,source:R,repair:RepairFlag,check_sigs:CheckSignaturesFlag,) ->  ::core::pin::Pin<Box<dyn ::core::future::Future<Output = Result<(),Error> > + ::core::marker::Send+'async_trait> >where R:'async_trait+AsyncRead + fmt::Debug+Send+Unpin,'life0:'async_trait,'life1:'async_trait,Self:'async_trait {
+            (**self).add_to_store(info, source, repair, check_sigs)
+        }
+
+        fn build_derivation<'life0,'life1,'life2,'async_trait>(&'life0 mut self,drv_path: &'life1 StorePath,drv: &'life2 BasicDerivation,build_mode:BuildMode,) ->  ::core::pin::Pin<Box<dyn ::core::future::Future<Output = Result<BuildResult,Error> > + ::core::marker::Send+'async_trait> >where 'life0:'async_trait,'life1:'async_trait,'life2:'async_trait,Self: ::core::marker::Send+'async_trait{
+            (**self).build_derivation(drv_path, drv, build_mode)
+        }
+        fn build_paths<'life0,'life1,'async_trait>(&'life0 mut self,drv_paths: &'life1[DerivedPath],build_mode:BuildMode,) ->  ::core::pin::Pin<Box<dyn ::core::future::Future<Output = Result<(),Error> > + ::core::marker::Send+'async_trait> >where 'life0:'async_trait,'life1:'async_trait,Self: ::core::marker::Send+'async_trait{
+            (**self).build_paths(drv_paths, build_mode)
+        }
+    }
+}
+
+impl<T: ?Sized + Store + Unpin + Send> Store for Box<T> {
+    deref_store!();
+}
+
+impl<T: ?Sized + Store + Unpin + Send> Store for &mut T {
+    deref_store!();
 }
 
 #[cfg(any(test, feature = "test"))]
@@ -268,6 +312,22 @@ pub mod proptest {
     use super::*;
     use crate::proptest::arb_system_time;
     use ::proptest::prelude::*;
+
+    impl Arbitrary for BuildMode {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<BuildMode>;
+
+        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+            use BuildMode::*;
+            prop_oneof![
+                1 => (13u64..500u64).prop_map(|v| Unknown(v) ),
+                50 => Just(Normal),
+                5 => Just(Repair),
+                5 => Just(Check),
+            ]
+            .boxed()
+        }
+    }
 
     impl Arbitrary for BuildStatus {
         type Parameters = ();

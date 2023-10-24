@@ -19,14 +19,14 @@ pub type StringSet = BTreeSet<String>;
 
 #[macro_export]
 macro_rules! string_set {
-    [] => { StringSet::new()};
+    [] => { $crate::StringSet::new()};
     [$e:expr] => {{
-        let mut ret = StringSet::new();
+        let mut ret = $crate::StringSet::new();
         ret.insert(($e).to_string());
         ret
     }};
     [$e:expr$(,$e2:expr)+$(,)?] => {{
-        let mut ret = StringSet::new();
+        let mut ret = $crate::StringSet::new();
         ret.insert(($e).to_string());
         $(
             ret.insert(($e2).to_string());

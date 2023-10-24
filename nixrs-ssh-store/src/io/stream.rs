@@ -7,11 +7,12 @@ use std::io;
 use std::pin::Pin;
 use std::task::{ready, Poll};
 
-use log::debug;
+use tracing::debug;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
 
 /// AsyncRead/AsyncWrite wrapper for SSH Channels
+#[derive(Debug)]
 pub struct ChannelRead {
     incoming: mpsc::UnboundedReceiver<Vec<u8>>,
     readbuf: ReadBuffer,

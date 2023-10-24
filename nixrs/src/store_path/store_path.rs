@@ -11,7 +11,37 @@ use super::StoreDir;
 use crate::path::clean_path;
 use crate::{base32, hash};
 
+pub fn is_name(s: &str) -> bool {
+    !s.is_empty() &&
+        s.char_indices().all(|(i, c)| {
+            c.is_ascii_alphanumeric()
+                || c == '+'
+                || c == '-'
+                || c == '_'
+                || c == '?'
+                || c == '='
+                || (i > 0 && c == '.')
+        })
+}
+
 pub type StorePathSet = BTreeSet<StorePath>;
+
+pub trait StorePathSetExt {
+    fn join(&self) -> String;
+}
+
+impl StorePathSetExt for StorePathSet {
+    fn join(&self) -> String {
+        let mut ret = String::new();
+        for p in self.iter() {
+            if !ret.is_empty() {
+                ret.push_str(", ");
+            }
+            ret.push_str(&p.to_string());
+        }
+        ret
+    }
+}
 
 #[macro_export]
 macro_rules! store_paths {
@@ -235,18 +265,7 @@ impl StorePathName {
             return Err(ParseStorePathError::StorePathNameTooLong);
         }
 
-        if s.starts_with('.')
-            || !s.chars().all(|c| {
-                c.is_ascii_alphabetic()
-                    || c.is_ascii_digit()
-                    || c == '+'
-                    || c == '-'
-                    || c == '.'
-                    || c == '_'
-                    || c == '?'
-                    || c == '='
-            })
-        {
+        if !is_name(s) {
             return Err(ParseStorePathError::BadStorePathName(s.to_string()));
         }
 

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use futures::future::Ready;
 use futures::{Future, FutureExt};
-use log::{debug, error, info};
+use tracing::{debug, error, info};
 use thrussh::server::Config;
 use thrussh::{
     server::{self, Handle},
@@ -133,9 +133,10 @@ impl<S> ServerConfig<S> {
 
 pub struct Server<S> {
     state: ServerState<S>,
-    serve_rx: mpsc::UnboundedReceiver<ChannelMsg>,
+    //serve_rx: mpsc::UnboundedReceiver<ChannelMsg>,
 }
 
+/*
 struct ChannelMsg {
     channel: ChannelId,
     handle: Handle,
@@ -143,12 +144,13 @@ struct ChannelMsg {
     write_allowed: bool,
     reply: oneshot::Sender<JoinHandle<Result<(), anyhow::Error>>>,
 }
+ */
 
 #[derive(Clone)]
 pub struct ServerState<S> {
     config: Arc<Config>,
     user_keys: Arc<HashMap<String, bool>>,
-    serve_tx: mpsc::UnboundedSender<ChannelMsg>,
+    //serve_tx: mpsc::UnboundedSender<ChannelMsg>,
     store_provider: S,
     shutdown: CancellationToken,
 }
@@ -180,29 +182,30 @@ impl<S: Clone> Server<S> {
 
 impl<S> Server<S>
 where
-    S: StoreProvider + Clone + Send + 'static,
+    S: StoreProvider + Clone + Send + Sync + 'static,
 {
     pub fn with_config(config: ServerConfig<S>) -> io::Result<Server<S>> {
-        let (serve_tx, serve_rx) = mpsc::unbounded_channel();
+        //let (serve_tx, serve_rx) = mpsc::unbounded_channel();
         let shutdown = CancellationToken::new();
         let state = ServerState {
-            serve_tx,
+            //serve_tx,
             shutdown,
             user_keys: Arc::new(config.user_keys),
             config: Arc::new(config.config),
             store_provider: config.store_provider,
         };
-        Ok(Server { state, serve_rx })
+        Ok(Server { state, /*serve_rx*/ })
     }
 
     pub async fn run(self, addr: &str) -> io::Result<()> {
         let local = tokio::task::LocalSet::new();
-        let store_provider = self.state.store_provider.clone();
-        let cancel = self.state.shutdown.clone();
+        //let store_provider = self.state.store_provider.clone();
+        //let cancel = self.state.shutdown.clone();
         let server_cancel = self.state.shutdown.clone();
         local.run_until(async move {
-            let mut serve_rx = self.serve_rx;
-            tokio::task::spawn_local(async move {
+            //let mut serve_rx = self.serve_rx;
+            /*
+            tokio::task::spawn(async move {
                 loop {
                     select! {
                         msg = serve_rx.recv() => {
@@ -210,24 +213,28 @@ where
                                 Some(ChannelMsg { channel, handle, source, write_allowed, reply }) => {
                                     let cancel = cancel.clone();
                                     let store_provider = store_provider.clone();
-                                    let join = tokio::task::spawn_local(async move {
+                                    let join = tokio::task::spawn(async move {
                                         let stderr = ExtendedDataWrite::new(channel, 1, handle.clone());
                                         let out = DataWrite::new(channel, handle);
-                                        let store = store_provider.get_store(stderr.clone()).await?;
-                                        select! {
-                                            res = nixrs::store::legacy_worker::run_server(source, out, store, stderr, write_allowed) => {
-                                                match res {
-                                                    Ok(_) => {},
-                                                    Err(err) => {
-                                                        tracing::error!("Error in serve {:?}", err);
-                                                        return Err(err.into());
+                                        if let Some(store) = store_provider.get_legacy_store(stderr.clone()).await? {
+                                            select! {
+                                                res = nixrs::store::legacy_worker::run_server_with_log(source, out, store, stderr, write_allowed) => {
+                                                    match res {
+                                                        Ok(_) => {},
+                                                        Err(err) => {
+                                                            tracing::error!("Error in serve {:?}", err);
+                                                            return Err(err.into());
+                                                        }
                                                     }
                                                 }
-                                            }
-                                            _ = cancel.cancelled() => {
-                                                info!("Shutting down channel {:?}!", channel);
-                                                Err(io::Error::new(io::ErrorKind::BrokenPipe, "Shutting down"))?;
-                                            }
+                                                _ = cancel.cancelled() => {
+                                                    info!("Shutting down channel {:?}!", channel);
+                                                    Err(io::Error::new(io::ErrorKind::BrokenPipe, "Shutting down"))?;
+                                                }
+                                            }    
+                                        } else {
+                                            info!("Failed to get legacy store {:?}!", channel);
+                                            Err(io::Error::new(io::ErrorKind::BrokenPipe, "Failed to get legacy store"))?;
                                         }
                                         Ok(())
                                     });
@@ -244,6 +251,7 @@ where
 
                 }
             });
+             */
             let config = self.state.config.clone();
             info!("Running SSH on {}", addr);
             select! {
@@ -260,27 +268,115 @@ where
     }
 }
 
-impl<S> server::Server for ServerState<S> {
-    type Handler = ServerHandler;
+impl<S> server::Server for ServerState<S>
+where
+    S: StoreProvider + Clone + Send + Sync + 'static,
+{
+    type Handler = ServerHandler<S>;
 
     fn new(&mut self, _peer_addr: Option<std::net::SocketAddr>) -> Self::Handler {
         ServerHandler {
+            shutdown: self.shutdown.clone(),
+            store_provider: self.store_provider.clone(),
             channels: HashMap::new(),
             user_keys: self.user_keys.clone(),
-            serve_tx: self.serve_tx.clone(),
+            //serve_tx: self.serve_tx.clone(),
             auth_user: None,
         }
     }
 }
 
-pub struct ServerHandler {
+struct StoreCommand<S> {
+    store_provider: S,
+    shutdown: CancellationToken,
+    channel: ChannelId,
+    stderr: ExtendedDataWrite,
+    stdout: DataWrite,
+    stdin: ChannelRead,
+}
+
+impl<S> StoreCommand<S>
+where
+    S: StoreProvider,
+    S::Error: 'static,
+{
+    async fn run_legacy_command(self, write_allowed: bool) -> Result<(), anyhow::Error>
+    {
+        if let Some(store) = self.store_provider.get_legacy_store(self.stderr.clone()).await? {
+            select! {
+                res = nixrs::store::legacy_worker::run_server_with_log(self.stdin, self.stdout, store, self.stderr, write_allowed) => {
+                    match res {
+                        Ok(_) => {},
+                        Err(err) => {
+                            tracing::error!("Error in serve {:?}", err);
+                            return Err(err.into());
+                        }
+                    }
+                }
+                _ = self.shutdown.cancelled() => {
+                    info!("Shutting down channel {:?}!", self.channel);
+                    Err(io::Error::new(io::ErrorKind::BrokenPipe, "Shutting down"))?;
+                }
+            }
+            Ok(()) as Result<(), anyhow::Error>
+        } else {
+            info!("unsupported protocol {:?}!", self.channel);
+            Err(io::Error::new(io::ErrorKind::NotFound, "unsupported protocol").into())
+        }
+    }
+
+    async fn run_daemon_command(self) -> Result<(), anyhow::Error> {
+        if let Some(store) = self.store_provider.get_daemon_store().await? {
+            let fut = Box::pin(nixrs::store::daemon::run_server(self.stdin, self.stdout, store, nixrs::store::daemon::TrustedFlag::Trusted));
+            select! {
+                res = fut => {
+                    match res {
+                        Ok(_) => {},
+                        Err(err) => {
+                            tracing::error!("Error in nix-daemon {:?}", err);
+                            return Err(err.into());
+                        }
+                    }
+                }
+                _ = self.shutdown.cancelled() => {
+                    info!("Shutting down channel {:?}!", self.channel);
+                    Err(io::Error::new(io::ErrorKind::BrokenPipe, "Shutting down"))?;
+                }
+            }
+            Ok(()) as Result<(), anyhow::Error>
+        } else {
+            info!("unsupported protocol {:?}!", self.channel);
+            Err(io::Error::new(io::ErrorKind::NotFound, "unsupported protocol").into())
+        }
+    }
+}
+
+async fn send_error(err_txt: String, mut handle: Handle, channel: ChannelId) {
+    error!("{}", err_txt);
+    handle
+        .extended_data(channel, 1, CryptoVec::from(err_txt))
+        .await
+        .unwrap_or_default();
+    handle
+        .exit_status_request(channel, 1)
+        .await
+        .unwrap_or_default();
+    handle.close(channel).await.unwrap_or_default();
+}
+
+pub struct ServerHandler<S> {
+    shutdown: CancellationToken,
+    store_provider: S,
     channels: HashMap<ChannelId, ServerChannel>,
     user_keys: Arc<HashMap<String, bool>>,
-    serve_tx: mpsc::UnboundedSender<ChannelMsg>,
+    //serve_tx: mpsc::UnboundedSender<ChannelMsg>,
     auth_user: Option<(String, bool)>,
 }
 
-impl server::Handler for ServerHandler {
+impl<S> server::Handler for ServerHandler<S>
+where
+    S: StoreProvider + Clone + Send + Sync + 'static,
+{
     type Error = anyhow::Error;
 
     type FutureAuth = Ready<Result<(Self, server::Auth), anyhow::Error>>;
@@ -442,24 +538,56 @@ impl server::Handler for ServerHandler {
         data: &[u8],
         mut session: server::Session,
     ) -> Self::FutureUnit {
-        let mut handle = session.handle();
-        let mut write_allowed = match data {
-            b"nix-store --serve --write" => true,
-            b"nix-store --serve" => false,
-            _ => {
-                let err_txt = "invalid command".to_string();
-                error!("{}", err_txt);
-                session.extended_data(channel, 1, CryptoVec::from(err_txt));
-                session.exit_status_request(channel, 1);
-                session.close(channel);
-                return self.finished(session);
-            }
-        };
-        if let Some((_, user_write_allowed)) = self.auth_user.as_ref() {
-            write_allowed = write_allowed && *user_write_allowed;
-        }
         if let Some(ch) = self.channels.get_mut(&channel) {
             if let Some(source) = ch.stdin.take() {
+                let handle = session.handle();
+                let cmd = StoreCommand {
+                    shutdown: self.shutdown.clone(),
+                    store_provider: self.store_provider.clone(),
+                    channel,
+                    stderr: ExtendedDataWrite::new(channel, 1, handle.clone()),
+                    stdout: DataWrite::new(channel, handle.clone()),
+                    stdin: source,
+                };
+
+                if data == b"nix-store --serve --write" || data == b"nix-store --serve" {
+                    let mut write_allowed = data == b"nix-store --serve --write";
+                    if let Some((_, user_write_allowed)) = self.auth_user.as_ref() {
+                        write_allowed = write_allowed && *user_write_allowed;
+                    }
+                    let join = tokio::task::spawn(async move {
+                        match cmd.run_legacy_command(write_allowed).await {
+                            Ok(_) => Ok(()),
+                            Err(err) => {
+                                let err_txt = format!("Exec failed {:?}", err);
+                                send_error(err_txt, handle, channel).await;
+                                Err(err)
+                            }
+                        }
+                    });
+                    ch.serve = Some(join);
+                } else if data == b"nix-daemon --stdio" {
+                    let join = tokio::task::spawn(async move {
+                        match cmd.run_daemon_command().await {
+                            Ok(_) => Ok(()),
+                            Err(err) => {
+                                let err_txt = format!("Exec failed {:?}", err);
+                                send_error(err_txt, handle, channel).await;
+                                Err(err)
+                            }
+                        }
+                    });
+                    ch.serve = Some(join);
+                } else {
+                    let err_txt = "invalid command".to_string();
+                    error!("{}", err_txt);
+                    session.extended_data(channel, 1, CryptoVec::from(err_txt));
+                    session.exit_status_request(channel, 1);
+                    session.close(channel);
+                    return self.finished(session);
+                }
+
+                /*
                 let (reply, reply_rx) = oneshot::channel();
                 self.serve_tx
                     .send(ChannelMsg {
@@ -518,15 +646,6 @@ impl server::Handler for ServerHandler {
                             Err(err.into())
                         }
                     }
-                });
-                ch.serve = Some(join);
-                /*
-                let join = tokio::task::spawn_local(async move {
-                    let stderr = ExtendedDataWrite::new(channel, 1, handle.clone());
-                    let out = DataWrite::new(channel, handle);
-                    let store = manager.get_store(stderr).await;
-                    nixrs_store::nix_store::serve(source, out, store, true).await?;
-                    Ok(())
                 });
                 ch.serve = Some(join);
                  */
