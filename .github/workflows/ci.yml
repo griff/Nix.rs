@@ -54,4 +54,4 @@ jobs:
     - name: Check formatting
       run: |
         cargo fmt --all -- --check
-        cargo clippy -- -Dwarnings
+        cargo clippy --all -- -Dwarnings
