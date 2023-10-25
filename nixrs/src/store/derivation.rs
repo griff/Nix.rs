@@ -92,7 +92,7 @@ pub enum WriteDerivationError {
 }
 
 fn validate_path(s: &str) -> Result<(), ParseDerivationError> {
-    if s.len() == 0 || !s.starts_with("/") {
+    if s.is_empty() || !s.starts_with('/') {
         Err(ParseDerivationError::BadPath(s.into()))
     } else {
         Ok(())
@@ -148,7 +148,7 @@ impl DerivationOutput {
             std::string_view pathS, std::string_view hashAlgo, std::string_view hashS)
         {
         */
-        if hash_algo != "" {
+        if !hash_algo.is_empty() {
             /*
                    ContentAddressMethod method = ContentAddressMethod::parsePrefix(hashAlgo);
                    if (method == TextIngestionMethod {})
@@ -181,7 +181,7 @@ impl DerivationOutput {
             */
             let (method, algo) = ContentAddressMethod::parse_prefix(&hash_algo);
             let algorithm = algo.parse::<hash::Algorithm>()?;
-            if hash != "" {
+            if !hash.is_empty() {
                 validate_path(&path_s)?;
                 let hash = hash::Hash::parse_non_sri_unprefixed(&hash, algorithm)?;
                 let hash = ContentAddress { method, hash };
@@ -194,14 +194,12 @@ impl DerivationOutput {
                     hash_type: algorithm,
                 })
             }
+        } else if path_s.is_empty() {
+            Ok(DerivationOutput::Deferred)
         } else {
-            if path_s == "" {
-                Ok(DerivationOutput::Deferred)
-            } else {
-                validate_path(&path_s)?;
-                let path = store_dir.parse_path(&path_s)?;
-                Ok(DerivationOutput::InputAddressed(path))
-            }
+            validate_path(&path_s)?;
+            let path = store_dir.parse_path(&path_s)?;
+            Ok(DerivationOutput::InputAddressed(path))
         }
     }
 
@@ -234,14 +232,14 @@ impl DerivationOutput {
                 sink.write_str("").await?;
                 sink.write_str("").await?;
             }
-            DerivationOutput::CAFixed(dof) => {
+            DerivationOutput::CAFixed(ca) => {
                 let path = store_dir.make_fixed_output_path_from_ca(
                     &output_path_name(drv_name, output_name),
-                    &ContentAddressWithReferences::without_refs(dof.clone()),
+                    &ContentAddressWithReferences::without_refs(*ca),
                 )?;
                 sink.write_printed(store_dir, &path).await?;
-                sink.write_string(format!("{:#}", dof)).await?;
-                sink.write_string(format!("{:#x}", dof.hash)).await?;
+                sink.write_string(format!("{:#}", ca)).await?;
+                sink.write_string(format!("{:#x}", ca.hash)).await?;
             }
             DerivationOutput::CAFloating { method, hash_type } => {
                 sink.write_str("").await?;
@@ -272,9 +270,9 @@ impl DerivationOutput {
     ) -> Result<Option<StorePath>, ParseStorePathError> {
         match self {
             DerivationOutput::InputAddressed(path) => Ok(Some(path.clone())),
-            DerivationOutput::CAFixed(dof) => Ok(Some(store_dir.make_fixed_output_path_from_ca(
+            DerivationOutput::CAFixed(ca) => Ok(Some(store_dir.make_fixed_output_path_from_ca(
                 &output_path_name(drv_name, output_name),
-                &ContentAddressWithReferences::without_refs(dof.clone()),
+                &ContentAddressWithReferences::without_refs(*ca),
             )?)),
             DerivationOutput::CAFloating { .. } => Ok(None),
             DerivationOutput::Deferred => Ok(None),
@@ -622,8 +620,8 @@ pub mod proptest {
     pub fn arb_derivation_output() -> impl Strategy<Value = DerivationOutput> {
         use DerivationOutput::*;
         prop_oneof![
-            any::<StorePath>().prop_map(|s| InputAddressed(s)),
-            any::<ContentAddress>().prop_map(|s| CAFixed(s)),
+            any::<StorePath>().prop_map(InputAddressed),
+            any::<ContentAddress>().prop_map(CAFixed),
             (any::<ContentAddressMethod>(), any::<hash::Algorithm>())
                 .prop_map(|(method, hash_type)| CAFloating { method, hash_type }),
             Just(Deferred)

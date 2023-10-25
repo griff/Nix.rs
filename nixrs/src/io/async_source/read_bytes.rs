@@ -95,9 +95,8 @@ where
                         }
                         Poll::Ready(res) => res?,
                     }
-                    let s = Bytes::from(buf);
                     *self = Self::Done(padding.inner());
-                    return Poll::Ready(Ok(s));
+                    return Poll::Ready(Ok(buf));
                 }
             }
         }

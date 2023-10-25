@@ -129,7 +129,7 @@ impl StorePath {
 
     pub fn new_from_base_name(base_name: &str) -> Result<Self, ParseStorePathError> {
         if base_name.len() < STORE_PATH_HASH_CHARS + 1
-            || base_name.as_bytes()[STORE_PATH_HASH_CHARS] != '-' as u8
+            || base_name.as_bytes()[STORE_PATH_HASH_CHARS] != b'-'
         {
             return Err(ParseStorePathError::BadStorePath(base_name.into()));
         }
@@ -148,7 +148,7 @@ impl StorePath {
         self.name.ends_with(DRV_EXTENSION)
     }
 
-    pub fn name_from_drv<'a>(&'a self) -> &'a str {
+    pub fn name_from_drv(&self) -> &str {
         let name_with_suffix = self.name.name();
         assert!(name_with_suffix.ends_with(DRV_EXTENSION));
 
@@ -191,15 +191,14 @@ impl StorePathHash {
 
     pub fn new_from_hash(hash: &hash::Hash) -> Self {
         let mut bytes = [0u8; STORE_PATH_HASH_BYTES];
-        let buf = hash.as_ref();
-        for i in 0..hash.len() {
+        for (i, item) in hash.as_ref().iter().enumerate() {
             let idx = i % STORE_PATH_HASH_BYTES;
-            bytes[idx] ^= buf[i];
+            bytes[idx] ^= item;
         }
         StorePathHash(bytes)
     }
 
-    pub fn hash<'a>(&'a self) -> &'a [u8; STORE_PATH_HASH_BYTES] {
+    pub fn hash(&self) -> &[u8; STORE_PATH_HASH_BYTES] {
         &self.0
     }
 }
@@ -257,7 +256,7 @@ pub struct StorePathName(String);
 
 impl StorePathName {
     pub fn new(s: &str) -> Result<Self, ParseStorePathError> {
-        if s.len() == 0 {
+        if s.is_empty() {
             return Err(ParseStorePathError::StorePathNameEmpty);
         }
 
@@ -272,7 +271,7 @@ impl StorePathName {
         Ok(Self(s.to_string()))
     }
 
-    pub fn name<'a>(&'a self) -> &'a str {
+    pub fn name(&self) -> &str {
         &self.0
     }
 }
@@ -327,13 +326,13 @@ pub mod proptest {
             if max > 211 - len {
                 max = 211 - len;
             }
-            max = max - 1;
+            max -= 1;
             if s.len() > max as usize {
                 s.truncate(max as usize);
             }
             if let Some(ext) = extension.as_ref() {
                 s.push('.');
-                s.push_str(&ext);
+                s.push_str(ext);
             }
             StorePathName::new(&s).unwrap()
         })

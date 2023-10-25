@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::vec::IntoIter;
 
 use async_stream::try_stream;
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 use futures::Stream;
 use log::trace;
 use nixrs::archive::{NAREvent, NAR_VERSION_MAGIC_1};
@@ -22,10 +22,7 @@ enum Process {
 
 impl Process {
     fn is_dir(&self) -> bool {
-        match self {
-            Self::Dir(_) | Self::DoneDir => true,
-            _ => false,
-        }
+        matches!(self, Self::Dir(_) | Self::DoneDir)
     }
 }
 
@@ -77,7 +74,7 @@ pub fn nar_source(
                 match node {
                     proto::node::Node::Symlink(symlink_node) => {
                         if !dir_stack.is_empty() {
-                            let name : Bytes = symlink_node.name.into();
+                            let name = symlink_node.name;
                             let event = NAREvent::DirectoryEntry { name: name.clone() };
                             trace!("{}DirEntry {} {} {}", " ".repeat(depth), bstr::BStr::new(&name), offset, event.encoded_size());
                             depth += 1;
@@ -85,7 +82,7 @@ pub fn nar_source(
                             yield event;
                             //ret.push(event);
                         }
-                        let target : Bytes = symlink_node.target.into();
+                        let target = symlink_node.target;
                         let event = NAREvent::SymlinkNode { target };
                         trace!("{}Symlink {} {}", " ".repeat(depth), offset, event.encoded_size());
                         offset += event.encoded_size() as u64;
@@ -102,7 +99,7 @@ pub fn nar_source(
                     }
                     proto::node::Node::File(file_node) => {
                         if !dir_stack.is_empty() {
-                            let name : Bytes = file_node.name.into();
+                            let name = file_node.name;
                             let event = NAREvent::DirectoryEntry { name: name.clone() };
                             trace!("{}DirEntry {} {} {}", " ".repeat(depth), bstr::BStr::new(&name), offset, event.encoded_size());
                             depth += 1;
@@ -141,10 +138,8 @@ pub fn nar_source(
                                 if buf.capacity() as u64 > size - index {
                                     drop(buf.split_off((size - index) as usize));
                                 }
-                                if buf.capacity() as u64 != size - index {
-                                    if buf.capacity() - buf.len() < cut_off {
-                                        buf.reserve(cut_off);
-                                    }
+                                if buf.capacity() as u64 != size - index && buf.capacity() - buf.len() < cut_off {
+                                    buf.reserve(cut_off);
                                 }
                                 source.read_buf(&mut buf).await.map_err(|err| {
                                     tvix_castore::Error::StorageError(format!("IO Error {:?}", err))
@@ -174,7 +169,7 @@ pub fn nar_source(
                     }
                     proto::node::Node::Directory(dir_node) => {
                         if !dir_stack.is_empty() {
-                            let name : Bytes = dir_node.name.into();
+                            let name = dir_node.name;
                             let event = NAREvent::DirectoryEntry { name: name.clone() };
                             trace!("{}DirEntry {} {} {}", " ".repeat(depth), bstr::BStr::new(&name), offset, event.encoded_size());
                             depth += 1;

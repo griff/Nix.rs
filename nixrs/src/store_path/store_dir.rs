@@ -108,7 +108,7 @@ impl StoreDir {
 
     fn make_type(&self, mut path_type: String, references: &StoreReferences) -> String {
         for reference in references.others.iter() {
-            path_type.push_str(":");
+            path_type.push(':');
             path_type.push_str(&self.print_path(reference));
         }
         if references.self_ref {
@@ -124,7 +124,7 @@ impl StoreDir {
         name: &str,
     ) -> Result<StorePath, ParseStorePathError> {
         let s = format!("{}:{}:{}:{}", path_type, hash, self, name);
-        StorePath::from_hash(&hash::digest(hash::Algorithm::SHA256, &s), name)
+        StorePath::from_hash(&hash::digest(hash::Algorithm::SHA256, s), name)
     }
 
     pub fn make_store_path(
@@ -153,7 +153,7 @@ impl StoreDir {
             assert!(info.references.is_empty());
             let hash = hash::digest(
                 hash::Algorithm::SHA256,
-                &format!("fixed:out:{:#}{:x}:", info.method, info.hash),
+                format!("fixed:out:{:#}{:x}:", info.method, info.hash),
             );
             trace!("Output hash {:x}", hash);
             self.make_store_path("output:out", hash, name)
@@ -197,13 +197,13 @@ impl StoreDir {
         }
         let clean = clean_path(path);
         if let Cow::Owned(o) = clean {
-            match o.strip_prefix(&self) {
+            match o.strip_prefix(self) {
                 Err(_) => Err(path),
                 Ok(p) if p == Path::new("") => Err(path),
                 Ok(p) => Ok(Cow::Owned(p.into())),
             }
         } else {
-            match path.strip_prefix(&self) {
+            match path.strip_prefix(self) {
                 Err(_) => Err(path),
                 Ok(p) if p == Path::new("") => Err(path),
                 Ok(p) => Ok(Cow::Borrowed(p)),
@@ -222,10 +222,7 @@ impl StoreDir {
     /// assert_eq!(false, store.is_in_store("/var/lib/"));
     /// ```
     pub fn is_in_store<P: AsRef<Path>>(&self, path: P) -> bool {
-        match self.strip_store_path(path.as_ref()) {
-            Err(_) => false,
-            Ok(_) => true,
-        }
+        self.strip_store_path(path.as_ref()).is_ok()
     }
 
     /// Convert a `path` in this store to a [`StorePath`].

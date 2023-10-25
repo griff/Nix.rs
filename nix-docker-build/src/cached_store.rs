@@ -66,8 +66,8 @@ impl Store for CachedStore {
         sink: W,
     ) -> Result<(), Error> {
         if let Some(builder) = self.builder.as_mut() {
-            if builder.query_path_info(&path).await?.is_some() {
-                builder.nar_from_path(&path, sink).await
+            if builder.query_path_info(path).await?.is_some() {
+                builder.nar_from_path(path, sink).await
             } else {
                 self.cache.nar_from_path(path, sink).await
             }
@@ -105,7 +105,7 @@ impl Store for CachedStore {
         //let store_dir = self.store_dir();
         let inputs = self.cache.query_closure(&drv.input_srcs, false).await?;
         let mut b = LegacyStoreBuilder::new(&self.docker_bin);
-        b.command_mut().args(&[
+        b.command_mut().args([
             "run",
             "-i",
             "--network",
@@ -119,7 +119,7 @@ impl Store for CachedStore {
                 .arg(&format!("/nix/store/{}:/nix/store/{}", input, input));
         }
         b.command_mut()
-            .args(&["griff/nix-static", "nix-store", "--serve"]);
+            .args(["griff/nix-static", "nix-store", "--serve"]);
         b.host("builder");
         if self.write_allowed {
             b.command_mut().arg("--write");
@@ -175,11 +175,11 @@ impl LegacyStore for CachedStore {
     ) -> Result<StorePathSet, Error> {
         if let Some(builder) = self.builder.as_mut() {
             let mut ret = builder
-                .query_valid_paths_locked(&paths, lock, maybe_substitute)
+                .query_valid_paths_locked(paths, lock, maybe_substitute)
                 .await?;
             let mut local = self
                 .cache
-                .query_valid_paths_locked(&paths, lock, maybe_substitute)
+                .query_valid_paths_locked(paths, lock, maybe_substitute)
                 .await?;
             ret.append(&mut local);
             Ok(ret)

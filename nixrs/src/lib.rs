@@ -12,6 +12,7 @@ pub mod path_info;
 pub mod signature;
 pub mod store;
 pub mod store_path;
+pub mod tracing;
 
 pub use closure::compute_closure;
 
@@ -73,7 +74,7 @@ pub mod proptest {
     prop_compose! {
         pub fn arb_duration()(secs in ::proptest::num::i32::ANY) -> Duration
         {
-            Duration::from_secs((secs as i64).abs() as u64)
+            Duration::from_secs((secs as i64).unsigned_abs())
         }
     }
 

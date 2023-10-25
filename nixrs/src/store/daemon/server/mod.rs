@@ -19,8 +19,6 @@ use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::Layer;
 use tracing_subscriber::{layer, registry};
 
-pub mod parent_layer;
-
 use super::{
     get_protocol_major, get_protocol_minor, DaemonStore, TrustedFlag, WorkerProtoOp,
     PROTOCOL_VERSION, STDERR_ERROR, STDERR_LAST, STDERR_NEXT, STDERR_READ, STDERR_RESULT,
@@ -38,6 +36,7 @@ use crate::store::{
     StorePathWithOutputs, SubstituteFlag,
 };
 use crate::store_path::{StoreDir, StorePath};
+use crate::tracing::ParentLayer;
 
 #[derive(Debug, Clone)]
 struct ActiveVerbosity(Arc<AtomicU64>);
@@ -120,13 +119,11 @@ where
             eprintln!("start activity {}", id);
             debug!(id, "start activity {} {:?}", id, activity);
             if get_protocol_minor!(client_version) < 20 {
-                if !activity.text.is_empty() {
-                    if level.get() >= activity.level {
-                        writer.write_u64_le(STDERR_NEXT).await?;
-                        writer
-                            .write_string(format!("{}...\n", activity.text))
-                            .await?;
-                    }
+                if !activity.text.is_empty() && level.get() >= activity.level {
+                    writer.write_u64_le(STDERR_NEXT).await?;
+                    writer
+                        .write_string(format!("{}...\n", activity.text))
+                        .await?;
                 }
                 return Ok(());
             }
@@ -144,7 +141,7 @@ where
                     }
                     LoggerField::String(s) => {
                         writer.write_enum(LoggerFieldType::String).await?;
-                        writer.write_str(&s).await?;
+                        writer.write_str(s).await?;
                     }
                 }
             }
@@ -177,7 +174,7 @@ where
                     }
                     LoggerField::String(s) => {
                         writer.write_enum(LoggerFieldType::String).await?;
-                        writer.write_str(&s).await?;
+                        writer.write_str(s).await?;
                     }
                 }
             }
@@ -210,7 +207,7 @@ async fn process_tunnel<S>(
                 eprintln!("Start work");
                 debug!("Start work");
                 let mut s = taker.take();
-                if let Err(err) = s.write_all(&mut buf).await {
+                if let Err(err) = s.write_all(&buf).await {
                     error!("Cound not write data for tunnel start work {}", err);
                 }
                 if let Err(err) = s.flush().await {
@@ -316,9 +313,11 @@ impl Visit for EventFormat {
     fn record_debug(&mut self, _field: &tracing::field::Field, _value: &dyn std::fmt::Debug) {}
 }
 
+type ReadingFut<'r, R> = dyn Future<Output = io::Result<(Bytes, &'r mut R)>> + Send + 'r;
+
 pub enum TunnelSourceOp<'r, R> {
     Available(&'r mut R, Bytes),
-    Reading(Pin<Box<dyn Future<Output = io::Result<(Bytes, &'r mut R)>> + Send + 'r>>),
+    Reading(Pin<Box<ReadingFut<'r, R>>>),
     Empty(&'r mut R),
     Invalid,
 }
@@ -399,7 +398,11 @@ where
                     let buffer = self.buffer.split_off(0);
                     let sender = self.sender.clone();
                     let fut = async move {
-                        if let Err(_) = sender.send(TunnelCommand::Read(buffer.remaining())).await {
+                        if sender
+                            .send(TunnelCommand::Read(buffer.remaining()))
+                            .await
+                            .is_err()
+                        {
                             return Err(io::ErrorKind::BrokenPipe.into());
                         }
                         let bytes = reader.read_bytes_buf(buffer).await?;
@@ -497,11 +500,9 @@ where
             } else {
                 eprintln!("Activity result was missing fields")
             }
-        } else {
-            if let Some(cmd) = format_event(self.level.clone(), event) {
-                if let Err(err) = self.sender.try_send(cmd) {
-                    eprintln!("Event dropped {err}")
-                }
+        } else if let Some(cmd) = format_event(self.level.clone(), event) {
+            if let Err(err) = self.sender.try_send(cmd) {
+                eprintln!("Event dropped {err}")
             }
         }
     }
@@ -737,9 +738,7 @@ where
         }
         Ok(())
     };
-    let sub = registry()
-        .with(tunnel_layer)
-        .with(parent_layer::ParentLayer::new());
+    let sub = registry().with(tunnel_layer).with(ParentLayer::new());
     fut.with_subscriber(sub).await
 }
 
@@ -875,7 +874,7 @@ where
         BuildDerivation => {
             let drv_path: StorePath = from.read_parsed(&store_dir).await?;
             let drv =
-                BasicDerivation::read_drv(&mut from, &store_dir, &drv_path.name_from_drv()).await?;
+                BasicDerivation::read_drv(&mut from, &store_dir, drv_path.name_from_drv()).await?;
             let build_mode = from.read_enum().await?;
             logger.start_work().await;
 
@@ -1047,7 +1046,7 @@ where
         AddToStoreNar => {
             let path = from.read_parsed(&store_dir).await?;
             let deriver = from.read_string().await?;
-            let deriver = if deriver != "" {
+            let deriver = if !deriver.is_empty() {
                 Some(store_dir.parse_path(&deriver)?)
             } else {
                 None
@@ -1064,7 +1063,7 @@ where
                 .map(|s| s.parse())
                 .collect::<Result<SignatureSet, ParseSignatureError>>()?;
             let ca_s = from.read_string().await?;
-            let ca = if ca_s != "" {
+            let ca = if !ca_s.is_empty() {
                 Some(ca_s.parse()?)
             } else {
                 None
@@ -1105,31 +1104,28 @@ where
                     res?
                 }
                 logger.stop_work().await;
+            } else if get_protocol_minor!(client_version) >= 21 {
+                let mut source = TunnelSource::with_capacity(&mut from, logger.sender(), 65_000);
+                logger.start_work().await;
+                // FIXME: race if addToStore doesn't read source?
+                store
+                    .add_to_store(&info, &mut source, repair, check_sigs)
+                    .await?;
+                logger.stop_work().await;
             } else {
-                if get_protocol_minor!(client_version) >= 21 {
-                    let mut source =
-                        TunnelSource::with_capacity(&mut from, logger.sender(), 65_000);
-                    logger.start_work().await;
-                    // FIXME: race if addToStore doesn't read source?
-                    store
-                        .add_to_store(&info, &mut source, repair, check_sigs)
-                        .await?;
-                    logger.stop_work().await;
-                } else {
-                    /*
-                    TeeSource tee { from, saved };
-                    ParseSink ether;
-                    parseDump(ether, tee);
-                    source = std::make_unique<StringSource>(saved.s);
-                     */
-                    let mut source = tokio::io::AsyncReadExt::take(&mut from, info.nar_size);
-                    logger.start_work().await;
-                    // FIXME: race if addToStore doesn't read source?
-                    store
-                        .add_to_store(&info, &mut source, repair, check_sigs)
-                        .await?;
-                    logger.stop_work().await;
-                }
+                /*
+                TeeSource tee { from, saved };
+                ParseSink ether;
+                parseDump(ether, tee);
+                source = std::make_unique<StringSource>(saved.s);
+                    */
+                let mut source = tokio::io::AsyncReadExt::take(&mut from, info.nar_size);
+                logger.start_work().await;
+                // FIXME: race if addToStore doesn't read source?
+                store
+                    .add_to_store(&info, &mut source, repair, check_sigs)
+                    .await?;
+                logger.stop_work().await;
             }
         }
         QueryMissing => {

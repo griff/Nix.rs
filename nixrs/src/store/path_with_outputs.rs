@@ -17,10 +17,10 @@ pub struct StorePathWithOutputs {
 
 impl StorePathWithOutputs {
     pub fn parse(store_dir: &StoreDir, s: &str) -> Result<Self, ParseStorePathError> {
-        if let Some(pos) = s.find("!") {
+        if let Some(pos) = s.find('!') {
             let path = store_dir.parse_path(&s[..pos])?;
             let mut outputs = StringSet::new();
-            for output in s[(pos + 1)..].split(",") {
+            for output in s[(pos + 1)..].split(',') {
                 outputs.insert(output.to_owned());
             }
             Ok(StorePathWithOutputs { path, outputs })
@@ -104,7 +104,7 @@ impl StateParse<StorePathWithOutputs> for StoreDir {
 
 impl StatePrint<StorePathWithOutputs> for StoreDir {
     fn print(&self, item: &StorePathWithOutputs) -> String {
-        item.print(&self)
+        item.print(self)
     }
 }
 

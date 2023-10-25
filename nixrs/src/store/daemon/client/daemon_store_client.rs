@@ -411,7 +411,7 @@ where
         if get_protocol_minor!(daemon_version) < 12 {
             let mut res = StorePathSet::new();
             for i in paths.iter() {
-                if self.is_valid_path(&i).await? {
+                if self.is_valid_path(i).await? {
                     res.insert(i.clone());
                 }
             }

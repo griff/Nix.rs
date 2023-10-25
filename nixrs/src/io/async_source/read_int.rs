@@ -48,7 +48,7 @@ impl<R: AsyncRead> Future for ReadU64<R> {
 
             *me.read += match me.src.as_mut().poll_read(cx, &mut buf) {
                 Poll::Pending => return Poll::Pending,
-                Poll::Ready(Err(e)) => return Poll::Ready(Err(e.into())),
+                Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
                 Poll::Ready(Ok(())) => {
                     let n = buf.filled().len();
                     if n == 0 {

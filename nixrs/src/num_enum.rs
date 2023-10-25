@@ -11,12 +11,13 @@ macro_rules! num_enum {
         $( #[$meta:meta] )*
         $vis:vis enum $name:ident {
             $u:ident($t:ty)
-            $(,$i:ident = $v:literal)+$(,)?
+            $(,$(#[$metai:meta])*
+            $i:ident = $v:literal)+$(,)?
         }
     ) => {
         $( #[$meta] )*
         $vis enum $name {
-            $($i),+,
+            $( $(#[$metai])* $i ),+,
             $u($t),
         }
         impl $name {

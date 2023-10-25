@@ -14,14 +14,12 @@ mod parser;
 mod restore;
 #[cfg(any(test, feature = "test"))]
 pub mod test_data;
-mod validator;
 
 pub use case_hack::CaseHackStream;
 pub use dump::{dump, All, DumpOptions, Filter};
 pub use encoder::NAREncoder;
 pub use parser::parse_nar;
 pub use restore::{restore, NARRestorer};
-pub use validator::NARValidator;
 
 pub const NAR_VERSION_MAGIC_1: &str = "nix-archive-1";
 pub const CASE_HACK_SUFFIX: &str = "~nix~case~hack~";
@@ -145,7 +143,7 @@ pub mod proptest {
             offset
         }
 
-        fn to_events(self) -> Vec<NAREvent> {
+        fn into_events(self) -> Vec<NAREvent> {
             let mut ret = Vec::new();
             let e = NAREvent::Magic(Arc::new(NAR_VERSION_MAGIC_1.into()));
             let offset = e.encoded_size() as u64;
@@ -175,7 +173,7 @@ pub mod proptest {
         desired_size: u32,
         expected_branch_size: u32,
     ) -> impl Strategy<Value = Vec<super::NAREvent>> {
-        arb_nar_tree(depth, desired_size, expected_branch_size).prop_map(|tree| tree.to_events())
+        arb_nar_tree(depth, desired_size, expected_branch_size).prop_map(|tree| tree.into_events())
     }
 
     pub fn arb_nar_contents(

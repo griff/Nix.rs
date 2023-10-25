@@ -35,7 +35,7 @@ num_enum! {
 }
 
 impl Verbosity {
-    pub const fn to_tracing(&self) -> tracing::Level {
+    pub const fn to_tracing(self) -> tracing::Level {
         use tracing::Level;
         use Verbosity::*;
         match self {

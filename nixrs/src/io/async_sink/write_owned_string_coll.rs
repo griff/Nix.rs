@@ -30,7 +30,7 @@ pub enum WriteOwnedStringColl<W, I> {
     Done(W),
 }
 
-impl<'a, W, I> Future for WriteOwnedStringColl<W, I>
+impl<W, I> Future for WriteOwnedStringColl<W, I>
 where
     W: AsyncWrite + Unpin,
     I: Iterator<Item = String> + Unpin,

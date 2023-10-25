@@ -47,10 +47,6 @@ where
     type Item = String;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(item) = self.it.next() {
-            Some(self.state.print(&item))
-        } else {
-            None
-        }
+        self.it.next().map(|item| self.state.print(item))
     }
 }

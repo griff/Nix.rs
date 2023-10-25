@@ -34,7 +34,7 @@ impl Stores {
                 let store_paths =
                     compute_fs_closure(self.nar_store.clone(), start_paths, false).await?;
                 let p: Vec<String> = store_paths.iter().map(|p| p.to_string()).collect();
-                eprintln!("Copying paths for {}: {}", info.path, (&p[..]).join(", "));
+                eprintln!("Copying paths for {}: {}", info.path, p[..].join(", "));
                 copy_paths(&mut self.nar_store, &mut self.tvix_store, &store_paths).await?;
             } else {
                 eprintln!("Copying path {}", info.path);
@@ -87,7 +87,7 @@ impl PathInfoService for SubstitutePathInfoService {
                 let cache = HttpBinaryCache::new(base_url.as_ref())
                     .map_err(|err| Error::StorageError(format!("binary cache error {}", err)))?;
                 let nar_store = BinaryStoreWrap::new(cache);
-                let local = from_addr(&uri, blob_service.clone(), directory_service.clone())?;
+                let local = from_addr(uri, blob_service.clone(), directory_service.clone())?;
                 let tvix_store = TvixStore {
                     store_dir: nar_store.store_dir(),
                     blob_service,

@@ -52,19 +52,19 @@ impl Algorithm {
     /// Returns the length of a base-16 representation of this hash.
     #[inline]
     pub const fn base16_len(&self) -> usize {
-        return self.size() * 2;
+        self.size() * 2
     }
 
     /// Returns the length of a base-32 representation of this hash.
     #[inline]
     pub const fn base32_len(&self) -> usize {
-        return base32::encoded_len(self.size());
+        base32::encoded_len(self.size())
     }
 
     /// Returns the length of a base-64 representation of this hash.
     #[inline]
     pub const fn base64_len(&self) -> usize {
-        return ((4 * self.size() / 3) + 3) & !3;
+        ((4 * self.size() / 3) + 3) & !3
     }
 
     #[inline]
@@ -148,21 +148,17 @@ pub enum ParseHashError {
     WrongHashLength2(Algorithm, usize),
 }
 
-pub fn split_prefix<'a>(s: &'a str, prefix: &str) -> Option<(&'a str, &'a str)> {
+pub fn split_prefix(s: &str, prefix: char) -> Option<(&str, &str)> {
     let mut it = s.splitn(2, prefix);
     let prefix = it.next().unwrap();
-    if let Some(rest) = it.next() {
-        Some((prefix, rest))
-    } else {
-        None
-    }
+    it.next().map(|rest| (prefix, rest))
 }
 
 pub(crate) fn parse_prefix(s: &str) -> Result<Option<(Algorithm, bool, &str)>, UnknownAlgorithm> {
-    if let Some((prefix, rest)) = split_prefix(s, ":") {
+    if let Some((prefix, rest)) = split_prefix(s, ':') {
         let a: Algorithm = prefix.parse()?;
         Ok(Some((a, false, rest)))
-    } else if let Some((prefix, rest)) = split_prefix(s, "-") {
+    } else if let Some((prefix, rest)) = split_prefix(s, '-') {
         let a: Algorithm = prefix.parse()?;
         Ok(Some((a, true, rest)))
     } else {
@@ -179,7 +175,7 @@ pub struct Hash {
 impl Hash {
     pub fn new(algorithm: Algorithm, hash: &[u8]) -> Hash {
         let mut data = [0u8; MAX_SIZE];
-        (&mut data[0..algorithm.size()]).copy_from_slice(&hash);
+        data[0..algorithm.size()].copy_from_slice(hash);
         Hash { algorithm, data }
     }
 
@@ -231,7 +227,7 @@ impl Hash {
     ///
     /// These have the format `<type>-<base64>`,
     pub fn parse_sri(s: &str) -> Result<Hash, ParseHashError> {
-        if let Some((prefix, rest)) = split_prefix(s, "-") {
+        if let Some((prefix, rest)) = split_prefix(s, '-') {
             let a: Algorithm = prefix.parse()?;
             Hash::from_str(rest, a, true)
         } else {
@@ -276,7 +272,7 @@ impl Hash {
     }
 
     pub fn parse_non_sri_prefixed(s: &str) -> Result<Hash, ParseHashError> {
-        if let Some((prefix, rest)) = split_prefix(s, ":") {
+        if let Some((prefix, rest)) = split_prefix(s, ':') {
             let a = prefix.parse()?;
             Hash::from_str(rest, a, false)
         } else {
@@ -310,19 +306,19 @@ impl Hash {
         base64::encode(self.as_ref())
     }
 
-    pub fn to_base16<'a>(&'a self) -> impl fmt::Display + 'a {
+    pub fn to_base16(&self) -> impl fmt::Display + '_ {
         Base16Hash(self)
     }
 
-    pub fn to_base32<'a>(&'a self) -> impl fmt::Display + 'a {
+    pub fn to_base32(&self) -> impl fmt::Display + '_ {
         Base32Hash(self)
     }
 
-    pub fn to_base64<'a>(&'a self) -> impl fmt::Display + 'a {
+    pub fn to_base64(&self) -> impl fmt::Display + '_ {
         Base64Hash(self)
     }
 
-    pub fn to_sri<'a>(&'a self) -> impl fmt::Display + 'a {
+    pub fn to_sri(&self) -> impl fmt::Display + '_ {
         SRIHash(self)
     }
 }

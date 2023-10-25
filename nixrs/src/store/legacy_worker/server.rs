@@ -219,7 +219,7 @@ where
 
                 let drv_path: StorePath = source.read_parsed(&store_dir).await?;
                 let drv =
-                    BasicDerivation::read_drv(&mut source, &store_dir, &drv_path.name_from_drv())
+                    BasicDerivation::read_drv(&mut source, &store_dir, drv_path.name_from_drv())
                         .await?;
 
                 read_build_settings(&mut source, client_version).await?;
@@ -260,7 +260,7 @@ where
 
                 let path = source.read_parsed(&store_dir).await?;
                 let deriver = source.read_string().await?;
-                let deriver = if deriver != "" {
+                let deriver = if !deriver.is_empty() {
                     Some(store_dir.parse_path(&deriver)?)
                 } else {
                     None
@@ -277,7 +277,7 @@ where
                     .map(|s| s.parse())
                     .collect::<Result<SignatureSet, ParseSignatureError>>()?;
                 let ca_s = source.read_string().await?;
-                let ca = if ca_s != "" {
+                let ca = if !ca_s.is_empty() {
                     Some(ca_s.parse()?)
                 } else {
                     None

@@ -1,12 +1,15 @@
 use std::time::SystemTime;
 
 use bytes::Bytes;
-use nixrs::hash;
+use nixrs::hash::{self, Algorithm};
 use nixrs::path_info::ValidPathInfo;
 use nixrs::signature::{ParseSignatureError, Signature, SignatureSet};
 use nixrs::store::Error;
-use nixrs::store_path::{ParseStorePathError, StorePath, StorePathSet};
+use nixrs::store_path::{
+    ContentAddressMethod, FileIngestionMethod, ParseStorePathError, StorePath, StorePathSet,
+};
 use tvix_castore::proto;
+use tvix_store::proto::nar_info::ca::Hash;
 use tvix_store::proto::{self as store_proto, PathInfo};
 
 pub fn valid_path_info_from_path_info(info: PathInfo) -> Result<ValidPathInfo, Error> {
@@ -26,7 +29,7 @@ pub fn valid_path_info_from_path_info(info: PathInfo) -> Result<ValidPathInfo, E
         let references = narinfo
             .reference_names
             .iter()
-            .map(|s| StorePath::new_from_base_name(&s))
+            .map(|s| StorePath::new_from_base_name(s))
             .collect::<Result<StorePathSet, ParseStorePathError>>()?;
         let sigs = narinfo
             .signatures
@@ -78,32 +81,45 @@ pub fn path_info_from_valid_path_info(info: &ValidPathInfo, mut node: proto::Nod
         }
         _ => {}
     }
-    let ca = if let Some(info_ca) = info.ca.as_ref() {
-        let mut ca = store_proto::nar_info::Ca::default();
-        ca.digest = info_ca.hash.as_ref().to_vec().into();
-        Some(ca)
-    } else {
-        None
-    };
-    let deriver = if let Some(info_deriver) = info.deriver.as_ref() {
-        let name = info_deriver.name_from_drv();
-        let mut path = store_proto::StorePath::default();
-        path.digest = info_deriver.hash.as_ref().to_vec().into();
-        path.name = name.to_string();
-        Some(path)
-    } else {
-        None
-    };
-    let mut ret = PathInfo::default();
-    ret.node = Some(node);
-    ret.references = references;
-    ret.narinfo = Some(store_proto::NarInfo {
-        nar_size: info.nar_size,
-        nar_sha256: info.nar_hash.data().to_vec().into(),
-        ca,
-        deriver,
-        reference_names,
-        signatures,
+    let ca = info.ca.as_ref().map(|info_ca| {
+        use ContentAddressMethod::*;
+        use FileIngestionMethod::*;
+        let r#type = match (info_ca.method, info_ca.hash.algorithm()) {
+            (Text, _) => Hash::TextSha256,
+            (Fixed(Flat), Algorithm::MD5) => Hash::FlatMd5,
+            (Fixed(Flat), Algorithm::SHA1) => Hash::FlatSha1,
+            (Fixed(Flat), Algorithm::SHA256) => Hash::FlatSha256,
+            (Fixed(Flat), Algorithm::SHA512) => Hash::FlatSha512,
+            (Fixed(Recursive), Algorithm::MD5) => Hash::NarMd5,
+            (Fixed(Recursive), Algorithm::SHA1) => Hash::NarSha1,
+            (Fixed(Recursive), Algorithm::SHA256) => Hash::NarSha256,
+            (Fixed(Recursive), Algorithm::SHA512) => Hash::NarSha512,
+        }
+        .into();
+        store_proto::nar_info::Ca {
+            r#type,
+            digest: info_ca.hash.as_ref().to_vec().into(),
+        }
     });
-    ret
+    let deriver = if let Some(info_deriver) = info.deriver.as_ref() {
+        let name = info_deriver.name_from_drv().to_string();
+        Some(store_proto::StorePath {
+            digest: info_deriver.hash.as_ref().to_vec().into(),
+            name,
+        })
+    } else {
+        None
+    };
+    PathInfo {
+        node: Some(node),
+        references,
+        narinfo: Some(store_proto::NarInfo {
+            nar_size: info.nar_size,
+            nar_sha256: info.nar_hash.data().to_vec().into(),
+            ca,
+            deriver,
+            reference_names,
+            signatures,
+        }),
+    }
 }

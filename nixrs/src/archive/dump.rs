@@ -107,6 +107,12 @@ impl DumpOptions<All> {
     }
 }
 
+impl Default for DumpOptions<All> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<F> DumpOptions<F> {
     pub fn filter<Fut>(&mut self, filter: F) -> &mut Self
     where
@@ -227,10 +233,8 @@ where
                             if buf.capacity() as u64 > size - index {
                                 drop(buf.split_off((size - index) as usize));
                             }
-                            if buf.capacity() as u64 != size - index {
-                                if buf.capacity() - buf.len() < cut_off {
-                                    buf.reserve(cut_off);
-                                }
+                            if buf.capacity() as u64 != size - index && buf.capacity() - buf.len() < cut_off {
+                                buf.reserve(cut_off);
                             }
                             source.read_buf(&mut buf).await?;
                             let data = buf.split().freeze();

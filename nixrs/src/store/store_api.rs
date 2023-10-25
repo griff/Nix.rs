@@ -44,7 +44,7 @@ flag_enum! {
 }
 
 num_enum! {
-    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+    #[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
     pub enum BuildStatus {
         Unsupported(u64),
         Built = 0,
@@ -56,6 +56,7 @@ num_enum! {
         TransientFailure = 6, // possibly transient
         CachedFailure = 7, // no longer used
         TimedOut = 8,
+        #[default]
         MiscFailure = 9,
         DependencyFailed = 10,
         LogLimitExceeded = 11,
@@ -64,16 +65,10 @@ num_enum! {
 }
 impl BuildStatus {
     pub fn success(&self) -> bool {
-        match self {
-            BuildStatus::Built | BuildStatus::Substituted | BuildStatus::AlreadyValid => true,
-            _ => false,
-        }
-    }
-}
-
-impl Default for BuildStatus {
-    fn default() -> Self {
-        BuildStatus::MiscFailure
+        matches!(
+            self,
+            BuildStatus::Built | BuildStatus::Substituted | BuildStatus::AlreadyValid
+        )
     }
 }
 
@@ -150,11 +145,11 @@ where
 {
     let valid = dst_store.query_valid_paths(store_paths, substitute).await?;
 
-    let missing: StorePathSet = store_paths.difference(&valid).map(|s| s.clone()).collect();
+    let missing: StorePathSet = store_paths.difference(&valid).cloned().collect();
 
     let sorted = topo_sort_paths_slow(src_store, &missing).await?;
     for store_path in sorted {
-        if !dst_store.query_path_info(&store_path).await?.is_some() {
+        if dst_store.query_path_info(&store_path).await?.is_none() {
             copy_store_path(src_store, dst_store, &store_path, repair, check_sigs).await?;
         }
     }
@@ -195,7 +190,7 @@ where
     }
     let (sink, source) = tokio::io::duplex(64_000);
     try_join(
-        src_store.nar_from_path(&store_path, sink),
+        src_store.nar_from_path(store_path, sink),
         dst_store.add_to_store(&info, source, repair, check_sigs),
     )
     .await?;
@@ -415,7 +410,7 @@ pub mod proptest {
         fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
             use BuildMode::*;
             prop_oneof![
-                1 => (13u64..500u64).prop_map(|v| Unknown(v) ),
+                1 => (13u64..500u64).prop_map(Unknown),
                 50 => Just(Normal),
                 5 => Just(Repair),
                 5 => Just(Check),
@@ -431,7 +426,7 @@ pub mod proptest {
         fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
             use BuildStatus::*;
             prop_oneof![
-                1 => (13u64..500u64).prop_map(|v| Unsupported(v) ),
+                1 => (13u64..500u64).prop_map(Unsupported),
                 50 => Just(Built),
                 5 => Just(Substituted),
                 5 => Just(AlreadyValid),

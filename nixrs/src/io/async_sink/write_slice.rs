@@ -22,13 +22,13 @@ pub enum WriteSlice<'a, W> {
     Done(W),
 }
 
-pub(crate) fn write_str<'a, W>(dst: W, s: &'a str) -> WriteSlice<'a, W> {
+pub(crate) fn write_str<W>(dst: W, s: &str) -> WriteSlice<'_, W> {
     let buf = s.as_bytes();
     let len = buf.len();
     WriteSlice::WriteSize(buf, WriteU64::new(dst, len as u64))
 }
 
-pub(crate) fn write_buf<'a, W>(dst: W, buf: &'a [u8]) -> WriteSlice<'a, W> {
+pub(crate) fn write_buf<W>(dst: W, buf: &[u8]) -> WriteSlice<'_, W> {
     let len = buf.len();
     WriteSlice::WriteSize(buf, WriteU64::new(dst, len as u64))
 }
@@ -65,7 +65,7 @@ where
                         Poll::Ready(res) => res?,
                     }
                     let dst = writer.inner();
-                    if buf.len() == 0 {
+                    if buf.is_empty() {
                         *self = WriteSlice::Done(dst);
                         return Poll::Ready(Ok(()));
                     }

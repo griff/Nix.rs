@@ -11,17 +11,12 @@ fn nar_info_file_for(path: &StorePath) -> String {
     format!("{}.narinfo", path.hash)
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq, Eq)]
 enum Compression {
     None,
+    #[default]
     XZ,
     BZip2,
-}
-
-impl Default for Compression {
-    fn default() -> Compression {
-        Compression::XZ
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]

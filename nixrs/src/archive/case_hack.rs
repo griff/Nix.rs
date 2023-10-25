@@ -62,7 +62,8 @@ impl<Err, S: Stream<Item = Result<NAREvent, Err>>> Stream for CaseHackStream<S> 
             let item = res?;
             let changed = match item {
                 re @ NAREvent::Directory => {
-                    let entries = std::mem::replace(this.entries, HashMap::new());
+                    #[allow(clippy::mutable_key_type)]
+                    let entries = std::mem::take(this.entries);
                     this.dir_stack.push(entries);
                     re
                 }

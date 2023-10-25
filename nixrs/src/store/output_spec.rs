@@ -22,12 +22,10 @@ impl TryFrom<StringSet> for OutputSpec {
     fn try_from(value: StringSet) -> Result<Self, Self::Error> {
         if value.is_empty() {
             Ok(Self::All)
+        } else if let Some(name) = value.iter().find(|s| !is_name(s)) {
+            Err(ParseOutputSpecError::BadOutputName(name.to_string()))
         } else {
-            if let Some(name) = value.iter().find(|s| !is_name(&s)) {
-                Err(ParseOutputSpecError::BadOutputName(name.to_string()))
-            } else {
-                Ok(Self::Names(value))
-            }
+            Ok(Self::Names(value))
         }
     }
 }
@@ -40,7 +38,7 @@ impl FromStr for OutputSpec {
             Ok(Self::All)
         } else {
             let mut names = StringSet::new();
-            for name in s.split(",") {
+            for name in s.split(',') {
                 let name = name.to_string();
                 if !is_name(&name) {
                     return Err(ParseOutputSpecError::BadOutputName(name));
@@ -116,7 +114,7 @@ pub mod proptest {
     pub fn arb_output_spec(size: impl Into<SizeRange>) -> impl Strategy<Value = OutputSpec> {
         prop_oneof![
             Just(OutputSpec::All),
-            btree_set(arb_output_name(), size).prop_map(|outputs| OutputSpec::Names(outputs))
+            btree_set(arb_output_name(), size).prop_map(OutputSpec::Names)
         ]
     }
 }

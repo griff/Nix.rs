@@ -50,7 +50,7 @@ impl Signature {
             return Err(ParseSignatureError::InvalidSignature);
         }
         let mut data = [0u8; SIGNATURE_BYTES];
-        data.copy_from_slice(&signature);
+        data.copy_from_slice(signature);
 
         Ok(Self(Arc::new(name.to_string()), data))
     }
@@ -67,14 +67,14 @@ impl FromStr for Signature {
     type Err = ParseSignatureError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut sp = s.splitn(2, ":");
+        let mut sp = s.splitn(2, ':');
         let name = Arc::new(
             sp.next()
                 .ok_or(ParseSignatureError::CorruptSignature)?
                 .to_string(),
         );
         let sig_s = sp.next().ok_or(ParseSignatureError::CorruptSignature)?;
-        let sig_b = decode(&sig_s).map_err(|_| ParseSignatureError::InvalidSignature)?;
+        let sig_b = decode(sig_s).map_err(|_| ParseSignatureError::InvalidSignature)?;
         if sig_b.len() != SIGNATURE_BYTES {
             eprintln!(
                 "Signature wrong length {}!={}",
@@ -119,7 +119,7 @@ impl PublicKey {
     }
 
     pub fn key(&self) -> String {
-        encode(&self.key_data)
+        encode(self.key_data)
     }
 }
 
@@ -152,10 +152,10 @@ impl FromStr for PublicKey {
     type Err = ParseKeyError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut sp = s.splitn(2, ":");
+        let mut sp = s.splitn(2, ':');
         let name = Arc::new(sp.next().ok_or(ParseKeyError::CorruptKey)?.to_string());
         let key_s = sp.next().ok_or(ParseKeyError::CorruptKey)?;
-        let key_b = decode(&key_s).map_err(|_| ParseKeyError::InvalidPublicKey)?;
+        let key_b = decode(key_s).map_err(|_| ParseKeyError::InvalidPublicKey)?;
         if key_b.len() != PUBLIC_KEY_BYTES {
             return Err(ParseKeyError::InvalidPublicKey);
         }
@@ -203,8 +203,8 @@ impl SecretKey {
         let key = Ed25519KeyPair::from_seed_unchecked(&seed)?;
         let pk = key.public_key();
         let mut key_data = [0u8; SECRET_KEY_BYTES];
-        (&mut key_data[0..SEED_BYTES]).copy_from_slice(&seed);
-        (&mut key_data[SEED_BYTES..SECRET_KEY_BYTES]).copy_from_slice(pk.as_ref());
+        key_data[0..SEED_BYTES].copy_from_slice(&seed);
+        key_data[SEED_BYTES..SECRET_KEY_BYTES].copy_from_slice(pk.as_ref());
         Ok(SecretKey {
             name,
             key,
@@ -217,7 +217,7 @@ impl SecretKey {
     }
 
     pub fn key(&self) -> String {
-        encode(&self.key_data)
+        encode(self.key_data)
     }
 
     pub fn sign<M: AsRef<[u8]>>(&self, data: M) -> Signature {
@@ -285,10 +285,10 @@ impl FromStr for SecretKey {
     type Err = ParseKeyError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut sp = s.splitn(2, ":");
+        let mut sp = s.splitn(2, ':');
         let name = Arc::new(sp.next().ok_or(ParseKeyError::CorruptKey)?.to_string());
         let key_s = sp.next().ok_or(ParseKeyError::CorruptKey)?;
-        let key_b = decode(&key_s).map_err(|_| ParseKeyError::InvalidSecretKey)?;
+        let key_b = decode(key_s).map_err(|_| ParseKeyError::InvalidSecretKey)?;
         if key_b.len() != SECRET_KEY_BYTES {
             return Err(ParseKeyError::InvalidSecretKey);
         }

@@ -15,7 +15,7 @@ use crate::store_path::{
 };
 use crate::StringSet;
 
-#[derive(Debug, Eq, PartialOrd, Ord, Hash, Clone)]
+#[derive(Debug, Eq, PartialOrd, Ord, Clone)]
 pub struct ValidPathInfo {
     pub path: StorePath,
     pub deriver: Option<StorePath>,
@@ -148,7 +148,7 @@ impl ValidPathInfo {
     ) -> Result<ValidPathInfo, Error> {
         let deriver = source.read_string().await?;
         debug!(deriver, "Deriver is {}", deriver);
-        let deriver = if deriver != "" {
+        let deriver = if !deriver.is_empty() {
             Some(store_dir.parse_path(&deriver)?)
         } else {
             None
@@ -175,7 +175,7 @@ impl ValidPathInfo {
 
             let ca_s = source.read_string().await?;
             debug!(ca = ca_s, "CA is {}", ca_s);
-            if ca_s != "" {
+            if !ca_s.is_empty() {
                 ca = Some(ca_s.parse()?);
             };
         }
@@ -201,16 +201,15 @@ impl ValidPathInfo {
         include_path: bool,
     ) -> Result<(), Error> {
         if include_path {
-            sink.write_printed(&store_dir, &self.path).await?;
+            sink.write_printed(store_dir, &self.path).await?;
         }
         if let Some(deriver) = self.deriver.as_ref() {
-            sink.write_printed(&store_dir, deriver).await?;
+            sink.write_printed(store_dir, deriver).await?;
         } else {
             sink.write_str("").await?;
         }
         sink.write_string(self.nar_hash.encode_base16()).await?;
-        sink.write_printed_coll(&store_dir, &self.references)
-            .await?;
+        sink.write_printed_coll(store_dir, &self.references).await?;
         sink.write_time(self.registration_time).await?;
         sink.write_u64_le(self.nar_size).await?;
         if format >= 16 {
@@ -232,6 +231,14 @@ impl PartialEq for ValidPathInfo {
         self.path == other.path
             && self.nar_hash == other.nar_hash
             && self.references == other.references
+    }
+}
+
+impl std::hash::Hash for ValidPathInfo {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.path.hash(state);
+        self.nar_hash.hash(state);
+        self.references.hash(state);
     }
 }
 

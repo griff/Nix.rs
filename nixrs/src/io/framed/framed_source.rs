@@ -12,7 +12,7 @@ pub enum FramedSourceOp {
     ReadSize(u8, [u8; 8]),
     ReadData(u64),
     Idle,
-    EOF,
+    Eof,
     Invalid,
 }
 
@@ -36,7 +36,7 @@ impl<R: AsyncRead + Unpin> FramedSource<R> {
     }
 
     pub async fn drain(mut self) -> io::Result<()> {
-        if let FramedSourceOp::EOF = self.state {
+        if let FramedSourceOp::Eof = self.state {
             return Ok(());
         }
         let mut buf = [0u8; 65536];
@@ -89,7 +89,7 @@ impl<R: AsyncRead> AsyncRead for FramedSource<R> {
                     // eprintln!("{} Reading frame size={}", this.frame, size);
                     *this.frame += 1;
                     if size == 0 {
-                        *this.state = FramedSourceOp::EOF;
+                        *this.state = FramedSourceOp::Eof;
                         return Poll::Ready(Ok(()));
                     }
                     *this.state = FramedSourceOp::ReadData(size);
@@ -144,7 +144,7 @@ impl<R: AsyncRead> AsyncRead for FramedSource<R> {
                     let sbuf = [0u8; 8];
                     *this.state = FramedSourceOp::ReadSize(0, sbuf);
                 }
-                FramedSourceOp::EOF => {
+                FramedSourceOp::Eof => {
                     return Poll::Ready(Ok(()));
                 }
             }

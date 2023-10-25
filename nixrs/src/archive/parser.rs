@@ -143,7 +143,7 @@ where
             } else if s == "executable" && file_type == Some(FileType::Regular) {
                 trace!("executable");
                 let c = source.read_string().await?;
-                if c != "" {
+                if !c.is_empty() {
                     Err(io::Error::new(
                         io::ErrorKind::InvalidData,
                         "executable marker has non-empty value"))?;
@@ -219,7 +219,7 @@ where
                             return;
                         }
                         if let Some(p_name) = prev_name.as_ref() {
-                            if &n <= p_name {
+                            if n <= p_name {
                                 Err(io::Error::new(
                                     io::ErrorKind::InvalidData,
                                     "NAR directory is not sorted"))?;

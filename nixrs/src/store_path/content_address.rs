@@ -125,8 +125,8 @@ impl ContentAddress {
         }
     }
     pub fn parse(s: &str) -> Result<ContentAddress, ParseContentAddressError> {
-        if s.starts_with("text:") {
-            let hash = Hash::parse_non_sri_prefixed(&s[5..])?;
+        if let Some(rest) = s.strip_prefix("text:") {
+            let hash = Hash::parse_non_sri_prefixed(rest)?;
             if hash.algorithm() != Algorithm::SHA256 {
                 return Err(ParseContentAddressError::InvalidTextHash {
                     expected: Algorithm::SHA256,
@@ -137,10 +137,9 @@ impl ContentAddress {
                 method: ContentAddressMethod::Text,
                 hash,
             })
-        } else if s.starts_with("fixed:") {
-            let mut rest = &s[6..];
-            let method = if rest.starts_with("r:") {
-                rest = &rest[2..];
+        } else if let Some(mut rest) = s.strip_prefix("fixed:") {
+            let method = if let Some(other) = rest.strip_prefix("r:") {
+                rest = other;
                 FileIngestionMethod::Recursive
             } else {
                 FileIngestionMethod::Flat
@@ -150,12 +149,10 @@ impl ContentAddress {
                 method: ContentAddressMethod::Fixed(method),
                 hash,
             })
+        } else if let Some((prefix, _rest)) = hash::split_prefix(s, ':') {
+            Err(ParseContentAddressError::UnknownPrefix(prefix.to_string()))
         } else {
-            if let Some((prefix, _rest)) = hash::split_prefix(s, ":") {
-                Err(ParseContentAddressError::UnknownPrefix(prefix.to_string()))
-            } else {
-                Err(ParseContentAddressError::InvalidForm(s.to_string()))
-            }
+            Err(ParseContentAddressError::InvalidForm(s.to_string()))
         }
     }
 }
@@ -213,6 +210,12 @@ impl StoreReferences {
         } else {
             self.others.len()
         }
+    }
+}
+
+impl Default for StoreReferences {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -325,7 +328,7 @@ pub mod proptest {
         fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
             prop_oneof![
                 Just(ContentAddressMethod::Text),
-                any::<FileIngestionMethod>().prop_map(|m| ContentAddressMethod::Fixed(m))
+                any::<FileIngestionMethod>().prop_map(ContentAddressMethod::Fixed)
             ]
             .boxed()
         }

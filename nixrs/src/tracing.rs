@@ -22,6 +22,12 @@ impl ParentLayer {
     }
 }
 
+impl Default for ParentLayer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<S> Layer<S> for ParentLayer
 where
     for<'lookup> S: Subscriber + LookupSpan<'lookup>,
@@ -51,7 +57,7 @@ where
     }
 
     fn on_record(&self, id: &span::Id, values: &span::Record<'_>, ctx: layer::Context<'_, S>) {
-        if let Some(span) = ctx.span(&id) {
+        if let Some(span) = ctx.span(id) {
             if let Some(parent_id) = span.extensions().get::<ParentId>() {
                 if self.log {
                     eprintln!("Parent record {:?} {}", parent_id.0, span.name());
@@ -62,7 +68,7 @@ where
     }
 
     fn on_follows_from(&self, id: &span::Id, follows: &span::Id, ctx: layer::Context<'_, S>) {
-        if let Some(span) = ctx.span(&id) {
+        if let Some(span) = ctx.span(id) {
             if let Some(parent_id) = span.extensions().get::<ParentId>() {
                 if self.log {
                     eprintln!("Parent follows {:?} {}", parent_id.0, span.name());
@@ -76,12 +82,12 @@ where
         if self.log {
             eprintln!("Id change from {:?} to {:?}", old, new);
         }
-        if let Some(span) = ctx.span(&old) {
+        if let Some(span) = ctx.span(old) {
             if let Some(parent_id) = span.extensions().get::<ParentId>() {
                 if self.log {
                     eprintln!("Parent cloning {:?} {}", parent_id.0, span.name());
                 }
-                if let Some(new_span) = ctx.span(&new) {
+                if let Some(new_span) = ctx.span(new) {
                     let new_parent_id = self.parent.clone_span(&parent_id.0);
                     new_span.extensions_mut().insert(ParentId(new_parent_id));
                 }
@@ -90,7 +96,7 @@ where
     }
 
     fn on_enter(&self, id: &span::Id, ctx: layer::Context<'_, S>) {
-        if let Some(span) = ctx.span(&id) {
+        if let Some(span) = ctx.span(id) {
             if let Some(parent_id) = span.extensions().get::<ParentId>() {
                 if self.log {
                     eprintln!("Parent enter {:?} {}", parent_id.0, span.name());
@@ -101,7 +107,7 @@ where
     }
 
     fn on_exit(&self, id: &span::Id, ctx: layer::Context<'_, S>) {
-        if let Some(span) = ctx.span(&id) {
+        if let Some(span) = ctx.span(id) {
             if let Some(parent_id) = span.extensions().get::<ParentId>() {
                 if self.log {
                     eprintln!("Parent exit {:?} {:?} {}", id, parent_id.0, span.name());

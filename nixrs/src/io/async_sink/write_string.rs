@@ -59,7 +59,7 @@ where
                         Poll::Ready(res) => res?,
                     }
                     let dst = writer.inner();
-                    if buf.len() == 0 {
+                    if buf.is_empty() {
                         *self = WriteString::Done(dst);
                         return Poll::Ready(Ok(()));
                     }

@@ -83,20 +83,19 @@ impl NARWriteError {
     }
 }
 
+type WritingFut = dyn Future<Output = Result<(PathBuf, File), NARWriteError>>;
+
 enum State {
     Ready,
     Working(Pin<Box<dyn Future<Output = Result<(), NARWriteError>>>>),
     FileReady(PathBuf, File),
-    FileWriting(Pin<Box<dyn Future<Output = Result<(PathBuf, File), NARWriteError>>>>),
+    FileWriting(Pin<Box<WritingFut>>),
     Invalid,
 }
 
 impl State {
     pub fn is_ready(&self) -> bool {
-        match self {
-            State::Ready | State::FileReady(_, _) => true,
-            _ => false,
-        }
+        matches!(self, State::Ready | State::FileReady(_, _))
     }
 
     pub fn take(&mut self) -> Self {

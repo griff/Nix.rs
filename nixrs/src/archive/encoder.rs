@@ -16,7 +16,7 @@ impl NAREvent {
                 let bytes = magic.as_bytes();
                 let padding = calc_padding(bytes.len() as u64) as usize;
                 // 1 * u64 = 8 bytes
-                return 8 + bytes.len() + padding;
+                8 + bytes.len() + padding
             }
             NAREvent::RegularNode {
                 offset: _,
@@ -38,7 +38,7 @@ impl NAREvent {
                     // 8 byte from string
                     needed += 8 + 8;
                 }
-                return needed;
+                needed
             }
             NAREvent::Contents { total, index, buf } => {
                 if buf.len() as u64 + index == *total {
@@ -46,32 +46,32 @@ impl NAREvent {
                     let padding = calc_padding(*total) as usize;
                     // 1 * u64 = 8 bytes
                     // 8 bytes from strings
-                    return buf.len() + padding + 8 + 8;
+                    buf.len() + padding + 8 + 8
                 } else {
-                    return buf.len();
+                    buf.len()
                 }
             }
             NAREvent::SymlinkNode { target } => {
                 let padding = calc_padding(target.len() as u64) as usize;
                 // 6 * u64 = 48 bytes
                 // 40 bytes from strings
-                return 48 + 40 + target.len() + padding;
+                48 + 40 + target.len() + padding
             }
             NAREvent::Directory => {
                 // 3 * u64 = 24 bytes
                 // 32 bytes from strings
-                return 24 + 32;
+                24 + 32
             }
             NAREvent::DirectoryEntry { name } => {
                 let padding = calc_padding(name.len() as u64) as usize;
                 // 5 * u64 = 40 bytes
                 // 32 bytes from strings
-                return 40 + 32 + name.len() + padding;
+                40 + 32 + name.len() + padding
             }
             NAREvent::EndDirectory | NAREvent::EndDirectoryEntry => {
                 // 1 * u64 = 8 bytes
                 // 8 byte from string
-                return 8 + 8;
+                8 + 8
             }
         }
     }
@@ -118,7 +118,7 @@ impl NAREvent {
                 if buf.len() as u64 + index == *total {
                     // Last contents buffer
                     let padding = calc_padding(*total) as usize;
-                    dst.put_slice(&buf);
+                    dst.put_slice(buf);
                     if padding > 0 {
                         let zero = [0u8; 8];
                         dst.put_slice(&zero[0..padding]);
@@ -126,7 +126,7 @@ impl NAREvent {
                     dst.put_u64_le(1);
                     dst.put_slice(b")\0\0\0\0\0\0\0");
                 } else {
-                    dst.extend_from_slice(&buf);
+                    dst.extend_from_slice(buf);
                 }
             }
             NAREvent::SymlinkNode { target } => {

@@ -18,9 +18,9 @@ pub enum SingleDerivedPath {
 
 impl SingleDerivedPath {
     pub fn parse(store_dir: &StoreDir, s: &str) -> Result<Self, ParseDerivedPathError> {
-        if let Some(pos) = s.rfind("!") {
+        if let Some(pos) = s.rfind('!') {
             let drv_path = SingleDerivedPath::parse(store_dir, &s[..pos])?;
-            let output = (&s[(pos + 1)..]).to_string();
+            let output = s[(pos + 1)..].to_string();
             Ok(SingleDerivedPath::Built {
                 drv_path: Box::new(drv_path),
                 output,
@@ -69,7 +69,7 @@ impl<'a> fmt::Display for SingleDerivedPathDisplay<'a> {
                 write!(
                     f,
                     "{}{}{}",
-                    drv_path.legacy_display(&self.store_dir),
+                    drv_path.legacy_display(self.store_dir),
                     self.seperator,
                     output
                 )
@@ -101,7 +101,7 @@ impl From<DerivedPathLegacyFormat> for DerivedPath {
 impl StatePrint<DerivedPathLegacyFormat> for StoreDir {
     fn print(&self, item: &DerivedPathLegacyFormat) -> String {
         match &item.0 {
-            DerivedPath::Opaque(path) => self.print_path(&path),
+            DerivedPath::Opaque(path) => self.print_path(path),
             DerivedPath::Built { drv_path, outputs } => {
                 format!("{}!{}", drv_path.legacy_display(self), outputs)
             }
@@ -171,7 +171,7 @@ impl DerivedPath {
     }
 
     pub fn parse(store_dir: &StoreDir, s: &str) -> Result<Self, ParseDerivedPathError> {
-        if let Some(pos) = s.rfind("!") {
+        if let Some(pos) = s.rfind('!') {
             let drv_path = SingleDerivedPath::parse(store_dir, &s[..pos])?;
             let o = &s[(pos + 1)..];
             let outputs = o.parse()?;
@@ -232,19 +232,15 @@ pub mod proptest {
 
     pub fn arb_single_derived_path() -> impl Strategy<Value = SingleDerivedPath> {
         prop_oneof![
-            arb_drv_store_path().prop_map(|p| SingleDerivedPath::Opaque(p)),
-            (arb_single_derived_path_box(), arb_output_name()).prop_map(|(drv_path, output)| {
-                SingleDerivedPath::Built {
-                    drv_path: drv_path,
-                    output,
-                }
-            })
+            arb_drv_store_path().prop_map(SingleDerivedPath::Opaque),
+            (arb_single_derived_path_box(), arb_output_name())
+                .prop_map(|(drv_path, output)| { SingleDerivedPath::Built { drv_path, output } })
         ]
     }
 
     pub fn arb_derived_path() -> impl Strategy<Value = DerivedPath> {
         prop_oneof![
-            any::<StorePath>().prop_map(|p| DerivedPath::Opaque(p)),
+            any::<StorePath>().prop_map(DerivedPath::Opaque),
             (arb_single_derived_path(), arb_output_spec(1..5))
                 .prop_map(|(drv_path, outputs)| DerivedPath::Built { drv_path, outputs })
         ]

@@ -33,11 +33,7 @@ pub enum Compression {
 
 impl Compression {
     pub fn is_none(&self) -> bool {
-        if let Self::None = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Self::None)
     }
     pub fn as_str(&self) -> &str {
         match self {
@@ -103,9 +99,7 @@ impl FromStr for Compression {
     type Err = Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            s => Ok(s.into()),
-        }
+        Ok(s.into())
     }
 }
 
@@ -126,29 +120,29 @@ struct DisplayNarInfo<'a> {
 
 impl<'a> fmt::Display for DisplayNarInfo<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
+        writeln!(
             f,
-            "StorePath: {}\n",
+            "StorePath: {}",
             self.store_dir.display_path(&self.nar_info.path_info.path)
         )?;
-        write!(f, "URL: {}\n", self.nar_info.url)?;
+        writeln!(f, "URL: {}", self.nar_info.url)?;
         //assert!(self.nar_info.compression != "");
         if !self.nar_info.compression.is_none() {
-            write!(f, "Compression: {}\n", self.nar_info.compression)?;
+            writeln!(f, "Compression: {}", self.nar_info.compression)?;
         }
         //let file_hash = self.nar_info.file_hash.as_ref().unwrap();
         //assert!(file_hash.algorithm() == Algorithm::SHA256);
         if let Some(file_hash) = self.nar_info.file_hash.as_ref() {
-            write!(f, "FileHash: {}\n", file_hash.to_base32())?;
+            writeln!(f, "FileHash: {}", file_hash.to_base32())?;
         }
-        write!(f, "FileSize: {}\n", self.nar_info.file_size)?;
+        writeln!(f, "FileSize: {}", self.nar_info.file_size)?;
         //assert!(self.nar_info.path_info.nar_hash.algorithm() == Algorithm::SHA256);
-        write!(
+        writeln!(
             f,
-            "NarHash: {}\n",
+            "NarHash: {}",
             self.nar_info.path_info.nar_hash.to_base32()
         )?;
-        write!(f, "NarSize: {}\n", self.nar_info.path_info.nar_size)?;
+        writeln!(f, "NarSize: {}", self.nar_info.path_info.nar_size)?;
 
         write!(f, "References: ")?;
         let mut first = true;
@@ -160,22 +154,22 @@ impl<'a> fmt::Display for DisplayNarInfo<'a> {
                 write!(f, " {}", reference)?;
             }
         }
-        write!(f, "\n")?;
+        writeln!(f)?;
 
         if let Some(deriver) = self.nar_info.path_info.deriver.as_ref() {
-            write!(f, "Deriver: {}\n", deriver)?;
+            writeln!(f, "Deriver: {}", deriver)?;
         }
 
         for sig in &self.nar_info.path_info.sigs {
-            write!(f, "Sig: {}\n", sig)?;
+            writeln!(f, "Sig: {}", sig)?;
         }
 
         if let Some(ca) = self.nar_info.path_info.ca.as_ref() {
-            write!(f, "CA: {}\n", ca)?;
+            writeln!(f, "CA: {}", ca)?;
         }
 
         for (key, value) in &self.nar_info.extra {
-            write!(f, "{}: {}\n", key, value)?;
+            writeln!(f, "{}: {}", key, value)?;
         }
 
         Ok(())
@@ -209,7 +203,7 @@ impl NarInfo {
         let mut ca = None;
         let mut extra = BTreeMap::new();
 
-        for line in s.split("\n") {
+        for line in s.split('\n') {
             let mut kv = line.splitn(2, ": ");
             let key = kv.next().unwrap();
             if let Some(value) = kv.next() {
@@ -225,7 +219,7 @@ impl NarInfo {
                     "NarSize" => nar_size = value.parse::<u64>()?,
                     "References" => {
                         if !value.trim().is_empty() {
-                            for reference in value.split(" ") {
+                            for reference in value.split(' ') {
                                 let ref_path = StorePath::new_from_base_name(reference)?;
                                 references.insert(ref_path);
                             }
@@ -240,7 +234,7 @@ impl NarInfo {
                         sigs.insert(value.parse()?);
                     }
                     "CA" => {
-                        if value != "" {
+                        if !value.is_empty() {
                             ca = Some(ContentAddress::parse(value)?);
                         }
                     }
@@ -248,10 +242,8 @@ impl NarInfo {
                         extra.insert(key.into(), e.into());
                     }
                 }
-            } else {
-                if !line.trim().is_empty() {
-                    return Err(ParseNarInfoError::InvalidLine(line.into()));
-                }
+            } else if !line.trim().is_empty() {
+                return Err(ParseNarInfoError::InvalidLine(line.into()));
             }
         }
         if path.is_none() {
@@ -260,7 +252,7 @@ impl NarInfo {
         if nar_hash.is_none() {
             return Err(ParseNarInfoError::MissingNarHash);
         }
-        if url == "" {
+        if url.is_empty() {
             return Err(ParseNarInfoError::MissingURL);
         }
         if nar_size == 0 {
@@ -336,7 +328,7 @@ impl StateParse<NarInfo> for StoreDir {
     type Err = ParseNarInfoError;
 
     fn parse(&self, s: &str) -> Result<NarInfo, Self::Err> {
-        Ok(NarInfo::parse(self, s)?)
+        NarInfo::parse(self, s)
     }
 }
 

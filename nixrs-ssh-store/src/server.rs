@@ -53,7 +53,7 @@ async fn load_public_key(path: impl AsRef<Path>) -> Result<PublicKey, thrussh_ke
     match (split.next(), split.next()) {
         (Some(_), Some(key)) => parse_public_key_base64(key),
         (Some(key), None) => parse_public_key_base64(key),
-        _ => Err(thrussh_keys::Error::CouldNotReadKey.into()),
+        _ => Err(thrussh_keys::Error::CouldNotReadKey),
     }
 }
 

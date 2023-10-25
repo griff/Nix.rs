@@ -48,7 +48,7 @@ impl LogDispatch {
         let (dispatch, current) = get_default(|d| (d.clone(), d.current_span()));
         let inner = DispatchInner {
             dispatch,
-            span: current.id().map(|s| s.clone()),
+            span: current.id().cloned(),
         };
         LogDispatch(Arc::new(Mutex::new(inner)))
     }
@@ -58,7 +58,7 @@ impl LogDispatch {
         let mut inner = self.0.lock().unwrap();
         let old = inner.clone();
         inner.dispatch = dispatch;
-        inner.span = current.id().map(|id| id.clone());
+        inner.span = current.id().cloned();
         ReplaceDispatch { old, logger }
     }
 }
@@ -492,14 +492,14 @@ where
         self.sink.flush().await?;
 
         let p = self.source.read_string().await?;
-        if p == "" {
+        if p.is_empty() {
             return Ok(None);
         }
         let path2 = store_dir.parse_path(&p)?;
         assert_eq!(path, &path2);
 
         let deriver = self.source.read_string().await?;
-        let deriver = if deriver != "" {
+        let deriver = if !deriver.is_empty() {
             Some(store_dir.parse_path(&deriver)?)
         } else {
             None
@@ -509,12 +509,12 @@ where
         let nar_size = self.source.read_u64_le().await?;
 
         let s = self.source.read_string().await?;
-        if s == "" {
+        if s.is_empty() {
             return Err(Error::MandatoryNARHash);
         }
         let nar_hash: Hash = s.parse()?;
         let ca_s = self.source.read_string().await?;
-        let ca = if ca_s != "" {
+        let ca = if !ca_s.is_empty() {
             Some(ca_s.parse()?)
         } else {
             None

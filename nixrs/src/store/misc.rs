@@ -133,7 +133,7 @@ where
     for path in start_paths {
         let mut edges = StorePathSet::new();
         let info = store
-            .query_path_info(&path)
+            .query_path_info(path)
             .await?
             .ok_or(Error::InvalidPath(path.to_string()))?;
         for reference in info.references {
@@ -151,8 +151,7 @@ where
         pending.push(edges);
         res.insert(path.clone());
     }
-    while !pending.is_empty() {
-        let edges = pending.pop().unwrap();
+    while let Some(edges) = pending.pop() {
         for edge in edges {
             if res.insert(edge.clone()) {
                 let mut edges = StorePathSet::new();
@@ -187,10 +186,10 @@ pub async fn topo_sort_paths_slow<S: Store>(
     let mut rrefs: BTreeMap<StorePath, StorePathSet> = BTreeMap::new();
     let mut roots = StorePathSet::new();
     for store_path in store_paths.iter() {
-        if let Some(info) = store.query_path_info(&store_path).await? {
+        if let Some(info) = store.query_path_info(store_path).await? {
             let mut edges = info.references;
-            edges.remove(&store_path);
-            let edges: StorePathSet = edges.intersection(&store_paths).cloned().collect();
+            edges.remove(store_path);
+            let edges: StorePathSet = edges.intersection(store_paths).cloned().collect();
             if edges.is_empty() {
                 roots.insert(store_path.clone());
             } else {

@@ -29,7 +29,7 @@ pub struct DrvOutput {
 
 impl DrvOutput {
     pub fn parse(s: &str) -> Result<DrvOutput, ParseDrvOutputError> {
-        if let Some(pos) = s.find("!") {
+        if let Some(pos) = s.find('!') {
             let drv_hash = hash::Hash::parse_any_prefixed(&s[..pos])?;
             let output_name = (&s[(pos + 1)..]).into();
             Ok(DrvOutput {

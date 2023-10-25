@@ -216,7 +216,7 @@ impl Default for DefaultSettings {
     fn default() -> Self {
         get_default(|default| {
             default
-                .map(|d| d.clone())
+                .cloned()
                 .unwrap_or_else(|| DefaultSettings::new(NONE.clone()))
         })
     }

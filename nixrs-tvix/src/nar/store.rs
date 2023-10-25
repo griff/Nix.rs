@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::io;
+use std::mem::take;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -100,48 +101,34 @@ impl From<io::Error> for NARStoreError {
     }
 }
 
+type WorkingFut = dyn Future<Output = Result<Box<dyn DirectoryPutter>, NARStoreError>> + Send;
+type WritingFut = dyn Future<Output = Result<(Box<dyn DirectoryPutter>, PathBuf, Box<dyn BlobWriter>), NARStoreError>>
+    + Send;
+type ClosingFut =
+    dyn Future<Output = Result<(Box<dyn DirectoryPutter>, B3Digest), NARStoreError>> + Send;
+
+#[derive(Default)]
 enum State {
     Ready(Box<dyn DirectoryPutter>),
-    Working(Pin<Box<dyn Future<Output = Result<Box<dyn DirectoryPutter>, NARStoreError>> + Send>>),
+    Working(Pin<Box<WorkingFut>>),
     FileReady(Box<dyn DirectoryPutter>, PathBuf, Box<dyn BlobWriter>),
-    FileWriting(
-        Pin<
-            Box<
-                dyn Future<
-                        Output = Result<
-                            (Box<dyn DirectoryPutter>, PathBuf, Box<dyn BlobWriter>),
-                            NARStoreError,
-                        >,
-                    > + Send,
-            >,
-        >,
-    ),
-    FileClosing(
-        Pin<
-            Box<
-                dyn Future<Output = Result<(Box<dyn DirectoryPutter>, B3Digest), NARStoreError>>
-                    + Send,
-            >,
-        >,
-    ),
+    FileWriting(Pin<Box<WritingFut>>),
+    FileClosing(Pin<Box<ClosingFut>>),
     FileDone(Box<dyn DirectoryPutter>, B3Digest),
+    #[default]
     Invalid,
 }
 
 impl State {
     pub fn is_ready(&self) -> bool {
-        match self {
-            State::Ready(_) | State::FileReady(_, _, _) | Self::FileDone(_, _) => true,
-            _ => false,
-        }
-    }
-
-    pub fn take(&mut self) -> Self {
-        std::mem::replace(self, State::Invalid)
+        matches!(
+            self,
+            State::Ready(_) | State::FileReady(_, _, _) | Self::FileDone(_, _)
+        )
     }
 
     pub fn take_putter(&mut self) -> Result<Box<dyn DirectoryPutter>, NARStoreError> {
-        match self.take() {
+        match take(self) {
             Self::Invalid => panic!("State is invalid"),
             Self::FileWriting(_) => panic!("State is writing"),
             Self::Working(_) => panic!("State is working"),
@@ -153,7 +140,7 @@ impl State {
     }
 
     pub fn take_digest(&mut self) -> Result<B3Digest, NARStoreError> {
-        match self.take() {
+        match take(self) {
             Self::Invalid => panic!("State is invalid"),
             Self::FileWriting(_) => panic!("State is writing"),
             Self::Working(_) => panic!("State is working"),
@@ -316,7 +303,7 @@ impl Sink<NAREvent> for NARStorer {
             NAREvent::Directory => {
                 let mut entry = proto::DirectoryNode::default();
                 if let Some(name) = this.current_name.take() {
-                    entry.name = name.into();
+                    entry.name = name;
                 } else if !this.directories.is_empty() {
                     return Err(NARStoreError::invalid_stream_order());
                 }
@@ -325,10 +312,12 @@ impl Sink<NAREvent> for NARStorer {
                 this.directories.push(dir);
             }
             NAREvent::SymlinkNode { target } => {
-                let mut entry = proto::SymlinkNode::default();
-                entry.target = target.into();
+                let mut entry = proto::SymlinkNode {
+                    target,
+                    ..Default::default()
+                };
                 if let Some(name) = this.current_name.take() {
-                    entry.name = name.into();
+                    entry.name = name;
                 } else if !this.directories.is_empty() {
                     return Err(NARStoreError::invalid_stream_order());
                 }
@@ -339,11 +328,13 @@ impl Sink<NAREvent> for NARStorer {
                 executable,
                 size,
             } => {
-                let mut entry = proto::FileNode::default();
-                entry.executable = executable;
-                entry.size = size as u32;
+                let mut entry = proto::FileNode {
+                    executable,
+                    size: size as u32,
+                    ..Default::default()
+                };
                 if let Some(name) = this.current_name.take() {
-                    entry.name = name.into();
+                    entry.name = name;
                 } else if !this.directories.is_empty() {
                     return Err(NARStoreError::invalid_stream_order());
                 }
@@ -371,7 +362,7 @@ impl Sink<NAREvent> for NARStorer {
                 }
             }
             NAREvent::Contents { total, index, buf } => {
-                if let State::FileReady(putter, path, mut file) = this.writing.take() {
+                if let State::FileReady(putter, path, mut file) = take(&mut this.writing) {
                     let last = index + buf.len() as u64 == total;
                     let fut = async move {
                         match file.write_all(&buf).await {

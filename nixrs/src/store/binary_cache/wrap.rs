@@ -29,7 +29,7 @@ where
         Self { cache }
     }
     pub async fn nar_info_for_path(&self, path: &StorePath) -> Result<Option<NarInfo>, Error> {
-        let file = nar_info_file_for(&path);
+        let file = nar_info_file_for(path);
         if !self.cache.file_exists(&file).await? {
             return Ok(None);
         }
@@ -74,7 +74,7 @@ where
                 }
                 _ => {
                     let (read, write) = tokio::io::duplex(64_000);
-                    let fut1 = uncompress_data(read, sink).map_err(|err| Error::from(err));
+                    let fut1 = uncompress_data(read, sink).map_err(Error::from);
                     let fut2 = self.cache.get_file(&nar_info.url, write);
                     try_join!(fut1, fut2)?;
                     Ok(())

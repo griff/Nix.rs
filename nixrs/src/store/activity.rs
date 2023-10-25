@@ -139,14 +139,12 @@ impl StartActivityVisitor {
         let activity_type = self.activity_type?;
         let text = self.text?;
         let mut fields = Vec::with_capacity(self.fields.len());
-        let mut idx = 0;
-        for f in self.fields.into_iter() {
+        for (idx, f) in self.fields.into_iter().enumerate() {
             if let Some(field) = f {
                 fields.push(field);
             } else {
                 eprintln!("Missing field {}", idx);
             }
-            idx += 1;
         }
         Some(StartActivity {
             parent,
@@ -163,10 +161,10 @@ impl Visit for StartActivityVisitor {
     fn record_u64(&mut self, field: &Field, value: u64) {
         match field.name() {
             "parent" => {
-                self.parent = Some(value.into());
+                self.parent = Some(value);
             }
             "act" => {
-                self.act = Some(value.into());
+                self.act = Some(value);
             }
             "level" => {
                 self.level = Some(value.into());
@@ -178,12 +176,8 @@ impl Visit for StartActivityVisitor {
                 if let Ok(idx) = field_name.strip_prefix("field").unwrap().parse::<usize>() {
                     eprintln!("Insert field {}>={}", idx, self.fields.len());
                     if idx >= self.fields.len() {
-                        eprintln!(
-                            "Extend {:?}",
-                            (self.fields.len()..=idx).into_iter().map(|_| 0)
-                        );
-                        self.fields
-                            .extend((self.fields.len()..=idx).into_iter().map(|_| None));
+                        eprintln!("Extend {:?}", (self.fields.len()..=idx).map(|_| 0));
+                        self.fields.extend((self.fields.len()..=idx).map(|_| None));
                     }
                     self.fields[idx] = Some(LoggerField::Int(value));
                 }
@@ -198,12 +192,8 @@ impl Visit for StartActivityVisitor {
             if let Ok(idx) = idx_s.parse::<usize>() {
                 eprintln!("Insert field {}>={}", idx, self.fields.len());
                 if idx >= self.fields.len() {
-                    eprintln!(
-                        "Extend {:?}",
-                        (self.fields.len()..=idx).into_iter().map(|_| 0)
-                    );
-                    self.fields
-                        .extend((self.fields.len()..=idx).into_iter().map(|_| None));
+                    eprintln!("Extend {:?}", (self.fields.len()..=idx).map(|_| 0));
+                    self.fields.extend((self.fields.len()..=idx).map(|_| None));
                 }
                 self.fields[idx] = Some(LoggerField::String(value.to_string()));
             }
@@ -217,12 +207,8 @@ impl Visit for StartActivityVisitor {
             if let Ok(idx) = idx_s.parse::<usize>() {
                 eprintln!("Insert field {}>={}", idx, self.fields.len());
                 if idx >= self.fields.len() {
-                    eprintln!(
-                        "Extend {:?}",
-                        (self.fields.len()..=idx).into_iter().map(|_| 0)
-                    );
-                    self.fields
-                        .extend((self.fields.len()..=idx).into_iter().map(|_| None));
+                    eprintln!("Extend {:?}", (self.fields.len()..=idx).map(|_| 0));
+                    self.fields.extend((self.fields.len()..=idx).map(|_| None));
                 }
                 self.fields[idx] = Some(LoggerField::String(format!("{:?}", value)));
             }
@@ -261,14 +247,12 @@ impl ActivityResultVisitor {
         let act = self.act.unwrap_or(parent.into_u64());
         let result_type = self.result_type?;
         let mut fields = Vec::with_capacity(self.fields.len());
-        let mut idx = 0;
-        for f in self.fields.into_iter() {
+        for (idx, f) in self.fields.into_iter().enumerate() {
             if let Some(field) = f {
                 fields.push(field);
             } else {
                 eprintln!("Missing field {}", idx);
             }
-            idx += 1;
         }
         Some(ActivityResult {
             act,
@@ -282,7 +266,7 @@ impl Visit for ActivityResultVisitor {
     fn record_u64(&mut self, field: &Field, value: u64) {
         match field.name() {
             "parent" => {
-                self.act = Some(value.into());
+                self.act = Some(value);
             }
             "result_type" => {
                 self.result_type = Some(value.into());
@@ -291,12 +275,8 @@ impl Visit for ActivityResultVisitor {
                 if let Ok(idx) = field_name.strip_prefix("field").unwrap().parse::<usize>() {
                     eprintln!("Insert field {}>={}", idx, self.fields.len());
                     if idx >= self.fields.len() {
-                        eprintln!(
-                            "Extend {:?}",
-                            (self.fields.len()..=idx).into_iter().map(|_| 0)
-                        );
-                        self.fields
-                            .extend((self.fields.len()..=idx).into_iter().map(|_| None));
+                        eprintln!("Extend {:?}", (self.fields.len()..=idx).map(|_| 0));
+                        self.fields.extend((self.fields.len()..=idx).map(|_| None));
                     }
                     self.fields[idx] = Some(LoggerField::Int(value));
                 }
@@ -310,12 +290,8 @@ impl Visit for ActivityResultVisitor {
             if let Ok(idx) = idx_s.parse::<usize>() {
                 eprintln!("Insert field {}>={}", idx, self.fields.len());
                 if idx >= self.fields.len() {
-                    eprintln!(
-                        "Extend {:?}",
-                        (self.fields.len()..=idx).into_iter().map(|_| 0)
-                    );
-                    self.fields
-                        .extend((self.fields.len()..=idx).into_iter().map(|_| None));
+                    eprintln!("Extend {:?}", (self.fields.len()..=idx).map(|_| 0));
+                    self.fields.extend((self.fields.len()..=idx).map(|_| None));
                 }
                 self.fields[idx] = Some(LoggerField::String(value.to_string()));
             }
@@ -327,12 +303,8 @@ impl Visit for ActivityResultVisitor {
             if let Ok(idx) = idx_s.parse::<usize>() {
                 eprintln!("Insert field {}>={}", idx, self.fields.len());
                 if idx >= self.fields.len() {
-                    eprintln!(
-                        "Extend {:?}",
-                        (self.fields.len()..=idx).into_iter().map(|_| 0)
-                    );
-                    self.fields
-                        .extend((self.fields.len()..=idx).into_iter().map(|_| None));
+                    eprintln!("Extend {:?}", (self.fields.len()..=idx).map(|_| 0));
+                    self.fields.extend((self.fields.len()..=idx).map(|_| None));
                 }
                 self.fields[idx] = Some(LoggerField::String(format!("{:?}", value)));
             }

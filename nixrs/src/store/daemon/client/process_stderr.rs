@@ -99,8 +99,8 @@ impl<R, W, SR, SW> ProcessStderr<R, W, SR, SW> {
                         if buf.capacity() < len {
                             buf.reserve(len);
                         }
-                        let read = source.read(&mut buf).await?;
-                        AsyncSink::write_buf(&mut to, &buf[0..read]).await?;
+                        source.read_buf(&mut buf).await?;
+                        AsyncSink::write_buf(&mut to, &buf).await?;
                         buf.clear();
                         to.flush().await?;
                     } else {

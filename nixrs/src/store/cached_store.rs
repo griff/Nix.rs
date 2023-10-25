@@ -47,7 +47,7 @@ impl PathInfoCacheValue {
         } else {
             *TTL_NEGATIVE_NAR_INFO_CACHE
         };
-        return self.time_point.elapsed() < duration;
+        self.time_point.elapsed() < duration
     }
 }
 

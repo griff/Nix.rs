@@ -54,7 +54,7 @@ where
                 .poll_write(cx, &me.buf[*me.written as usize..])
             {
                 Poll::Pending => return Poll::Pending,
-                Poll::Ready(Err(e)) => return Poll::Ready(Err(e.into())),
+                Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
                 Poll::Ready(Ok(0)) => {
                     return Poll::Ready(Err(io::ErrorKind::WriteZero.into()));
                 }
