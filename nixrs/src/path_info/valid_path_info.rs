@@ -5,12 +5,15 @@ use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tracing::{debug, trace};
 
-use crate::StringSet;
-use crate::hash::{Hash, Algorithm};
-use crate::io::{AsyncSource, AsyncSink};
-use crate::signature::{SignatureSet, ParseSignatureError};
+use crate::hash::{Algorithm, Hash};
+use crate::io::{AsyncSink, AsyncSource};
+use crate::signature::{ParseSignatureError, SignatureSet};
 use crate::store::Error;
-use crate::store_path::{ContentAddress, StoreDir, StorePath, StorePathSet, StorePathSetExt, ContentAddressWithReferences, ContentAddressMethod, StoreReferences, TextInfo, FixedOutputInfo};
+use crate::store_path::{
+    ContentAddress, ContentAddressMethod, ContentAddressWithReferences, FixedOutputInfo, StoreDir,
+    StorePath, StorePathSet, StorePathSetExt, StoreReferences, TextInfo,
+};
+use crate::StringSet;
 
 #[derive(Debug, Eq, PartialOrd, Ord, Hash, Clone)]
 pub struct ValidPathInfo {
@@ -107,7 +110,10 @@ impl ValidPathInfo {
             match ca.method {
                 ContentAddressMethod::Text => {
                     assert!(!self.references.contains(&self.path));
-                    Some(ContentAddressWithReferences::Text(TextInfo { hash: ca.hash, references: self.references.clone() }))
+                    Some(ContentAddressWithReferences::Text(TextInfo {
+                        hash: ca.hash,
+                        references: self.references.clone(),
+                    }))
                 }
                 ContentAddressMethod::Fixed(method) => {
                     let mut others = self.references.clone();
@@ -115,25 +121,31 @@ impl ValidPathInfo {
                     Some(ContentAddressWithReferences::Fixed(FixedOutputInfo {
                         method,
                         hash: ca.hash,
-                        references: StoreReferences {
-                            others,
-                            self_ref, 
-                        }
+                        references: StoreReferences { others, self_ref },
                     }))
                 }
-            }    
+            }
         } else {
             None
         }
     }
 
-    pub async fn read<R: AsyncRead + Unpin>(mut source: R, store_dir: &StoreDir, format: u64) -> Result<ValidPathInfo, Error> {
-        let path : StorePath = source.read_parsed(store_dir).await?;
+    pub async fn read<R: AsyncRead + Unpin>(
+        mut source: R,
+        store_dir: &StoreDir,
+        format: u64,
+    ) -> Result<ValidPathInfo, Error> {
+        let path: StorePath = source.read_parsed(store_dir).await?;
         debug!(%path, "Path is {}", path);
         Self::read_path(source, store_dir, format, path).await
     }
 
-    pub async fn read_path<R: AsyncRead + Unpin>(mut source: R, store_dir: &StoreDir, format: u64, path: StorePath) -> Result<ValidPathInfo, Error> {
+    pub async fn read_path<R: AsyncRead + Unpin>(
+        mut source: R,
+        store_dir: &StoreDir,
+        format: u64,
+        path: StorePath,
+    ) -> Result<ValidPathInfo, Error> {
         let deriver = source.read_string().await?;
         debug!(deriver, "Deriver is {}", deriver);
         let deriver = if deriver != "" {
@@ -142,10 +154,10 @@ impl ValidPathInfo {
             None
         };
         let hash_s = source.read_string().await?;
-        debug!(hash=hash_s, "Hash is {}", hash_s);
+        debug!(hash = hash_s, "Hash is {}", hash_s);
         let nar_hash = Hash::parse_any(&hash_s, Some(Algorithm::SHA256))?;
         trace!("Reading references");
-        let references : StorePathSet = source.read_parsed_coll(&store_dir).await?;
+        let references: StorePathSet = source.read_parsed_coll(&store_dir).await?;
         debug!("References {}", references.join());
         let registration_time = source.read_time().await?;
         let nar_size = source.read_u64_le().await?;
@@ -160,15 +172,15 @@ impl ValidPathInfo {
                 .iter()
                 .map(|s| s.parse())
                 .collect::<Result<SignatureSet, ParseSignatureError>>()?;
-        
+
             let ca_s = source.read_string().await?;
-            debug!(ca=ca_s, "CA is {}", ca_s);
+            debug!(ca = ca_s, "CA is {}", ca_s);
             if ca_s != "" {
                 ca = Some(ca_s.parse()?);
             };
         }
 
-        Ok(ValidPathInfo { 
+        Ok(ValidPathInfo {
             path,
             deriver,
             nar_size,
@@ -186,7 +198,7 @@ impl ValidPathInfo {
         mut sink: W,
         store_dir: &StoreDir,
         format: u64,
-        include_path: bool
+        include_path: bool,
     ) -> Result<(), Error> {
         if include_path {
             sink.write_printed(&store_dir, &self.path).await?;
@@ -197,12 +209,13 @@ impl ValidPathInfo {
             sink.write_str("").await?;
         }
         sink.write_string(self.nar_hash.encode_base16()).await?;
-        sink.write_printed_coll(&store_dir, &self.references).await?;
+        sink.write_printed_coll(&store_dir, &self.references)
+            .await?;
         sink.write_time(self.registration_time).await?;
         sink.write_u64_le(self.nar_size).await?;
         if format >= 16 {
             sink.write_bool(self.ultimate).await?;
-            let sigs : StringSet = self.sigs.iter().map(|s| s.to_string()).collect();
+            let sigs: StringSet = self.sigs.iter().map(|s| s.to_string()).collect();
             sink.write_string_coll(&sigs).await?;
             if let Some(ca) = self.ca.as_ref() {
                 sink.write_string(ca.to_string()).await?;

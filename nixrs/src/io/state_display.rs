@@ -1,7 +1,7 @@
 use std::fmt;
 
 pub trait StateDisplay<'a, I> {
-    type Output : fmt::Display + 'a;
+    type Output: fmt::Display + 'a;
     fn display(&'a self, item: &'a I) -> Self::Output;
 }
 

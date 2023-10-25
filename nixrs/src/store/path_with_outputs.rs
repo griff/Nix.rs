@@ -1,4 +1,4 @@
-use super::{DerivedPath, SingleDerivedPath, OutputSpec};
+use super::{DerivedPath, OutputSpec, SingleDerivedPath};
 use crate::io::{StateParse, StatePrint};
 use crate::store_path::{ParseStorePathError, ReadStorePathError, StoreDir, StorePath};
 use crate::StringSet;
@@ -73,23 +73,16 @@ impl From<DerivedPath> for SPWOParseResult {
                     })
                 }
             }
-            DerivedPath::Built {
-                drv_path,
-                outputs,
-            } => {
-                match drv_path {
-                    SingleDerivedPath::Opaque(path) => {
-                        let outputs = if let OutputSpec::Names(names) = outputs {
-                            names
-                        } else {
-                            StringSet::new()
-                        };
-                        SPWOParseResult::StorePathWithOutputs(StorePathWithOutputs { path, outputs })
-                    }
-                    SingleDerivedPath::Built { .. } => {
-                        SPWOParseResult::Unsupported
-                    }
+            DerivedPath::Built { drv_path, outputs } => match drv_path {
+                SingleDerivedPath::Opaque(path) => {
+                    let outputs = if let OutputSpec::Names(names) = outputs {
+                        names
+                    } else {
+                        StringSet::new()
+                    };
+                    SPWOParseResult::StorePathWithOutputs(StorePathWithOutputs { path, outputs })
                 }
+                SingleDerivedPath::Built { .. } => SPWOParseResult::Unsupported,
             },
         }
     }
@@ -122,7 +115,6 @@ impl From<StorePathWithOutputs> for DerivedPath {
                 drv_path: SingleDerivedPath::Opaque(path.path),
                 outputs: OutputSpec::Names(path.outputs),
             }
-
         } else if path.path.is_derivation() {
             DerivedPath::Built {
                 drv_path: SingleDerivedPath::Opaque(path.path),
@@ -136,7 +128,7 @@ impl From<StorePathWithOutputs> for DerivedPath {
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
     use crate::store_path::proptest::{arb_drv_store_path, arb_output_name};
-    use ::proptest::{prelude::*, collection::btree_set};
+    use ::proptest::{collection::btree_set, prelude::*};
 
     use super::*;
 
@@ -151,7 +143,10 @@ pub mod proptest {
 
     pub fn arb_store_path_with_outputs() -> impl Strategy<Value = StorePathWithOutputs> {
         prop_oneof![
-            any::<StorePath>().prop_map(|path| StorePathWithOutputs{ path, outputs: StringSet::new()}),
+            any::<StorePath>().prop_map(|path| StorePathWithOutputs {
+                path,
+                outputs: StringSet::new()
+            }),
             (arb_drv_store_path(), btree_set(arb_output_name(), 0..5))
                 .prop_map(|(path, outputs)| StorePathWithOutputs { path, outputs })
         ]
@@ -161,7 +156,10 @@ pub mod proptest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{string_set, store::{SingleDerivedPath, OutputSpec}};
+    use crate::{
+        store::{OutputSpec, SingleDerivedPath},
+        string_set,
+    };
 
     #[test]
     fn test_parse() {
@@ -314,7 +312,7 @@ mod tests {
         };
         let sp = SPWOParseResult::from(&dp);
         assert_eq!(sp, sp2);
-        let sp : SPWOParseResult = dp.into();
+        let sp: SPWOParseResult = dp.into();
         assert_eq!(sp, sp2);
     }
 

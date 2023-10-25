@@ -3,10 +3,10 @@ use std::io;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
-use tracing::debug;
 use thrussh::server::Handle;
 use thrussh::{ChannelId, CryptoVec};
 use tokio::io::AsyncWrite;
+use tracing::debug;
 
 async fn make_ext_data_write_fut(
     id: ChannelId,
@@ -49,7 +49,12 @@ impl Clone for ExtendedDataWrite {
 
 impl fmt::Debug for ExtendedDataWrite {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ExtendedDataWrite").field("id", &self.id).field("ext", &self.ext).field("is_write_fut_valid", &self.is_write_fut_valid).field("write_fut", &self.write_fut).finish()
+        f.debug_struct("ExtendedDataWrite")
+            .field("id", &self.id)
+            .field("ext", &self.ext)
+            .field("is_write_fut_valid", &self.is_write_fut_valid)
+            .field("write_fut", &self.write_fut)
+            .finish()
     }
 }
 

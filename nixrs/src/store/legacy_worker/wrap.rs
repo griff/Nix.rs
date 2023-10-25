@@ -7,8 +7,8 @@ use tracing::instrument;
 use crate::path_info::ValidPathInfo;
 use crate::store::store_api::BuildMode;
 use crate::store::{
-    compute_fs_closure_slow, BasicDerivation, BuildResult, CheckSignaturesFlag,
-    DerivedPath, Error, RepairFlag, Store, SubstituteFlag,
+    compute_fs_closure_slow, BasicDerivation, BuildResult, CheckSignaturesFlag, DerivedPath, Error,
+    RepairFlag, Store, SubstituteFlag,
 };
 use crate::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
 
@@ -73,9 +73,7 @@ impl<S: Store + Send> Store for LegacyWrapStore<S> {
         drv: &BasicDerivation,
         build_mode: BuildMode,
     ) -> Result<BuildResult, Error> {
-        self.store
-            .build_derivation(drv_path, drv, build_mode)
-            .await
+        self.store.build_derivation(drv_path, drv, build_mode).await
     }
 
     async fn build_paths(

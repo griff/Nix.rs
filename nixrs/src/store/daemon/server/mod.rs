@@ -3,34 +3,41 @@ use std::fmt;
 use std::future::Future;
 use std::io::{self, Cursor};
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::sync::atomic::{Ordering, AtomicU32, AtomicU64};
 use std::task::Poll;
 
 use bytes::{Buf, Bytes, BytesMut};
-use tracing::{debug, Subscriber, Event, error, instrument, trace};
-use tracing::span;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
+use tokio::sync::{mpsc, oneshot};
 use tracing::field::Visit;
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, AsyncReadExt, ReadBuf};
-use tokio::sync::{oneshot, mpsc};
-use tracing_subscriber::{registry, layer};
+use tracing::span;
+use tracing::{debug, error, instrument, trace, Event, Subscriber};
+use tracing_futures::WithSubscriber;
+use tracing_subscriber::prelude::*;
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::Layer;
-use tracing_subscriber::prelude::*;
-use tracing_futures::WithSubscriber;
+use tracing_subscriber::{layer, registry};
 
 pub mod parent_layer;
 
-use crate::store::settings::{WithSettings, BuildSettings, get_mut_settings};
-use crate::store::{Error, SubstituteFlag, DerivedPath, StorePathWithOutputs, BuildMode, BasicDerivation, DrvOutputs, CheckSignaturesFlag};
-use crate::store::activity::{StartActivity, ActivityResult, LoggerFieldType, LoggerField};
-use crate::store::error::Verbosity;
-use crate::io::{AsyncSource, AsyncSink, TakenStream, Taker, FramedSource};
-use crate::store_path::{StoreDir, StorePath};
-use crate::path_info::ValidPathInfo;
+use super::{
+    get_protocol_major, get_protocol_minor, DaemonStore, TrustedFlag, WorkerProtoOp,
+    PROTOCOL_VERSION, STDERR_ERROR, STDERR_LAST, STDERR_NEXT, STDERR_READ, STDERR_RESULT,
+    STDERR_START_ACTIVITY, STDERR_STOP_ACTIVITY, WORKER_MAGIC_1, WORKER_MAGIC_2,
+};
 use crate::hash;
-use crate::signature::{SignatureSet, ParseSignatureError};
-use super::{DaemonStore, WorkerProtoOp, WORKER_MAGIC_1, WORKER_MAGIC_2, PROTOCOL_VERSION, get_protocol_major, get_protocol_minor, TrustedFlag, STDERR_NEXT, STDERR_START_ACTIVITY, STDERR_STOP_ACTIVITY, STDERR_RESULT, STDERR_LAST, STDERR_ERROR, STDERR_READ};
+use crate::io::{AsyncSink, AsyncSource, FramedSource, TakenStream, Taker};
+use crate::path_info::ValidPathInfo;
+use crate::signature::{ParseSignatureError, SignatureSet};
+use crate::store::activity::{ActivityResult, LoggerField, LoggerFieldType, StartActivity};
+use crate::store::error::Verbosity;
+use crate::store::settings::{get_mut_settings, BuildSettings, WithSettings};
+use crate::store::{
+    BasicDerivation, BuildMode, CheckSignaturesFlag, DerivedPath, DrvOutputs, Error,
+    StorePathWithOutputs, SubstituteFlag,
+};
+use crate::store_path::{StoreDir, StorePath};
 
 #[derive(Debug, Clone)]
 struct ActiveVerbosity(Arc<AtomicU64>);
@@ -60,7 +67,10 @@ impl OpCounter {
     fn new() -> OpCounter {
         let dispatcher = tracing::dispatcher::get_default(|d| d.clone());
         let op_count = Arc::new(AtomicU32::new(0));
-        OpCounter { dispatcher, op_count }
+        OpCounter {
+            dispatcher,
+            op_count,
+        }
     }
     fn report_op(&self, op: WorkerProtoOp) {
         tracing::dispatcher::with_default(&self.dispatcher, || {
@@ -69,7 +79,10 @@ impl OpCounter {
         let mut old = self.op_count.load(Ordering::Relaxed);
         loop {
             let new = old + 1;
-            match self.op_count.compare_exchange_weak(old, new, Ordering::SeqCst, Ordering::Relaxed) {
+            match self
+                .op_count
+                .compare_exchange_weak(old, new, Ordering::SeqCst, Ordering::Relaxed)
+            {
                 Ok(_) => break,
                 Err(x) => old = x,
             }
@@ -87,7 +100,12 @@ impl Drop for OpCounter {
     }
 }
 
-async fn send_command<W>(level: ActiveVerbosity, client_version: u64, writer: &mut W, cmd: TunnelCommand) -> io::Result<()>
+async fn send_command<W>(
+    level: ActiveVerbosity,
+    client_version: u64,
+    writer: &mut W,
+    cmd: TunnelCommand,
+) -> io::Result<()>
 where
     W: AsyncWrite + Unpin,
 {
@@ -97,7 +115,7 @@ where
             debug!("Log next: {}", msg);
             writer.write_u64_le(STDERR_NEXT).await?;
             writer.write_string(format!("{}\n", msg)).await?;
-        },
+        }
         TunnelCommand::StartActivity(id, activity) => {
             eprintln!("start activity {}", id);
             debug!(id, "start activity {} {:?}", id, activity);
@@ -105,7 +123,9 @@ where
                 if !activity.text.is_empty() {
                     if level.get() >= activity.level {
                         writer.write_u64_le(STDERR_NEXT).await?;
-                        writer.write_string(format!("{}...\n", activity.text)).await?;
+                        writer
+                            .write_string(format!("{}...\n", activity.text))
+                            .await?;
                     }
                 }
                 return Ok(());
@@ -129,7 +149,7 @@ where
                 }
             }
             writer.write_u64_le(activity.parent).await?;
-        },
+        }
         TunnelCommand::StopActivity(id) => {
             eprintln!("stop activity {}", id);
             debug!(id, "stop activity {}", id);
@@ -168,7 +188,7 @@ where
             writer.write_u64_le(STDERR_READ).await?;
             writer.write_usize(len).await?;
         }
-        _ => unreachable!()
+        _ => unreachable!(),
     }
     Ok(())
 }
@@ -177,8 +197,9 @@ async fn process_tunnel<S>(
     level: ActiveVerbosity,
     client_version: u64,
     taker: Taker<S>,
-    mut receiver: mpsc::Receiver<TunnelCommand>
-) where S: AsyncWrite + Send + Unpin,
+    mut receiver: mpsc::Receiver<TunnelCommand>,
+) where
+    S: AsyncWrite + Send + Unpin,
 {
     let mut buf = Vec::new();
     let mut writer = None;
@@ -209,7 +230,8 @@ async fn process_tunnel<S>(
                         stream.write_u64_le(STDERR_LAST).await?
                     }
                     Ok(()) as io::Result<()>
-                }.await;
+                }
+                .await;
                 if let Err(err) = res {
                     error!("Cound not write data for tunnel stop work {}", err);
                 }
@@ -226,10 +248,16 @@ async fn process_tunnel<S>(
                 }
             }
             _ => {
-                if let Err(err) = send_command(level.clone(), client_version, &mut Cursor::new(&mut buf), cmd).await {
+                if let Err(err) = send_command(
+                    level.clone(),
+                    client_version,
+                    &mut Cursor::new(&mut buf),
+                    cmd,
+                )
+                .await
+                {
                     error!("Could not write tunnel command: {}", err);
                 }
-
             }
         }
     }
@@ -285,8 +313,7 @@ impl Visit for EventFormat {
         }
     }
 
-    fn record_debug(&mut self, _field: &tracing::field::Field, _value: &dyn std::fmt::Debug) {
-    }
+    fn record_debug(&mut self, _field: &tracing::field::Field, _value: &dyn std::fmt::Debug) {}
 }
 
 pub enum TunnelSourceOp<'r, R> {
@@ -316,7 +343,11 @@ pub struct TunnelSource<'r, R> {
 }
 
 impl<'r, R> TunnelSource<'r, R> {
-    fn with_capacity(reader: &'r mut R, sender: mpsc::Sender<TunnelCommand>, capacity: usize) -> TunnelSource<'r, R> {
+    fn with_capacity(
+        reader: &'r mut R,
+        sender: mpsc::Sender<TunnelCommand>,
+        capacity: usize,
+    ) -> TunnelSource<'r, R> {
         TunnelSource {
             state: TunnelSourceOp::Empty(reader),
             buffer: BytesMut::with_capacity(capacity),
@@ -327,7 +358,8 @@ impl<'r, R> TunnelSource<'r, R> {
 }
 
 impl<'r, R> AsyncRead for TunnelSource<'r, R>
-    where R: AsyncRead + Unpin + Send + 'r,
+where
+    R: AsyncRead + Unpin + Send + 'r,
 {
     fn poll_read(
         mut self: Pin<&mut Self>,
@@ -346,19 +378,17 @@ impl<'r, R> AsyncRead for TunnelSource<'r, R>
                         self.state = TunnelSourceOp::Available(reader, avail);
                     }
                     return Poll::Ready(Ok(()));
-                },
-                TunnelSourceOp::Reading(mut fut) => {
-                    match Pin::new(&mut fut).poll(cx) {
-                        Poll::Pending => {
-                            self.state = TunnelSourceOp::Reading(fut);
-                            return Poll::Pending;
-                        }
-                        Poll::Ready(Err(err)) => {
-                            return Poll::Ready(Err(err));
-                        }
-                        Poll::Ready(Ok((avail, reader))) => {
-                            self.state = TunnelSourceOp::Available(reader, avail);
-                        },
+                }
+                TunnelSourceOp::Reading(mut fut) => match Pin::new(&mut fut).poll(cx) {
+                    Poll::Pending => {
+                        self.state = TunnelSourceOp::Reading(fut);
+                        return Poll::Pending;
+                    }
+                    Poll::Ready(Err(err)) => {
+                        return Poll::Ready(Err(err));
+                    }
+                    Poll::Ready(Ok((avail, reader))) => {
+                        self.state = TunnelSourceOp::Available(reader, avail);
                     }
                 },
                 TunnelSourceOp::Empty(reader) => {
@@ -379,7 +409,7 @@ impl<'r, R> AsyncRead for TunnelSource<'r, R>
                         Ok((bytes, reader))
                     };
                     self.state = TunnelSourceOp::Reading(Box::pin(fut));
-                },
+                }
                 TunnelSourceOp::Invalid => panic!("TunnerSource is invalid"),
             }
         }
@@ -393,33 +423,43 @@ struct TunnelLayer {
 
 impl TunnelLayer {
     fn new<S>(taker: Taker<S>, client_version: u64) -> (TunnelLayer, TunnelController)
-        where S: AsyncWrite + Send + Unpin + 'static,
+    where
+        S: AsyncWrite + Send + Unpin + 'static,
     {
         let (sender, receiver) = mpsc::channel(1000);
         let sender2 = sender.clone();
         let level = ActiveVerbosity::default();
         let level2 = level.clone();
-        tokio::spawn(process_tunnel(level.clone(), client_version, taker, receiver));
-        (TunnelLayer {
-            level,
-            sender
-        }, TunnelController {
-            level: level2,
-            sender: sender2,
-            can_send_stderr: false,
-            client_version
-        })
+        tokio::spawn(process_tunnel(
+            level.clone(),
+            client_version,
+            taker,
+            receiver,
+        ));
+        (
+            TunnelLayer { level, sender },
+            TunnelController {
+                level: level2,
+                sender: sender2,
+                can_send_stderr: false,
+                client_version,
+            },
+        )
     }
 }
 
 impl<S> Layer<S> for TunnelLayer
-    where for <'lookup> S: Subscriber + LookupSpan<'lookup>
+where
+    for<'lookup> S: Subscriber + LookupSpan<'lookup>,
 {
     fn on_new_span(&self, attrs: &span::Attributes<'_>, id: &span::Id, ctx: layer::Context<'_, S>) {
         if let Some(meta) = ctx.metadata(id) {
             if meta.name() == crate::store::activity::ACTIVITY_NAME {
                 if let Ok(activity) = attrs.try_into() {
-                    if let Err(err) = self.sender.try_send(TunnelCommand::StartActivity(id.into_u64(), activity)) {
+                    if let Err(err) = self
+                        .sender
+                        .try_send(TunnelCommand::StartActivity(id.into_u64(), activity))
+                    {
                         eprintln!("Activity start was dropped {err}")
                     }
                 } else {
@@ -442,7 +482,8 @@ impl<S> Layer<S> for TunnelLayer
             let activity = if span.name() == crate::store::activity::ACTIVITY_NAME {
                 Some(span)
             } else {
-                span.scope().find(|p| p.name() == crate::store::activity::ACTIVITY_NAME)
+                span.scope()
+                    .find(|p| p.name() == crate::store::activity::ACTIVITY_NAME)
             };
             if activity.is_none() {
                 eprintln!("Activity result with no parent activity");
@@ -452,7 +493,7 @@ impl<S> Layer<S> for TunnelLayer
             if let Ok(result) = ActivityResult::from_event(event, parent.id()) {
                 if let Err(err) = self.sender.try_send(TunnelCommand::Result(result)) {
                     eprintln!("Activity result was dropped {err}")
-                }        
+                }
             } else {
                 eprintln!("Activity result was missing fields")
             }
@@ -460,7 +501,7 @@ impl<S> Layer<S> for TunnelLayer
             if let Some(cmd) = format_event(self.level.clone(), event) {
                 if let Err(err) = self.sender.try_send(cmd) {
                     eprintln!("Event dropped {err}")
-                }            
+                }
             }
         }
     }
@@ -468,7 +509,10 @@ impl<S> Layer<S> for TunnelLayer
     fn on_close(&self, id: span::Id, ctx: layer::Context<'_, S>) {
         if let Some(meta) = ctx.metadata(&id) {
             if meta.name() == crate::store::activity::ACTIVITY_NAME {
-                if let Err(err) = self.sender.try_send(TunnelCommand::StopActivity(id.into_u64())) {
+                if let Err(err) = self
+                    .sender
+                    .try_send(TunnelCommand::StopActivity(id.into_u64()))
+                {
                     eprintln!("Activity stop was dropped {err}")
                 }
             }
@@ -504,17 +548,17 @@ impl TunnelController {
         debug!("start_work");
         self.can_send_stderr = true;
         self.sender.send(TunnelCommand::StartWork).await.unwrap();
-/*
-        auto state(state_.lock());
-        state->canSendStderr = true;
+        /*
+               auto state(state_.lock());
+               state->canSendStderr = true;
 
-        for (auto & msg : state->pendingMsgs)
-            to(msg);
+               for (auto & msg : state->pendingMsgs)
+                   to(msg);
 
-        state->pendingMsgs.clear();
+               state->pendingMsgs.clear();
 
-        to.flush();
- */
+               to.flush();
+        */
     }
 
     async fn stop_work_err(&mut self, ex: &Error) {
@@ -527,7 +571,10 @@ impl TunnelController {
             buf.write_string(ex.to_string()).await.unwrap();
             buf.write_u64_le(ex.exit_code()).await.unwrap();
         }
-        self.sender.send(TunnelCommand::StopWork(Some(buf.into_inner()), s)).await.unwrap();
+        self.sender
+            .send(TunnelCommand::StopWork(Some(buf.into_inner()), s))
+            .await
+            .unwrap();
         r.await.unwrap();
         self.can_send_stderr = false;
     }
@@ -537,24 +584,27 @@ impl TunnelController {
     async fn stop_work(&mut self) {
         debug!("stop_work");
         let (s, r) = oneshot::channel();
-        self.sender.send(TunnelCommand::StopWork(None, s)).await.unwrap();
+        self.sender
+            .send(TunnelCommand::StopWork(None, s))
+            .await
+            .unwrap();
         r.await.unwrap();
         self.can_send_stderr = false;
-/*
-        auto state(state_.lock());
+        /*
+               auto state(state_.lock());
 
-        state->canSendStderr = false;
+               state->canSendStderr = false;
 
-        if (!ex)
-            to << STDERR_LAST;
-        else {
-            if (GET_PROTOCOL_MINOR(clientVersion) >= 26) {
-                to << STDERR_ERROR << *ex;
-            } else {
-                to << STDERR_ERROR << ex->what() << ex->status;
-            }
-        }
- */
+               if (!ex)
+                   to << STDERR_LAST;
+               else {
+                   if (GET_PROTOCOL_MINOR(clientVersion) >= 26) {
+                       to << STDERR_ERROR << *ex;
+                   } else {
+                       to << STDERR_ERROR << ex->what() << ex->status;
+                   }
+               }
+        */
     }
 }
 
@@ -649,8 +699,14 @@ where
                 op_count.report_op(op);
                 debug!("performing daemon worker op: {}", op);
                 let fut = perform_op(
-                    &mut tunnel_logger, &mut store,
-                    trusted, client_version, &mut source, &mut to, op, );
+                    &mut tunnel_logger,
+                    &mut store,
+                    trusted,
+                    client_version,
+                    &mut source,
+                    &mut to,
+                    op,
+                );
                 if let Err(err) = fut.await {
                     /*
                         If we're not in a state where we can send replies, then
@@ -687,8 +743,13 @@ where
     fut.with_subscriber(sub).await
 }
 
-async fn read_derived_paths<R>(store_dir: &StoreDir, mut source: R, client_versionn: u64) -> Result<Vec<DerivedPath>, Error>
-where R: AsyncRead + Unpin,
+async fn read_derived_paths<R>(
+    store_dir: &StoreDir,
+    mut source: R,
+    client_versionn: u64,
+) -> Result<Vec<DerivedPath>, Error>
+where
+    R: AsyncRead + Unpin,
 {
     if get_protocol_minor!(client_versionn) >= 30 {
         let ret = source.read_parsed_coll(&store_dir).await?;
@@ -697,7 +758,7 @@ where R: AsyncRead + Unpin,
         let len = source.read_usize().await?;
         let mut ret = Vec::with_capacity(len);
         for _ in 0..len {
-            let paths : Vec<StorePathWithOutputs> = source.read_parsed_coll(&store_dir).await?;
+            let paths: Vec<StorePathWithOutputs> = source.read_parsed_coll(&store_dir).await?;
             for path in paths {
                 ret.push(path.into());
             }
@@ -716,16 +777,17 @@ async fn perform_op<S, R, W>(
     mut to: W,
     op: WorkerProtoOp,
 ) -> Result<(), Error>
-where S: DaemonStore + fmt::Debug + Send,
-      R: AsyncRead + fmt::Debug + Send + Unpin + 'static,
-      W: AsyncWrite + fmt::Debug + Send + Unpin,
+where
+    S: DaemonStore + fmt::Debug + Send,
+    R: AsyncRead + fmt::Debug + Send + Unpin + 'static,
+    W: AsyncWrite + fmt::Debug + Send + Unpin,
 {
     debug!(?op, "Perform op {}", op);
     let store_dir = store.store_dir();
     use WorkerProtoOp::*;
     match op {
         IsValidPath => {
-            let path  = from.read_parsed(&store_dir).await?;
+            let path = from.read_parsed(&store_dir).await?;
             logger.start_work().await;
             let result = store.is_valid_path(&path).await?;
             logger.stop_work().await;
@@ -756,7 +818,7 @@ where S: DaemonStore + fmt::Debug + Send,
         // AddToStore => {} // TODO
         AddMultipleToStore => {
             trace!("Add multiple");
-            let repair =  from.read_flag().await?;
+            let repair = from.read_flag().await?;
             trace!(?repair, "Read repair flag {:?}", repair);
             let mut dont_check_sigs = from.read_bool().await?;
             trace!(dont_check_sigs, "Read dont_check_sigs {}", dont_check_sigs);
@@ -769,7 +831,9 @@ where S: DaemonStore + fmt::Debug + Send,
             {
                 trace!("Framed source");
                 let mut source = FramedSource::new(&mut from);
-                let res = store.add_multiple_to_store(&mut source, repair, check_sigs).await;
+                let res = store
+                    .add_multiple_to_store(&mut source, repair, check_sigs)
+                    .await;
                 debug!("Done with add multiple");
                 source.drain().await?;
                 debug!("Drained frame source {:?}", res);
@@ -809,10 +873,9 @@ where S: DaemonStore + fmt::Debug + Send,
         }
         // BuildPathsWithResults => {} // TODO
         BuildDerivation => {
-            let drv_path : StorePath = from.read_parsed(&store_dir).await?;
+            let drv_path: StorePath = from.read_parsed(&store_dir).await?;
             let drv =
-                BasicDerivation::read_drv(&mut from, &store_dir, &drv_path.name_from_drv())
-                    .await?;
+                BasicDerivation::read_drv(&mut from, &store_dir, &drv_path.name_from_drv()).await?;
             let build_mode = from.read_enum().await?;
             logger.start_work().await;
 
@@ -857,7 +920,6 @@ where S: DaemonStore + fmt::Debug + Send,
             /* Make sure that the non-input-addressed derivations that got this far
             are in fact content-addressed if we don't trust them. */
             assert!(drv_type.is_ca() || trusted.into());
-
 
             /* Recompute the derivation path when we cannot trust the original. */
             /*
@@ -909,17 +971,17 @@ where S: DaemonStore + fmt::Debug + Send,
         SetOptions => {
             let keep_failed = from.read_bool().await?;
             let keep_going = from.read_bool().await?;
-            let try_fallback =  from.read_bool().await?;
+            let try_fallback = from.read_bool().await?;
             let verbosity = from.read_enum().await?;
             let max_build_jobs = from.read_u64_le().await?;
             let max_silent_time = from.read_seconds().await?;
             from.read_u64_le().await?; // obsolete useBuildHook
-            let build_verbosity : Verbosity = from.read_enum().await?;
+            let build_verbosity: Verbosity = from.read_enum().await?;
             let verbose_build = build_verbosity == Verbosity::Error;
             from.read_u64_le().await?; // obsolete logType
             from.read_u64_le().await?; // obsolete printBuildTrace
             let build_cores = from.read_u64_le().await?;
-            let use_substitutes =  from.read_bool().await?;
+            let use_substitutes = from.read_bool().await?;
 
             let mut unknown = BTreeMap::new();
             if get_protocol_minor!(client_version) >= 12 {
@@ -962,7 +1024,8 @@ where S: DaemonStore + fmt::Debug + Send,
                 if get_protocol_minor!(client_version) >= 17 {
                     to.write_u64_le(1).await?
                 }
-                info.write(&mut to, &store_dir, client_version, false).await?;
+                info.write(&mut to, &store_dir, client_version, false)
+                    .await?;
             } else {
                 if get_protocol_minor!(client_version) < 18 {
                     return Err(Error::InvalidPath(store_dir.print_path(&path)));
@@ -1015,7 +1078,15 @@ where S: DaemonStore + fmt::Debug + Send,
                 ultimate = false;
             }
             let info = ValidPathInfo {
-                path, deriver, nar_size, nar_hash, references, sigs, registration_time, ultimate, ca
+                path,
+                deriver,
+                nar_size,
+                nar_hash,
+                references,
+                sigs,
+                registration_time,
+                ultimate,
+                ca,
             };
             let check_sigs = if dont_check_sigs {
                 CheckSignaturesFlag::NoCheckSigs
@@ -1027,17 +1098,22 @@ where S: DaemonStore + fmt::Debug + Send,
                 logger.start_work().await;
                 {
                     let mut source = FramedSource::new(&mut from);
-                    let res = store.add_to_store(&info, &mut source, repair, check_sigs).await;
+                    let res = store
+                        .add_to_store(&info, &mut source, repair, check_sigs)
+                        .await;
                     source.drain().await?;
                     res?
                 }
                 logger.stop_work().await;
             } else {
                 if get_protocol_minor!(client_version) >= 21 {
-                    let mut source = TunnelSource::with_capacity(&mut from, logger.sender(), 65_000);
+                    let mut source =
+                        TunnelSource::with_capacity(&mut from, logger.sender(), 65_000);
                     logger.start_work().await;
                     // FIXME: race if addToStore doesn't read source?
-                    store.add_to_store(&info, &mut source, repair, check_sigs).await?;
+                    store
+                        .add_to_store(&info, &mut source, repair, check_sigs)
+                        .await?;
                     logger.stop_work().await;
                 } else {
                     /*
@@ -1049,7 +1125,9 @@ where S: DaemonStore + fmt::Debug + Send,
                     let mut source = tokio::io::AsyncReadExt::take(&mut from, info.nar_size);
                     logger.start_work().await;
                     // FIXME: race if addToStore doesn't read source?
-                    store.add_to_store(&info, &mut source, repair, check_sigs).await?;
+                    store
+                        .add_to_store(&info, &mut source, repair, check_sigs)
+                        .await?;
                     logger.stop_work().await;
                 }
             }
@@ -1059,8 +1137,10 @@ where S: DaemonStore + fmt::Debug + Send,
             logger.start_work().await;
             let result = store.query_missing(&targets).await?;
             logger.stop_work().await;
-            to.write_printed_coll(&store_dir, &result.will_build).await?;
-            to.write_printed_coll(&store_dir, &result.will_substitute).await?;
+            to.write_printed_coll(&store_dir, &result.will_build)
+                .await?;
+            to.write_printed_coll(&store_dir, &result.will_substitute)
+                .await?;
             to.write_printed_coll(&store_dir, &result.unknown).await?;
             to.write_u64_le(result.download_size).await?;
             to.write_u64_le(result.nar_size).await?;
@@ -1068,9 +1148,7 @@ where S: DaemonStore + fmt::Debug + Send,
         // RegisterDrvOutput => {} // TODO
         // QueryRealisation => {} // TODO
         // AddBuildLog => {} // TODO
-        QueryFailedPaths | ClearFailedPaths => {
-            return Err(Error::RemovedOperation(op))
-        }
+        QueryFailedPaths | ClearFailedPaths => return Err(Error::RemovedOperation(op)),
         _ => {
             // throw Error("invalid operation %1%", op);
             return Err(Error::InvalidOperation(op));

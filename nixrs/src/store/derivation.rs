@@ -8,7 +8,9 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use crate::flag_enum::flag_enum;
 use crate::hash;
 use crate::io::{AsyncSink, AsyncSource};
-use crate::store_path::{StorePathSet, ContentAddress, ContentAddressMethod, ContentAddressWithReferences};
+use crate::store_path::{
+    ContentAddress, ContentAddressMethod, ContentAddressWithReferences, StorePathSet,
+};
 use crate::store_path::{ParseStorePathError, ReadStorePathError, StoreDir, StorePath};
 
 flag_enum! {
@@ -142,41 +144,41 @@ impl DerivationOutput {
         hash: String,
     ) -> Result<DerivationOutput, ParseDerivationError> {
         /*
-        static DerivationOutput parseDerivationOutput(const Store & store,
-    std::string_view pathS, std::string_view hashAlgo, std::string_view hashS)
-{
-*/
+                static DerivationOutput parseDerivationOutput(const Store & store,
+            std::string_view pathS, std::string_view hashAlgo, std::string_view hashS)
+        {
+        */
         if hash_algo != "" {
             /*
-        ContentAddressMethod method = ContentAddressMethod::parsePrefix(hashAlgo);
-        if (method == TextIngestionMethod {})
-            experimentalFeatureSettings.require(Xp::DynamicDerivations);
-        const auto hashType = parseHashType(hashAlgo);
-        if (hashS == "impure") {
-            experimentalFeatureSettings.require(Xp::ImpureDerivations);
-            assert(pathS == "");
-            return DerivationOutput::Impure {
-                .method = std::move(method),
-                .hashType = std::move(hashType),
-            };
-        } else if (hashS != "") {
-            validatePath(pathS);
-            auto hash = Hash::parseNonSRIUnprefixed(hashS, hashType);
-            return DerivationOutput::CAFixed {
-                .ca = ContentAddress {
-                    .method = std::move(method),
-                    .hash = std::move(hash),
-                },
-            };
-        } else {
-            experimentalFeatureSettings.require(Xp::CaDerivations);
-            assert(pathS == "");
-            return DerivationOutput::CAFloating {
-                .method = std::move(method),
-                .hashType = std::move(hashType),
-            };
-        }
- */
+                   ContentAddressMethod method = ContentAddressMethod::parsePrefix(hashAlgo);
+                   if (method == TextIngestionMethod {})
+                       experimentalFeatureSettings.require(Xp::DynamicDerivations);
+                   const auto hashType = parseHashType(hashAlgo);
+                   if (hashS == "impure") {
+                       experimentalFeatureSettings.require(Xp::ImpureDerivations);
+                       assert(pathS == "");
+                       return DerivationOutput::Impure {
+                           .method = std::move(method),
+                           .hashType = std::move(hashType),
+                       };
+                   } else if (hashS != "") {
+                       validatePath(pathS);
+                       auto hash = Hash::parseNonSRIUnprefixed(hashS, hashType);
+                       return DerivationOutput::CAFixed {
+                           .ca = ContentAddress {
+                               .method = std::move(method),
+                               .hash = std::move(hash),
+                           },
+                       };
+                   } else {
+                       experimentalFeatureSettings.require(Xp::CaDerivations);
+                       assert(pathS == "");
+                       return DerivationOutput::CAFloating {
+                           .method = std::move(method),
+                           .hashType = std::move(hashType),
+                       };
+                   }
+            */
             let (method, algo) = ContentAddressMethod::parse_prefix(&hash_algo);
             let algorithm = algo.parse::<hash::Algorithm>()?;
             if hash != "" {
@@ -243,17 +245,19 @@ impl DerivationOutput {
             }
             DerivationOutput::CAFloating { method, hash_type } => {
                 sink.write_str("").await?;
-                sink.write_string(format!("{}{}", method, hash_type)).await?;
+                sink.write_string(format!("{}{}", method, hash_type))
+                    .await?;
                 sink.write_str("").await?;
             }
             DerivationOutput::Deferred => {
                 sink.write_str("").await?;
                 sink.write_str("").await?;
                 sink.write_str("").await?;
-            },
+            }
             DerivationOutput::Impure { method, hash_type } => {
                 sink.write_str("").await?;
-                sink.write_string(format!("{}{}", method, hash_type)).await?;
+                sink.write_string(format!("{}{}", method, hash_type))
+                    .await?;
                 sink.write_str("").await?;
             }
         }
@@ -393,7 +397,7 @@ pub enum DerivationOutputsError {
     #[error("all floating outputs must use the same hash type")]
     MixedOutputHash,
     #[error("can't mix derivation output types")]
-    MixedOutputTypes
+    MixedOutputTypes,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
@@ -453,7 +457,8 @@ impl BasicDerivation {
             && !has_fixed_ca_outputs
             && !has_floating_ca_outputs
             && !has_deferred_ia_outputs
-            && !has_impure_outputs {
+            && !has_impure_outputs
+        {
             return Err(DerivationOutputsError::MissingOutput);
         }
 
@@ -461,10 +466,9 @@ impl BasicDerivation {
             && !has_fixed_ca_outputs
             && !has_floating_ca_outputs
             && !has_deferred_ia_outputs
-            && !has_impure_outputs {
-            return Ok(DerivationType::InputAddressed {
-                deferred: false,
-            });
+            && !has_impure_outputs
+        {
+            return Ok(DerivationType::InputAddressed { deferred: false });
         }
 
         if !has_input_addressed_outputs
@@ -482,7 +486,8 @@ impl BasicDerivation {
             && !has_fixed_ca_outputs
             && has_floating_ca_outputs
             && !has_deferred_ia_outputs
-            && !has_impure_outputs {
+            && !has_impure_outputs
+        {
             return Ok(DerivationType::ContentAddressed {
                 sandboxed: true,
                 fixed: false,
@@ -493,17 +498,17 @@ impl BasicDerivation {
             && !has_fixed_ca_outputs
             && !has_floating_ca_outputs
             && has_deferred_ia_outputs
-            && !has_impure_outputs {
-            return Ok(DerivationType::InputAddressed {
-                deferred: true,
-            });
+            && !has_impure_outputs
+        {
+            return Ok(DerivationType::InputAddressed { deferred: true });
         }
 
         if !has_input_addressed_outputs
             && !has_fixed_ca_outputs
             && !has_floating_ca_outputs
             && !has_deferred_ia_outputs
-            && has_impure_outputs {
+            && has_impure_outputs
+        {
             return Ok(DerivationType::Impure);
         }
 
@@ -678,9 +683,10 @@ mod tests {
         let p = DerivationOutput::parse_output(&store_dir, path_s, "sha256".into(), hash);
         assert_eq!(
             p,
-            Ok(DerivationOutput::CAFixed(
-                ContentAddress::fixed(FileIngestionMethod::Flat, h)
-            ))
+            Ok(DerivationOutput::CAFixed(ContentAddress::fixed(
+                FileIngestionMethod::Flat,
+                h
+            )))
         );
     }
 
@@ -693,9 +699,10 @@ mod tests {
         let p = DerivationOutput::parse_output(&store_dir, path_s, "r:sha256".into(), hash);
         assert_eq!(
             p,
-            Ok(DerivationOutput::CAFixed(
-                ContentAddress::fixed(FileIngestionMethod::Recursive, h)
-            ))
+            Ok(DerivationOutput::CAFixed(ContentAddress::fixed(
+                FileIngestionMethod::Recursive,
+                h
+            )))
         );
     }
 
@@ -754,9 +761,8 @@ mod tests {
         let store_dir = StoreDir::new("/nix/store").unwrap();
         let hash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".to_owned();
         let h = hash::Hash::parse_non_sri_unprefixed(&hash, hash::Algorithm::SHA256).unwrap();
-        let drv_out = DerivationOutput::CAFixed(
-            ContentAddress::fixed(FileIngestionMethod::Recursive, h)
-        );
+        let drv_out =
+            DerivationOutput::CAFixed(ContentAddress::fixed(FileIngestionMethod::Recursive, h));
         assert_eq!(
             drv_out.path(&store_dir, "konsole-18.12.3", "out").unwrap(),
             Some(

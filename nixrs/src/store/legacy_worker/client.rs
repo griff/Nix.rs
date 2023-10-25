@@ -1,19 +1,19 @@
 use std::ffi::OsStr;
-use std::{io, fmt};
 use std::path::Path;
 use std::process::Stdio;
-use std::sync::{Mutex, Arc};
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
+use std::{fmt, io};
 
 use async_trait::async_trait;
-use tracing::{debug, trace, instrument};
-use tokio::io::{AsyncRead, AsyncWrite, BufReader, AsyncBufReadExt};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, BufReader};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{ChildStdin, ChildStdout, Command};
 use tokio::spawn;
-use tracing::{Dispatch,  error};
 use tracing::dispatcher::{get_default, with_default};
 use tracing::Instrument;
+use tracing::{debug, instrument, trace};
+use tracing::{error, Dispatch};
 
 use super::{
     get_protocol_major, get_protocol_minor, LegacyStore, ServeCommand, SERVE_MAGIC_1,
@@ -25,13 +25,13 @@ use crate::hash::Hash;
 use crate::io::{AsyncSink, AsyncSource};
 use crate::path_info::ValidPathInfo;
 use crate::signature::{ParseSignatureError, SignatureSet};
-use crate::store::activity::{RESULT_TARGET, ResultType, ActivityType};
+use crate::store::activity::{ActivityType, ResultType, RESULT_TARGET};
 use crate::store::error::Verbosity;
-use crate::store::{
-    BasicDerivation, BuildResult, BuildStatus, CheckSignaturesFlag, DerivedPath,
-    Error, RepairFlag, Store, SubstituteFlag, EXPORT_MAGIC, SPWOParseResult, BuildMode,
-};
 use crate::store::settings::get_settings;
+use crate::store::{
+    BasicDerivation, BuildMode, BuildResult, BuildStatus, CheckSignaturesFlag, DerivedPath, Error,
+    RepairFlag, SPWOParseResult, Store, SubstituteFlag, EXPORT_MAGIC,
+};
 use crate::store_path::{ParseStorePathError, StoreDir, StoreDirProvider, StorePath, StorePathSet};
 
 #[derive(Debug, Clone)]
@@ -68,8 +68,7 @@ struct ReplaceDispatch {
     old: DispatchInner,
 }
 
-impl ReplaceDispatch {
-}
+impl ReplaceDispatch {}
 
 impl Drop for ReplaceDispatch {
     fn drop(&mut self) {
@@ -88,9 +87,9 @@ async fn dump_log<R: AsyncRead + Unpin>(build_log: R, dispatcher: LogDispatch) {
         let d = dispatcher.0.lock().unwrap();
         with_default(&d.dispatch, || {
             eprintln!("Build log: {}", message);
-            let result_type : u64 = ResultType::BuildLogLine.into();
+            let result_type: u64 = ResultType::BuildLogLine.into();
             error!(target: RESULT_TARGET, parent: d.span.clone(), result_type, message);
-        });    
+        });
         message.clear()
     }
 }
@@ -127,10 +126,7 @@ impl LegacyStoreBuilder {
         Ok(self)
     }
 
-    pub async fn connect(
-        self,
-    ) -> Result<LegacyStoreClient<ChildStdout, ChildStdin>, Error>
-    {
+    pub async fn connect(self) -> Result<LegacyStoreClient<ChildStdout, ChildStdin>, Error> {
         let mut cmd = self.cmd;
         cmd.stdin(Stdio::piped());
         cmd.stdout(Stdio::piped());
@@ -139,7 +135,8 @@ impl LegacyStoreBuilder {
         let reader = child.stdout.take().unwrap();
         let writer = child.stdin.take().unwrap();
         let stderr = child.stderr.take().unwrap();
-        let mut store = LegacyStoreClient::new(self.store_dir, self.host, reader, writer, stderr).await;
+        let mut store =
+            LegacyStoreClient::new(self.store_dir, self.host, reader, writer, stderr).await;
         store.handshake().await?;
         Ok(store)
     }
@@ -180,7 +177,8 @@ where
         writer: W,
         build_log: BR,
     ) -> LegacyStoreClient<R, W>
-        where BR: AsyncRead + Send + Unpin + 'static
+    where
+        BR: AsyncRead + Send + Unpin + 'static,
     {
         let log_dispatch = LogDispatch::new();
         let dispatcher = log_dispatch.clone();
@@ -228,9 +226,13 @@ where
     async fn write_build_settings(&mut self) -> io::Result<()> {
         let remote_version = self.remote_version.unwrap();
 
-        let (max_silent_time, build_timeout, max_log_size, keep_failed)
-            = get_settings(|s| {
-                (s.max_silent_time, s.build_timeout, s.max_log_size, s.keep_failed)
+        let (max_silent_time, build_timeout, max_log_size, keep_failed) = get_settings(|s| {
+            (
+                s.max_silent_time,
+                s.build_timeout,
+                s.max_log_size,
+                s.keep_failed,
+            )
         });
 
         self.sink.write_seconds(max_silent_time).await?;
@@ -656,28 +658,36 @@ where
 
         let full_drv_path = store_dir.print_path(drv_path);
         let msg = match build_mode {
-            BuildMode::Repair => format!("repairing outputs of '{}' on {}", full_drv_path, self.host),
+            BuildMode::Repair => {
+                format!("repairing outputs of '{}' on {}", full_drv_path, self.host)
+            }
             BuildMode::Check => format!("checking outputs of '{}' on {}", full_drv_path, self.host),
             _ => format!("building '{}' on {}", full_drv_path, self.host),
         };
-        let act = activity!(Verbosity::Info, ActivityType::Build, msg,
-            field0=full_drv_path, field1=self.host, field2=1, field3=1);
-    
-        let fut = async {
+        let act = activity!(
+            Verbosity::Info,
+            ActivityType::Build,
+            msg,
+            field0 = full_drv_path,
+            field1 = self.host,
+            field2 = 1,
+            field3 = 1
+        );
 
+        let fut = async {
             let _log = self.log_dispatch.replace();
 
             let remote_version = self.remote_version().await?;
             self.sink
                 .write_enum(ServeCommand::CmdBuildDerivation)
                 .await?;
-    
+
             trace!("Write drv_path {}", drv_path);
             self.sink.write_printed(&store_dir, drv_path).await?;
             drv.write_drv(&mut self.sink, &store_dir).await?;
             self.write_build_settings().await?;
             self.sink.flush().await?;
-    
+
             let status = self.source.read_enum().await?;
             let error_msg = self.source.read_string().await?;
             let mut status = BuildResult::new(status, error_msg);
@@ -723,9 +733,7 @@ where
                 SPWOParseResult::StorePath(path) => {
                     Err(Error::WantedFetchInLegacy(store_dir.print_path(&path)))?
                 }
-                SPWOParseResult::Unsupported => {
-                    Err(Error::DerivationIsBuildProduct)?
-                }
+                SPWOParseResult::Unsupported => Err(Error::DerivationIsBuildProduct)?,
             }
         }
 
@@ -753,15 +761,15 @@ mod tests {
     use crate::archive::proptest::arb_nar_contents;
     use crate::hash;
     use crate::pretty_prop_assert_eq;
-    use crate::store::StorePathWithOutputs;
     use crate::store::error::Verbosity;
+    use crate::store::StorePathWithOutputs;
     use ::proptest::arbitrary::any;
     use ::proptest::proptest;
     use futures::future::try_join;
 
-    use crate::store::settings::{BuildSettings, WithSettings};
     use crate::path_info::proptest::arb_valid_info_and_content;
     use crate::store::assert_store::AssertStore;
+    use crate::store::settings::{BuildSettings, WithSettings};
     #[cfg(feature = "slowtests")]
     use crate::store_path::proptest::arb_drv_store_path;
 
@@ -892,19 +900,19 @@ mod tests {
     }
 
     proptest! {
-        #[test]
-        fn proptest_store_query_path_info(
-             (info, _source) in arb_valid_info_and_content(8, 256, 10),
-         )
-         {
-             store_cmd!(
-                 assert_query_path_info(None, &info.path.clone(), Ok(Some(info.clone()))),
-                 query_path_info(&info.path),
-                 Some(info)
-             );
-         }
-     }
- 
+       #[test]
+       fn proptest_store_query_path_info(
+            (info, _source) in arb_valid_info_and_content(8, 256, 10),
+        )
+        {
+            store_cmd!(
+                assert_query_path_info(None, &info.path.clone(), Ok(Some(info.clone()))),
+                query_path_info(&info.path),
+                Some(info)
+            );
+        }
+    }
+
     proptest! {
        #[test]
        fn proptest_store_add_to_store(

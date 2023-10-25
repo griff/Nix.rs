@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use futures::future::Ready;
 use futures::{Future, FutureExt};
-use tracing::{debug, error, info};
 use thrussh::server::Config;
 use thrussh::{
     server::{self, Handle},
@@ -20,6 +19,7 @@ use tokio::select;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
+use tracing::{debug, error, info};
 
 use crate::io::{ChannelRead, DataWrite, ExtendedDataWrite};
 use crate::StoreProvider;
@@ -194,7 +194,9 @@ where
             config: Arc::new(config.config),
             store_provider: config.store_provider,
         };
-        Ok(Server { state, /*serve_rx*/ })
+        Ok(Server {
+            state, /*serve_rx*/
+        })
     }
 
     pub async fn run(self, addr: &str) -> io::Result<()> {
@@ -202,69 +204,71 @@ where
         //let store_provider = self.state.store_provider.clone();
         //let cancel = self.state.shutdown.clone();
         let server_cancel = self.state.shutdown.clone();
-        local.run_until(async move {
-            //let mut serve_rx = self.serve_rx;
-            /*
-            tokio::task::spawn(async move {
-                loop {
-                    select! {
-                        msg = serve_rx.recv() => {
-                            match msg {
-                                Some(ChannelMsg { channel, handle, source, write_allowed, reply }) => {
-                                    let cancel = cancel.clone();
-                                    let store_provider = store_provider.clone();
-                                    let join = tokio::task::spawn(async move {
-                                        let stderr = ExtendedDataWrite::new(channel, 1, handle.clone());
-                                        let out = DataWrite::new(channel, handle);
-                                        if let Some(store) = store_provider.get_legacy_store(stderr.clone()).await? {
-                                            select! {
-                                                res = nixrs::store::legacy_worker::run_server_with_log(source, out, store, stderr, write_allowed) => {
-                                                    match res {
-                                                        Ok(_) => {},
-                                                        Err(err) => {
-                                                            tracing::error!("Error in serve {:?}", err);
-                                                            return Err(err.into());
+        local
+            .run_until(async move {
+                //let mut serve_rx = self.serve_rx;
+                /*
+                tokio::task::spawn(async move {
+                    loop {
+                        select! {
+                            msg = serve_rx.recv() => {
+                                match msg {
+                                    Some(ChannelMsg { channel, handle, source, write_allowed, reply }) => {
+                                        let cancel = cancel.clone();
+                                        let store_provider = store_provider.clone();
+                                        let join = tokio::task::spawn(async move {
+                                            let stderr = ExtendedDataWrite::new(channel, 1, handle.clone());
+                                            let out = DataWrite::new(channel, handle);
+                                            if let Some(store) = store_provider.get_legacy_store(stderr.clone()).await? {
+                                                select! {
+                                                    res = nixrs::store::legacy_worker::run_server_with_log(source, out, store, stderr, write_allowed) => {
+                                                        match res {
+                                                            Ok(_) => {},
+                                                            Err(err) => {
+                                                                tracing::error!("Error in serve {:?}", err);
+                                                                return Err(err.into());
+                                                            }
                                                         }
                                                     }
+                                                    _ = cancel.cancelled() => {
+                                                        info!("Shutting down channel {:?}!", channel);
+                                                        Err(io::Error::new(io::ErrorKind::BrokenPipe, "Shutting down"))?;
+                                                    }
                                                 }
-                                                _ = cancel.cancelled() => {
-                                                    info!("Shutting down channel {:?}!", channel);
-                                                    Err(io::Error::new(io::ErrorKind::BrokenPipe, "Shutting down"))?;
-                                                }
-                                            }    
-                                        } else {
-                                            info!("Failed to get legacy store {:?}!", channel);
-                                            Err(io::Error::new(io::ErrorKind::BrokenPipe, "Failed to get legacy store"))?;
-                                        }
-                                        Ok(())
-                                    });
-                                    reply.send(join).unwrap_or_default();
-                                },
-                                None => break,
+                                            } else {
+                                                info!("Failed to get legacy store {:?}!", channel);
+                                                Err(io::Error::new(io::ErrorKind::BrokenPipe, "Failed to get legacy store"))?;
+                                            }
+                                            Ok(())
+                                        });
+                                        reply.send(join).unwrap_or_default();
+                                    },
+                                    None => break,
+                                }
+                            }
+                            _ = cancel.cancelled() => {
+                                info!("Shutting down channel handler!");
+                                break
                             }
                         }
-                        _ = cancel.cancelled() => {
-                            info!("Shutting down channel handler!");
-                            break
-                        }
-                    }
 
+                    }
+                });
+                 */
+                let config = self.state.config.clone();
+                info!("Running SSH on {}", addr);
+                select! {
+                    res = thrussh::server::run(config, addr, self.state) => {
+                        info!("SSH server completed");
+                        res
+                    }
+                    _ = server_cancel.cancelled() => {
+                        info!("Shutting down SSH server");
+                        Ok(())
+                    }
                 }
-            });
-             */
-            let config = self.state.config.clone();
-            info!("Running SSH on {}", addr);
-            select! {
-                res = thrussh::server::run(config, addr, self.state) => {
-                    info!("SSH server completed");
-                    res
-                }
-                _ = server_cancel.cancelled() => {
-                    info!("Shutting down SSH server");
-                    Ok(())
-                }
-            }
-        }).await
+            })
+            .await
     }
 }
 
@@ -300,9 +304,12 @@ where
     S: StoreProvider,
     S::Error: 'static,
 {
-    async fn run_legacy_command(self, write_allowed: bool) -> Result<(), anyhow::Error>
-    {
-        if let Some(store) = self.store_provider.get_legacy_store(self.stderr.clone()).await? {
+    async fn run_legacy_command(self, write_allowed: bool) -> Result<(), anyhow::Error> {
+        if let Some(store) = self
+            .store_provider
+            .get_legacy_store(self.stderr.clone())
+            .await?
+        {
             select! {
                 res = nixrs::store::legacy_worker::run_server_with_log(self.stdin, self.stdout, store, self.stderr, write_allowed) => {
                     match res {
@@ -327,7 +334,12 @@ where
 
     async fn run_daemon_command(self) -> Result<(), anyhow::Error> {
         if let Some(store) = self.store_provider.get_daemon_store().await? {
-            let fut = Box::pin(nixrs::store::daemon::run_server(self.stdin, self.stdout, store, nixrs::store::daemon::TrustedFlag::Trusted));
+            let fut = Box::pin(nixrs::store::daemon::run_server(
+                self.stdin,
+                self.stdout,
+                store,
+                nixrs::store::daemon::TrustedFlag::Trusted,
+            ));
             select! {
                 res = fut => {
                     match res {

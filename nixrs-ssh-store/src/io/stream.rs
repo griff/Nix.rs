@@ -7,9 +7,9 @@ use std::io;
 use std::pin::Pin;
 use std::task::{ready, Poll};
 
-use tracing::debug;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
+use tracing::debug;
 
 /// AsyncRead/AsyncWrite wrapper for SSH Channels
 #[derive(Debug)]

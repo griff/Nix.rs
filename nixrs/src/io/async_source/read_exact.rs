@@ -5,7 +5,7 @@ use std::mem;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
-use bytes::{BufMut, BytesMut, Bytes};
+use bytes::{BufMut, Bytes, BytesMut};
 use pin_project_lite::pin_project;
 use tokio::io::AsyncRead;
 

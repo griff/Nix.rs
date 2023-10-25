@@ -12,8 +12,8 @@ use crate::path::clean_path;
 use crate::{base32, hash};
 
 pub fn is_name(s: &str) -> bool {
-    !s.is_empty() &&
-        s.char_indices().all(|(i, c)| {
+    !s.is_empty()
+        && s.char_indices().all(|(i, c)| {
             c.is_ascii_alphanumeric()
                 || c == '+'
                 || c == '-'

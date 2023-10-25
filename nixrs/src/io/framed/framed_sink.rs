@@ -1,7 +1,7 @@
 use std::pin::Pin;
-use std::task::{Context, ready, Poll};
+use std::task::{ready, Context, Poll};
 
-use bytes::{Bytes, BytesMut, BufMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use pin_project_lite::pin_project;
 use tokio::io::AsyncWrite;
 
@@ -50,7 +50,7 @@ impl<W: AsyncWrite> FramedSink<W> {
                     // eprintln!("{} Written written={}", this.frame, written);
                     *this.state = FramedSinkOp::Idle;
                     break;
-                }    
+                }
             }
         }
         Poll::Ready(Ok(()))
@@ -79,13 +79,19 @@ impl<W: AsyncWrite> AsyncWrite for FramedSink<W> {
         Poll::Ready(Ok(buf.len()))
     }
 
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
+    fn poll_flush(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), std::io::Error>> {
         ready!(self.as_mut().poll_writing(cx))?;
         let this = self.project();
         this.writer.poll_flush(cx)
     }
 
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), std::io::Error>> {
         if !self.shutdown {
             ready!(self.as_mut().poll_write(cx, &[]))?;
             let this = self.as_mut().project();
@@ -94,5 +100,3 @@ impl<W: AsyncWrite> AsyncWrite for FramedSink<W> {
         self.poll_flush(cx)
     }
 }
-
-

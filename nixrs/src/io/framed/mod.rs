@@ -3,14 +3,14 @@ pub mod framed_source;
 
 #[cfg(test)]
 mod tests {
-    use futures::future::join;
     use ::proptest::arbitrary::any;
-    use proptest::prop_assert_eq;
     use ::proptest::proptest;
+    use futures::future::join;
+    use proptest::prop_assert_eq;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     use crate::hash;
-    use crate::io::{FramedSource, FramedSink};
+    use crate::io::{FramedSink, FramedSource};
 
     proptest! {
         #[test]

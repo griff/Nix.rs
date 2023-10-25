@@ -2,8 +2,8 @@ use std::io;
 
 use clap::Parser;
 use nixrs_tvix::pathinfoservice;
-use tonic::transport::Server;
 use tokio_listener::{Listener, SystemOptions, UserOptions};
+use tonic::transport::Server;
 use tracing::info;
 use tracing::Level;
 use tracing_subscriber::filter;

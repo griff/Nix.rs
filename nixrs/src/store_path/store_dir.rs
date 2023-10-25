@@ -3,13 +3,13 @@ use std::fmt;
 use std::path::{Path, PathBuf, MAIN_SEPARATOR};
 use std::sync::Arc;
 
-use tracing::trace;
 use tokio::fs;
+use tracing::trace;
 
 use super::content_address::FixedOutputInfo;
 use super::{
-    FileIngestionMethod, ParseStorePathError, ReadStorePathError, StorePath,
-    StoreReferences, ContentAddressWithReferences, TextInfo,
+    ContentAddressWithReferences, FileIngestionMethod, ParseStorePathError, ReadStorePathError,
+    StorePath, StoreReferences, TextInfo,
 };
 use crate::hash;
 use crate::io::{StateParse, StatePrint};
@@ -106,11 +106,7 @@ impl StoreDir {
         StorePath::new(Path::new(s), self)
     }
 
-    fn make_type(
-        &self,
-        mut path_type: String,
-        references: &StoreReferences,
-    ) -> String {
+    fn make_type(&self, mut path_type: String, references: &StoreReferences) -> String {
         for reference in references.others.iter() {
             path_type.push_str(":");
             path_type.push_str(&self.print_path(reference));
@@ -185,7 +181,13 @@ impl StoreDir {
         // Stuff the references (if any) into the type.  This is a bit
         // hacky, but we can't put them in `s' since that would be
         // ambiguous.
-        let path_type = self.make_type("text".into(), &StoreReferences { others: info.references.clone(), self_ref: false });
+        let path_type = self.make_type(
+            "text".into(),
+            &StoreReferences {
+                others: info.references.clone(),
+                self_ref: false,
+            },
+        );
         self.make_store_path(&path_type, info.hash, name)
     }
 
@@ -499,10 +501,7 @@ mod tests {
             references: StoreReferences::new(),
         };
         let p2 = store_dir
-            .make_fixed_output_path(
-                "konsole-18.12.3",
-                &info,
-            )
+            .make_fixed_output_path("konsole-18.12.3", &info)
             .unwrap();
         assert_eq!(p2, p);
         assert_eq!(
@@ -530,7 +529,7 @@ mod tests {
         );
         let references = StoreReferences {
             others: set,
-            self_ref: true
+            self_ref: true,
         };
         let info = FixedOutputInfo {
             method: FileIngestionMethod::Recursive,
@@ -538,10 +537,7 @@ mod tests {
             references,
         };
         let p2 = store_dir
-            .make_fixed_output_path(
-                "konsole-18.12.3",
-                &info,
-            )
+            .make_fixed_output_path("konsole-18.12.3", &info)
             .unwrap();
         assert_eq!(p2, p);
         assert_eq!(
@@ -573,10 +569,7 @@ mod tests {
             references: StoreReferences::new(),
         };
         let p2 = store_dir
-            .make_fixed_output_path(
-                "konsole-18.12.3",
-                &info,
-            )
+            .make_fixed_output_path("konsole-18.12.3", &info)
             .unwrap();
         assert_eq!(p2, p);
         assert_eq!(
@@ -608,10 +601,7 @@ mod tests {
             references: StoreReferences::new(),
         };
         let p2 = store_dir
-            .make_fixed_output_path(
-                "konsole-18.12.3",
-                &info,
-            )
+            .make_fixed_output_path("konsole-18.12.3", &info)
             .unwrap();
         assert_eq!(p2, p);
         assert_eq!(

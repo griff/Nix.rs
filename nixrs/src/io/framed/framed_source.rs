@@ -4,9 +4,8 @@ use std::task::{ready, Poll};
 
 use bytes::Buf;
 use pin_project_lite::pin_project;
-use tracing::{debug, trace};
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
-
+use tracing::{debug, trace};
 
 #[derive(Debug)]
 pub enum FramedSourceOp {
@@ -32,7 +31,7 @@ impl<R: AsyncRead + Unpin> FramedSource<R> {
         FramedSource {
             state: FramedSourceOp::Idle,
             frame: 0,
-            reader
+            reader,
         }
     }
 
@@ -59,7 +58,7 @@ impl<R: AsyncRead> AsyncRead for FramedSource<R> {
     ) -> Poll<io::Result<()>> {
         let mut this = self.project();
         loop {
-            match std::mem::replace(this.state, FramedSourceOp::Invalid)  {
+            match std::mem::replace(this.state, FramedSourceOp::Invalid) {
                 FramedSourceOp::Invalid => panic!("Invalid framed reader state"),
                 FramedSourceOp::ReadSize(mut read, mut sbuf) => {
                     while read < 8u8 {
@@ -69,21 +68,21 @@ impl<R: AsyncRead> AsyncRead for FramedSource<R> {
                             Poll::Pending => {
                                 *this.state = FramedSourceOp::ReadSize(read, sbuf);
                                 return Poll::Pending;
-                            },
+                            }
                             Poll::Ready(Ok(_)) => (),
                             Poll::Ready(Err(err)) => {
                                 *this.state = FramedSourceOp::ReadSize(read, sbuf);
                                 return Poll::Ready(Err(err));
                             }
                         }
-    
+
                         let n = read_buf.filled().len();
                         if n == 0 {
                             *this.state = FramedSourceOp::ReadSize(read, sbuf);
                             // eprintln!("EOF reading size");
                             return Poll::Ready(Err(io::ErrorKind::UnexpectedEof.into()));
                         }
-    
+
                         read += n as u8
                     }
                     let size = Buf::get_u64_le(&mut &sbuf[..]);
@@ -117,7 +116,13 @@ impl<R: AsyncRead> AsyncRead for FramedSource<R> {
                         read
                     } else {
                         ready!(this.reader.as_mut().poll_read(cx, buf))?;
-                        debug!(old_filled, left, filled=buf.filled().len(), read=buf.filled().len() - old_filled, "Read buf");
+                        debug!(
+                            old_filled,
+                            left,
+                            filled = buf.filled().len(),
+                            read = buf.filled().len() - old_filled,
+                            "Read buf"
+                        );
                         buf.filled().len() - old_filled
                     };
                     if read == 0 {

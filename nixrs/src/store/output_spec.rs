@@ -3,14 +3,13 @@ use std::str::FromStr;
 
 use thiserror::Error;
 
-use crate::{StringSet, store_path::is_name};
+use crate::{store_path::is_name, StringSet};
 
 #[derive(Error, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum ParseOutputSpecError {
     #[error("output name '{0}' contains forbidden character")]
     BadOutputName(String),
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum OutputSpec {
@@ -82,7 +81,7 @@ impl fmt::Display for OutputSpec {
         match self {
             Self::All => {
                 write!(f, "*")
-            },
+            }
             Self::Names(names) => {
                 let mut first = true;
                 for name in names.iter() {
@@ -117,8 +116,7 @@ pub mod proptest {
     pub fn arb_output_spec(size: impl Into<SizeRange>) -> impl Strategy<Value = OutputSpec> {
         prop_oneof![
             Just(OutputSpec::All),
-            btree_set(arb_output_name(), size)
-                .prop_map(|outputs| OutputSpec::Names(outputs))
+            btree_set(arb_output_name(), size).prop_map(|outputs| OutputSpec::Names(outputs))
         ]
     }
 }

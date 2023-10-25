@@ -8,7 +8,9 @@ use super::daemon::WorkerProtoOp;
 use super::derived_path::ReadDerivedPathError;
 use super::legacy_worker::ServeCommand;
 use super::settings::ParseSettingError;
-use super::{ParseDrvOutputError, ReadDerivationError, WriteDerivationError, DerivationOutputsError};
+use super::{
+    DerivationOutputsError, ParseDrvOutputError, ReadDerivationError, WriteDerivationError,
+};
 use crate::hash;
 use crate::io::AsyncSink;
 use crate::num_enum::num_enum;
@@ -34,8 +36,8 @@ num_enum! {
 
 impl Verbosity {
     pub const fn to_tracing(&self) -> tracing::Level {
-        use Verbosity::*;
         use tracing::Level;
+        use Verbosity::*;
         match self {
             Error => Level::ERROR,
             Warn => Level::WARN,
@@ -143,9 +145,7 @@ pub enum Error {
     #[error("bad 'executable' field in NAR")]
     BadExecutableField,
     #[error("I/O error: {source}")]
-    IOError {
-        source: std::io::Error,
-    },
+    IOError { source: std::io::Error },
     #[error("Join error: {0}")]
     JoinError(
         #[from]
@@ -230,13 +230,13 @@ pub enum Error {
     DerivationOutputs(
         #[from]
         #[source]
-        DerivationOutputsError
+        DerivationOutputsError,
     ),
     #[error("{0}")]
     ParseSetting(
         #[from]
         #[source]
-        ParseSettingError
+        ParseSettingError,
     ),
     #[error("{0} is not allowed")]
     WriteOnlyLegacyStore(ServeCommand),
@@ -304,17 +304,17 @@ impl Error {
         sink.write_enum(self.level()).await?;
         sink.write_str("Error").await?; // Removed
         sink.write_string(self.to_string()).await?;
-        sink.write_u64_le(0).await?;  // info.errPos
+        sink.write_u64_le(0).await?; // info.errPos
         if let Some(traces) = self.traces() {
             sink.write_usize(traces.len()).await?;
             for trace in traces.iter() {
-                sink.write_u64_le(0).await?;  // trace.errPos
+                sink.write_u64_le(0).await?; // trace.errPos
                 sink.write_str(trace).await?;
             }
         } else {
             sink.write_u64_le(0).await?;
         }
-    
+
         Ok(())
     }
 }

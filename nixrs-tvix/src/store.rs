@@ -5,9 +5,7 @@ use async_trait::async_trait;
 use futures::{SinkExt, TryStreamExt};
 use nixrs::archive::{parse_nar, NAREncoder};
 use nixrs::path_info::ValidPathInfo;
-use nixrs::store::{
-    CheckSignaturesFlag, Error, RepairFlag, Store,
-};
+use nixrs::store::{CheckSignaturesFlag, Error, RepairFlag, Store};
 use nixrs::store_path::{StoreDir, StoreDirProvider, StorePath};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::pin;
@@ -29,7 +27,9 @@ pub struct TvixStore {
 
 impl fmt::Debug for TvixStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TvixStore").field("store_dir", &self.store_dir).finish()
+        f.debug_struct("TvixStore")
+            .field("store_dir", &self.store_dir)
+            .finish()
     }
 }
 

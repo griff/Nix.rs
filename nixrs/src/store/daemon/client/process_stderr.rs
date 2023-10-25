@@ -1,27 +1,32 @@
 use std::io::Cursor;
 
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, AsyncReadExt};
-use tracing::{debug, info, error};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tracing::{debug, error, info};
 
-use crate::store::daemon::{get_protocol_minor, STDERR_WRITE, STDERR_READ, STDERR_ERROR, STDERR_NEXT, STDERR_START_ACTIVITY, STDERR_STOP_ACTIVITY, STDERR_RESULT, STDERR_LAST};
-use crate::store::activity::{LoggerField, ActivityId, LoggerFieldType, ActivityType, ResultType, ActivityLogger};
+use crate::io::{AsyncSink, AsyncSource};
+use crate::store::activity::{
+    ActivityId, ActivityLogger, ActivityType, LoggerField, LoggerFieldType, ResultType,
+};
+use crate::store::daemon::{
+    get_protocol_minor, STDERR_ERROR, STDERR_LAST, STDERR_NEXT, STDERR_READ, STDERR_RESULT,
+    STDERR_START_ACTIVITY, STDERR_STOP_ACTIVITY, STDERR_WRITE,
+};
 use crate::store::error::Verbosity;
 use crate::store::Error;
-use crate::io::{AsyncSink, AsyncSource};
 
 async fn read_fields<R: AsyncRead + Unpin>(mut source: R) -> Result<Vec<LoggerField>, Error> {
     let size = source.read_usize().await?;
     let mut ret = Vec::with_capacity(size);
     for _ in 0..size {
-        let field_type : LoggerFieldType = source.read_enum().await?;
+        let field_type: LoggerFieldType = source.read_enum().await?;
         match field_type {
             LoggerFieldType::Int => ret.push(LoggerField::Int(source.read_u64_le().await?)),
             LoggerFieldType::String => {
                 ret.push(LoggerField::String(source.read_string().await?));
-            },
+            }
             LoggerFieldType::Invalid(val) => {
                 return Err(Error::UnsupportedFieldType(val));
-            },
+            }
         }
     }
     Ok(ret)
@@ -56,7 +61,7 @@ impl<R, W, SR, SW> ProcessStderr<R, W, SR, SW> {
             from: self.from,
             to: Some(to),
             source: Some(source),
-            sink: self.sink
+            sink: self.sink,
         }
     }
 
@@ -66,12 +71,12 @@ impl<R, W, SR, SW> ProcessStderr<R, W, SR, SW> {
     }
      */
 
-     pub async fn run(mut self) -> Result<(), Error>
-        where
-            R: AsyncRead + Unpin,
-            W: AsyncWrite + Unpin,
-            SR: AsyncRead + Unpin,
-            SW: AsyncWrite + Unpin, 
+    pub async fn run(mut self) -> Result<(), Error>
+    where
+        R: AsyncRead + Unpin,
+        W: AsyncWrite + Unpin,
+        SR: AsyncRead + Unpin,
+        SW: AsyncWrite + Unpin,
     {
         let mut buf = Vec::new();
         loop {
@@ -83,7 +88,7 @@ impl<R, W, SR, SW> ProcessStderr<R, W, SR, SW> {
                     if let Some(sink) = self.sink.as_mut() {
                         sink.write_all(s.as_bytes()).await?;
                     } else {
-                        return Err(Error::NoSink)
+                        return Err(Error::NoSink);
                     }
                 }
                 STDERR_READ => {
@@ -99,7 +104,7 @@ impl<R, W, SR, SW> ProcessStderr<R, W, SR, SW> {
                         buf.clear();
                         to.flush().await?;
                     } else {
-                        return Err(Error::NoSource)
+                        return Err(Error::NoSource);
                     }
                 }
                 STDERR_ERROR => {
@@ -107,7 +112,7 @@ impl<R, W, SR, SW> ProcessStderr<R, W, SR, SW> {
                     if get_protocol_minor!(self.daemon_version) >= 26 {
                         let error_type = self.from.read_string().await?;
                         assert_eq!(error_type, "Error");
-                        let level : Verbosity = self.from.read_enum().await?;
+                        let level: Verbosity = self.from.read_enum().await?;
                         let _name = self.from.read_string().await?; // Removed
                         let msg = self.from.read_string().await?;
                         let have_pos = self.from.read_usize().await?;
@@ -134,32 +139,33 @@ impl<R, W, SR, SW> ProcessStderr<R, W, SR, SW> {
                 }
                 STDERR_START_ACTIVITY => {
                     debug!("Got STDERR_START_ACTIVITY");
-                    let act : ActivityId = self.from.read_u64_le().await?;
-                    let lvl : Verbosity = self.from.read_enum().await?;
-                    let act_type : ActivityType = self.from.read_enum().await?;
+                    let act: ActivityId = self.from.read_u64_le().await?;
+                    let lvl: Verbosity = self.from.read_enum().await?;
+                    let act_type: ActivityType = self.from.read_enum().await?;
                     let s = self.from.read_string().await?;
                     let fields = read_fields(&mut self.from).await?;
-                    let parent : ActivityId = self.from.read_u64_le().await?;
-                    self.logger.start_activity(act, lvl, act_type, s, fields, parent);
+                    let parent: ActivityId = self.from.read_u64_le().await?;
+                    self.logger
+                        .start_activity(act, lvl, act_type, s, fields, parent);
                 }
                 STDERR_STOP_ACTIVITY => {
                     debug!("Got STDERR_STOP_ACTIVITY");
-                    let act : ActivityId = self.from.read_u64_le().await?;
+                    let act: ActivityId = self.from.read_u64_le().await?;
                     self.logger.stop_activity(act);
                 }
                 STDERR_RESULT => {
                     debug!("Got STDERR_RESULT");
-                    let act : ActivityId = self.from.read_u64_le().await?;
-                    let res_type : ResultType = self.from.read_enum().await?;
+                    let act: ActivityId = self.from.read_u64_le().await?;
+                    let res_type: ResultType = self.from.read_enum().await?;
                     let fields = read_fields(&mut self.from).await?;
                     self.logger.result(act, res_type, fields);
                 }
                 STDERR_LAST => {
                     return Ok(());
-                },
+                }
                 _ => {
                     error!("Unknown message type {}", msg);
-                    return Err(Error::UnknownMessageType(msg))
+                    return Err(Error::UnknownMessageType(msg));
                 }
             }
         }

@@ -4,7 +4,7 @@ use std::fmt;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tracing::{instrument, trace};
 
-use super::{Error, Store, CheckSignaturesFlag, RepairFlag};
+use super::{CheckSignaturesFlag, Error, RepairFlag, Store};
 use crate::compute_closure;
 use crate::path_info::ValidPathInfo;
 use crate::store_path::{StorePath, StorePathSet};
@@ -229,7 +229,12 @@ pub async fn topo_sort_paths_slow<S: Store>(
 }
 
 #[instrument(skip_all)]
-pub async fn add_multiple_to_store_old<S, R>(mut store: S, mut source: R, repair: RepairFlag, check_sigs: CheckSignaturesFlag) -> Result<(), Error>
+pub async fn add_multiple_to_store_old<S, R>(
+    mut store: S,
+    mut source: R,
+    repair: RepairFlag,
+    check_sigs: CheckSignaturesFlag,
+) -> Result<(), Error>
 where
     S: Store,
     R: AsyncRead + fmt::Debug + Unpin + Send,
@@ -241,7 +246,9 @@ where
         let mut info = ValidPathInfo::read(&mut source, &store_dir, 16).await?;
         info.ultimate = false;
         trace!(?info, "Reading info for {}", info.path);
-        store.add_to_store(&info, &mut source, repair, check_sigs).await?;
+        store
+            .add_to_store(&info, &mut source, repair, check_sigs)
+            .await?;
     }
     Ok(())
 }

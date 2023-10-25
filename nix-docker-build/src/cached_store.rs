@@ -2,11 +2,11 @@ use std::fmt;
 
 use async_trait::async_trait;
 use nixrs::path_info::ValidPathInfo;
-use nixrs::store::{copy_paths, BuildMode};
 use nixrs::store::legacy_worker::{LegacyStore, LegacyStoreBuilder, LegacyStoreClient};
+use nixrs::store::{copy_paths, BuildMode};
 use nixrs::store::{
-    BasicDerivation, BuildResult, CheckSignaturesFlag, DerivedPath, Error,
-    RepairFlag, Store, SubstituteFlag,
+    BasicDerivation, BuildResult, CheckSignaturesFlag, DerivedPath, Error, RepairFlag, Store,
+    SubstituteFlag,
 };
 use nixrs::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
 use tokio::process::{ChildStdin, ChildStdout};
@@ -128,9 +128,7 @@ impl Store for CachedStore {
         let mut builder = b.connect().await?;
 
         copy_paths(&mut self.cache, &mut builder, &inputs).await?;
-        let result = builder
-            .build_derivation(drv_path, drv, build_mode)
-            .await?;
+        let result = builder.build_derivation(drv_path, drv, build_mode).await?;
 
         if result.success() {
             /*

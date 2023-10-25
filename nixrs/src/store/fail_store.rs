@@ -1,10 +1,16 @@
 use async_trait::async_trait;
-use tokio::io::{AsyncWrite, AsyncRead};
+use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::{store_path::{StoreDirProvider, StorePathSet, StorePath}, path_info::ValidPathInfo};
+use crate::{
+    path_info::ValidPathInfo,
+    store_path::{StoreDirProvider, StorePath, StorePathSet},
+};
 
-use super::{Store, legacy_worker::LegacyStore, daemon::{DaemonStore, TrustedFlag, QueryMissingResult}, Error, SubstituteFlag, CheckSignaturesFlag, RepairFlag, DerivedPath};
-
+use super::{
+    daemon::{DaemonStore, QueryMissingResult, TrustedFlag},
+    legacy_worker::LegacyStore,
+    CheckSignaturesFlag, DerivedPath, Error, RepairFlag, Store, SubstituteFlag,
+};
 
 #[derive(Debug)]
 pub struct FailStore;
@@ -48,7 +54,9 @@ impl LegacyStore for FailStore {
         _lock: bool,
         _maybe_substitute: SubstituteFlag,
     ) -> Result<StorePathSet, Error> {
-        Err(Error::UnsupportedOperation("query_valid_paths_locked".into()))
+        Err(Error::UnsupportedOperation(
+            "query_valid_paths_locked".into(),
+        ))
     }
     async fn export_paths<SW: AsyncWrite + Send + Unpin>(
         &mut self,
@@ -93,7 +101,10 @@ impl DaemonStore for FailStore {
         Err(Error::UnsupportedOperation("add_multiple_to_store".into()))
     }
 
-    async fn query_missing(&mut self, _targets: &[DerivedPath]) -> Result<QueryMissingResult, Error> {
+    async fn query_missing(
+        &mut self,
+        _targets: &[DerivedPath],
+    ) -> Result<QueryMissingResult, Error> {
         Err(Error::UnsupportedOperation("query_missing".into()))
     }
 }

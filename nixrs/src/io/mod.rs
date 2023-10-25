@@ -11,7 +11,10 @@ mod state_print;
 mod taken_stream;
 
 pub use async_sink::AsyncSink;
-pub use async_source::{AsyncSource, DrainAll, DrainExact, ReadBytes, ReadBool, ReadEnum, ReadFlag, ReadSeconds, ReadTime, ReadUsize, ReadPadding, ReadParsedColl, ReadParsed, ReadStringColl, ReadString};
+pub use async_source::{
+    AsyncSource, DrainAll, DrainExact, ReadBool, ReadBytes, ReadEnum, ReadFlag, ReadPadding,
+    ReadParsed, ReadParsedColl, ReadSeconds, ReadString, ReadStringColl, ReadTime, ReadUsize,
+};
 pub use cancelled_reader::{CancelToken, CancelledReader};
 pub use collection_read::CollectionRead;
 pub use collection_size::CollectionSize;

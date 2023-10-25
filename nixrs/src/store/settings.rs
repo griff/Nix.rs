@@ -1,10 +1,10 @@
+use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::num::ParseIntError;
 use std::str::ParseBoolError;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use std::cell::RefCell;
-use std::collections::BTreeMap;
 
 use pin_project_lite::pin_project;
 use thiserror::Error;
@@ -14,9 +14,17 @@ use super::error::Verbosity;
 #[derive(Debug, Error, Clone)]
 pub enum ParseSettingError {
     #[error("{0}")]
-    ParseBool(#[source] #[from] ParseBoolError),
+    ParseBool(
+        #[source]
+        #[from]
+        ParseBoolError,
+    ),
     #[error("{0}")]
-    ParseInt(#[source] #[from] ParseIntError),
+    ParseInt(
+        #[source]
+        #[from]
+        ParseIntError,
+    ),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -143,21 +151,21 @@ impl BuildSettings {
                 "substitute" => self.use_substitutes = v.parse()?,
                 "build-use-substitutes" => self.use_substitutes = v.parse()?,
                 "max-silent-time" => {
-                    let secs : u64 = v.parse()?;
+                    let secs: u64 = v.parse()?;
                     self.max_silent_time = Duration::from_secs(secs)
-                },
+                }
                 "build-max-silent-time" => {
-                    let secs : u64 = v.parse()?;
+                    let secs: u64 = v.parse()?;
                     self.max_silent_time = Duration::from_secs(secs)
-                },
+                }
                 "timeout" => {
-                    let secs : u64 = v.parse()?;
+                    let secs: u64 = v.parse()?;
                     self.build_timeout = Duration::from_secs(secs)
-                },
+                }
                 "build-timeout" => {
-                    let secs : u64 = v.parse()?;
+                    let secs: u64 = v.parse()?;
                     self.build_timeout = Duration::from_secs(secs)
-                },
+                }
                 "max-build-log-size" => self.max_log_size = v.parse()?,
                 "build-max-log-size" => self.max_log_size = v.parse()?,
                 "run-diff-hook" => self.run_diff_hook = v.parse()?,
@@ -177,7 +185,10 @@ impl BuildSettings {
         map.insert("cores".into(), self.build_cores.to_string());
         map.insert("keep-build-log".into(), self.keep_log.to_string());
         map.insert("substitute".into(), self.use_substitutes.to_string());
-        map.insert("max-silent-time".into(), self.max_silent_time.as_secs().to_string());
+        map.insert(
+            "max-silent-time".into(),
+            self.max_silent_time.as_secs().to_string(),
+        );
         map.insert("timeout".into(), self.build_timeout.as_secs().to_string());
         map.insert("max-build-log-size".into(), self.max_log_size.to_string());
         map.insert("run-diff-hook".into(), self.run_diff_hook.to_string());
@@ -253,9 +264,7 @@ where
     F: FnMut(Option<&DefaultSettings>) -> T,
 {
     CURRENT_STATE
-        .try_with(|state| {
-            f(state.default.borrow().as_ref())
-        })
+        .try_with(|state| f(state.default.borrow().as_ref()))
         .unwrap_or_else(|_| f(None))
 }
 
@@ -267,7 +276,7 @@ where
         .try_with(|state| {
             if let Some(settings) = state.default.borrow().as_ref() {
                 if let Ok(inner) = settings.0.lock() {
-                    return f(&inner)
+                    return f(&inner);
                 }
             }
             f(&NONE)
@@ -283,11 +292,12 @@ where
         .try_with(|state| {
             if let Some(settings) = state.default.borrow().as_ref() {
                 if let Ok(mut inner) = settings.0.lock() {
-                    return f(Some(&mut inner))
+                    return f(Some(&mut inner));
                 }
             }
             f(None)
-        }).unwrap_or_else(|_| f(None))
+        })
+        .unwrap_or_else(|_| f(None))
 }
 
 impl State {
@@ -299,9 +309,7 @@ impl State {
     #[inline]
     fn set_default(new_settings: DefaultSettings) -> DefaultGuard {
         let prior = CURRENT_STATE
-            .try_with(|state| {
-                state.default.replace(Some(new_settings))
-            })
+            .try_with(|state| state.default.replace(Some(new_settings)))
             .ok()
             .flatten();
         DefaultGuard(prior)
@@ -326,15 +334,19 @@ pin_project! {
         settings: DefaultSettings,
         #[pin]
         inner: F,
-    }    
+    }
 }
 
 impl<F> Future for WithDefaultSettings<F>
-    where F: Future,
+where
+    F: Future,
 {
     type Output = F::Output;
 
-    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
         let this = self.project();
         let settings = this.settings;
         let future = this.inner;
@@ -344,13 +356,15 @@ impl<F> Future for WithDefaultSettings<F>
 
 pub trait WithSettings: Sized {
     fn with_settings<S>(self, settings: S) -> WithDefaultSettings<Self>
-        where S: Into<DefaultSettings>;
+    where
+        S: Into<DefaultSettings>;
     fn with_current_settings(self) -> WithDefaultSettings<Self>;
 }
 
 impl<T: Sized> WithSettings for T {
     fn with_settings<S>(self, settings: S) -> WithDefaultSettings<Self>
-        where S: Into<DefaultSettings>
+    where
+        S: Into<DefaultSettings>,
     {
         WithDefaultSettings {
             settings: settings.into(),
@@ -358,7 +372,7 @@ impl<T: Sized> WithSettings for T {
         }
     }
     fn with_current_settings(self) -> WithDefaultSettings<Self> {
-        let settings : DefaultSettings = Default::default();
+        let settings: DefaultSettings = Default::default();
         self.with_settings(settings)
     }
 }

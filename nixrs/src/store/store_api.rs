@@ -3,9 +3,9 @@ use std::time::SystemTime;
 
 use async_trait::async_trait;
 use futures::future::try_join;
-use tracing::debug;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
+use tracing::debug;
 
 use super::topo_sort_paths_slow;
 use super::{BasicDerivation, DerivedPath, DrvOutputs, Error, RepairFlag};
@@ -272,29 +272,124 @@ pub trait Store: StoreDirProvider {
 
 macro_rules! deref_store {
     () => {
-        fn query_valid_paths<'life0,'life1,'async_trait>(&'life0 mut self,paths: &'life1 StorePathSet,maybe_substitute:SubstituteFlag,) ->  ::core::pin::Pin<Box<dyn ::core::future::Future<Output = Result<StorePathSet,Error> > + ::core::marker::Send+'async_trait> >where 'life0:'async_trait,'life1:'async_trait,Self: ::core::marker::Send+'async_trait{
+        fn query_valid_paths<'life0, 'life1, 'async_trait>(
+            &'life0 mut self,
+            paths: &'life1 StorePathSet,
+            maybe_substitute: SubstituteFlag,
+        ) -> ::core::pin::Pin<
+            Box<
+                dyn ::core::future::Future<Output = Result<StorePathSet, Error>>
+                    + ::core::marker::Send
+                    + 'async_trait,
+            >,
+        >
+        where
+            'life0: 'async_trait,
+            'life1: 'async_trait,
+            Self: ::core::marker::Send + 'async_trait,
+        {
             (**self).query_valid_paths(paths, maybe_substitute)
         }
 
-        fn query_path_info<'life0,'life1,'async_trait>(&'life0 mut self,path: &'life1 StorePath) ->  ::core::pin::Pin<Box<dyn ::core::future::Future<Output = Result<Option<ValidPathInfo> ,Error> > + ::core::marker::Send+'async_trait> >where 'life0:'async_trait,'life1:'async_trait,Self:'async_trait {
+        fn query_path_info<'life0, 'life1, 'async_trait>(
+            &'life0 mut self,
+            path: &'life1 StorePath,
+        ) -> ::core::pin::Pin<
+            Box<
+                dyn ::core::future::Future<Output = Result<Option<ValidPathInfo>, Error>>
+                    + ::core::marker::Send
+                    + 'async_trait,
+            >,
+        >
+        where
+            'life0: 'async_trait,
+            'life1: 'async_trait,
+            Self: 'async_trait,
+        {
             (**self).query_path_info(path)
         }
 
-        fn nar_from_path<'life0,'life1,'async_trait,W, >(&'life0 mut self,path: &'life1 StorePath,sink:W,) ->  ::core::pin::Pin<Box<dyn ::core::future::Future<Output = Result<(),Error> > + ::core::marker::Send+'async_trait> >where W:'async_trait+AsyncWrite + fmt::Debug+Send+Unpin,'life0:'async_trait,'life1:'async_trait,Self:'async_trait {
+        fn nar_from_path<'life0, 'life1, 'async_trait, W>(
+            &'life0 mut self,
+            path: &'life1 StorePath,
+            sink: W,
+        ) -> ::core::pin::Pin<
+            Box<
+                dyn ::core::future::Future<Output = Result<(), Error>>
+                    + ::core::marker::Send
+                    + 'async_trait,
+            >,
+        >
+        where
+            W: 'async_trait + AsyncWrite + fmt::Debug + Send + Unpin,
+            'life0: 'async_trait,
+            'life1: 'async_trait,
+            Self: 'async_trait,
+        {
             (**self).nar_from_path(path, sink)
         }
-    
-        fn add_to_store<'life0,'life1,'async_trait,R, >(&'life0 mut self,info: &'life1 ValidPathInfo,source:R,repair:RepairFlag,check_sigs:CheckSignaturesFlag,) ->  ::core::pin::Pin<Box<dyn ::core::future::Future<Output = Result<(),Error> > + ::core::marker::Send+'async_trait> >where R:'async_trait+AsyncRead + fmt::Debug+Send+Unpin,'life0:'async_trait,'life1:'async_trait,Self:'async_trait {
+
+        fn add_to_store<'life0, 'life1, 'async_trait, R>(
+            &'life0 mut self,
+            info: &'life1 ValidPathInfo,
+            source: R,
+            repair: RepairFlag,
+            check_sigs: CheckSignaturesFlag,
+        ) -> ::core::pin::Pin<
+            Box<
+                dyn ::core::future::Future<Output = Result<(), Error>>
+                    + ::core::marker::Send
+                    + 'async_trait,
+            >,
+        >
+        where
+            R: 'async_trait + AsyncRead + fmt::Debug + Send + Unpin,
+            'life0: 'async_trait,
+            'life1: 'async_trait,
+            Self: 'async_trait,
+        {
             (**self).add_to_store(info, source, repair, check_sigs)
         }
 
-        fn build_derivation<'life0,'life1,'life2,'async_trait>(&'life0 mut self,drv_path: &'life1 StorePath,drv: &'life2 BasicDerivation,build_mode:BuildMode,) ->  ::core::pin::Pin<Box<dyn ::core::future::Future<Output = Result<BuildResult,Error> > + ::core::marker::Send+'async_trait> >where 'life0:'async_trait,'life1:'async_trait,'life2:'async_trait,Self: ::core::marker::Send+'async_trait{
+        fn build_derivation<'life0, 'life1, 'life2, 'async_trait>(
+            &'life0 mut self,
+            drv_path: &'life1 StorePath,
+            drv: &'life2 BasicDerivation,
+            build_mode: BuildMode,
+        ) -> ::core::pin::Pin<
+            Box<
+                dyn ::core::future::Future<Output = Result<BuildResult, Error>>
+                    + ::core::marker::Send
+                    + 'async_trait,
+            >,
+        >
+        where
+            'life0: 'async_trait,
+            'life1: 'async_trait,
+            'life2: 'async_trait,
+            Self: ::core::marker::Send + 'async_trait,
+        {
             (**self).build_derivation(drv_path, drv, build_mode)
         }
-        fn build_paths<'life0,'life1,'async_trait>(&'life0 mut self,drv_paths: &'life1[DerivedPath],build_mode:BuildMode,) ->  ::core::pin::Pin<Box<dyn ::core::future::Future<Output = Result<(),Error> > + ::core::marker::Send+'async_trait> >where 'life0:'async_trait,'life1:'async_trait,Self: ::core::marker::Send+'async_trait{
+        fn build_paths<'life0, 'life1, 'async_trait>(
+            &'life0 mut self,
+            drv_paths: &'life1 [DerivedPath],
+            build_mode: BuildMode,
+        ) -> ::core::pin::Pin<
+            Box<
+                dyn ::core::future::Future<Output = Result<(), Error>>
+                    + ::core::marker::Send
+                    + 'async_trait,
+            >,
+        >
+        where
+            'life0: 'async_trait,
+            'life1: 'async_trait,
+            Self: ::core::marker::Send + 'async_trait,
+        {
             (**self).build_paths(drv_paths, build_mode)
         }
-    }
+    };
 }
 
 impl<T: ?Sized + Store + Unpin + Send> Store for Box<T> {

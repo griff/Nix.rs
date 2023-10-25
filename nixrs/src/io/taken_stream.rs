@@ -20,7 +20,8 @@ pub struct TakenStream<R> {
 }
 
 impl<R> TakenStream<R>
-    where R: Unpin
+where
+    R: Unpin,
 {
     pub fn new(reader: R) -> TakenStream<R> {
         TakenStream {
@@ -34,9 +35,13 @@ impl<R> TakenStream<R>
         }
     }
 
-    fn poll_available<F, T>(self: Pin<&mut Self>, cx: &mut Context<'_>, poll_fn: F) -> Poll<io::Result<T>>
-        where
-            F: FnOnce(Pin<&mut R>, &mut Context<'_>) -> Poll<io::Result<T>>
+    fn poll_available<F, T>(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        poll_fn: F,
+    ) -> Poll<io::Result<T>>
+    where
+        F: FnOnce(Pin<&mut R>, &mut Context<'_>) -> Poll<io::Result<T>>,
     {
         let mut guard = self.inner.lock().unwrap();
         loop {
@@ -45,8 +50,8 @@ impl<R> TakenStream<R>
                 Inner::Taken(mut rec) => match Pin::new(&mut rec).poll(cx) {
                     Poll::Pending => {
                         *guard = Inner::Taken(rec);
-                        return Poll::Pending
-                    },
+                        return Poll::Pending;
+                    }
                     Poll::Ready(Ok(reader)) => {
                         *guard = Inner::Available(reader);
                     }
@@ -77,9 +82,7 @@ where
         cx: &mut Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
-        self.poll_available(cx, |reader, cx| {
-            reader.poll_read(cx, buf)
-        })
+        self.poll_available(cx, |reader, cx| reader.poll_read(cx, buf))
         /*
         let mut guard = self.inner.lock().unwrap();
         loop {
@@ -117,21 +120,15 @@ where
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
-        self.poll_available(cx, |reader, cx| {
-            reader.poll_write(cx, buf)
-        })
+        self.poll_available(cx, |reader, cx| reader.poll_write(cx, buf))
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        self.poll_available(cx, |reader, cx| {
-            reader.poll_flush(cx)
-        })
+        self.poll_available(cx, |reader, cx| reader.poll_flush(cx))
     }
 
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        self.poll_available(cx, |reader, cx| {
-            reader.poll_shutdown(cx)
-        })
+        self.poll_available(cx, |reader, cx| reader.poll_shutdown(cx))
     }
 }
 
@@ -163,7 +160,7 @@ impl<S> Taker<S> {
                 } else {
                     panic!("Reader can only be taken once")
                 }
-            },
+            }
             Inner::Available(reader) => {
                 let (tx, rx) = oneshot::channel();
                 *guard = Inner::Taken(rx);
@@ -209,7 +206,7 @@ where
 
 impl<W> AsyncWrite for TakenGuard<W>
 where
-    W: AsyncWrite + Unpin
+    W: AsyncWrite + Unpin,
 {
     fn poll_write(
         mut self: Pin<&mut Self>,
@@ -229,7 +226,10 @@ where
         }
     }
 
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), io::Error>> {
         match self.stream.as_mut() {
             None => panic!("poll_read called after drop"),
             Some(r) => Pin::new(r).poll_shutdown(cx),

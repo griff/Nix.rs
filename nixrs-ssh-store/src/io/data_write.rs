@@ -3,10 +3,10 @@ use std::io;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
-use tracing::{debug, error, trace};
 use thrussh::server::Handle;
 use thrussh::{ChannelId, CryptoVec};
 use tokio::io::AsyncWrite;
+use tracing::{debug, error, trace};
 
 async fn make_eof_fut(id: ChannelId, data: Option<Handle>) -> Result<(), ()> {
     match data {
@@ -62,7 +62,13 @@ impl DataWrite {
 
 impl fmt::Debug for DataWrite {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DataWrite").field("id", &self.id).field("is_write_fut_valid", &self.is_write_fut_valid).field("write_fut", &self.write_fut).field("is_eof_fut_valid", &self.is_eof_fut_valid).field("eof_fut", &self.eof_fut).finish()
+        f.debug_struct("DataWrite")
+            .field("id", &self.id)
+            .field("is_write_fut_valid", &self.is_write_fut_valid)
+            .field("write_fut", &self.write_fut)
+            .field("is_eof_fut_valid", &self.is_eof_fut_valid)
+            .field("eof_fut", &self.eof_fut)
+            .finish()
     }
 }
 

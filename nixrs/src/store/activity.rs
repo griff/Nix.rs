@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use derive_more::{UpperHex, LowerHex};
-use tracing::field::{Visit, Field};
-use tracing::span::{Attributes, Id};
-use tracing::{Span, Level, Event};
+use derive_more::{LowerHex, UpperHex};
 use tracing::event;
+use tracing::field::{Field, Visit};
 use tracing::span;
+use tracing::span::{Attributes, Id};
 use tracing::trace;
+use tracing::{Event, Level, Span};
 
 use crate::num_enum::num_enum;
 
@@ -88,9 +88,9 @@ num_enum! {
     }
 }
 
-pub const ACTIVITY_TARGET : &str = "nix::activity";
-pub const ACTIVITY_NAME : &str = "nix.activity";
-pub const RESULT_TARGET : &str = "nix::activity::result";
+pub const ACTIVITY_TARGET: &str = "nix::activity";
+pub const ACTIVITY_NAME: &str = "nix.activity";
+pub const RESULT_TARGET: &str = "nix::activity::result";
 
 #[derive(Debug)]
 pub struct StartActivity {
@@ -115,7 +115,6 @@ impl<'a> TryFrom<&'a Attributes<'a>> for StartActivity {
             Err(())
         }
     }
-    
 }
 
 #[derive(Debug, Default)]
@@ -143,13 +142,20 @@ impl StartActivityVisitor {
         let mut idx = 0;
         for f in self.fields.into_iter() {
             if let Some(field) = f {
-                fields.push(field);    
+                fields.push(field);
             } else {
                 eprintln!("Missing field {}", idx);
             }
             idx += 1;
         }
-        Some(StartActivity { parent, act, level, activity_type, text, fields })
+        Some(StartActivity {
+            parent,
+            act,
+            level,
+            activity_type,
+            text,
+            fields,
+        })
     }
 }
 
@@ -172,13 +178,17 @@ impl Visit for StartActivityVisitor {
                 if let Ok(idx) = field_name.strip_prefix("field").unwrap().parse::<usize>() {
                     eprintln!("Insert field {}>={}", idx, self.fields.len());
                     if idx >= self.fields.len() {
-                        eprintln!("Extend {:?}", (self.fields.len()..=idx).into_iter().map(|_| 0));
-                        self.fields.extend((self.fields.len()..=idx).into_iter().map(|_| None));
+                        eprintln!(
+                            "Extend {:?}",
+                            (self.fields.len()..=idx).into_iter().map(|_| 0)
+                        );
+                        self.fields
+                            .extend((self.fields.len()..=idx).into_iter().map(|_| None));
                     }
                     self.fields[idx] = Some(LoggerField::Int(value));
                 }
             }
-            _ => ()
+            _ => (),
         }
     }
 
@@ -188,8 +198,12 @@ impl Visit for StartActivityVisitor {
             if let Ok(idx) = idx_s.parse::<usize>() {
                 eprintln!("Insert field {}>={}", idx, self.fields.len());
                 if idx >= self.fields.len() {
-                    eprintln!("Extend {:?}", (self.fields.len()..=idx).into_iter().map(|_| 0));
-                    self.fields.extend((self.fields.len()..=idx).into_iter().map(|_| None));
+                    eprintln!(
+                        "Extend {:?}",
+                        (self.fields.len()..=idx).into_iter().map(|_| 0)
+                    );
+                    self.fields
+                        .extend((self.fields.len()..=idx).into_iter().map(|_| None));
                 }
                 self.fields[idx] = Some(LoggerField::String(value.to_string()));
             }
@@ -203,8 +217,12 @@ impl Visit for StartActivityVisitor {
             if let Ok(idx) = idx_s.parse::<usize>() {
                 eprintln!("Insert field {}>={}", idx, self.fields.len());
                 if idx >= self.fields.len() {
-                    eprintln!("Extend {:?}", (self.fields.len()..=idx).into_iter().map(|_| 0));
-                    self.fields.extend((self.fields.len()..=idx).into_iter().map(|_| None));
+                    eprintln!(
+                        "Extend {:?}",
+                        (self.fields.len()..=idx).into_iter().map(|_| 0)
+                    );
+                    self.fields
+                        .extend((self.fields.len()..=idx).into_iter().map(|_| None));
                 }
                 self.fields[idx] = Some(LoggerField::String(format!("{:?}", value)));
             }
@@ -227,10 +245,9 @@ impl ActivityResult {
             Ok(result)
         } else {
             Err(())
-        }        
+        }
     }
 }
-
 
 #[derive(Default)]
 pub struct ActivityResultVisitor {
@@ -247,13 +264,17 @@ impl ActivityResultVisitor {
         let mut idx = 0;
         for f in self.fields.into_iter() {
             if let Some(field) = f {
-                fields.push(field);    
+                fields.push(field);
             } else {
                 eprintln!("Missing field {}", idx);
             }
             idx += 1;
         }
-        Some(ActivityResult { act, result_type, fields })
+        Some(ActivityResult {
+            act,
+            result_type,
+            fields,
+        })
     }
 }
 
@@ -270,13 +291,17 @@ impl Visit for ActivityResultVisitor {
                 if let Ok(idx) = field_name.strip_prefix("field").unwrap().parse::<usize>() {
                     eprintln!("Insert field {}>={}", idx, self.fields.len());
                     if idx >= self.fields.len() {
-                        eprintln!("Extend {:?}", (self.fields.len()..=idx).into_iter().map(|_| 0));
-                        self.fields.extend((self.fields.len()..=idx).into_iter().map(|_| None));
+                        eprintln!(
+                            "Extend {:?}",
+                            (self.fields.len()..=idx).into_iter().map(|_| 0)
+                        );
+                        self.fields
+                            .extend((self.fields.len()..=idx).into_iter().map(|_| None));
                     }
                     self.fields[idx] = Some(LoggerField::Int(value));
                 }
             }
-            _ => ()
+            _ => (),
         }
     }
 
@@ -285,8 +310,12 @@ impl Visit for ActivityResultVisitor {
             if let Ok(idx) = idx_s.parse::<usize>() {
                 eprintln!("Insert field {}>={}", idx, self.fields.len());
                 if idx >= self.fields.len() {
-                    eprintln!("Extend {:?}", (self.fields.len()..=idx).into_iter().map(|_| 0));
-                    self.fields.extend((self.fields.len()..=idx).into_iter().map(|_| None));
+                    eprintln!(
+                        "Extend {:?}",
+                        (self.fields.len()..=idx).into_iter().map(|_| 0)
+                    );
+                    self.fields
+                        .extend((self.fields.len()..=idx).into_iter().map(|_| None));
                 }
                 self.fields[idx] = Some(LoggerField::String(value.to_string()));
             }
@@ -298,8 +327,12 @@ impl Visit for ActivityResultVisitor {
             if let Ok(idx) = idx_s.parse::<usize>() {
                 eprintln!("Insert field {}>={}", idx, self.fields.len());
                 if idx >= self.fields.len() {
-                    eprintln!("Extend {:?}", (self.fields.len()..=idx).into_iter().map(|_| 0));
-                    self.fields.extend((self.fields.len()..=idx).into_iter().map(|_| None));
+                    eprintln!(
+                        "Extend {:?}",
+                        (self.fields.len()..=idx).into_iter().map(|_| 0)
+                    );
+                    self.fields
+                        .extend((self.fields.len()..=idx).into_iter().map(|_| None));
                 }
                 self.fields[idx] = Some(LoggerField::String(format!("{:?}", value)));
             }
@@ -315,10 +348,18 @@ pub struct ActivityLogger {
 impl ActivityLogger {
     pub fn new() -> ActivityLogger {
         ActivityLogger {
-            map: Arc::new(Mutex::new(BTreeMap::new()))
+            map: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
-    pub fn start_activity(&mut self, act: ActivityId, lvl: Verbosity, act_type: ActivityType, message: String, fields: Vec<LoggerField>, parent: ActivityId) {
+    pub fn start_activity(
+        &mut self,
+        act: ActivityId,
+        lvl: Verbosity,
+        act_type: ActivityType,
+        message: String,
+        fields: Vec<LoggerField>,
+        parent: ActivityId,
+    ) {
         let activity = StartActivity {
             act,
             level: lvl,
@@ -330,8 +371,8 @@ impl ActivityLogger {
         trace!(?activity, "Start activity");
 
         let mut map = self.map.lock().unwrap();
-        let level : u64 = lvl.into();
-        let activity_type : u64 = act_type.into();
+        let level: u64 = lvl.into();
+        let activity_type: u64 = act_type.into();
         let span = if let Some(parent_span) = map.get(&parent) {
             match lvl.into() {
                 Level::ERROR => {
@@ -386,12 +427,11 @@ impl ActivityLogger {
         trace!(?result, "Activity result");
         let map = self.map.lock().unwrap();
         if let Some(span) = map.get(&parent) {
-            let result_type : u64 = res_type.into();
+            let result_type: u64 = res_type.into();
             expand_fields!( event, @ { target: RESULT_TARGET, parent: span, Level::ERROR, parent, result_type }, fields)
         }
     }
 }
-
 
 macro_rules! remote {
     (parent: $parent_span:expr, $lvl:expr, $act:ident, $level:ident, $activity_type:ident, $text:ident, $parent:ident, $fields:ident) => {

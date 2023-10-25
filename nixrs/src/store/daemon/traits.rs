@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use tokio::io::AsyncRead;
 use tracing::warn;
 
-use crate::store::{Store, Error, DerivedPath, BuildMode, RepairFlag, CheckSignaturesFlag};
+use crate::store::{BuildMode, CheckSignaturesFlag, DerivedPath, Error, RepairFlag, Store};
 use crate::store_path::{StorePath, StorePathSet};
 
 use super::TrustedFlag;
@@ -34,11 +34,9 @@ pub trait DaemonStore: Store {
     /// Given a set of paths that are to be built, return the set of
     /// derivations that will be built, and the set of output paths that
     /// will be substituted.
-    async fn query_missing(&mut self, targets: &[DerivedPath]) -> Result<QueryMissingResult, Error>;
-    async fn substitute_paths(
-        &mut self,
-        paths: &StorePathSet,
-    ) -> Result<(), Error> {
+    async fn query_missing(&mut self, targets: &[DerivedPath])
+        -> Result<QueryMissingResult, Error>;
+    async fn substitute_paths(&mut self, paths: &StorePathSet) -> Result<(), Error> {
         let mut paths2 = Vec::new();
         for path in paths {
             if path.is_derivation() {
@@ -53,12 +51,12 @@ pub trait DaemonStore: Store {
                     subs.push(DerivedPath::Opaque(p));
                 }
                 self.build_paths(&subs, BuildMode::Normal).await
-            }.await;
+            }
+            .await;
             if let Err(err) = ret {
                 warn!("{}", err);
             }
         }
         Ok(())
     }
-
 }

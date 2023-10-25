@@ -13,11 +13,11 @@ use bstr::{ByteSlice, ByteVec};
 use bytes::{Bytes, BytesMut};
 use futures::future::Ready;
 use futures::Stream;
-use tracing::debug;
-use tracing::trace;
 use tokio::fs::File;
 use tokio::fs::{read_dir, read_link, symlink_metadata};
 use tokio::io::AsyncReadExt;
+use tracing::debug;
+use tracing::trace;
 
 use super::{NAREvent, CASE_HACK_SUFFIX, NAR_VERSION_MAGIC_1};
 

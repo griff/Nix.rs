@@ -1,9 +1,9 @@
 use std::fmt;
 
-use tracing::{debug, error};
 use tokio::io::AsyncReadExt;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tracing::Level;
+use tracing::{debug, error};
 use tracing_appender::non_blocking::NonBlocking;
 use tracing_futures::WithSubscriber;
 
@@ -16,31 +16,26 @@ use crate::io::{AsyncSink, AsyncSource};
 use crate::path_info::ValidPathInfo;
 use crate::signature::{ParseSignatureError, SignatureSet};
 use crate::store::error::Verbosity;
+use crate::store::settings::{get_mut_settings, get_settings, BuildSettings, WithSettings};
 use crate::store::store_api::BuildMode;
 use crate::store::{
-    BasicDerivation, CheckSignaturesFlag, DerivedPath, Error, RepairFlag,
-    StorePathWithOutputs, SubstituteFlag,
+    BasicDerivation, CheckSignaturesFlag, DerivedPath, Error, RepairFlag, StorePathWithOutputs,
+    SubstituteFlag,
 };
-use crate::store::settings::{BuildSettings, get_mut_settings, get_settings, WithSettings};
 use crate::store_path::{StorePath, StorePathSet};
 
 async fn read_build_settings<R>(source: &mut R, client_version: u64) -> Result<(), Error>
-    where R: AsyncRead + Send + Unpin,
+where
+    R: AsyncRead + Send + Unpin,
 {
-    let (mut max_log_size,
-        mut run_diff_hook,
-        mut keep_failed) = 
-        get_settings(|s| {
-            (s.max_log_size,
-                s.run_diff_hook,
-                s.keep_failed)
-    });
+    let (mut max_log_size, mut run_diff_hook, mut keep_failed) =
+        get_settings(|s| (s.max_log_size, s.run_diff_hook, s.keep_failed));
     let max_silent_time = source.read_seconds().await?;
     let build_timeout = source.read_seconds().await?;
     if get_protocol_minor!(client_version) >= 2 {
         max_log_size = source.read_u64_le().await?;
     }
-    
+
     if get_protocol_minor!(client_version) >= 3 {
         let nr_repeats = source.read_u64_le().await?;
         if nr_repeats != 0 {
@@ -99,7 +94,9 @@ where
     let settings = BuildSettings::default();
 
     let fut = run_server_logged(source, out, store, write_allowed);
-    fut.with_subscriber(subscriber).with_settings(settings).await
+    fut.with_subscriber(subscriber)
+        .with_settings(settings)
+        .await
 }
 
 async fn run_server_logged<S, R, W>(
@@ -112,7 +109,7 @@ where
     S: LegacyStore + Send,
     R: AsyncRead + fmt::Debug + Send + Unpin,
     W: AsyncWrite + fmt::Debug + Send + Unpin,
-{    
+{
     let store_dir = store.store_dir();
     let magic = source.read_u64_le().await?;
     if magic != SERVE_MAGIC_1 {
@@ -205,10 +202,7 @@ where
                 // TODO: MonitorFdHup monitor(in.fd);
                 let drv_paths: Vec<DerivedPath> = paths.into_iter().map(|e| e.into()).collect();
 
-                match store
-                    .build_paths(&drv_paths, BuildMode::Normal)
-                    .await
-                {
+                match store.build_paths(&drv_paths, BuildMode::Normal).await {
                     Ok(_) => out.write_u64_le(0).await?,
                     Err(err) => {
                         assert!(err.exit_code() != 0);

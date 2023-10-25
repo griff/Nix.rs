@@ -5,14 +5,12 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::path_info::ValidPathInfo;
 use crate::store::legacy_worker::LegacyStore;
-use crate::store::{
-    BasicDerivation, BuildMode, BuildResult, CheckSignaturesFlag, Error, Store,
-};
-use crate::store::{DerivedPath, RepairFlag, SubstituteFlag};
 use crate::store::settings::BuildSettings;
+use crate::store::{BasicDerivation, BuildMode, BuildResult, CheckSignaturesFlag, Error, Store};
+use crate::store::{DerivedPath, RepairFlag, SubstituteFlag};
 use crate::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
 
-use super::daemon::{DaemonStore, TrustedFlag, QueryMissingResult};
+use super::daemon::{DaemonStore, QueryMissingResult, TrustedFlag};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum Message {
@@ -178,7 +176,7 @@ impl AssertStore {
     pub fn assert_nar_from_path(
         trusted_client: Option<TrustedFlag>,
         path: &StorePath,
-        response: Result<Bytes, Error>
+        response: Result<Bytes, Error>,
     ) -> AssertStore {
         let store_dir = Default::default();
         let expected = Message::NarFromPath(path.clone());
@@ -208,7 +206,7 @@ impl AssertStore {
     pub fn assert_import_paths(
         trusted_client: Option<TrustedFlag>,
         buf: Bytes,
-        response: Result<(), Error>
+        response: Result<(), Error>,
     ) -> AssertStore {
         let store_dir = Default::default();
         let expected = Message::ImportPaths(buf);
@@ -306,10 +304,7 @@ impl AssertStore {
         }
     }
 
-    pub fn assert_is_valid_path(
-        path: &StorePath,
-        response: Result<bool, Error>,
-    ) -> AssertStore {
+    pub fn assert_is_valid_path(path: &StorePath, response: Result<bool, Error>) -> AssertStore {
         let store_dir = Default::default();
         let expected = Message::IsValidPath(path.clone());
         let response = response.map(|e| e.into());
@@ -443,9 +438,7 @@ impl Store for AssertStore {
         };
         assert_eq!(self.expected, actual, "build_derivation");
         match take(&mut self.response)? {
-            MessageResponse::BuildResult(res) => {
-                Ok(res)
-            }
+            MessageResponse::BuildResult(res) => Ok(res),
             e => panic!("Invalid response {:?} for build_derivation", e),
         }
     }
@@ -571,7 +564,10 @@ impl DaemonStore for AssertStore {
         }
     }
 
-    async fn query_missing(&mut self, targets: &[DerivedPath]) -> Result<QueryMissingResult, Error> {
+    async fn query_missing(
+        &mut self,
+        targets: &[DerivedPath],
+    ) -> Result<QueryMissingResult, Error> {
         let actual = Message::QueryMissing(targets.into());
         assert_eq!(self.expected, actual, "query_missing");
         match take(&mut self.response)? {
@@ -579,5 +575,4 @@ impl DaemonStore for AssertStore {
             e => panic!("Invalid response {:?} for query_missing", e),
         }
     }
-
 }

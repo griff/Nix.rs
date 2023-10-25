@@ -3,21 +3,27 @@ use std::fmt;
 
 use async_trait::async_trait;
 use futures::TryFutureExt;
+use tokio::io::{copy, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tracing::{debug, instrument};
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, AsyncReadExt, copy};
 
-use crate::store::daemon::{get_protocol_minor, QueryMissingResult, DaemonStore, WorkerProtoOp, WORKER_MAGIC_1, WORKER_MAGIC_2, PROTOCOL_VERSION, get_protocol_major, TrustedFlag};
+use super::process_stderr::ProcessStderr;
 use crate::archive::copy_nar;
+use crate::io::FramedSink;
+use crate::io::{AsyncSink, AsyncSource};
 use crate::path_info::ValidPathInfo;
 use crate::store::activity::ActivityLogger;
+use crate::store::daemon::{
+    get_protocol_major, get_protocol_minor, DaemonStore, QueryMissingResult, TrustedFlag,
+    WorkerProtoOp, PROTOCOL_VERSION, WORKER_MAGIC_1, WORKER_MAGIC_2,
+};
 use crate::store::error::Verbosity;
 use crate::store::misc::add_multiple_to_store_old;
 use crate::store::settings::get_settings;
-use crate::store::{Store, SubstituteFlag, Error, RepairFlag, CheckSignaturesFlag, BasicDerivation, BuildResult, BuildStatus, DerivedPath, EXPORT_MAGIC, SPWOParseResult, BuildMode};
-use crate::store_path::{StoreDir, StoreDirProvider, StorePathSet, StorePath};
-use crate::io::{AsyncSink, AsyncSource};
-use super::process_stderr::ProcessStderr;
-use crate::io::FramedSink;
+use crate::store::{
+    BasicDerivation, BuildMode, BuildResult, BuildStatus, CheckSignaturesFlag, DerivedPath, Error,
+    RepairFlag, SPWOParseResult, Store, SubstituteFlag, EXPORT_MAGIC,
+};
+use crate::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
 
 macro_rules! with_framed_sink {
     ($store:expr, |$sink:ident| $handle:block) => {
@@ -25,7 +31,8 @@ macro_rules! with_framed_sink {
         let (cancel, cancelled) = tokio::sync::oneshot::channel();
         let process_fut = async {
             let ret = ProcessStderr::new($store.logger.clone(), daemon_version, &mut $store.source)
-                .run().await;
+                .run()
+                .await;
             if let Err(_) = ret {
                 let _ = cancel.send(());
             }
@@ -63,18 +70,12 @@ pub struct DaemonStoreClient<R, W> {
     logger: ActivityLogger,
 }
 
-
 impl<R, W> DaemonStoreClient<R, W>
 where
     R: AsyncRead + fmt::Debug + Unpin + Send + 'static,
     W: AsyncWrite + fmt::Debug + Unpin + Send + 'static,
 {
-    pub fn new(
-        store_dir: StoreDir,
-        host: String,
-        reader: R,
-        writer: W,
-    ) -> Self {
+    pub fn new(store_dir: StoreDir, host: String, reader: R, writer: W) -> Self {
         let sink = writer;
         Self {
             store_dir,
@@ -107,10 +108,13 @@ where
     }
     pub async fn init_connection(&mut self) -> Result<(), Error> {
         if self.daemon_version.is_some() {
-            return Ok(())
+            return Ok(());
         }
         if let Err(err) = self.handshake().await {
-            return Err(Error::OpenConnectionFailed(self.host.clone(), Box::new(err)));
+            return Err(Error::OpenConnectionFailed(
+                self.host.clone(),
+                Box::new(err),
+            ));
         }
         self.set_options().await?;
         Ok(())
@@ -159,7 +163,7 @@ where
                 0 => None,
                 1 => Some(TrustedFlag::Trusted),
                 2 => Some(TrustedFlag::NotTrusted),
-                _ => return Err(Error::InvalidTrustedStatus)
+                _ => return Err(Error::InvalidTrustedStatus),
             };
         }
 
@@ -175,18 +179,28 @@ where
 
     async fn process_stderr(&mut self) -> Result<(), Error> {
         self.sink.flush().await?;
-        ProcessStderr::new(self.logger.clone(), self.daemon_version.unwrap(), &mut self.source)
-            .run().await
+        ProcessStderr::new(
+            self.logger.clone(),
+            self.daemon_version.unwrap(),
+            &mut self.source,
+        )
+        .run()
+        .await
     }
 
     async fn process_stderr_source<SR>(&mut self, source: SR) -> Result<(), Error>
-        where
-            SR: AsyncRead + Unpin,
+    where
+        SR: AsyncRead + Unpin,
     {
         self.sink.flush().await?;
-        ProcessStderr::new(self.logger.clone(), self.daemon_version.unwrap(), &mut self.source)
-            .with_source(&mut self.sink, source)
-            .run().await
+        ProcessStderr::new(
+            self.logger.clone(),
+            self.daemon_version.unwrap(),
+            &mut self.source,
+        )
+        .with_source(&mut self.sink, source)
+        .run()
+        .await
     }
 
     async fn write_derived_paths(&mut self, reqs: &[DerivedPath]) -> Result<(), Error> {
@@ -201,15 +215,14 @@ where
                     SPWOParseResult::StorePathWithOutputs(sp) => {
                         self.sink.write_printed(&store_dir, &sp).await?
                     }
-                    SPWOParseResult::StorePath(path) => {
-                        Err(Error::ProtocolTooOld(store_dir.print_path(&path), get_protocol_major!(daemon_version), get_protocol_minor!(daemon_version)))?
-                    }
-                    SPWOParseResult::Unsupported => {
-                        Err(Error::DerivationIsBuildProduct)?
-                    }
+                    SPWOParseResult::StorePath(path) => Err(Error::ProtocolTooOld(
+                        store_dir.print_path(&path),
+                        get_protocol_major!(daemon_version),
+                        get_protocol_minor!(daemon_version),
+                    ))?,
+                    SPWOParseResult::Unsupported => Err(Error::DerivationIsBuildProduct)?,
                 }
             }
-    
         }
         Ok(())
     }
@@ -235,14 +248,30 @@ where
     async fn set_options(&mut self) -> Result<(), Error> {
         let daemon_version = self.daemon_version().await?;
 
-        let (keep_failed, keep_going, try_fallback,
-            verbosity, max_build_jobs, max_silent_time,
-            verbose_build, build_cores, use_substitutes) = get_settings(|s| {
-                (s.keep_failed, s.keep_going, s.try_fallback,
-                    s.verbosity, s.max_build_jobs, s.max_silent_time,
-                    s.verbose_build, s.build_cores, s.use_substitutes)
-            });
-        
+        let (
+            keep_failed,
+            keep_going,
+            try_fallback,
+            verbosity,
+            max_build_jobs,
+            max_silent_time,
+            verbose_build,
+            build_cores,
+            use_substitutes,
+        ) = get_settings(|s| {
+            (
+                s.keep_failed,
+                s.keep_going,
+                s.try_fallback,
+                s.verbosity,
+                s.max_build_jobs,
+                s.max_silent_time,
+                s.verbose_build,
+                s.build_cores,
+                s.use_substitutes,
+            )
+        });
+
         self.sink.write_enum(WorkerProtoOp::SetOptions).await?;
         self.sink.write_bool(keep_failed).await?;
         self.sink.write_bool(keep_going).await?;
@@ -273,11 +302,11 @@ where
             overrides.remove("max-silent-time");
             overrides.remove("cores"); // build_cores
             overrides.remove("substitute"); // use_substitutes
-            /*
-            overrides.erase(loggerSettings.showTrace.name);
-            overrides.erase(experimentalFeatureSettings.experimentalFeatures.name);
-            overrides.erase(settings.pluginFiles.name);
-             */
+                                            /*
+                                            overrides.erase(loggerSettings.showTrace.name);
+                                            overrides.erase(experimentalFeatureSettings.experimentalFeatures.name);
+                                            overrides.erase(settings.pluginFiles.name);
+                                             */
             self.sink.write_usize(overrides.len()).await?;
             for (k, v) in overrides.iter() {
                 self.sink.write_str(k).await?;
@@ -306,9 +335,18 @@ where
         check_sigs: CheckSignaturesFlag,
     ) -> Result<(), Error> {
         let daemon_version = self.daemon_version().await?;
-        debug!(daemon_version, daemon.major=get_protocol_major!(daemon_version),daemon.minor=get_protocol_minor!(daemon_version), "Daemon version {}.{}", get_protocol_major!(daemon_version), get_protocol_minor!(daemon_version));
+        debug!(
+            daemon_version,
+            daemon.major = get_protocol_major!(daemon_version),
+            daemon.minor = get_protocol_minor!(daemon_version),
+            "Daemon version {}.{}",
+            get_protocol_major!(daemon_version),
+            get_protocol_minor!(daemon_version)
+        );
         if get_protocol_minor!(daemon_version) >= 32 {
-            self.sink.write_enum(WorkerProtoOp::AddMultipleToStore).await?;
+            self.sink
+                .write_enum(WorkerProtoOp::AddMultipleToStore)
+                .await?;
             self.sink.write_flag(repair).await?;
             self.sink.write_flag(!check_sigs).await?;
             with_framed_sink!(self, |sink| {
@@ -321,7 +359,10 @@ where
     }
 
     #[instrument(skip_all)]
-    async fn query_missing(&mut self, targets: &[DerivedPath]) -> Result<QueryMissingResult, Error> {
+    async fn query_missing(
+        &mut self,
+        targets: &[DerivedPath],
+    ) -> Result<QueryMissingResult, Error> {
         let daemon_version = self.daemon_version().await?;
         if get_protocol_minor!(daemon_version) < 19 {
             // TODO: Implement fallback
@@ -336,12 +377,12 @@ where
         let unknown = self.source.read_parsed_coll(&store_dir).await?;
         let download_size = self.source.read_u64_le().await?;
         let nar_size = self.source.read_u64_le().await?;
-        Ok(QueryMissingResult { 
+        Ok(QueryMissingResult {
             will_build,
             will_substitute,
             unknown,
             download_size,
-            nar_size
+            nar_size,
         })
     }
 }
@@ -359,7 +400,14 @@ where
         _maybe_substitute: SubstituteFlag,
     ) -> Result<StorePathSet, Error> {
         let daemon_version = self.daemon_version().await?;
-        debug!(daemon_version, daemon.major=get_protocol_major!(daemon_version),daemon.minor=get_protocol_minor!(daemon_version), "Daemon version {}.{}", get_protocol_major!(daemon_version), get_protocol_minor!(daemon_version));
+        debug!(
+            daemon_version,
+            daemon.major = get_protocol_major!(daemon_version),
+            daemon.minor = get_protocol_minor!(daemon_version),
+            "Daemon version {}.{}",
+            get_protocol_major!(daemon_version),
+            get_protocol_minor!(daemon_version)
+        );
         if get_protocol_minor!(daemon_version) < 12 {
             let mut res = StorePathSet::new();
             for i in paths.iter() {
@@ -386,13 +434,20 @@ where
     async fn query_path_info(&mut self, path: &StorePath) -> Result<Option<ValidPathInfo>, Error> {
         let store_dir = self.store_dir.clone();
         let daemon_version = self.daemon_version().await?;
-        debug!(daemon_version, daemon.major=get_protocol_major!(daemon_version),daemon.minor=get_protocol_minor!(daemon_version), "Daemon version {}.{}", get_protocol_major!(daemon_version), get_protocol_minor!(daemon_version));
+        debug!(
+            daemon_version,
+            daemon.major = get_protocol_major!(daemon_version),
+            daemon.minor = get_protocol_minor!(daemon_version),
+            "Daemon version {}.{}",
+            get_protocol_major!(daemon_version),
+            get_protocol_minor!(daemon_version)
+        );
         self.sink.write_enum(WorkerProtoOp::QueryPathInfo).await?;
         self.sink.write_printed(&store_dir, path).await?;
         if let Err(err) = self.process_stderr().await {
             // Ugly backwards compatibility hack.
             if err.to_string().contains("is not valid") {
-                return Ok(None)
+                return Ok(None);
             } else {
                 return Err(err);
             }
@@ -401,11 +456,17 @@ where
         if get_protocol_minor!(daemon_version) >= 17 {
             let valid = self.source.read_bool().await?;
             if !valid {
-                return Ok(None)
+                return Ok(None);
             }
         }
 
-        let info = ValidPathInfo::read_path(&mut self.source, &store_dir, get_protocol_minor!(daemon_version), path.clone()).await?;
+        let info = ValidPathInfo::read_path(
+            &mut self.source,
+            &store_dir,
+            get_protocol_minor!(daemon_version),
+            path.clone(),
+        )
+        .await?;
         Ok(Some(info))
     }
 
@@ -415,7 +476,14 @@ where
         SW: AsyncWrite + fmt::Debug + Send + Unpin,
     {
         let daemon_version = self.daemon_version().await?;
-        debug!(daemon_version, daemon.major=get_protocol_major!(daemon_version),daemon.minor=get_protocol_minor!(daemon_version), "Daemon version {}.{}", get_protocol_major!(daemon_version), get_protocol_minor!(daemon_version));
+        debug!(
+            daemon_version,
+            daemon.major = get_protocol_major!(daemon_version),
+            daemon.minor = get_protocol_minor!(daemon_version),
+            "Daemon version {}.{}",
+            get_protocol_major!(daemon_version),
+            get_protocol_minor!(daemon_version)
+        );
         debug!("Sending NAR for path {}", path);
         let store_dir = self.store_dir.clone();
         self.sink.write_enum(WorkerProtoOp::NarFromPath).await?;
@@ -442,7 +510,14 @@ where
             self.host
         );
         let daemon_version = self.daemon_version().await?;
-        debug!(daemon_version, daemon.major=get_protocol_major!(daemon_version),daemon.minor=get_protocol_minor!(daemon_version), "Daemon version {}.{}", get_protocol_major!(daemon_version), get_protocol_minor!(daemon_version));
+        debug!(
+            daemon_version,
+            daemon.major = get_protocol_major!(daemon_version),
+            daemon.minor = get_protocol_minor!(daemon_version),
+            "Daemon version {}.{}",
+            get_protocol_major!(daemon_version),
+            get_protocol_minor!(daemon_version)
+        );
         if get_protocol_minor!(daemon_version) < 18 {
             self.sink.write_enum(WorkerProtoOp::ImportPaths).await?;
 
@@ -452,7 +527,8 @@ where
                 copy_nar(source, &mut sink).await?;
                 sink.write_u64_le(EXPORT_MAGIC).await?;
                 sink.write_printed(&store_dir, &info.path).await?;
-                sink.write_printed_coll(&store_dir, &info.references).await?;
+                sink.write_printed_coll(&store_dir, &info.references)
+                    .await?;
                 if let Some(deriver) = info.deriver.as_ref() {
                     sink.write_printed(&store_dir, deriver).await?;
                 } else {
@@ -464,7 +540,7 @@ where
             };
             let process_fut = self.process_stderr_source(source2);
             tokio::try_join!(process_fut, sink_to_source_fut)?;
-            let imported_paths : StorePathSet = self.source.read_parsed_coll(&store_dir).await?;
+            let imported_paths: StorePathSet = self.source.read_parsed_coll(&store_dir).await?;
             assert!(imported_paths.len() <= 1);
         } else {
             self.sink.write_enum(WorkerProtoOp::AddToStoreNar).await?;
@@ -494,9 +570,7 @@ where
             self.sink.write_flag(!check_sigs).await?;
 
             if get_protocol_minor!(daemon_version) >= 23 {
-                with_framed_sink!(self, |sink| {
-                    copy_nar(source, sink).map_err(Error::from)
-                });
+                with_framed_sink!(self, |sink| { copy_nar(source, sink).map_err(Error::from) });
             } else if get_protocol_minor!(daemon_version) >= 21 {
                 self.process_stderr_source(source).await?;
             } else {
@@ -517,7 +591,14 @@ where
         debug!("Build derivation {} with path {}", drv.name, drv_path);
         let store_dir = self.store_dir.clone();
         let daemon_version = self.daemon_version().await?;
-        debug!(daemon_version, daemon.major=get_protocol_major!(daemon_version),daemon.minor=get_protocol_minor!(daemon_version), "Daemon version {}.{}", get_protocol_major!(daemon_version), get_protocol_minor!(daemon_version));
+        debug!(
+            daemon_version,
+            daemon.major = get_protocol_major!(daemon_version),
+            daemon.minor = get_protocol_minor!(daemon_version),
+            "Daemon version {}.{}",
+            get_protocol_major!(daemon_version),
+            get_protocol_minor!(daemon_version)
+        );
         self.sink.write_enum(WorkerProtoOp::BuildDerivation).await?;
         self.sink.write_printed(&store_dir, drv_path).await?;
         drv.write_drv(&mut self.sink, &store_dir).await?;
@@ -552,7 +633,14 @@ where
         debug!("Build paths {:?}", drv_paths);
         // copyDrvsFromEvalStore(drvPaths, evalStore);
         let daemon_version = self.daemon_version().await?;
-        debug!(daemon_version, daemon.major=get_protocol_major!(daemon_version),daemon.minor=get_protocol_minor!(daemon_version), "Daemon version {}.{}", get_protocol_major!(daemon_version), get_protocol_minor!(daemon_version));
+        debug!(
+            daemon_version,
+            daemon.major = get_protocol_major!(daemon_version),
+            daemon.minor = get_protocol_minor!(daemon_version),
+            "Daemon version {}.{}",
+            get_protocol_major!(daemon_version),
+            get_protocol_minor!(daemon_version)
+        );
         self.sink.write_enum(WorkerProtoOp::BuildPaths).await?;
         assert!(get_protocol_minor!(daemon_version) >= 13);
         self.write_derived_paths(drv_paths).await?;
@@ -571,7 +659,6 @@ where
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -587,14 +674,14 @@ mod tests {
     use crate::hash;
     use crate::pretty_prop_assert_eq;
     use crate::signature::SignatureSet;
-    use bytes::BytesMut;
     use ::proptest::arbitrary::any;
     use ::proptest::proptest;
+    use bytes::BytesMut;
     use futures::future::try_join;
 
-    use crate::store::settings::BuildSettings;
     use crate::path_info::proptest::arb_valid_info_and_content;
     use crate::store::assert_store::AssertStore;
+    use crate::store::settings::BuildSettings;
     #[cfg(feature = "slowtests")]
     use crate::store_path::proptest::arb_drv_store_path;
 
@@ -649,7 +736,7 @@ mod tests {
         }
         let nar_hash = ctx.finish();
         let source = buf.freeze();
-        let info = ValidPathInfo { 
+        let info = ValidPathInfo {
             path: StorePath::new_from_base_name("00000000000000000000000000000000-test").unwrap(),
             deriver: None,
             nar_size,
@@ -658,13 +745,25 @@ mod tests {
             sigs: SignatureSet::new(),
             registration_time: SystemTime::UNIX_EPOCH + Duration::from_secs(1697253889),
             ultimate: false,
-            ca: None
+            ca: None,
         };
 
         store_cmd!(
             TrustedFlag::Trusted,
-            assert_add_to_store(Some(TrustedFlag::Trusted), &info, source.clone(), RepairFlag::NoRepair, CheckSignaturesFlag::NoCheckSigs, Ok(())),
-            add_to_store(&info, Cursor::new(source), RepairFlag::NoRepair, CheckSignaturesFlag::NoCheckSigs),
+            assert_add_to_store(
+                Some(TrustedFlag::Trusted),
+                &info,
+                source.clone(),
+                RepairFlag::NoRepair,
+                CheckSignaturesFlag::NoCheckSigs,
+                Ok(())
+            ),
+            add_to_store(
+                &info,
+                Cursor::new(source),
+                RepairFlag::NoRepair,
+                CheckSignaturesFlag::NoCheckSigs
+            ),
             ()
         );
     }
@@ -723,22 +822,21 @@ mod tests {
     }
 
     proptest! {
-        #[test]
-        fn proptest_store_query_path_info(
-            trusted_flag in ::proptest::bool::ANY,
-             (info, _source) in arb_valid_info_and_content(8, 256, 10),
-         )
-         {
-            let trusted_flag : TrustedFlag = trusted_flag.into();
-            prop_store_cmd!(
-                trusted_flag,
-                 assert_query_path_info(Some(trusted_flag), &info.path.clone(), Ok(Some(info.clone()))),
-                 query_path_info(&info.path),
-                 Some(info)
-             );
-         }
-     }
-
+       #[test]
+       fn proptest_store_query_path_info(
+           trusted_flag in ::proptest::bool::ANY,
+            (info, _source) in arb_valid_info_and_content(8, 256, 10),
+        )
+        {
+           let trusted_flag : TrustedFlag = trusted_flag.into();
+           prop_store_cmd!(
+               trusted_flag,
+                assert_query_path_info(Some(trusted_flag), &info.path.clone(), Ok(Some(info.clone()))),
+                query_path_info(&info.path),
+                Some(info)
+            );
+        }
+    }
 
     proptest! {
         #[test]
@@ -814,5 +912,4 @@ mod tests {
             );
         }
     }
-
 }

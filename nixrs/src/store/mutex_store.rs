@@ -8,8 +8,8 @@ use tokio::sync::Mutex;
 use crate::path_info::ValidPathInfo;
 use crate::store::{legacy_worker::LegacyStore, Store};
 use crate::store::{
-    BasicDerivation, BuildMode, BuildResult, CheckSignaturesFlag, DerivedPath, Error,
-    RepairFlag, SubstituteFlag,
+    BasicDerivation, BuildMode, BuildResult, CheckSignaturesFlag, DerivedPath, Error, RepairFlag,
+    SubstituteFlag,
 };
 use crate::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
 
@@ -71,9 +71,7 @@ where
         build_mode: BuildMode,
     ) -> Result<BuildResult, Error> {
         let mut store = self.store.lock().await;
-        store
-            .build_derivation(drv_path, drv, build_mode)
-            .await
+        store.build_derivation(drv_path, drv, build_mode).await
     }
 
     async fn build_paths(
@@ -112,7 +110,10 @@ where
         store.export_paths(paths, sink).await
     }
 
-    async fn import_paths<R: AsyncRead + fmt::Debug + Send + Unpin>(&mut self, source: R) -> Result<(), Error> {
+    async fn import_paths<R: AsyncRead + fmt::Debug + Send + Unpin>(
+        &mut self,
+        source: R,
+    ) -> Result<(), Error> {
         let mut store = self.store.lock().await;
         store.import_paths(source).await
     }

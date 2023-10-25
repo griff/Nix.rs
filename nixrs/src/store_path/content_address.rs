@@ -47,18 +47,12 @@ impl ContentAddressMethod {
         if let Some(ret) = m.strip_prefix("r:") {
             (
                 ContentAddressMethod::Fixed(FileIngestionMethod::Recursive),
-                ret
+                ret,
             )
         } else if let Some(ret) = m.strip_prefix("text:") {
-            (
-                ContentAddressMethod::Text,
-                ret
-            )
+            (ContentAddressMethod::Text, ret)
         } else {
-            (
-                ContentAddressMethod::Fixed(FileIngestionMethod::Flat),
-                m
-            )
+            (ContentAddressMethod::Fixed(FileIngestionMethod::Flat), m)
         }
     }
 }
@@ -121,13 +115,13 @@ impl ContentAddress {
     pub fn text(hash: Hash) -> ContentAddress {
         ContentAddress {
             method: ContentAddressMethod::Text,
-            hash
+            hash,
         }
     }
     pub fn fixed(fim: FileIngestionMethod, hash: Hash) -> ContentAddress {
         ContentAddress {
             method: ContentAddressMethod::Fixed(fim),
-            hash
+            hash,
         }
     }
     pub fn parse(s: &str) -> Result<ContentAddress, ParseContentAddressError> {
@@ -141,7 +135,7 @@ impl ContentAddress {
             }
             Ok(ContentAddress {
                 method: ContentAddressMethod::Text,
-                hash
+                hash,
             })
         } else if s.starts_with("fixed:") {
             let mut rest = &s[6..];
@@ -188,7 +182,7 @@ impl FromStr for ContentAddress {
 }
 
 /// A set of references to other store objects.
-/// 
+///
 /// References to other store objects are tracked with store paths, self
 /// references however are tracked with a boolean.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -238,11 +232,11 @@ pub struct FixedOutputInfo {
     /// Hash of that serialization
     pub hash: Hash,
     /// References to other store objects or this one.
-    pub references: StoreReferences
+    pub references: StoreReferences,
 }
 
 /// Ways of content addressing but not a complete ContentAddress.
-/// 
+///
 /// A ContentAddress without a Hash.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContentAddressWithReferences {
@@ -257,47 +251,54 @@ impl ContentAddressWithReferences {
     pub fn without_refs(ca: ContentAddress) -> ContentAddressWithReferences {
         use ContentAddressMethod::*;
         match ca.method {
-            Text => {
-                Self::Text(TextInfo { hash: ca.hash, references: StorePathSet::new() })
-            },
-            Fixed(method) => {
-                Self::Fixed(FixedOutputInfo { method, hash: ca.hash, references: StoreReferences::new() })
-            }
+            Text => Self::Text(TextInfo {
+                hash: ca.hash,
+                references: StorePathSet::new(),
+            }),
+            Fixed(method) => Self::Fixed(FixedOutputInfo {
+                method,
+                hash: ca.hash,
+                references: StoreReferences::new(),
+            }),
         }
     }
 
     /// Create a `ContentAddressWithReferences` from 3 parts:
-    /// 
-    /// Do note that not all combinations are supported; `None` is 
+    ///
+    /// Do note that not all combinations are supported; `None` is
     /// returns for invalid combinations.
-    pub fn from_parts_opt(method: ContentAddressMethod, hash: Hash, references: StoreReferences) -> Option<ContentAddressWithReferences> {
+    pub fn from_parts_opt(
+        method: ContentAddressMethod,
+        hash: Hash,
+        references: StoreReferences,
+    ) -> Option<ContentAddressWithReferences> {
         use ContentAddressMethod::*;
         match method {
             Text => {
                 if references.self_ref {
-                    return None
+                    return None;
                 }
-                Some(Self::Text(TextInfo { hash, references: references.others }))
+                Some(Self::Text(TextInfo {
+                    hash,
+                    references: references.others,
+                }))
             }
-            Fixed(method) => {
-                Some(Self::Fixed(FixedOutputInfo { method, hash, references }))
-            }
+            Fixed(method) => Some(Self::Fixed(FixedOutputInfo {
+                method,
+                hash,
+                references,
+            })),
         }
     }
 
     pub fn method(&self) -> ContentAddressMethod {
         use ContentAddressWithReferences::*;
         match self {
-            Text(_) => {
-                ContentAddressMethod::Text
-            },
-            Fixed(foi) => {
-                ContentAddressMethod::Fixed(foi.method)
-            }
+            Text(_) => ContentAddressMethod::Text,
+            Fixed(foi) => ContentAddressMethod::Fixed(foi.method),
         }
     }
 }
-
 
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {

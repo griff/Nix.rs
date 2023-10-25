@@ -5,9 +5,9 @@ use async_stream::try_stream;
 use bytes::Bytes;
 use bytes::BytesMut;
 use futures::Stream;
-use tracing::trace;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
+use tracing::trace;
 
 use crate::io::AsyncSource;
 use crate::io::OffsetReader;

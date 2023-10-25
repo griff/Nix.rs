@@ -1,5 +1,8 @@
-use tracing::{Dispatch, dispatcher::{get_default, with_default}, span, Subscriber, Event};
-use tracing_subscriber::{Layer, registry::LookupSpan, layer};
+use tracing::{
+    dispatcher::{get_default, with_default},
+    span, Dispatch, Event, Subscriber,
+};
+use tracing_subscriber::{layer, registry::LookupSpan, Layer};
 
 struct ParentId(span::Id);
 
@@ -10,21 +13,18 @@ pub struct ParentLayer {
 impl ParentLayer {
     pub fn new() -> ParentLayer {
         let parent = get_default(|d| d.clone());
-        ParentLayer {
-            parent, log: false
-        }
+        ParentLayer { parent, log: false }
     }
     pub fn new_debug() -> ParentLayer {
         let parent = get_default(|d| d.clone());
         eprintln!("Parent {:?}", parent);
-        ParentLayer {
-            parent, log: true
-        }
+        ParentLayer { parent, log: true }
     }
 }
 
 impl<S> Layer<S> for ParentLayer
-    where for <'lookup> S: Subscriber + LookupSpan<'lookup>
+where
+    for<'lookup> S: Subscriber + LookupSpan<'lookup>,
 {
     fn on_new_span(&self, attrs: &span::Attributes<'_>, id: &span::Id, ctx: layer::Context<'_, S>) {
         if let Some(meta) = ctx.metadata(id) {
@@ -35,7 +35,7 @@ impl<S> Layer<S> for ParentLayer
                         eprintln!("Parent new span {:?} {}", parent_id, meta.name());
                     }
                     span.extensions_mut().insert(ParentId(parent_id));
-                }    
+                }
             }
         }
     }
@@ -58,7 +58,7 @@ impl<S> Layer<S> for ParentLayer
                 }
                 self.parent.record(&parent_id.0, values);
             }
-        }    
+        }
     }
 
     fn on_follows_from(&self, id: &span::Id, follows: &span::Id, ctx: layer::Context<'_, S>) {
@@ -69,7 +69,7 @@ impl<S> Layer<S> for ParentLayer
                 }
                 self.parent.record_follows_from(&parent_id.0, follows);
             }
-        }    
+        }
     }
 
     fn on_id_change(&self, old: &span::Id, new: &span::Id, ctx: layer::Context<'_, S>) {
@@ -85,7 +85,6 @@ impl<S> Layer<S> for ParentLayer
                     let new_parent_id = self.parent.clone_span(&parent_id.0);
                     new_span.extensions_mut().insert(ParentId(new_parent_id));
                 }
-
             }
         }
     }
@@ -109,7 +108,12 @@ impl<S> Layer<S> for ParentLayer
                 }
                 with_default(&self.parent, || {
                     if self.log {
-                        eprintln!("Actual Parent exit {:?} {:?} {}", id, parent_id.0, span.name());
+                        eprintln!(
+                            "Actual Parent exit {:?} {:?} {}",
+                            id,
+                            parent_id.0,
+                            span.name()
+                        );
                     }
                     self.parent.exit(&parent_id.0);
                 });
@@ -119,7 +123,7 @@ impl<S> Layer<S> for ParentLayer
             }
         }
     }
-    
+
     fn on_close(&self, id: span::Id, ctx: layer::Context<'_, S>) {
         if self.log {
             eprintln!("Span close {:?}", id);

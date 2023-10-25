@@ -2,7 +2,7 @@ use std::fmt;
 
 use derive_more::{LowerHex, UpperHex};
 
-use crate::{num_enum::num_enum, flag_enum::flag_enum};
+use crate::{flag_enum::flag_enum, num_enum::num_enum};
 
 mod client;
 mod server;
@@ -28,8 +28,8 @@ macro_rules! get_protocol_minor {
 }
 pub(crate) use get_protocol_minor;
 
-const WORKER_MAGIC_1 : u64 = 0x6e697863;
-const WORKER_MAGIC_2 : u64 = 0x6478696f;
+const WORKER_MAGIC_1: u64 = 0x6e697863;
+const WORKER_MAGIC_2: u64 = 0x6478696f;
 
 // Nix 2.0    1 << 8 | 20
 // Nix 2.0.1
@@ -96,17 +96,16 @@ const WORKER_MAGIC_2 : u64 = 0x6478696f;
 // Nix 2.17.1
 // Nix 2.18.0 1 << 8 | 35
 // Nix 2.18.1
-const PROTOCOL_VERSION : u64 = 1 << 8 | 35;
+const PROTOCOL_VERSION: u64 = 1 << 8 | 35;
 
-const STDERR_NEXT : u64 =  0x6f6c6d67;
-const STDERR_READ : u64 =  0x64617461; // data needed from source
-const STDERR_WRITE : u64 = 0x64617416; // data for sink
-const STDERR_LAST : u64 =  0x616c7473;
-const STDERR_ERROR : u64 = 0x63787470;
-const STDERR_START_ACTIVITY : u64 = 0x53545254;
-const STDERR_STOP_ACTIVITY : u64 =  0x53544f50;
-const STDERR_RESULT : u64 =         0x52534c54;
-
+const STDERR_NEXT: u64 = 0x6f6c6d67;
+const STDERR_READ: u64 = 0x64617461; // data needed from source
+const STDERR_WRITE: u64 = 0x64617416; // data for sink
+const STDERR_LAST: u64 = 0x616c7473;
+const STDERR_ERROR: u64 = 0x63787470;
+const STDERR_START_ACTIVITY: u64 = 0x53545254;
+const STDERR_STOP_ACTIVITY: u64 = 0x53544f50;
+const STDERR_RESULT: u64 = 0x52534c54;
 
 num_enum! {
     #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, UpperHex, LowerHex)]
@@ -210,11 +209,10 @@ impl fmt::Display for WorkerProtoOp {
     }
 }
 
-
 flag_enum! {
     #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
     pub enum TrustedFlag {
-        NotTrusted = false, 
+        NotTrusted = false,
         Trusted = true
     }
 }

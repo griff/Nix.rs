@@ -9,8 +9,8 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use crate::path_info::ValidPathInfo;
 use crate::store::legacy_worker::LegacyStore;
 use crate::store::{
-    BasicDerivation, BuildResult, CheckSignaturesFlag, DerivedPath, Error,
-    RepairFlag, Store, SubstituteFlag,
+    BasicDerivation, BuildResult, CheckSignaturesFlag, DerivedPath, Error, RepairFlag, Store,
+    SubstituteFlag,
 };
 use crate::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
 
@@ -141,9 +141,7 @@ where
         drv: &BasicDerivation,
         build_mode: BuildMode,
     ) -> Result<BuildResult, Error> {
-        self.store
-            .build_derivation(drv_path, drv, build_mode)
-            .await
+        self.store.build_derivation(drv_path, drv, build_mode).await
     }
 
     async fn build_paths(
@@ -179,7 +177,10 @@ where
         self.store.export_paths(paths, sink).await
     }
 
-    async fn import_paths<R: AsyncRead + fmt::Debug + Send + Unpin>(&mut self, source: R) -> Result<(), Error> {
+    async fn import_paths<R: AsyncRead + fmt::Debug + Send + Unpin>(
+        &mut self,
+        source: R,
+    ) -> Result<(), Error> {
         self.store.import_paths(source).await
     }
 

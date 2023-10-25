@@ -8,8 +8,8 @@ use std::task::{ready, Context, Poll};
 
 use bytes::Bytes;
 use futures::Stream;
-use tracing::debug;
 use pin_project_lite::pin_project;
+use tracing::debug;
 
 use crate::archive::CASE_HACK_SUFFIX;
 

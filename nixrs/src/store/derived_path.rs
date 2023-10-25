@@ -13,7 +13,7 @@ pub enum SingleDerivedPath {
     Built {
         drv_path: Box<SingleDerivedPath>,
         output: String,
-    }
+    },
 }
 
 impl SingleDerivedPath {
@@ -21,7 +21,10 @@ impl SingleDerivedPath {
         if let Some(pos) = s.rfind("!") {
             let drv_path = SingleDerivedPath::parse(store_dir, &s[..pos])?;
             let output = (&s[(pos + 1)..]).to_string();
-            Ok(SingleDerivedPath::Built { drv_path: Box::new(drv_path), output })
+            Ok(SingleDerivedPath::Built {
+                drv_path: Box::new(drv_path),
+                output,
+            })
         } else {
             let path = store_dir.parse_path(s)?;
             Ok(SingleDerivedPath::Opaque(path))
@@ -31,7 +34,7 @@ impl SingleDerivedPath {
         SingleDerivedPathDisplay {
             store_dir,
             seperator: "!",
-            path: self
+            path: self,
         }
     }
 
@@ -39,7 +42,7 @@ impl SingleDerivedPath {
         SingleDerivedPathDisplay {
             store_dir,
             seperator: "^",
-            path: self
+            path: self,
         }
     }
 }
@@ -63,12 +66,17 @@ impl<'a> fmt::Display for SingleDerivedPathDisplay<'a> {
                 write!(f, "{}", self.store_dir.print_path(drv_path))
             }
             SingleDerivedPath::Built { drv_path, output } => {
-                write!(f, "{}{}{}", drv_path.legacy_display(&self.store_dir), self.seperator, output)
+                write!(
+                    f,
+                    "{}{}{}",
+                    drv_path.legacy_display(&self.store_dir),
+                    self.seperator,
+                    output
+                )
             }
         }
     }
 }
-
 
 pub struct DerivedPathLegacyFormat(DerivedPath);
 
@@ -104,11 +112,18 @@ impl StatePrint<DerivedPathLegacyFormat> for StoreDir {
 #[derive(Error, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum ParseDerivedPathError {
     #[error("{0}")]
-    ParseStorePath(#[source] #[from] ParseStorePathError),
+    ParseStorePath(
+        #[source]
+        #[from]
+        ParseStorePathError,
+    ),
     #[error("{0}")]
-    ParseOutputSpec(#[source] #[from] ParseOutputSpecError),
+    ParseOutputSpec(
+        #[source]
+        #[from]
+        ParseOutputSpecError,
+    ),
 }
-
 
 #[derive(Error, Debug)]
 pub enum ReadDerivedPathError {
@@ -117,7 +132,6 @@ pub enum ReadDerivedPathError {
     #[error("io error reading store path {0}")]
     IO(#[from] std::io::Error),
 }
-
 
 /// A "derived path" is a very simple sort of expression that evaluates
 /// to (concrete) store path. It is either:
@@ -140,16 +154,19 @@ impl DerivedPath {
     pub fn print(&self, store_dir: &StoreDir) -> String {
         match self {
             Self::Opaque(path) => store_dir.print_path(path),
-            Self::Built { drv_path, outputs } => {
-                match drv_path {
-                    SingleDerivedPath::Opaque(drv_path) => {
-                        format!("{}!{}", store_dir.display_path(drv_path), outputs)
-                    },
-                    SingleDerivedPath::Built { drv_path, output } => {
-                        format!("{}!{}!{}", drv_path.legacy_display(store_dir), output, outputs)
-                    }
+            Self::Built { drv_path, outputs } => match drv_path {
+                SingleDerivedPath::Opaque(drv_path) => {
+                    format!("{}!{}", store_dir.display_path(drv_path), outputs)
                 }
-            }
+                SingleDerivedPath::Built { drv_path, output } => {
+                    format!(
+                        "{}!{}!{}",
+                        drv_path.legacy_display(store_dir),
+                        output,
+                        outputs
+                    )
+                }
+            },
         }
     }
 
@@ -182,7 +199,10 @@ impl StatePrint<DerivedPath> for StoreDir {
 
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
-    use crate::{store_path::proptest::{arb_drv_store_path, arb_output_name}, store::output_spec::proptest::arb_output_spec};
+    use crate::{
+        store::output_spec::proptest::arb_output_spec,
+        store_path::proptest::{arb_drv_store_path, arb_output_name},
+    };
     use ::proptest::prelude::*;
 
     use super::*;
@@ -197,29 +217,28 @@ pub mod proptest {
     }
 
     fn arb_single_derived_path_box() -> impl Strategy<Value = Box<SingleDerivedPath>> {
-        let leaf = arb_drv_store_path()
-            .prop_map(|p| Box::new(SingleDerivedPath::Opaque(p)));
+        let leaf = arb_drv_store_path().prop_map(|p| Box::new(SingleDerivedPath::Opaque(p)));
         leaf.prop_recursive(
             8, // 8 levels deep
             5, // Shoot for maximum size of 256 nodes
             1, // We put up to 10 items per collection
-            |inner|
-            (inner, arb_output_name()).prop_map(|(drv_path, output)| {
-                Box::new(SingleDerivedPath::Built { 
-                    drv_path,
-                    output
+            |inner| {
+                (inner, arb_output_name()).prop_map(|(drv_path, output)| {
+                    Box::new(SingleDerivedPath::Built { drv_path, output })
                 })
-            })
+            },
         )
     }
 
     pub fn arb_single_derived_path() -> impl Strategy<Value = SingleDerivedPath> {
         prop_oneof![
             arb_drv_store_path().prop_map(|p| SingleDerivedPath::Opaque(p)),
-            (arb_single_derived_path_box(), arb_output_name())
-                .prop_map(|(drv_path, output)| SingleDerivedPath::Built { 
+            (arb_single_derived_path_box(), arb_output_name()).prop_map(|(drv_path, output)| {
+                SingleDerivedPath::Built {
                     drv_path: drv_path,
-                    output })
+                    output,
+                }
+            })
         ]
     }
 
@@ -237,9 +256,9 @@ mod tests {
     use crate::string_set;
 
     use super::*;
-    use pretty_assertions::assert_eq;
-    use ::proptest::proptest;
     use ::proptest::prelude::*;
+    use ::proptest::proptest;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn test_derived_path_parse() {
@@ -384,7 +403,8 @@ mod tests {
                 drv_path: Box::new(SingleDerivedPath::Built {
                     drv_path: Box::new(SingleDerivedPath::Built {
                         drv_path: Box::new(SingleDerivedPath::Opaque(
-                            StorePath::new_from_base_name("00000000000000000000000000000000-a.drv").unwrap(),
+                            StorePath::new_from_base_name("00000000000000000000000000000000-a.drv")
+                                .unwrap(),
                         )),
                         output: "_CC7++3".into(),
                     }),
