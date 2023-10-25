@@ -49,6 +49,8 @@ jobs:
         profile: minimal
         override: true
         components: rustfmt
+    - name: Install Dependencies
+      run: sudo apt-get install -y libarchive-dev libsodium-dev protobuf-compiler
     - name: Install rustfmt
       run: rustup component add rustfmt
     - name: Check formatting
