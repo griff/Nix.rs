@@ -40,7 +40,7 @@ impl<S> Layer<S> for ParentLayer
         }
     }
 
-    fn on_event(&self, event: &Event<'_>, ctx: layer::Context<'_, S>) {
+    fn on_event(&self, event: &Event<'_>, _ctx: layer::Context<'_, S>) {
         let meta = event.metadata();
         if self.parent.enabled(meta) {
             if self.log {
@@ -121,24 +121,22 @@ impl<S> Layer<S> for ParentLayer
     }
     
     fn on_close(&self, id: span::Id, ctx: layer::Context<'_, S>) {
-        if let Some(meta) = ctx.metadata(&id) {
+        if self.log {
+            eprintln!("Span close {:?}", id);
+        }
+        if let Some(span) = ctx.span(&id) {
             if self.log {
-                eprintln!("Span close {:?}", id);
+                eprintln!("Found Span close {:?} {}", id, span.name());
             }
-            if let Some(span) = ctx.span(&id) {
+            if let Some(parent_id) = span.extensions().get::<ParentId>() {
                 if self.log {
-                    eprintln!("Found Span close {:?} {}", id, span.name());
+                    eprintln!("Parent close");
                 }
-                if let Some(parent_id) = span.extensions().get::<ParentId>() {
-                    if self.log {
-                        eprintln!("Parent close");
-                    }
-                    self.parent.try_close(parent_id.0.clone());
-                }
+                self.parent.try_close(parent_id.0.clone());
             }
-            if self.log {
-                eprintln!("Span after close {:?}", id);
-            }
+        }
+        if self.log {
+            eprintln!("Span after close {:?}", id);
         }
     }
 }

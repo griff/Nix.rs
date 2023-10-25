@@ -1,10 +1,9 @@
 use std::pin::Pin;
 use std::task::{Context, ready, Poll};
 
-use bytes::{Bytes, BytesMut, BufMut, Buf};
+use bytes::{Bytes, BytesMut, BufMut};
 use pin_project_lite::pin_project;
 use tokio::io::AsyncWrite;
-use tracing::debug;
 
 #[derive(Debug)]
 pub enum FramedSinkOp {
@@ -68,7 +67,7 @@ impl<W: AsyncWrite> AsyncWrite for FramedSink<W> {
             ready!(self.as_mut().poll_writing(cx))?;
         }
         let this = self.project();
-        let old_len = this.buf.len();
+        //let old_len = this.buf.len();
         this.buf.reserve(buf.len() + 8);
         this.buf.put_u64_le(buf.len() as u64);
         this.buf.extend_from_slice(buf);

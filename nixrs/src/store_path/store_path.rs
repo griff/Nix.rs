@@ -148,11 +148,11 @@ impl StorePath {
         self.name.ends_with(DRV_EXTENSION)
     }
 
-    pub fn name_from_drv(&self) -> String {
+    pub fn name_from_drv<'a>(&'a self) -> &'a str {
         let name_with_suffix = self.name.name();
         assert!(name_with_suffix.ends_with(DRV_EXTENSION));
 
-        name_with_suffix[..(name_with_suffix.len() - DRV_EXTENSION.len())].to_owned()
+        &name_with_suffix[..(name_with_suffix.len() - DRV_EXTENSION.len())]
     }
 }
 

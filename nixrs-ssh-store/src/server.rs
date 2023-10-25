@@ -17,7 +17,7 @@ use thrussh_keys::{decode_secret_key, key, parse_public_key_base64, PublicKeyBas
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::select;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 

@@ -32,7 +32,7 @@ mod tests {
             let mut writer = FramedSink::new(writer);
             let write_fut = async {
                 let mut d1 = hash::Context::new(hash::Algorithm::SHA256);
-                for i in 0..iterations {
+                for _i in 0..iterations {
                     //eprintln!("write {}", i);
                     d1.update(&data);
                     writer.write_all(&data).await?;
@@ -46,14 +46,14 @@ mod tests {
             let read_fut = async {
                 let mut d2 = hash::Context::new(hash::Algorithm::SHA256);
                 let mut buf = Vec::with_capacity(read_buf_size);
-                let mut total_read = 0;
+                //let mut total_read = 0;
                 loop {
                     let read = reader.read_buf(&mut buf).await?;
                     //eprintln!("Read {} {} {} {}", total_read, read, buf.len(), buf.capacity());
                     if read == 0 {
                         break;
                     }
-                    total_read += read;
+                    //total_read += read;
                     d2.update(&buf);
                     buf.clear();
                 }

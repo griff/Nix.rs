@@ -3,6 +3,7 @@ use std::io;
 use clap::Parser;
 use nixrs_tvix::pathinfoservice;
 use tonic::transport::Server;
+use tokio_listener::{Listener, SystemOptions, UserOptions};
 use tracing::info;
 use tracing::Level;
 use tracing_subscriber::filter;
@@ -13,7 +14,6 @@ use tvix_castore::proto::blob_service_server::BlobServiceServer;
 use tvix_castore::proto::directory_service_server::DirectoryServiceServer;
 use tvix_castore::proto::GRPCBlobServiceWrapper;
 use tvix_castore::proto::GRPCDirectoryServiceWrapper;
-use tvix_store::listener::ListenerStream;
 use tvix_store::proto::path_info_service_server::PathInfoServiceServer;
 use tvix_store::proto::GRPCPathInfoServiceWrapper;
 
@@ -127,7 +127,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("tvix-store listening on {}", listen_address);
 
-    let listener = ListenerStream::bind(&listen_address).await?;
+    let listener = Listener::bind(
+        &listen_address,
+        &SystemOptions::default(),
+        &UserOptions::default(),
+    )
+    .await?;
 
     router.serve_with_incoming(listener).await?;
 
