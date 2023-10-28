@@ -41,6 +41,7 @@ impl Entry {
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 enum Process {
     Done,
     Single(Item),

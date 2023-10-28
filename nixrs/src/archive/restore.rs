@@ -16,7 +16,9 @@ use tokio::fs::File;
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 
-use super::{CaseHackStream, NAREvent};
+#[cfg(target_os = "macos")]
+use super::CaseHackStream;
+use super::NAREvent;
 
 pub async fn restore<S, U, P>(stream: S, path: P) -> Result<(), NARWriteError>
 where
