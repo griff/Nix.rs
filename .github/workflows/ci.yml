@@ -11,12 +11,12 @@ jobs:
     steps:
 
     - name: Checkout repository
-      uses: actions/checkout@v1
+      uses: actions/checkout@v3
       with:
         fetch-depth: 1
 
     - name: Install Rust
-      uses: actions-rs/toolchain@v1
+      uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: stable-x86_64-gnu
         profile: minimal
@@ -39,11 +39,11 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v1
+      uses: actions/checkout@v3
       with:
         fetch-depth: 1
     - name: Install Rust
-      uses: actions-rs/toolchain@v1
+      uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: stable
         profile: minimal
