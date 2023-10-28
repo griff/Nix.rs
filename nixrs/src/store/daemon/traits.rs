@@ -60,3 +60,99 @@ pub trait DaemonStore: Store {
         Ok(())
     }
 }
+
+macro_rules! deref_daemon_store {
+    () => {
+        fn is_trusted_client(&self) -> Option<TrustedFlag> {
+            (**self).is_trusted_client()
+        }
+
+        #[must_use]
+        #[allow(clippy::type_complexity, clippy::type_repetition_in_bounds)]
+        fn set_options<'life0, 'async_trait>(
+            &'life0 mut self,
+        ) -> ::core::pin::Pin<
+            Box<
+                dyn ::core::future::Future<Output = Result<(), Error>>
+                    + ::core::marker::Send
+                    + 'async_trait,
+            >,
+        >
+        where
+            'life0: 'async_trait,
+            Self: 'async_trait,
+        {
+            (**self).set_options()
+        }
+
+        #[must_use]
+        #[allow(clippy::type_complexity, clippy::type_repetition_in_bounds)]
+        fn is_valid_path<'life0, 'life1, 'async_trait>(
+            &'life0 mut self,
+            path: &'life1 StorePath,
+        ) -> ::core::pin::Pin<
+            Box<
+                dyn ::core::future::Future<Output = Result<bool, Error>>
+                    + ::core::marker::Send
+                    + 'async_trait,
+            >,
+        >
+        where
+            'life0: 'async_trait,
+            'life1: 'async_trait,
+            Self: 'async_trait,
+        {
+            (**self).is_valid_path(path)
+        }
+
+        #[must_use]
+        #[allow(clippy::type_complexity, clippy::type_repetition_in_bounds)]
+        fn add_multiple_to_store<'life0, 'async_trait, R>(
+            &'life0 mut self,
+            source: R,
+            repair: RepairFlag,
+            check_sigs: CheckSignaturesFlag,
+        ) -> ::core::pin::Pin<
+            Box<
+                dyn ::core::future::Future<Output = Result<(), Error>>
+                    + ::core::marker::Send
+                    + 'async_trait,
+            >,
+        >
+        where
+            R: 'async_trait + AsyncRead + fmt::Debug + Send + Unpin,
+            'life0: 'async_trait,
+            Self: 'async_trait,
+        {
+            (**self).add_multiple_to_store(source, repair, check_sigs)
+        }
+
+        #[must_use]
+        #[allow(clippy::type_complexity, clippy::type_repetition_in_bounds)]
+        fn query_missing<'life0, 'life1, 'async_trait>(
+            &'life0 mut self,
+            targets: &'life1 [DerivedPath],
+        ) -> ::core::pin::Pin<
+            Box<
+                dyn ::core::future::Future<Output = Result<QueryMissingResult, Error>>
+                    + ::core::marker::Send
+                    + 'async_trait,
+            >,
+        >
+        where
+            'life0: 'async_trait,
+            'life1: 'async_trait,
+            Self: 'async_trait,
+        {
+            (**self).query_missing(targets)
+        }
+    };
+}
+
+impl<T: ?Sized + DaemonStore + Unpin + Send> DaemonStore for Box<T> {
+    deref_daemon_store!();
+}
+
+impl<T: ?Sized + DaemonStore + Unpin + Send> DaemonStore for &mut T {
+    deref_daemon_store!();
+}
