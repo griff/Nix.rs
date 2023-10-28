@@ -1,9 +1,11 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use pretty_assertions::assert_eq;
+use proptest::test_runner::TestCaseError;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::path_info::ValidPathInfo;
+use crate::pretty_prop_assert_eq;
 use crate::store::legacy_worker::LegacyStore;
 use crate::store::settings::BuildSettings;
 use crate::store::{BasicDerivation, BuildMode, BuildResult, CheckSignaturesFlag, Error, Store};
@@ -115,6 +117,7 @@ pub struct AssertStore {
     trusted_client: Option<TrustedFlag>,
     store_dir: StoreDir,
     expected: Message,
+    actual: Option<Message>,
     response: Result<MessageResponse, Error>,
 }
 
@@ -136,6 +139,7 @@ impl AssertStore {
             store_dir,
             expected,
             response,
+            actual: None,
         }
     }
     pub fn assert_query_path_info(
@@ -151,6 +155,7 @@ impl AssertStore {
             store_dir,
             expected,
             response,
+            actual: None,
         }
     }
     pub fn assert_query_valid_paths_locked(
@@ -171,6 +176,7 @@ impl AssertStore {
             store_dir,
             expected,
             response,
+            actual: None,
         }
     }
     pub fn assert_nar_from_path(
@@ -186,6 +192,7 @@ impl AssertStore {
             store_dir,
             expected,
             response,
+            actual: None,
         }
     }
     pub fn assert_export_paths(
@@ -201,6 +208,7 @@ impl AssertStore {
             store_dir,
             expected,
             response,
+            actual: None,
         }
     }
     pub fn assert_import_paths(
@@ -216,6 +224,7 @@ impl AssertStore {
             store_dir,
             expected,
             response,
+            actual: None,
         }
     }
     pub fn assert_build_derivation(
@@ -239,6 +248,7 @@ impl AssertStore {
             store_dir,
             expected,
             response,
+            actual: None,
         }
     }
     pub fn assert_build_paths(
@@ -260,6 +270,7 @@ impl AssertStore {
             store_dir,
             expected,
             response,
+            actual: None,
         }
     }
     pub fn assert_add_to_store(
@@ -283,6 +294,7 @@ impl AssertStore {
             store_dir,
             expected,
             response,
+            actual: None,
         }
     }
     pub fn assert_query_closure(
@@ -301,6 +313,7 @@ impl AssertStore {
             store_dir,
             expected,
             response,
+            actual: None,
         }
     }
 
@@ -313,6 +326,7 @@ impl AssertStore {
             store_dir,
             expected,
             response,
+            actual: None,
         }
     }
 
@@ -335,6 +349,7 @@ impl AssertStore {
             store_dir,
             expected,
             response,
+            actual: None,
         }
     }
     pub fn assert_query_missing(
@@ -349,7 +364,17 @@ impl AssertStore {
             store_dir,
             expected,
             response,
+            actual: None,
         }
+    }
+
+    pub fn prop_assert_eq(self) -> Result<(), TestCaseError> {
+        pretty_prop_assert_eq!(self.expected, self.actual.unwrap());
+        Ok(())
+    }
+
+    pub fn assert_eq(self) {
+        ::pretty_assertions::assert_eq!(self.expected, self.actual.unwrap());
     }
 }
 
@@ -370,7 +395,8 @@ impl Store for AssertStore {
             paths: paths.clone(),
             maybe_substitute,
         };
-        assert_eq!(self.expected, actual, "query_valid_paths");
+        assert_eq!(None, self.actual.take(), "existing result");
+        self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::StorePathSet(set) => Ok(set),
             e => panic!("Invalid response {:?} for query_valid_paths", e),
@@ -379,7 +405,8 @@ impl Store for AssertStore {
 
     async fn query_path_info(&mut self, path: &StorePath) -> Result<Option<ValidPathInfo>, Error> {
         let actual = Message::QueryPathInfo(path.clone());
-        assert_eq!(self.expected, actual, "query_path_info");
+        assert_eq!(None, self.actual.take(), "existing result");
+        self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::ValidPathInfo(res) => Ok(res),
             e => panic!("Invalid response {:?} for query_path_info", e),
@@ -392,7 +419,8 @@ impl Store for AssertStore {
         mut sink: W,
     ) -> Result<(), Error> {
         let actual = Message::NarFromPath(path.clone());
-        assert_eq!(self.expected, actual, "nar_from_path");
+        assert_eq!(None, self.actual.take(), "existing result");
+        self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::Bytes(set) => {
                 sink.write_all(&set).await?;
@@ -418,7 +446,8 @@ impl Store for AssertStore {
             repair,
             check_sigs,
         };
-        assert_eq!(self.expected, actual, "add_to_store");
+        assert_eq!(None, self.actual.take(), "existing result");
+        self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::Empty => Ok(()),
             e => panic!("Invalid response {:?} for add_to_store", e),
@@ -436,7 +465,8 @@ impl Store for AssertStore {
             build_mode,
             settings: BuildSettings::default(),
         };
-        assert_eq!(self.expected, actual, "build_derivation");
+        assert_eq!(None, self.actual.take(), "existing result");
+        self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::BuildResult(res) => Ok(res),
             e => panic!("Invalid response {:?} for build_derivation", e),
@@ -452,7 +482,8 @@ impl Store for AssertStore {
             build_mode,
             settings: BuildSettings::default(),
         };
-        assert_eq!(self.expected, actual, "build_paths");
+        assert_eq!(None, self.actual.take(), "existing result");
+        self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::Empty => Ok(()),
             e => panic!("Invalid response {:?} for build_paths", e),
@@ -473,7 +504,8 @@ impl LegacyStore for AssertStore {
             lock,
             maybe_substitute,
         };
-        assert_eq!(self.expected, actual, "legacy_query_valid_paths");
+        assert_eq!(None, self.actual.take(), "existing result");
+        self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::StorePathSet(set) => Ok(set),
             e => panic!("Invalid response {:?} for legacy_query_valid_paths", e),
@@ -485,7 +517,8 @@ impl LegacyStore for AssertStore {
         mut sink: W,
     ) -> Result<(), Error> {
         let actual = Message::ExportPaths(paths.clone());
-        assert_eq!(self.expected, actual, "export_paths");
+        assert_eq!(None, self.actual.take(), "existing result");
+        self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::Bytes(set) => {
                 sink.write_all(&set).await?;
@@ -502,7 +535,8 @@ impl LegacyStore for AssertStore {
         let mut buf = Vec::new();
         source.read_to_end(&mut buf).await?;
         let actual = Message::ImportPaths(buf.into());
-        assert_eq!(self.expected, actual, "import_paths");
+        assert_eq!(None, self.actual.take(), "existing result");
+        self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::Empty => Ok(()),
             e => panic!("Invalid response {:?} for import_paths", e),
@@ -517,7 +551,8 @@ impl LegacyStore for AssertStore {
             paths: paths.clone(),
             include_outputs,
         };
-        assert_eq!(self.expected, actual, "query_closure");
+        assert_eq!(None, self.actual.take(), "existing result");
+        self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::StorePathSet(set) => Ok(set),
             e => panic!("Invalid response {:?} for query_closure", e),
@@ -537,7 +572,8 @@ impl DaemonStore for AssertStore {
 
     async fn is_valid_path(&mut self, path: &StorePath) -> Result<bool, Error> {
         let actual = Message::IsValidPath(path.clone());
-        assert_eq!(self.expected, actual, "is_valid_path");
+        assert_eq!(None, self.actual.take(), "existing result");
+        self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::Bool(res) => Ok(res),
             e => panic!("Invalid response {:?} for is_valid_path", e),
@@ -557,7 +593,8 @@ impl DaemonStore for AssertStore {
             repair,
             check_sigs,
         };
-        assert_eq!(self.expected, actual, "add_multiple_to_store");
+        assert_eq!(None, self.actual.take(), "existing result");
+        self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::Empty => Ok(()),
             e => panic!("Invalid response {:?} for add_multiple_to_store", e),
@@ -569,7 +606,8 @@ impl DaemonStore for AssertStore {
         targets: &[DerivedPath],
     ) -> Result<QueryMissingResult, Error> {
         let actual = Message::QueryMissing(targets.into());
-        assert_eq!(self.expected, actual, "query_missing");
+        assert_eq!(None, self.actual.take(), "existing result");
+        self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::QueryMissingResult(res) => Ok(res),
             e => panic!("Invalid response {:?} for query_missing", e),

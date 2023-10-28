@@ -803,9 +803,9 @@ mod tests {
             r.block_on(async {
                 let mut test_store = LegacyStoreClient::new(store_dir.clone(), "localhost".into(), read, write, build_log_client).await;
 
-                let store = AssertStore::$assert($ae $(, $ae2)*);
+                let mut store = AssertStore::$assert($ae $(, $ae2)*);
                 let (read, write) = tokio::io::split(server);
-                let server = crate::store::legacy_worker::run_server_with_log(read, write, store, build_log_server, true);
+                let server = crate::store::legacy_worker::run_server_with_log(read, write, &mut store, build_log_server, true);
 
                 let cmd = async {
                     let res = test_store.$cmd($ce $(, $ce2)*)
@@ -815,6 +815,7 @@ mod tests {
                     Ok(res)
                 };
                 let (res, _) = try_join(cmd, server).await?;
+                store.prop_assert_eq()?;
                 pretty_prop_assert_eq!(res, $res);
                 Ok(())
             })?;
@@ -871,10 +872,10 @@ mod tests {
             settings.verbosity = Verbosity::Error;
             let now = Instant::now();
             eprintln!("Run test {}", drv_path);
-            drv.name = drv_path.name_from_drv();
+            drv.name = drv_path.name_from_drv().to_string();
             store_cmd!(
-                assert_build_derivation(&drv_path, &drv, &settings, Ok(result.clone())),
-                build_derivation(&drv_path, &drv, &settings, Cursor::new(&mut buf)),
+                assert_build_derivation(None, &drv_path, &drv, BuildMode::Normal, &settings, Ok(result.clone())),
+                build_derivation(&drv_path, &drv, BuildMode::Normal),
                 result
             );
             eprintln!("Completed test {} in {}", drv_path, now.elapsed().as_secs_f64());

@@ -703,9 +703,9 @@ mod tests {
             let mut test_store = DaemonStoreClient::new(store_dir.clone(), "localhost".into(), read, write);
 
             r.block_on(async {
-                let store = AssertStore::$assert($ae $(, $ae2)*);
+                let mut store = AssertStore::$assert($ae $(, $ae2)*);
                 let (read, write) = tokio::io::split(server);
-                let server = Box::pin(crate::store::daemon::run_server(read, write, store, $trusted));
+                let server = Box::pin(crate::store::daemon::run_server(read, write, &mut store, $trusted));
 
                 let cmd = async {
                     let res = test_store.$cmd($ce $(, $ce2)*).await?;
@@ -713,6 +713,7 @@ mod tests {
                     Ok(res)
                 };
                 let (res, _) = try_join(cmd, server).await?;
+                store.assert_eq();
                 ::pretty_assertions::assert_eq!(res, $res);
                 Ok(()) as Result<(), Error>
             }).unwrap();
@@ -786,9 +787,9 @@ mod tests {
             let mut test_store = DaemonStoreClient::new(store_dir.clone(), "localhost".into(), read, write);
 
             r.block_on(async {
-                let store = AssertStore::$assert($ae $(, $ae2)*);
+                let mut store = AssertStore::$assert($ae $(, $ae2)*);
                 let (read, write) = tokio::io::split(server);
-                let server = Box::pin(crate::store::daemon::run_server(read, write, store, $trusted));
+                let server = Box::pin(crate::store::daemon::run_server(read, write, &mut store, $trusted));
 
                 let cmd = async {
                     let res = test_store.$cmd($ce $(, $ce2)*).await?;
@@ -796,6 +797,7 @@ mod tests {
                     Ok(res)
                 };
                 let (res, _) = try_join(cmd, server).await?;
+                store.prop_assert_eq()?;
                 pretty_prop_assert_eq!(res, $res);
                 Ok(())
             })?;
@@ -866,16 +868,17 @@ mod tests {
         fn proptest_store_build_derivation(
             drv_path in arb_drv_store_path(),
             mut drv in any::<BasicDerivation>(),
+            build_mode in any::<BuildMode>(),
             result in any::<BuildResult>(),
         )
         {
             let now = Instant::now();
             eprintln!("Run test {}", drv_path);
-            drv.name = drv_path.name_from_drv();
+            drv.name = drv_path.name_from_drv().to_string();
             prop_store_cmd!(
                 TrustedFlag::Trusted,
-                assert_build_derivation(&drv_path, &drv, &BuildSettings::default(), Ok(result.clone())),
-                build_derivation(&drv_path, &drv, Cursor::new(&mut buf)),
+                assert_build_derivation(Some(TrustedFlag::Trusted), &drv_path, &drv, build_mode, &BuildSettings::default(), Ok(result.clone())),
+                build_derivation(&drv_path, &drv, build_mode),
                 result
             );
             eprintln!("Completed test {} in {}", drv_path, now.elapsed().as_secs_f64());
