@@ -143,56 +143,27 @@ impl DerivationOutput {
         hash_algo: String,
         hash: String,
     ) -> Result<DerivationOutput, ParseDerivationError> {
-        /*
-                static DerivationOutput parseDerivationOutput(const Store & store,
-            std::string_view pathS, std::string_view hashAlgo, std::string_view hashS)
-        {
-        */
         if !hash_algo.is_empty() {
-            /*
-                   ContentAddressMethod method = ContentAddressMethod::parsePrefix(hashAlgo);
-                   if (method == TextIngestionMethod {})
-                       experimentalFeatureSettings.require(Xp::DynamicDerivations);
-                   const auto hashType = parseHashType(hashAlgo);
-                   if (hashS == "impure") {
-                       experimentalFeatureSettings.require(Xp::ImpureDerivations);
-                       assert(pathS == "");
-                       return DerivationOutput::Impure {
-                           .method = std::move(method),
-                           .hashType = std::move(hashType),
-                       };
-                   } else if (hashS != "") {
-                       validatePath(pathS);
-                       auto hash = Hash::parseNonSRIUnprefixed(hashS, hashType);
-                       return DerivationOutput::CAFixed {
-                           .ca = ContentAddress {
-                               .method = std::move(method),
-                               .hash = std::move(hash),
-                           },
-                       };
-                   } else {
-                       experimentalFeatureSettings.require(Xp::CaDerivations);
-                       assert(pathS == "");
-                       return DerivationOutput::CAFloating {
-                           .method = std::move(method),
-                           .hashType = std::move(hashType),
-                       };
-                   }
-            */
             let (method, algo) = ContentAddressMethod::parse_prefix(&hash_algo);
-            let algorithm = algo.parse::<hash::Algorithm>()?;
-            if !hash.is_empty() {
+            /*
+                if method == ContentAddressMethod::Text {
+                    // TODO: experimentalFeatureSettings.require(Xp::DynamicDerivations);
+                }
+            */
+            let hash_type = algo.parse::<hash::Algorithm>()?;
+            if hash == "impure" {
+                // TODO: experimentalFeatureSettings.require(Xp::ImpureDerivations);
+                assert_eq!(path_s, "");
+                Ok(DerivationOutput::Impure { method, hash_type })
+            } else if !hash.is_empty() {
                 validate_path(&path_s)?;
-                let hash = hash::Hash::parse_non_sri_unprefixed(&hash, algorithm)?;
+                let hash = hash::Hash::parse_non_sri_unprefixed(&hash, hash_type)?;
                 let hash = ContentAddress { method, hash };
                 Ok(DerivationOutput::CAFixed(hash))
             } else {
                 // TODO: settings.requireExperimentalFeature("ca-derivations");
                 assert_eq!(path_s, "");
-                Ok(DerivationOutput::CAFloating {
-                    method,
-                    hash_type: algorithm,
-                })
+                Ok(DerivationOutput::CAFloating { method, hash_type })
             }
         } else if path_s.is_empty() {
             Ok(DerivationOutput::Deferred)
@@ -256,7 +227,7 @@ impl DerivationOutput {
                 sink.write_str("").await?;
                 sink.write_string(format!("{}{}", method, hash_type))
                     .await?;
-                sink.write_str("").await?;
+                sink.write_str("impure").await?;
             }
         }
         Ok(())
@@ -607,6 +578,82 @@ pub mod proptest {
     use crate::proptest::arb_path;
     use crate::store_path::proptest::arb_output_name;
     use ::proptest::prelude::*;
+    use ::proptest::sample::SizeRange;
+
+    impl Arbitrary for DerivationType {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<DerivationType>;
+
+        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+            arb_derivation_type().boxed()
+        }
+    }
+
+    pub fn arb_derivation_type() -> impl Strategy<Value = DerivationType> {
+        use DerivationType::*;
+        prop_oneof![
+            ::proptest::bool::ANY.prop_map(|deferred| InputAddressed { deferred }),
+            (::proptest::bool::ANY, ::proptest::bool::ANY)
+                .prop_map(|(sandboxed, fixed)| ContentAddressed { sandboxed, fixed }),
+            Just(Impure)
+        ]
+    }
+
+    pub fn arb_derivation_outputs(
+        size: impl Into<SizeRange>,
+    ) -> impl Strategy<Value = DerivationOutputs> {
+        use DerivationOutput::*;
+        let size = size.into();
+        let size2 = size.clone();
+        prop_oneof![
+            //InputAddressed
+            prop::collection::btree_map(
+                arb_output_name(),
+                arb_derivation_output_input_addressed(),
+                size.clone()
+            ),
+            // CAFixed
+            arb_derivation_output_fixed().prop_map(|ca| {
+                let mut ret = BTreeMap::new();
+                ret.insert("out".to_string(), ca);
+                ret
+            }),
+            // CAFloating
+            any::<hash::Algorithm>().prop_flat_map(move |hash_type| {
+                prop::collection::btree_map(
+                    arb_output_name(),
+                    arb_derivation_output_floating(Just(hash_type)),
+                    size2.clone(),
+                )
+            }),
+            /*
+            prop::collection::btree_map(
+                arb_output_name(),
+                arb_derivation_output_floating(),
+                size.clone()).prop_map(|mut map| {
+                    let mut first_hash = None;
+                    for (_, value) in map.iter_mut() {
+                        if let DerivationOutput::CAFloating { ref mut hash_type, .. } = value {
+                            if first_hash.is_none() {
+                                first_hash = Some(*hash_type);
+                            } else {
+                                *hash_type = first_hash.unwrap();
+                            }
+                        }
+                    }
+                    map
+                }),
+             */
+            // Deferred
+            prop::collection::btree_map(arb_output_name(), Just(Deferred), size.clone()),
+            // Impure
+            prop::collection::btree_map(
+                arb_output_name(),
+                arb_derivation_output_impure(),
+                size.clone()
+            ),
+        ]
+    }
 
     impl Arbitrary for DerivationOutput {
         type Parameters = ();
@@ -617,14 +664,37 @@ pub mod proptest {
         }
     }
 
+    pub fn arb_derivation_output_input_addressed() -> impl Strategy<Value = DerivationOutput> {
+        any::<StorePath>().prop_map(DerivationOutput::InputAddressed)
+    }
+
+    pub fn arb_derivation_output_fixed() -> impl Strategy<Value = DerivationOutput> {
+        any::<ContentAddress>().prop_map(DerivationOutput::CAFixed)
+    }
+
+    pub fn arb_derivation_output_impure() -> impl Strategy<Value = DerivationOutput> {
+        (any::<ContentAddressMethod>(), any::<hash::Algorithm>())
+            .prop_map(|(method, hash_type)| DerivationOutput::Impure { method, hash_type })
+    }
+
+    pub fn arb_derivation_output_floating<H>(
+        hash_type: H,
+    ) -> impl Strategy<Value = DerivationOutput>
+    where
+        H: Strategy<Value = hash::Algorithm>,
+    {
+        (any::<ContentAddressMethod>(), hash_type)
+            .prop_map(|(method, hash_type)| DerivationOutput::CAFloating { method, hash_type })
+    }
+
     pub fn arb_derivation_output() -> impl Strategy<Value = DerivationOutput> {
         use DerivationOutput::*;
         prop_oneof![
-            any::<StorePath>().prop_map(InputAddressed),
-            any::<ContentAddress>().prop_map(CAFixed),
-            (any::<ContentAddressMethod>(), any::<hash::Algorithm>())
-                .prop_map(|(method, hash_type)| CAFloating { method, hash_type }),
-            Just(Deferred)
+            arb_derivation_output_input_addressed(),
+            arb_derivation_output_fixed(),
+            arb_derivation_output_floating(any::<hash::Algorithm>()),
+            Just(Deferred),
+            arb_derivation_output_impure(),
         ]
     }
 
@@ -640,7 +710,7 @@ pub mod proptest {
     prop_compose! {
         pub fn arb_basic_derivation()
         (
-            outputs in prop::collection::btree_map(arb_output_name(), any::<DerivationOutput>(), 0..15),
+            outputs in arb_derivation_outputs(1..15),
             input_srcs in any::<StorePathSet>(),
             platform in any::<String>(),
             builder in arb_path(),
@@ -702,6 +772,16 @@ mod tests {
                 h
             )))
         );
+    }
+
+    #[test]
+    fn test_derivation_output_parse_ca_fixed_text() {
+        let store_dir = StoreDir::new("/nix/store").unwrap();
+        let path_s = "/nix/store/7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3".to_owned();
+        let hash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".to_owned();
+        let h = hash::Hash::parse_non_sri_unprefixed(&hash, hash::Algorithm::SHA256).unwrap();
+        let p = DerivationOutput::parse_output(&store_dir, path_s, "text:sha256".into(), hash);
+        assert_eq!(p, Ok(DerivationOutput::CAFixed(ContentAddress::text(h))));
     }
 
     #[test]

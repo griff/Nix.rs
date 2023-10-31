@@ -161,10 +161,18 @@ impl fmt::Display for ContentAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.method {
             ContentAddressMethod::Text => {
-                write!(f, "text:{}", self.hash.to_base32())
+                if f.alternate() {
+                    write!(f, "text:{}", self.hash.algorithm())
+                } else {
+                    write!(f, "text:{}", self.hash.to_base32())
+                }
             }
             ContentAddressMethod::Fixed(fim) => {
-                write!(f, "fixed:{:#}{}", fim, self.hash.to_base32())
+                if f.alternate() {
+                    write!(f, "{:#}{}", fim, self.hash.algorithm())
+                } else {
+                    write!(f, "fixed:{:#}{}", fim, self.hash.to_base32())
+                }
             }
         }
     }
@@ -443,6 +451,7 @@ mod tests {
 
         let v = "text:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s";
         assert_eq!(content_address.to_string(), v);
+        assert_eq!(format!("{:#}", content_address), "text:sha256");
         assert_eq!(content_address, v.parse().unwrap());
     }
 
@@ -454,6 +463,7 @@ mod tests {
 
         let v = "fixed:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s";
         assert_eq!(content_address.to_string(), v);
+        assert_eq!(format!("{:#}", content_address), "sha256");
         assert_eq!(content_address, v.parse().unwrap());
     }
 
@@ -465,6 +475,7 @@ mod tests {
 
         let v = "fixed:r:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s";
         assert_eq!(content_address.to_string(), v);
+        assert_eq!(format!("{:#}", content_address), "r:sha256");
         assert_eq!(content_address, v.parse().unwrap());
     }
 

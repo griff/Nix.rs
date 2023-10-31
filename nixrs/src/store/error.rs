@@ -172,6 +172,7 @@ pub enum Error {
     UnsupportedOperation(String),
     #[error("Unknown protocol command '{0}'")]
     UnknownProtocolCommand(u64),
+    #[cfg(feature = "compress-tools")]
     #[error("Compression error {0}")]
     CompressionError(
         #[from]

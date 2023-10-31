@@ -1,10 +1,11 @@
 use async_trait::async_trait;
+#[cfg(feature = "compress-tools")]
 use compress_tools::tokio_support::uncompress_data;
+#[cfg(feature = "compress-tools")]
 use futures::TryFutureExt;
-use tokio::{
-    io::{AsyncRead, AsyncWrite},
-    try_join,
-};
+use tokio::io::{AsyncRead, AsyncWrite};
+#[cfg(feature = "compress-tools")]
+use tokio::try_join;
 
 use crate::path_info::{Compression, NarInfo, ValidPathInfo};
 use crate::store::{CheckSignaturesFlag, Error, RepairFlag, Store};
@@ -72,6 +73,9 @@ where
                 Compression::Unknown(_) | Compression::BR => {
                     Err(Error::UnsupportedCompression(nar_info.compression))
                 }
+                #[cfg(not(feature = "compress-tools"))]
+                _ => Err(Error::UnsupportedCompression(nar_info.compression)),
+                #[cfg(feature = "compress-tools")]
                 _ => {
                     let (read, write) = tokio::io::duplex(64_000);
                     let fut1 = uncompress_data(read, sink).map_err(Error::from);
@@ -99,6 +103,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "compress-tools")]
     use crate::hash::{Algorithm, HashSink};
 
     use crate::store::binary_cache::file::FileBinaryCache;
@@ -126,6 +131,7 @@ mod tests {
         assert_eq!(info.path, path);
     }
 
+    #[cfg(feature = "compress-tools")]
     #[tokio::test]
     async fn test_nar_from_path_gcc() {
         let path =
@@ -139,6 +145,7 @@ mod tests {
         assert_eq!((info.nar_size, info.nar_hash), sink.finish());
     }
 
+    #[cfg(feature = "compress-tools")]
     #[tokio::test]
     async fn test_nar_from_path_hello() {
         let path =

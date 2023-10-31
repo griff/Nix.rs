@@ -115,6 +115,7 @@ pub mod proptest {
     use super::*;
     use crate::store_path::proptest::arb_output_name;
     use ::proptest::prelude::*;
+    use ::proptest::sample::SizeRange;
 
     impl Arbitrary for DrvOutput {
         type Parameters = ();
@@ -136,6 +137,17 @@ pub mod proptest {
         }
     }
 
+    pub fn arb_drv_outputs(size: impl Into<SizeRange>) -> impl Strategy<Value = DrvOutputs> {
+        prop::collection::btree_map(arb_drv_output(), arb_realisation(), size).prop_map(
+            |mut map| {
+                for (key, value) in map.iter_mut() {
+                    value.id = key.clone();
+                }
+                map
+            },
+        )
+    }
+
     impl Arbitrary for Realisation {
         type Parameters = ();
         type Strategy = BoxedStrategy<Realisation>;
@@ -151,7 +163,10 @@ pub mod proptest {
             id in any::<DrvOutput>(),
             out_path in any::<StorePath>(),
             signatures in any::<StringSet>(),
-            dependent_realisations in  any::<BTreeMap<DrvOutput, StorePath>>(),
+            dependent_realisations in  prop::collection::btree_map(
+                arb_drv_output(),
+                any::<StorePath>(),
+                0..50),
         ) -> Realisation
         {
             Realisation {

@@ -755,22 +755,20 @@ mod tests {
     use super::*;
 
     use std::io::Cursor;
-    #[cfg(feature = "slowtests")]
     use std::time::Instant;
 
-    use crate::archive::proptest::arb_nar_contents;
-    use crate::hash;
-    use crate::pretty_prop_assert_eq;
-    use crate::store::error::Verbosity;
-    use crate::store::StorePathWithOutputs;
     use ::proptest::arbitrary::any;
     use ::proptest::proptest;
     use futures::future::try_join;
 
+    use crate::archive::proptest::arb_nar_contents;
+    use crate::hash;
     use crate::path_info::proptest::arb_valid_info_and_content;
+    use crate::pretty_prop_assert_eq;
     use crate::store::assert_store::AssertStore;
+    use crate::store::error::Verbosity;
     use crate::store::settings::{BuildSettings, WithSettings};
-    #[cfg(feature = "slowtests")]
+    use crate::store::StorePathWithOutputs;
     use crate::store_path::proptest::arb_drv_store_path;
 
     macro_rules! store_cmd {
@@ -816,7 +814,7 @@ mod tests {
                 };
                 let (res, _) = try_join(cmd, server).await?;
                 store.prop_assert_eq()?;
-                pretty_prop_assert_eq!(res, $res);
+                ::proptest::prop_assert_eq!(res, $res);
                 Ok(())
             })?;
         }}
@@ -861,7 +859,6 @@ mod tests {
 
     proptest! {
         #[test]
-        #[cfg(feature="slowtests")]
         fn proptest_store_build_derivation(
             drv_path in arb_drv_store_path(),
             mut drv in any::<BasicDerivation>(),
@@ -874,6 +871,7 @@ mod tests {
             eprintln!("Run test {}", drv_path);
             drv.name = drv_path.name_from_drv().to_string();
             store_cmd!(
+                settings,
                 assert_build_derivation(None, &drv_path, &drv, BuildMode::Normal, &settings, Ok(result.clone())),
                 build_derivation(&drv_path, &drv, BuildMode::Normal),
                 result

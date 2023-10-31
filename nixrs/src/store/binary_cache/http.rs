@@ -91,6 +91,7 @@ impl BinaryCache for HttpBinaryCache {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "compress-tools")]
     use crate::hash::{Algorithm, HashSink};
 
     use crate::store::binary_cache::BinaryStoreWrap;
@@ -121,6 +122,7 @@ mod tests {
         assert_eq!(info.path, path);
     }
 
+    #[cfg(feature = "compress-tools")]
     #[tokio::test]
     async fn test_nar_from_path_gcc() {
         let path =
@@ -135,6 +137,7 @@ mod tests {
         assert_eq!((info.nar_size, info.nar_hash), sink.finish());
     }
 
+    #[cfg(feature = "compress-tools")]
     #[tokio::test]
     async fn test_nar_from_path_hello() {
         let path =

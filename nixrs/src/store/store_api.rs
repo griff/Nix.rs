@@ -400,7 +400,7 @@ pub mod proptest {
     use std::time::Duration;
 
     use super::*;
-    use crate::proptest::arb_system_time;
+    use crate::{proptest::arb_system_time, store::realisation::proptest::arb_drv_outputs};
     use ::proptest::prelude::*;
 
     impl Arbitrary for BuildMode {
@@ -459,7 +459,7 @@ pub mod proptest {
             error_msg in any::<String>(),
             times_built in 0u64..50u64,
             is_non_deterministic in ::proptest::bool::ANY,
-            built_outputs in any::<DrvOutputs>(),
+            built_outputs in arb_drv_outputs(0..10),
             start_time in arb_system_time(),
             duration_secs in 0u64..604_800u64,
         ) -> BuildResult

@@ -81,7 +81,7 @@ pub mod proptest {
     #[macro_export]
     macro_rules! pretty_prop_assert_eq {
         ($left:expr , $right:expr,) => ({
-            $crate::assert_eq!($left, $right)
+            $crate::pretty_prop_assert_eq!($left, $right)
         });
         ($left:expr , $right:expr) => ({
             match (&($left), &($right)) {

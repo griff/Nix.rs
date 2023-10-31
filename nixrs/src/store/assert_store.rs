@@ -5,7 +5,6 @@ use proptest::test_runner::TestCaseError;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::path_info::ValidPathInfo;
-use crate::pretty_prop_assert_eq;
 use crate::store::legacy_worker::LegacyStore;
 use crate::store::settings::BuildSettings;
 use crate::store::{BasicDerivation, BuildMode, BuildResult, CheckSignaturesFlag, Error, Store};
@@ -369,7 +368,7 @@ impl AssertStore {
     }
 
     pub fn prop_assert_eq(self) -> Result<(), TestCaseError> {
-        pretty_prop_assert_eq!(self.expected, self.actual.unwrap());
+        ::proptest::prop_assert_eq!(self.expected, self.actual.unwrap());
         Ok(())
     }
 
@@ -459,11 +458,12 @@ impl Store for AssertStore {
         drv: &BasicDerivation,
         build_mode: BuildMode,
     ) -> Result<BuildResult, Error> {
+        let settings = BuildSettings::default();
         let actual = Message::BuildDerivation {
             drv_path: drv_path.clone(),
             drv: drv.clone(),
             build_mode,
-            settings: BuildSettings::default(),
+            settings,
         };
         assert_eq!(None, self.actual.take(), "existing result");
         self.actual = Some(actual);

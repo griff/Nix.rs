@@ -663,26 +663,29 @@ where
 mod tests {
     use super::*;
 
+    use std::collections::BTreeSet;
     use std::io::Cursor;
+    use std::path::Path;
     use std::time::Duration;
-    #[cfg(feature = "slowtests")]
     use std::time::Instant;
     use std::time::SystemTime;
 
-    use crate::archive::proptest::arb_nar_contents;
-    use crate::archive::test_data::dir_example;
-    use crate::hash;
-    use crate::pretty_prop_assert_eq;
-    use crate::signature::SignatureSet;
     use ::proptest::arbitrary::any;
     use ::proptest::proptest;
     use bytes::BytesMut;
     use futures::future::try_join;
 
+    use crate::archive::proptest::arb_nar_contents;
+    use crate::archive::test_data::dir_example;
+    use crate::hash;
     use crate::path_info::proptest::arb_valid_info_and_content;
+    use crate::pretty_prop_assert_eq;
+    use crate::signature::SignatureSet;
     use crate::store::assert_store::AssertStore;
     use crate::store::settings::BuildSettings;
-    #[cfg(feature = "slowtests")]
+    use crate::store::DerivationOutput;
+    use crate::store::DrvOutput;
+    use crate::store::Realisation;
     use crate::store_path::proptest::arb_drv_store_path;
 
     macro_rules! store_cmd {
@@ -769,6 +772,70 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_build_derivation() {
+        let drv_path =
+            StorePath::new_from_base_name("00000000000000000000000000000000-0.drv").unwrap();
+        let output_path =
+            StorePath::new_from_base_name("00000000000000000000000000000000-_").unwrap();
+        let mut outputs = BTreeMap::new();
+        outputs.insert(
+            "=".to_string(),
+            DerivationOutput::InputAddressed(output_path),
+        );
+
+        let drv = BasicDerivation {
+            outputs,
+            input_srcs: BTreeSet::new(),
+            platform: "".into(),
+            builder: Path::new("+/A").to_owned(),
+            arguments: Vec::new(),
+            env: Vec::new(),
+            name: "0".into(),
+        };
+        let build_mode = BuildMode::Unknown(13);
+        let drv_hash = hash::Hash::parse_any_prefixed(
+            "sha256:0mdqa9w1p6cmli6976v4wi0sw9r4p5prkj7lzfd1877wk11c9c73",
+        )
+        .unwrap();
+        let drv_output = DrvOutput {
+            drv_hash,
+            output_name: "+".into(),
+        };
+        let out_path = StorePath::new_from_base_name("00000000000000000000000000000000-+").unwrap();
+        let realisation = Realisation {
+            id: drv_output.clone(),
+            out_path,
+            signatures: BTreeSet::new(),
+            dependent_realisations: BTreeMap::new(),
+        };
+        let mut built_outputs = BTreeMap::new();
+        built_outputs.insert(drv_output, realisation);
+
+        let result = BuildResult {
+            status: BuildStatus::Unsupported(13),
+            error_msg: "".into(),
+            times_built: 0,
+            is_non_deterministic: false,
+            built_outputs,
+            start_time: SystemTime::UNIX_EPOCH,
+            stop_time: SystemTime::UNIX_EPOCH,
+        };
+        store_cmd!(
+            TrustedFlag::Trusted,
+            assert_build_derivation(
+                Some(TrustedFlag::Trusted),
+                &drv_path,
+                &drv,
+                build_mode,
+                &BuildSettings::default(),
+                Ok(result.clone())
+            ),
+            build_derivation(&drv_path, &drv, build_mode,),
+            result
+        );
+    }
+
     macro_rules! prop_store_cmd {
         (
             $trusted:expr,
@@ -798,7 +865,7 @@ mod tests {
                 };
                 let (res, _) = try_join(cmd, server).await?;
                 store.prop_assert_eq()?;
-                pretty_prop_assert_eq!(res, $res);
+                ::proptest::prop_assert_eq!(res, $res);
                 Ok(())
             })?;
         }}
@@ -864,7 +931,6 @@ mod tests {
 
     proptest! {
         #[test]
-        #[cfg(feature="slowtests")]
         fn proptest_store_build_derivation(
             drv_path in arb_drv_store_path(),
             mut drv in any::<BasicDerivation>(),

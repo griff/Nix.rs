@@ -166,7 +166,7 @@ pub(crate) fn parse_prefix(s: &str) -> Result<Option<(Algorithm, bool, &str)>, U
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct Hash {
     algorithm: Algorithm,
     data: [u8; MAX_SIZE],
@@ -372,6 +372,16 @@ impl FromStr for Hash {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Hash::parse_any_prefixed(s)
+    }
+}
+
+impl fmt::Debug for Hash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = base32::encode(self.as_ref());
+        f.debug_struct("Hash")
+            .field("algorithm", &self.algorithm)
+            .field("data", &s)
+            .finish()
     }
 }
 
