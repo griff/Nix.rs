@@ -1,6 +1,7 @@
 use tracing::{
     dispatcher::{get_default, with_default},
-    span, Dispatch, Event, Subscriber,
+    span::{self, Attributes},
+    Dispatch, Event, Subscriber,
 };
 use tracing_subscriber::{layer, registry::LookupSpan, Layer};
 
@@ -36,7 +37,27 @@ where
         if let Some(meta) = ctx.metadata(id) {
             if self.parent.enabled(meta) {
                 if let Some(span) = ctx.span(id) {
-                    let parent_id = self.parent.new_span(attrs);
+                    if let Some(local_parent_id) = attrs.parent() {
+                        if let Some(local_parent_span) = ctx.span(local_parent_id) {
+                            if let Some(ParentId(parent)) =
+                                local_parent_span.extensions().get::<ParentId>()
+                            {
+                                let attrsp = Attributes::child_of(
+                                    parent.clone(),
+                                    attrs.metadata(),
+                                    attrs.values(),
+                                );
+                                let parent_id = self.parent.new_span(&attrsp);
+                                if self.log {
+                                    eprintln!("Parent new span {:?} {}", parent_id, meta.name());
+                                }
+                                span.extensions_mut().insert(ParentId(parent_id));
+                                return;
+                            }
+                        }
+                    }
+                    let attrsp = Attributes::new(attrs.metadata(), attrs.values());
+                    let parent_id = self.parent.new_span(&attrsp);
                     if self.log {
                         eprintln!("Parent new span {:?} {}", parent_id, meta.name());
                     }
