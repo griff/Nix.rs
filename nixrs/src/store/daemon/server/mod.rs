@@ -128,7 +128,7 @@ where
                 return Ok(());
             }
             writer.write_u64_le(STDERR_START_ACTIVITY).await?;
-            writer.write_u64_le(id).await?;
+            writer.write_u64_le(activity.act).await?;
             writer.write_enum(activity.level).await?;
             writer.write_enum(activity.activity_type).await?;
             writer.write_str(&activity.text).await?;
