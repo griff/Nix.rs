@@ -11,8 +11,8 @@ use thiserror::Error;
 
 pub const SIGNATURE_BYTES: usize = 64;
 pub const SEED_BYTES: usize = 32;
-pub const SECRET_KEY_BYTES: usize = 32 + 32;
 pub const PUBLIC_KEY_BYTES: usize = 32;
+pub const SECRET_KEY_BYTES: usize = SEED_BYTES + PUBLIC_KEY_BYTES;
 
 #[derive(Error, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum ParseSignatureError {
