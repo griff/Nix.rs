@@ -110,6 +110,7 @@ impl<'a> TryFrom<&'a Attributes<'a>> for StartActivity {
         value.record(&mut visitor);
         eprintln!("Activity {:?}", visitor);
         if let Some(result) = visitor.into_activity() {
+            eprintln!("OK Activity {:?}", result);
             Ok(result)
         } else {
             Err(())

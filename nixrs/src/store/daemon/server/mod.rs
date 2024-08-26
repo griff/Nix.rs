@@ -116,7 +116,7 @@ where
             writer.write_string(format!("{}\n", msg)).await?;
         }
         TunnelCommand::StartActivity(id, activity) => {
-            eprintln!("start activity {}", id);
+            eprintln!("!!!!!!!!!! start activity {}", id);
             debug!(id, "start activity {} {:?}", id, activity);
             if get_protocol_minor!(client_version) < 20 {
                 if !activity.text.is_empty() && level.get() >= activity.level {
@@ -148,7 +148,7 @@ where
             writer.write_u64_le(activity.parent).await?;
         }
         TunnelCommand::StopActivity(id) => {
-            eprintln!("stop activity {}", id);
+            eprintln!("!!!!!!!! stop activity {}", id);
             debug!(id, "stop activity {}", id);
             if get_protocol_minor!(client_version) < 20 {
                 return Ok(());
@@ -157,7 +157,7 @@ where
             writer.write_u64_le(id).await?;
         }
         TunnelCommand::Result(result) => {
-            eprintln!("result {}, {:?}", result.act, result);
+            eprintln!("!!!!!!!!! result {}, {:?}", result.act, result);
             debug!("result {}, {:?}", result.act, result);
             if get_protocol_minor!(client_version) < 20 {
                 return Ok(());
@@ -202,6 +202,7 @@ async fn process_tunnel<S>(
     let mut writer = None;
 
     while let Some(cmd) = receiver.recv().await {
+        eprintln!("Got Command {:?}", cmd);
         match cmd {
             TunnelCommand::StartWork => {
                 eprintln!("Start work");
@@ -457,8 +458,11 @@ where
 {
     fn on_new_span(&self, attrs: &span::Attributes<'_>, id: &span::Id, ctx: layer::Context<'_, S>) {
         if let Some(meta) = ctx.metadata(id) {
+            eprintln!("Got span {}", meta.name());
             if meta.name() == crate::store::activity::ACTIVITY_NAME {
+                eprintln!("Got activity span");
                 if let Ok(activity) = attrs.try_into() {
+                    eprintln!("!!!!!!!! Singind activity {} {:?}", id.into_u64(), activity);
                     if let Err(err) = self
                         .sender
                         .try_send(TunnelCommand::StartActivity(id.into_u64(), activity))
