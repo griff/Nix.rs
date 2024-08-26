@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 13ff45c83a9a5f560b73949a7f9dff7fbf588d0eaa21835abafbd9d95bc88315 # shrinks to drv_path = StorePath { hash: 00000000000000000000000000000000, name: StorePathName("0.drv") }, mut drv = BasicDerivation { outputs: {}, input_srcs: {}, platform: "", builder: "A/a", arguments: [], env: [], name: "" }, build_mode = Unknown(13), result = BuildResult { status: Unsupported(13), error_msg: "", times_built: 0, is_non_deterministic: false, built_outputs: {}, start_time: SystemTime { tv_sec: 0, tv_nsec: 0 }, stop_time: SystemTime { tv_sec: 0, tv_nsec: 0 } }
+cc 21af3d97441ed7ca764705454e199202fdcda3c78137a3b8a2e656976d666039 # shrinks to drv_path = StorePath { hash: 00000000000000000000000000000000, name: StorePathName("-.drv") }, mut drv = BasicDerivation { outputs: {"0": CAFloating { method: Text, hash_type: MD5 }, "?": CAFloating { method: Text, hash_type: SHA256 }}, input_srcs: {}, platform: "", builder: "a/A", arguments: [], env: [], name: "" }, build_mode = Unknown(13), result = BuildResult { status: Unsupported(13), error_msg: "", times_built: 0, is_non_deterministic: false, built_outputs: {}, start_time: SystemTime { tv_sec: 0, tv_nsec: 0 }, stop_time: SystemTime { tv_sec: 0, tv_nsec: 0 } }
