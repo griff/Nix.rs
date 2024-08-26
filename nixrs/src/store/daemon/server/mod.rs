@@ -398,6 +398,7 @@ where
                     }
                     let buffer = self.buffer.split_off(0);
                     let sender = self.sender.clone();
+                    // TODO: Use PollSender and custom future
                     let fut = async move {
                         if sender
                             .send(TunnelCommand::Read(buffer.remaining()))
