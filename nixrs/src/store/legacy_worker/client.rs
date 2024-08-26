@@ -6,7 +6,7 @@ use std::time::SystemTime;
 use std::{fmt, io};
 
 use async_trait::async_trait;
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, BufReader, BufWriter};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{ChildStdin, ChildStdout, Command};
 use tokio::spawn;
@@ -126,7 +126,7 @@ impl LegacyStoreBuilder {
         Ok(self)
     }
 
-    pub async fn connect(self) -> Result<LegacyStoreClient<ChildStdout, ChildStdin>, Error> {
+    pub async fn connect(self) -> Result<LegacyStoreClient<BufReader<ChildStdout>, BufWriter<ChildStdin>>, Error> {
         let mut cmd = self.cmd;
         cmd.stdin(Stdio::piped());
         cmd.stdout(Stdio::piped());
@@ -136,7 +136,7 @@ impl LegacyStoreBuilder {
         let writer = child.stdin.take().unwrap();
         let stderr = child.stderr.take().unwrap();
         let mut store =
-            LegacyStoreClient::new(self.store_dir, self.host, reader, writer, stderr).await;
+            LegacyStoreClient::new(self.store_dir, self.host, BufReader::new(reader), BufWriter::new(writer), stderr).await;
         store.handshake().await?;
         Ok(store)
     }
@@ -152,10 +152,8 @@ pub struct LegacyStoreClient<R, W> {
     log_dispatch: LogDispatch,
 }
 
-impl LegacyStoreClient<ChildStdout, ChildStdin> {
-    pub async fn connect(
-        write_allowed: bool,
-    ) -> Result<LegacyStoreClient<ChildStdout, ChildStdin>, Error> {
+impl LegacyStoreClient<BufReader<ChildStdout>, BufWriter<ChildStdin>> {
+    pub async fn connect(write_allowed: bool) -> Result<Self, Error> {
         let mut b = LegacyStoreBuilder::new("nix-store");
         b.command_mut().arg("--serve");
         if write_allowed {

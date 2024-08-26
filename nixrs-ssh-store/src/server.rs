@@ -14,7 +14,7 @@ use thrussh::{
 use thrussh_keys::key::{KeyPair, PublicKey};
 use thrussh_keys::{decode_secret_key, key, parse_public_key_base64, PublicKeyBase64};
 use tokio::fs::File;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, BufReader, BufWriter};
 use tokio::select;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -295,8 +295,8 @@ struct StoreCommand<S> {
     shutdown: CancellationToken,
     channel: ChannelId,
     stderr: ExtendedDataWrite,
-    stdout: DataWrite,
-    stdin: ChannelRead,
+    stdout: BufWriter<DataWrite>,
+    stdin: BufReader<ChannelRead>,
 }
 
 impl<S> StoreCommand<S>
@@ -558,8 +558,8 @@ where
                     store_provider: self.store_provider.clone(),
                     channel,
                     stderr: ExtendedDataWrite::new(channel, 1, handle.clone()),
-                    stdout: DataWrite::new(channel, handle.clone()),
-                    stdin: source,
+                    stdout: BufWriter::new(DataWrite::new(channel, handle.clone())),
+                    stdin: BufReader::new(source),
                 };
 
                 if data == b"nix-store --serve --write" || data == b"nix-store --serve" {

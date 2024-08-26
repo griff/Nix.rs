@@ -9,11 +9,12 @@ use nixrs::store::{
     SubstituteFlag,
 };
 use nixrs::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
+use tokio::io::{BufReader, BufWriter};
 use tokio::process::{ChildStdin, ChildStdout};
 
 pub struct CachedStore {
-    cache: LegacyStoreClient<ChildStdout, ChildStdin>,
-    builder: Option<LegacyStoreClient<ChildStdout, ChildStdin>>,
+    cache: LegacyStoreClient<BufReader<ChildStdout>, BufWriter<ChildStdin>>,
+    builder: Option<LegacyStoreClient<BufReader<ChildStdout>, BufWriter<ChildStdin>>>,
     write_allowed: bool,
     docker_bin: String,
 }
