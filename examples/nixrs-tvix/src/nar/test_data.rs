@@ -84,16 +84,6 @@ pub fn empty_file_in_dir() -> (
     )
 }
 
-pub fn symlink() -> proto::Node {
-    let root_node = proto::SymlinkNode {
-        name: b"".to_vec().into(),
-        target: b"../deep".to_vec().into(),
-    };
-    proto::Node {
-        node: Some(proto::node::Node::Symlink(root_node)),
-    }
-}
-
 pub fn dir_example() -> (
     proto::Node,
     Vec<(B3Digest, proto::Directory)>,
