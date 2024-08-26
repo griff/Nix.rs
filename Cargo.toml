@@ -3,6 +3,8 @@ resolver = "2"
 members = [
   "nixrs",
   "nixrs-derive",
+  "nixrs-archive",
+  "nixrs-io",
   "nixrs-legacy",
   "nixrs-ssh-store",
   "examples/nixrs-nix-store",

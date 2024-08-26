@@ -333,7 +333,7 @@ mod tests {
     use futures::TryStreamExt;
     use pretty_assertions::assert_eq;
 
-    use crate::archive::test_data;
+    use crate::test_data;
 
     use super::*;
 

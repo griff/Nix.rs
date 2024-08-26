@@ -265,6 +265,7 @@ pub mod proptest {
             ultimate in ::proptest::bool::ANY
         ) -> (ValidPathInfo, Bytes)
         {
+            let nar_hash = nar_hash.try_into().unwrap();
             (ValidPathInfo {
                 nar_size, nar_hash, path, deriver, references, sigs, registration_time, ultimate,
                 ca: None,

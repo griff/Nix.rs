@@ -1,3 +1,4 @@
+#[macro_export]
 macro_rules! flag_enum {
     (
         $( #[$meta:meta] )*
@@ -54,4 +55,3 @@ macro_rules! flag_enum {
         }
     }
 }
-pub(crate) use flag_enum;

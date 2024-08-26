@@ -9,8 +9,8 @@ use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tracing::trace;
 
-use crate::io::AsyncSource;
-use crate::io::OffsetReader;
+use nixrs_io::AsyncSource;
+use nixrs_io::OffsetReader;
 
 use super::{NAREvent, NAR_VERSION_MAGIC_1};
 
@@ -283,7 +283,7 @@ mod tests {
     use pretty_assertions::assert_eq;
     use tokio::fs::File;
 
-    use crate::archive::test_data;
+    use crate::test_data;
 
     use super::*;
 

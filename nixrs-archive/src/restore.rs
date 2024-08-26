@@ -299,8 +299,8 @@ mod tests {
     use proptest::proptest;
     use tempfile::{tempdir, Builder};
 
-    use crate::archive::proptest::arb_nar_events;
-    use crate::archive::{dump, test_data};
+    use crate::proptest::arb_nar_events;
+    use crate::{dump, test_data};
     use crate::pretty_prop_assert_eq;
 
     use super::*;

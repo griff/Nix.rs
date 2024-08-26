@@ -922,6 +922,7 @@ mod tests {
                 nar_from_path(&path, Cursor::new(&mut buf)),
                 ()
             );
+            let nar_hash = nar_hash.try_into().unwrap();
             pretty_prop_assert_eq!(buf.len(), contents.len());
             pretty_prop_assert_eq!(buf.len() as u64, nar_size);
             pretty_prop_assert_eq!(hash::digest(hash::Algorithm::SHA256, &buf), nar_hash);

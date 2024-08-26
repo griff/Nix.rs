@@ -1,11 +1,8 @@
 use std::collections::BTreeSet;
 
-pub mod archive;
 pub mod base32;
 mod closure;
-mod flag_enum;
 pub mod hash;
-pub mod io;
 mod num_enum;
 pub mod path;
 pub mod path_info;
@@ -15,6 +12,9 @@ pub mod store_path;
 pub mod tracing;
 
 pub use closure::compute_closure;
+
+pub use nixrs_io as io;
+pub use nixrs_archive as archive;
 
 pub type StringSet = BTreeSet<String>;
 

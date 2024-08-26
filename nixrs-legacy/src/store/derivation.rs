@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use bstr::ByteSlice;
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncWrite};
+use nixrs_io::flag_enum;
 
-use crate::flag_enum::flag_enum;
 use crate::hash;
 use crate::io::{AsyncSink, AsyncSource};
 use crate::store_path::{

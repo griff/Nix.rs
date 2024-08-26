@@ -1,11 +1,3 @@
-pub trait NumEnum: Sized {
-    type Rep: Sized;
-    const REP_SIZE: usize = std::mem::size_of::<Self::Rep>();
-    const REP_BITS: usize = Self::REP_SIZE * 8;
-
-    fn members() -> Vec<(Self, Self::Rep)>;
-}
-
 macro_rules! num_enum {
     (
         $( #[$meta:meta] )*
@@ -48,13 +40,6 @@ macro_rules! num_enum {
                     $($name::$i => $v,)+
                     $name::$u(x) => *x
                 }
-            }
-        }
-        impl $crate::num_enum::NumEnum for $name {
-            type Rep = $t;
-
-            fn members() -> Vec<($name, $t)> {
-                vec![$(($name::$i, $v)),+]
             }
         }
     }

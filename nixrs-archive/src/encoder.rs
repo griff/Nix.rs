@@ -5,7 +5,7 @@ use bytes::BytesMut;
 use tokio_util::codec::Encoder;
 use tracing::debug;
 
-use crate::io::calc_padding;
+use nixrs_io::calc_padding;
 
 use super::NAREvent;
 
@@ -195,15 +195,14 @@ impl Encoder<NAREvent> for NAREncoder {
 
 #[cfg(test)]
 mod tests {
-    use futures::{stream::iter, SinkExt, StreamExt, TryStreamExt};
+    use futures::{stream::iter, StreamExt, TryStreamExt};
     use pretty_assertions::assert_eq;
     use std::io;
     use tempfile::tempdir;
     use tokio::fs::{self, File};
-    use tokio_util::codec::FramedWrite;
+    use tokio_util::{codec::FramedWrite, io::InspectWriter};
 
-    use crate::archive::{parse_nar, proptest::arb_nar_events, test_data};
-    use crate::hash;
+    use crate::{parse_nar, proptest::arb_nar_events, test_data};
     use crate::pretty_prop_assert_eq;
     use proptest::proptest;
 
@@ -291,7 +290,7 @@ mod tests {
             .build()
             .unwrap();
         proptest!(|(events in arb_nar_events(8, 256, 10))| {
-            let mut ctx = hash::Context::new(hash::Algorithm::SHA256);
+            let mut ctx = ring::digest::Context::new(&ring::digest::SHA256);
             let mut size = 0;
             let mut buf = BytesMut::with_capacity(65_000);
             for item in events.iter() {
@@ -309,11 +308,15 @@ mod tests {
                     .map(|e| Ok(e) as io::Result<NAREvent> );
 
                 let io = File::create(&path).await?;
-                let encoder = FramedWrite::new(io, NAREncoder);
-                let mut hash_io = hash::HashSink::new(hash::Algorithm::SHA256);
-                let hash_encoder = FramedWrite::new(&mut hash_io, NAREncoder);
-                stream.forward(encoder.fanout(hash_encoder)).await?;
-                let (nar_size, nar_hash) = hash_io.finish();
+                let mut ctx = ring::digest::Context::new(&ring::digest::SHA256);
+                let mut nar_size = 0;
+                let iio = InspectWriter::new(io, |buf| {
+                    ctx.update(&buf);
+                    nar_size += buf.len() as u64;
+                });
+                let encoder = FramedWrite::new(iio, NAREncoder);
+                stream.forward(encoder).await?;
+                let nar_hash = ctx.finish();
 
                 let io = File::open(&path).await?;
                 let s = parse_nar(io)
@@ -322,7 +325,7 @@ mod tests {
 
                 pretty_prop_assert_eq!(fs::metadata(&path).await?.len(), size);
                 pretty_prop_assert_eq!(nar_size, size);
-                pretty_prop_assert_eq!(nar_hash, hash);
+                pretty_prop_assert_eq!(nar_hash.as_ref(), hash.as_ref());
                 Ok(())
             })?;
 

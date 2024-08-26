@@ -1668,6 +1668,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "nixrs-archive"
+version = "0.1.0"
+dependencies = [
+ "assert_matches",
+ "async-stream",
+ "async-trait",
+ "base64 0.13.1",
+ "bstr",
+ "byteorder",
+ "bytes",
+ "caches",
+ "compress-tools",
+ "derive_more",
+ "futures",
+ "hex",
+ "lazy_static",
+ "md5",
+ "nixrs-io",
+ "pin-project-lite",
+ "pretty_assertions 0.7.2",
+ "proptest",
+ "reqwest",
+ "ring 0.16.20",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-appender",
+ "tracing-futures",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
 name = "nixrs-derive"
 version = "0.1.0"
 dependencies = [
@@ -1681,6 +1719,44 @@ dependencies = [
  "tokio",
  "tokio-test",
  "trybuild",
+]
+
+[[package]]
+name = "nixrs-io"
+version = "0.1.0"
+dependencies = [
+ "assert_matches",
+ "async-stream",
+ "async-trait",
+ "base64 0.13.1",
+ "bstr",
+ "byteorder",
+ "bytes",
+ "caches",
+ "compress-tools",
+ "derive_more",
+ "futures",
+ "hex",
+ "lazy_static",
+ "md5",
+ "num_enum",
+ "pin-project-lite",
+ "pretty_assertions 0.7.2",
+ "proptest",
+ "reqwest",
+ "ring 0.16.20",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-appender",
+ "tracing-futures",
+ "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
@@ -1701,6 +1777,8 @@ dependencies = [
  "hex",
  "lazy_static",
  "md5",
+ "nixrs-archive",
+ "nixrs-io",
  "pin-project-lite",
  "pretty_assertions 0.7.2",
  "proptest",

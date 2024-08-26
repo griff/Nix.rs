@@ -3,12 +3,15 @@ mod async_source;
 mod cancelled_reader;
 mod collection_read;
 mod collection_size;
+mod flag_enum;
 mod framed;
 mod offset_reader;
 mod state_display;
 mod state_parse;
 mod state_print;
 mod taken_stream;
+
+use std::collections::BTreeSet;
 
 pub use async_sink::AsyncSink;
 pub use async_source::{
@@ -33,6 +36,26 @@ pub fn calc_padding(size: u64) -> u8 {
     aligned.wrapping_sub(size) as u8
 }
 
+pub type StringSet = BTreeSet<String>;
+
+#[macro_export]
+macro_rules! string_set {
+    [] => { $crate::StringSet::new()};
+    [$e:expr] => {{
+        let mut ret = $crate::StringSet::new();
+        ret.insert(($e).to_string());
+        ret
+    }};
+    [$e:expr$(,$e2:expr)+$(,)?] => {{
+        let mut ret = $crate::StringSet::new();
+        ret.insert(($e).to_string());
+        $(
+            ret.insert(($e2).to_string());
+        )+
+        ret
+    }}
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
@@ -41,7 +64,7 @@ mod tests {
 
     use pretty_assertions::assert_eq;
 
-    use crate::flag_enum::flag_enum;
+    use crate::flag_enum;
     use crate::{string_set, StringSet};
 
     use super::*;
@@ -51,7 +74,7 @@ mod tests {
         pub enum RepairFlag {
             NoRepair = false,
             Repair = true,
-        }
+        }    
     }
 
     #[derive(Debug, thiserror::Error)]

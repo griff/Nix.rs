@@ -9,8 +9,7 @@ mod tests {
     use proptest::prop_assert_eq;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    use crate::hash;
-    use crate::io::{FramedSink, FramedSource};
+    use crate::{FramedSink, FramedSource};
 
     proptest! {
         #[test]
@@ -31,7 +30,7 @@ mod tests {
             let mut reader = FramedSource::new(reader);
             let mut writer = FramedSink::new(writer);
             let write_fut = async {
-                let mut d1 = hash::Context::new(hash::Algorithm::SHA256);
+                let mut d1 = ring::digest::Context::new(&ring::digest::SHA256);
                 for _i in 0..iterations {
                     //eprintln!("write {}", i);
                     d1.update(&data);
@@ -41,10 +40,10 @@ mod tests {
                 writer.flush().await?;
                 writer.shutdown().await?;
                 //eprintln!("shutdown");
-                Ok(d1.finish()) as std::io::Result<hash::Hash>
+                Ok(d1.finish()) as std::io::Result<ring::digest::Digest>
             };
             let read_fut = async {
-                let mut d2 = hash::Context::new(hash::Algorithm::SHA256);
+                let mut d2 = ring::digest::Context::new(&ring::digest::SHA256);
                 let mut buf = Vec::with_capacity(read_buf_size);
                 //let mut total_read = 0;
                 loop {
@@ -57,13 +56,13 @@ mod tests {
                     d2.update(&buf);
                     buf.clear();
                 }
-                Ok(d2.finish()) as std::io::Result<hash::Hash>
+                Ok(d2.finish()) as std::io::Result<ring::digest::Digest>
             };
             let fut = join(write_fut, read_fut);
             let (d1, d2) = r.block_on(fut);
             let d1 = d1.unwrap();
             let d2 = d2.unwrap();
-            prop_assert_eq!(d1, d2);
+            prop_assert_eq!(d1.as_ref(), d2.as_ref());
             /*
             match r.block_on(fut) {
                 (d1, d2) => prop_assert_eq!(d1, d2),

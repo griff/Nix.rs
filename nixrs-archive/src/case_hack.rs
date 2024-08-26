@@ -11,7 +11,7 @@ use futures::Stream;
 use pin_project_lite::pin_project;
 use tracing::debug;
 
-use crate::archive::CASE_HACK_SUFFIX;
+use crate::CASE_HACK_SUFFIX;
 
 use super::NAREvent;
 

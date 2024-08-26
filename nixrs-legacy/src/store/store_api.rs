@@ -6,10 +6,10 @@ use futures::future::try_join;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tracing::debug;
+use nixrs_io::flag_enum;
 
 use super::topo_sort_paths_slow;
 use super::{BasicDerivation, DerivedPath, DrvOutputs, Error, RepairFlag};
-use crate::flag_enum::flag_enum;
 use crate::num_enum::num_enum;
 use crate::path_info::ValidPathInfo;
 use crate::store_path::{StoreDirProvider, StorePath, StorePathSet};

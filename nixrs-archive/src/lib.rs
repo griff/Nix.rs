@@ -62,12 +62,58 @@ where
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
     use std::collections::BTreeMap;
+    use std::path::PathBuf;
 
     use super::*;
-    use crate::hash;
-    use crate::proptest::{arb_filename, arb_path};
     use ::proptest::prelude::*;
     use bytes::BytesMut;
+
+    pub fn arb_filename() -> impl Strategy<Value = String> {
+        "[a-zA-Z 0-9.?=+]+".prop_filter("Not cur and parent dir", |s| s != "." && s != "..")
+    }
+    pub fn arb_file_component() -> impl Strategy<Value = String> {
+        "[a-zA-Z 0-9.?=+]+"
+    }
+    prop_compose! {
+        pub fn arb_path()(prefix in "[a-zA-Z 0-9.?=+][a-zA-Z 0-9.?=+/]{0,250}", last in arb_filename()) -> PathBuf
+        {
+            let mut ret = PathBuf::from(prefix);
+            ret.push(last);
+            ret
+        }
+    }
+
+    #[macro_export]
+    macro_rules! pretty_prop_assert_eq {
+        ($left:expr , $right:expr,) => ({
+            $crate::pretty_prop_assert_eq!($left, $right)
+        });
+        ($left:expr , $right:expr) => ({
+            match (&($left), &($right)) {
+                (left_val, right_val) => {
+                    ::proptest::prop_assert!(*left_val == *right_val,
+                        "assertion failed: `(left == right)`\
+                              \n\
+                              \n{}\
+                              \n",
+                              ::pretty_assertions::Comparison::new(left_val, right_val))
+                }
+            }
+        });
+        ($left:expr , $right:expr, $($arg:tt)*) => ({
+            match (&($left), &($right)) {
+                (left_val, right_val) => {
+                    ::proptest::prop_assert!(*left_val == *right_val,
+                        "assertion failed: `(left == right)`: {}\
+                              \n\
+                              \n{}\
+                              \n",
+                               format_args!($($arg)*),
+                               ::pretty_assertions::Comparison::new(left_val, right_val))
+                }
+            }
+        });
+    }
 
     #[derive(Clone, Debug)]
     enum NarTree {
@@ -180,10 +226,10 @@ pub mod proptest {
         depth: u32,
         desired_size: u32,
         expected_branch_size: u32,
-    ) -> impl Strategy<Value = (u64, hash::Hash, Bytes)> {
+    ) -> impl Strategy<Value = (u64, ring::digest::Digest, Bytes)> {
         arb_nar_events(depth, desired_size, expected_branch_size).prop_map(|events| {
             let mut buf = BytesMut::new();
-            let mut ctx = hash::Context::new(hash::Algorithm::SHA256);
+            let mut ctx = ring::digest::Context::new(&ring::digest::SHA256);
             let mut size = 0;
             for event in events {
                 let encoded = event.encoded_size();
