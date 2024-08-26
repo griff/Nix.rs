@@ -40,9 +40,6 @@ impl<R: AsyncRead> Future for ReadU64<R> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut me = self.project();
-        if *me.read == 8 {
-            return Poll::Ready(Ok(Buf::get_u64_le(&mut &me.buf[..])));
-        }
         while *me.read < 8 {
             let mut buf = ReadBuf::new(&mut me.buf[*me.read as usize..]);
 
