@@ -21,8 +21,12 @@
           libsodium
           pkg-config
           fuse
-          protobuf libarchive
+          protobuf
+          libarchive
           jq
+          cloc
+          treefmt
+          crate2nix
           rustc.llvmPackages.llvm
         ] ++ lib.optionals stdenv.isDarwin [
           darwin.apple_sdk.frameworks.CoreServices
