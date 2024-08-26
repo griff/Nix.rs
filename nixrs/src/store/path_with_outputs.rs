@@ -128,7 +128,7 @@ impl From<StorePathWithOutputs> for DerivedPath {
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
     use crate::store_path::proptest::{arb_drv_store_path, arb_output_name};
-    use ::proptest::{collection::btree_set, prelude::*};
+    use proptest::{collection::btree_set, prelude::*};
 
     use super::*;
 

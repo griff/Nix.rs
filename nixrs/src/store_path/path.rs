@@ -299,7 +299,7 @@ impl Deref for StorePathName {
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
     use super::*;
-    use ::proptest::{arbitrary::Arbitrary, prelude::*};
+    use proptest::{arbitrary::Arbitrary, prelude::*};
 
     pub fn arb_output_name() -> impl Strategy<Value = String> {
         "[a-zA-Z0-9+\\-_?=][a-zA-Z0-9+\\-_?=.]{0,13}"
@@ -368,11 +368,11 @@ pub mod proptest {
 mod tests {
     use super::*;
     use crate::base32::BadBase32;
-    use ::proptest::arbitrary::any;
-    use ::proptest::prop_assert_eq;
-    use ::proptest::proptest;
     use assert_matches::assert_matches;
     use pretty_assertions::assert_eq;
+    use proptest::arbitrary::any;
+    use proptest::prop_assert_eq;
+    use proptest::proptest;
 
     #[test]
     fn test_parse() {

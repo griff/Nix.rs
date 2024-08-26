@@ -203,7 +203,7 @@ pub mod proptest {
         store::output_spec::proptest::arb_output_spec,
         store_path::proptest::{arb_drv_store_path, arb_output_name},
     };
-    use ::proptest::prelude::*;
+    use proptest::prelude::*;
 
     use super::*;
 
@@ -252,9 +252,9 @@ mod tests {
     use crate::string_set;
 
     use super::*;
-    use ::proptest::prelude::*;
-    use ::proptest::proptest;
     use pretty_assertions::assert_eq;
+    use proptest::prelude::*;
+    use proptest::proptest;
 
     #[test]
     fn test_derived_path_parse() {

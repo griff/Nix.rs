@@ -98,7 +98,7 @@ impl fmt::Display for OutputSpec {
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
     use crate::store_path::proptest::arb_output_name;
-    use ::proptest::{collection::btree_set, prelude::*, sample::SizeRange};
+    use proptest::{collection::btree_set, prelude::*, sample::SizeRange};
 
     use super::*;
 

@@ -114,8 +114,8 @@ pub type DrvOutputs = BTreeMap<DrvOutput, Realisation>;
 pub mod proptest {
     use super::*;
     use crate::store_path::proptest::arb_output_name;
-    use ::proptest::prelude::*;
-    use ::proptest::sample::SizeRange;
+    use proptest::prelude::*;
+    use proptest::sample::SizeRange;
 
     impl Arbitrary for DrvOutput {
         type Parameters = ();

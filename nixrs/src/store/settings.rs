@@ -381,7 +381,7 @@ impl<T: Sized> WithSettings for T {
 pub mod proptest {
     use super::*;
     use crate::proptest::arb_duration;
-    use ::proptest::prelude::*;
+    use proptest::prelude::*;
 
     impl Arbitrary for BuildSettings {
         type Parameters = ();

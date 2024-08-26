@@ -309,7 +309,7 @@ impl FromStr for SecretKey {
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
     use super::*;
-    use ::proptest::{arbitrary::Arbitrary, prelude::*};
+    use proptest::{arbitrary::Arbitrary, prelude::*};
 
     pub fn arb_key_name(max: u8) -> impl Strategy<Value = String> {
         "[a-zA-Z0-9+\\-_?=][a-zA-Z0-9+\\-_?=.]{0,210}".prop_map(move |mut s| {
