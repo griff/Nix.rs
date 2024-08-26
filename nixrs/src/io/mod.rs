@@ -29,11 +29,8 @@ pub use taken_stream::{TakenGuard, TakenStream, Taker};
 pub(crate) const STATIC_PADDING: &[u8] = &[0u8; 8];
 
 pub fn calc_padding(size: u64) -> u8 {
-    if size % 8 > 0 {
-        8 - (size % 8) as u8
-    } else {
-        0
-    }
+    let aligned = size.wrapping_add(7) & !7;
+    aligned.wrapping_sub(size) as u8
 }
 
 #[cfg(test)]
