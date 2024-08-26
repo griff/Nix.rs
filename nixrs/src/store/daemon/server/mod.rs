@@ -409,7 +409,7 @@ where
                         }
                         let bytes = reader.read_bytes_buf(buffer).await?;
                         if bytes.is_empty() {
-                            return Err(io::ErrorKind::Unsupported.into());
+                            return Err(io::ErrorKind::UnexpectedEof.into());
                         }
                         Ok((bytes, reader))
                     };
