@@ -3,8 +3,11 @@ use std::convert::TryInto;
 use std::fmt;
 use std::str::FromStr;
 
+use data_encoding::DecodeError;
+use data_encoding::DecodeKind;
+use data_encoding::BASE64;
+use data_encoding::HEXLOWER_PERMISSIVE;
 use derive_more::Display;
-use hex::FromHexError;
 use ring::digest;
 use thiserror::Error;
 
@@ -58,13 +61,18 @@ impl Algorithm {
     /// Returns the length of a base-32 representation of this hash.
     #[inline]
     pub const fn base32_len(&self) -> usize {
-        base32::encoded_len(self.size())
+        base32::encode_len(self.size())
     }
 
     /// Returns the length of a base-64 representation of this hash.
     #[inline]
     pub const fn base64_len(&self) -> usize {
         ((4 * self.size() / 3) + 3) & !3
+    }
+
+    #[inline]
+    const fn base64_decoded(&self) -> usize {
+        self.base64_len() / 4 * 3
     }
 
     #[inline]
@@ -134,12 +142,16 @@ pub enum ParseHashError {
     },
     #[error("Hash '{0}' does not include a type, nor is the type otherwise known from context")]
     MissingType(String),
+    #[error("invalid {1} encoding '{0}'")]
+    BadEncoding(String, String, #[source] data_encoding::DecodeError),
+    /*
     #[error("invalid base-16 hash '{0}'")]
     BadBase16Hash(String, #[source] FromHexError),
     #[error("invalid base-32 hash '{0}'")]
     BadBase32Hash(String, #[source] base32::BadBase32),
     #[error("invalid base-64 hash '{0}'")]
     BadBase64Hash(String, #[source] base64::DecodeError),
+    */
     #[error("invalid SRI hash '{0}'")]
     BadSRIHash(String),
     #[error("hash '{1}' has wrong length for hash type '{0}'")]
@@ -187,36 +199,50 @@ impl Hash {
     }
 
     fn from_str(rest: &str, a: Algorithm, is_sri: bool) -> Result<Hash, ParseHashError> {
+        let mut data = [0u8; MAX_SIZE];
         if !is_sri && rest.len() == a.base16_len() {
-            let mut data = [0u8; MAX_SIZE];
-            let slice = match a {
-                Algorithm::MD5 => &mut data[0..MD5_SIZE],
-                Algorithm::SHA1 => &mut data[0..SHA1_SIZE],
-                Algorithm::SHA256 => &mut data[0..SHA256_SIZE],
-                Algorithm::SHA512 => &mut data[0..SHA512_SIZE],
-            };
-            hex::decode_to_slice(rest, slice)
-                .map_err(|err| ParseHashError::BadBase16Hash(rest.to_string(), err))?;
+            HEXLOWER_PERMISSIVE
+                .decode_mut(rest.as_bytes(), &mut data[..a.size()])
+                .map_err(|err| ParseHashError::BadEncoding(rest.into(), "hex".into(), err.error))?;
             Ok(Hash { algorithm: a, data })
         } else if !is_sri && rest.len() == a.base32_len() {
-            let data = base32::decode(rest)
-                .map_err(|err| ParseHashError::BadBase32Hash(rest.to_string(), err))?;
+            base32::decode_mut(rest.as_bytes(), &mut data[..a.size()]).map_err(|err| {
+                ParseHashError::BadEncoding(rest.into(), "nixbase32".into(), err.error)
+            })?;
 
-            Ok(Hash::new(a, &data))
+            Ok(Hash { algorithm: a, data })
         } else if is_sri || rest.len() == a.base64_len() {
-            let data = base64::decode(rest)
-                .map_err(|err| ParseHashError::BadBase64Hash(rest.to_string(), err))?;
-            if data.len() != a.size() {
+            let len = if a.base64_decoded() < MAX_SIZE {
+                BASE64
+                    .decode_mut(rest.as_bytes(), &mut data[..a.base64_decoded()])
+                    .map_err(|err| {
+                        ParseHashError::BadEncoding(rest.into(), "base64".into(), err.error)
+                    })?
+            } else {
+                let mut buf = [0u8; LARGEST_ALGORITHM.base64_decoded()];
+                let ret = BASE64
+                    .decode_mut(rest.as_bytes(), &mut buf[0..a.base64_decoded()])
+                    .map_err(|err| {
+                        ParseHashError::BadEncoding(rest.into(), "base64".into(), err.error)
+                    })?;
+                data[..ret].copy_from_slice(&buf[0..ret]);
+                ret
+            };
+            if len != a.size() {
                 if is_sri {
                     Err(ParseHashError::BadSRIHash(rest.to_string()))
                 } else {
-                    Err(ParseHashError::BadBase64Hash(
+                    Err(ParseHashError::BadEncoding(
                         rest.to_string(),
-                        base64::DecodeError::InvalidLength,
+                        "base64".into(),
+                        DecodeError {
+                            position: 0,
+                            kind: DecodeKind::Length,
+                        },
                     ))
                 }
             } else {
-                Ok(Hash::new(a, &data))
+                Ok(Hash { algorithm: a, data })
             }
         } else {
             Err(ParseHashError::WrongHashLength(a, rest.to_string()))
@@ -299,11 +325,11 @@ impl Hash {
     }
 
     pub fn encode_base32(&self) -> String {
-        base32::encode(self.as_ref())
+        format!("{:#}", self.to_base32())
     }
 
     pub fn encode_base64(&self) -> String {
-        base64::encode(self.as_ref())
+        format!("{:#}", self.to_base64())
     }
 
     pub fn to_base16(&self) -> impl fmt::Display + '_ {
@@ -377,22 +403,16 @@ impl FromStr for Hash {
 
 impl fmt::Debug for Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = base32::encode(self.as_ref());
         f.debug_struct("Hash")
             .field("algorithm", &self.algorithm)
-            .field("data", &s)
+            .field("data", &format_args!("{}", self.to_base32()))
             .finish()
     }
 }
 
 impl fmt::Display for Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = base32::encode(self.as_ref());
-        if f.alternate() {
-            write!(f, "{}", s)
-        } else {
-            write!(f, "{}:{}", self.algorithm(), s)
-        }
+        self.to_base32().fmt(f)
     }
 }
 
@@ -411,8 +431,11 @@ struct Base32Hash<'a>(&'a Hash);
 impl<'a> fmt::Display for Base32Hash<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut buf = [0u8; LARGEST_ALGORITHM.base32_len()];
-        base32::encode_into(self.0.as_ref(), &mut buf[..self.0.algorithm.base32_len()]);
-        let s = std::str::from_utf8(&buf[..self.0.algorithm.base32_len()]).unwrap();
+        let output = &mut buf[..self.0.algorithm.base32_len()];
+        base32::encode_mut(self.0.as_ref(), output);
+
+        // SAFETY: Nix Base32 is a subset of ASCII, which guarantees valid UTF-8.
+        let s = unsafe { std::str::from_utf8_unchecked(output) };
         if f.alternate() {
             f.write_str(s)
         } else {
@@ -424,7 +447,13 @@ impl<'a> fmt::Display for Base32Hash<'a> {
 struct Base64Hash<'a>(&'a Hash);
 impl<'a> fmt::Display for Base64Hash<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = base64::encode(self.0.as_ref());
+        let mut buf = [0u8; LARGEST_ALGORITHM.base64_len()];
+        let output = &mut buf[..self.0.algorithm.base64_len()];
+        BASE64.encode_mut(self.0.as_ref(), output);
+
+        // SAFETY: Nix Base32 is a subset of ASCII, which guarantees valid UTF-8.
+        let s = unsafe { std::str::from_utf8_unchecked(output) };
+
         if f.alternate() {
             write!(f, "{}", s)
         } else {
@@ -436,8 +465,7 @@ impl<'a> fmt::Display for Base64Hash<'a> {
 struct SRIHash<'a>(&'a Hash);
 impl<'a> fmt::Display for SRIHash<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = base64::encode(self.0.as_ref());
-        write!(f, "{}-{}", self.0.algorithm(), s)
+        write!(f, "{}-{:#}", self.0.algorithm(), self.0.to_base64())
     }
 }
 
@@ -504,6 +532,7 @@ impl Context {
     pub fn update<D: AsRef<[u8]>>(&mut self, data: D) {
         let data = data.as_ref();
         match &mut self.1 {
+            #[cfg(feature = "md5")]
             InnerContext::MD5(ctx) => ctx.consume(data),
             InnerContext::Ring(ctx) => ctx.update(data),
         }
@@ -515,6 +544,7 @@ impl Context {
     /// [`Hash`]: struct@Hash
     pub fn finish(self) -> Hash {
         match self.1 {
+            #[cfg(feature = "md5")]
             InnerContext::MD5(ctx) => Hash::new(self.0, ctx.compute().as_ref()),
             InnerContext::Ring(ctx) => ctx.finish().try_into().unwrap(),
         }
@@ -605,14 +635,13 @@ impl tokio::io::AsyncWrite for HashSink {
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
     use super::*;
-    use proptest::prelude::*;
+    use ::proptest::prelude::*;
 
     impl Arbitrary for Algorithm {
         type Parameters = ();
         type Strategy = BoxedStrategy<Algorithm>;
         fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
             prop_oneof![
-                #[cfg(feature="md5")]
                 1 => Just(Algorithm::MD5),
                 2 => Just(Algorithm::SHA1),
                 5 => Just(Algorithm::SHA256),
@@ -641,177 +670,283 @@ pub mod proptest {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+mod test {
+    use data_encoding::DecodeError;
+    use hex_literal::hex;
+    use once_cell::sync::Lazy;
     use pretty_assertions::assert_eq;
+    use rstest::rstest;
 
-    /// digest
+    use super::*;
 
-    fn test_hash(s1: &str, algo: Algorithm, base16: &str, base32: &str, base64: &str) {
-        let hash = digest(algo, s1);
+    /// value taken from: https://tools.ietf.org/html/rfc1321
+    static MD5_EMPTY: Lazy<Hash> =
+        Lazy::new(|| Hash::new(Algorithm::MD5, &hex!("d41d8cd98f00b204e9800998ecf8427e")));
+    /// value taken from: https://tools.ietf.org/html/rfc1321
+    static MD5_ABC: Lazy<Hash> =
+        Lazy::new(|| Hash::new(Algorithm::MD5, &hex!("900150983cd24fb0d6963f7d28e17f72")));
+
+    /// value taken from: https://tools.ietf.org/html/rfc3174
+    static SHA1_ABC: Lazy<Hash> = Lazy::new(|| {
+        Hash::new(
+            Algorithm::SHA1,
+            &hex!("a9993e364706816aba3e25717850c26c9cd0d89d"),
+        )
+    });
+    /// value taken from: https://tools.ietf.org/html/rfc3174
+    static SHA1_LONG: Lazy<Hash> = Lazy::new(|| {
+        Hash::new(
+            Algorithm::SHA1,
+            &hex!("84983e441c3bd26ebaae4aa1f95129e5e54670f1"),
+        )
+    });
+
+    /// value taken from: https://tools.ietf.org/html/rfc4634
+    static SHA256_ABC: Lazy<Hash> = Lazy::new(|| {
+        Hash::new(
+            Algorithm::SHA256,
+            &hex!("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+        )
+    });
+    /// value taken from: https://tools.ietf.org/html/rfc4634
+    static SHA256_LONG: Lazy<Hash> = Lazy::new(|| {
+        Hash::new(
+            Algorithm::SHA256,
+            &hex!("248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"),
+        )
+    });
+
+    /// value taken from: https://tools.ietf.org/html/rfc4634
+    static SHA512_ABC: Lazy<Hash> = Lazy::new(|| {
+        Hash::new(Algorithm::SHA512, &hex!("ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"))
+    });
+    /// value taken from: https://tools.ietf.org/html/rfc4634
+    static SHA512_LONG: Lazy<Hash> = Lazy::new(|| {
+        Hash::new(Algorithm::SHA512, &hex!("8e959b75dae313da8cf4f72814fc143f8f7779c6eb9f7fa17299aeadb6889018501d289e4900f7e4331b99dec4b5433ac7d329eeb6dd26545e96e55b874be909"))
+    });
+
+    #[rstest]
+    #[case::md5(Algorithm::MD5, 16, 32, 26, 24, 18)]
+    #[case::sha1(Algorithm::SHA1, 20, 40, 32, 28, 21)]
+    #[case::sha256(Algorithm::SHA256, 32, 64, 52, 44, 33)]
+    #[case::sha512(Algorithm::SHA512, 64, 128, 103, 88, 66)]
+    fn algorithm_size(
+        #[case] algorithm: Algorithm,
+        #[case] size: usize,
+        #[case] base16_len: usize,
+        #[case] base32_len: usize,
+        #[case] base64_len: usize,
+        #[case] base64_decoded: usize,
+    ) {
+        assert_eq!(algorithm.size(), size, "mismatched size");
+        assert_eq!(algorithm.base16_len(), base16_len, "mismatched base16_len");
+        assert_eq!(algorithm.base32_len(), base32_len, "mismatched base32_len");
+        assert_eq!(algorithm.base64_len(), base64_len, "mismatched base64_len");
+        assert_eq!(
+            algorithm.base64_decoded(),
+            base64_decoded,
+            "mismatched base64_decoded"
+        );
+    }
+
+    #[rstest]
+    #[cfg_attr(feature = "md5", case::md5_empty(&MD5_EMPTY, ""))]
+    #[cfg_attr(feature = "md5", case::abc(&MD5_ABC, "abc"))]
+    #[case::sha1_abc(&SHA1_ABC, "abc")]
+    #[case::sha1_long(&SHA1_LONG, "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")]
+    #[case::sha256_abc(&SHA256_ABC, "abc")]
+    #[case::sha256_long(&SHA256_LONG, "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")]
+    #[case::sha512_abc(&SHA512_ABC, "abc")]
+    #[case::sha512_long(&SHA512_LONG, "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu")]
+    fn test_digest(#[case] expected: &Hash, #[case] input: &str) {
+        let actual = digest(expected.algorithm(), input);
+        assert_eq!(actual, *expected);
+    }
+
+    #[rstest]
+    #[case::md5_empty(&MD5_EMPTY, "d41d8cd98f00b204e9800998ecf8427e")]
+    #[case::md5_abc(&MD5_ABC, "900150983cd24fb0d6963f7d28e17f72")]
+    #[case::sha1_abc(&SHA1_ABC, "a9993e364706816aba3e25717850c26c9cd0d89d")]
+    #[case::sha1_long(&SHA1_LONG, "84983e441c3bd26ebaae4aa1f95129e5e54670f1")]
+    #[case::sha256_abc(&SHA256_ABC, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")]
+    #[case::sha256_long(&SHA256_LONG, "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1")]
+    #[case::sha512_abc(&SHA512_ABC, "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f")]
+    #[case::sha512_long(&SHA512_LONG, "8e959b75dae313da8cf4f72814fc143f8f7779c6eb9f7fa17299aeadb6889018501d289e4900f7e4331b99dec4b5433ac7d329eeb6dd26545e96e55b874be909")]
+    fn base16_encode(#[case] hash: &Hash, #[case] base16: &str) {
+        let algo = hash.algorithm();
         let base16_h = base16.to_uppercase();
         let base16_p = format!("{}:{}", algo, base16);
         let base16_hp = format!("{}:{}", algo, base16_h);
-        let base32_p = format!("{}:{}", algo, base32);
-        let base64_p = format!("{}:{}", algo, base64);
-        let sri = format!("{}-{}", algo, base64);
+
         assert_eq!(format!("{:x}", hash), base16_p);
         assert_eq!(format!("{:#x}", hash), base16);
         assert_eq!(format!("{:X}", hash), base16_hp);
         assert_eq!(format!("{:#X}", hash), base16_h);
-        assert_eq!(format!("{}", hash), base32_p);
-        assert_eq!(format!("{:#}", hash), base32);
+
         assert_eq!(format!("{}", hash.to_base16()), base16_p);
         assert_eq!(format!("{:#}", hash.to_base16()), base16);
         assert_eq!(hash.encode_base16(), base16);
+    }
+
+    #[rstest]
+    #[case::base16_md5_empty(&MD5_EMPTY, "d41d8cd98f00b204e9800998ecf8427e")]
+    #[case::base16_md5_abc(&MD5_ABC, "900150983cd24fb0d6963f7d28e17f72")]
+    #[case::base16_sha1_abc(&SHA1_ABC, "a9993e364706816aba3e25717850c26c9cd0d89d")]
+    #[case::base16_sha1_long(&SHA1_LONG, "84983e441c3bd26ebaae4aa1f95129e5e54670f1")]
+    #[case::base16_base16_sha256_abc(&SHA256_ABC, "1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s")]
+    #[case::base16_sha256_long(&SHA256_LONG, "1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394")]
+    #[case::base16_sha512_abc(&SHA512_ABC, "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f")]
+    #[case::base16_sha512_long(&SHA512_LONG, "8e959b75dae313da8cf4f72814fc143f8f7779c6eb9f7fa17299aeadb6889018501d289e4900f7e4331b99dec4b5433ac7d329eeb6dd26545e96e55b874be909")]
+    #[case::nixbase32_md5_empty(&MD5_EMPTY, "3y8bwfr609h3lh9ch0izcqq7fl")]
+    #[case::nixbase32_md5_abc(&MD5_ABC, "3jgzhjhz9zjvbb0kyj7jc500ch")]
+    #[case::nixbase32_sha1_abc(&SHA1_ABC, "kpcd173cq987hw957sx6m0868wv3x6d9")]
+    #[case::nixbase32_sha1_long(&SHA1_LONG, "y5q4drg5558zk8aamsx6xliv3i23x644")]
+    #[case::nixbase32_sha256_abc(&SHA256_ABC, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")]
+    #[case::nixbase32_sha256_long(&SHA256_LONG, "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1")]
+    #[case::nixbase32_sha512_abc(&SHA512_ABC, "2gs8k559z4rlahfx0y688s49m2vvszylcikrfinm30ly9rak69236nkam5ydvly1ai7xac99vxfc4ii84hawjbk876blyk1jfhkbbyx")]
+    #[case::nixbase32_sha512_long(&SHA512_LONG, "04yjjw7bgjrcpjl4vfvdvi9sg3klhxmqkg9j6rkwkvh0jcy50fm064hi2vavblrfahpz7zbqrwpg3rz2ky18a7pyj6dl4z3v9srp5cf")]
+    fn parse(#[case] hash: &Hash, #[case] base_x: &str) {
+        let algo = hash.algorithm();
+
+        let base_xp = format!("{}:{}", algo, base_x);
+        assert_eq!(*hash, Hash::parse_any_prefixed(&base_xp).unwrap());
+        assert_eq!(*hash, base_xp.parse().unwrap());
+        assert_eq!(*hash, Hash::parse_any(&base_xp, None).unwrap());
+        assert_eq!(*hash, Hash::parse_any(&base_xp, Some(algo)).unwrap());
+        assert_eq!(*hash, Hash::parse_any(base_x, Some(algo)).unwrap());
+        assert_eq!(*hash, Hash::parse_non_sri_unprefixed(base_x, algo).unwrap());
+
+        /*
+        let base_xh = base_x.to_uppercase();
+        let base_xhp = format!("{}:{}", algo, base_xh);
+        assert_eq!(*hash, Hash::parse_any_prefixed(&base_xhp).unwrap());
+        assert_eq!(*hash, base_xhp.parse().unwrap());
+        assert_eq!(*hash, Hash::parse_any(&base_xhp, None).unwrap());
+        assert_eq!(*hash, Hash::parse_any(&base_xhp, Some(algo)).unwrap());
+        assert_eq!(*hash, Hash::parse_any(&base_xh, Some(algo)).unwrap());
+        assert_eq!(
+            *hash,
+            Hash::parse_non_sri_unprefixed(&base_xh, algo).unwrap()
+        );
+         */
+    }
+
+    #[rstest]
+    #[case::md5_empty(&MD5_EMPTY, "3y8bwfr609h3lh9ch0izcqq7fl")]
+    #[case::md5_abc(&MD5_ABC, "3jgzhjhz9zjvbb0kyj7jc500ch")]
+    #[case::sha1_abc(&SHA1_ABC, "kpcd173cq987hw957sx6m0868wv3x6d9")]
+    #[case::sha1_long(&SHA1_LONG, "y5q4drg5558zk8aamsx6xliv3i23x644")]
+    #[case::sha256_abc(&SHA256_ABC, "1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s")]
+    #[case::sha256_long(&SHA256_LONG, "1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394")]
+    #[case::sha512_abc(&SHA512_ABC, "2gs8k559z4rlahfx0y688s49m2vvszylcikrfinm30ly9rak69236nkam5ydvly1ai7xac99vxfc4ii84hawjbk876blyk1jfhkbbyx")]
+    #[case::sha512_long(&SHA512_LONG, "04yjjw7bgjrcpjl4vfvdvi9sg3klhxmqkg9j6rkwkvh0jcy50fm064hi2vavblrfahpz7zbqrwpg3rz2ky18a7pyj6dl4z3v9srp5cf")]
+    fn nixbase32_encode(#[case] hash: &Hash, #[case] base32: &str) {
+        let base32_p = format!("{}:{}", hash.algorithm(), base32);
+
+        assert_eq!(format!("{}", hash), base32_p);
+        assert_eq!(format!("{:#}", hash), base32);
         assert_eq!(format!("{}", hash.to_base32()), base32_p);
         assert_eq!(format!("{:#}", hash.to_base32()), base32);
         assert_eq!(hash.encode_base32(), base32);
+    }
+
+    #[rstest]
+    #[case::md5_empty(&MD5_EMPTY, "1B2M2Y8AsgTpgAmY7PhCfg==")]
+    #[case::md5_abc(&MD5_ABC, "kAFQmDzST7DWlj99KOF/cg==")]
+    #[case::sha1_abc(&SHA1_ABC, "qZk+NkcGgWq6PiVxeFDCbJzQ2J0=")]
+    #[case::sha1_long(&SHA1_LONG, "hJg+RBw70m66rkqh+VEp5eVGcPE=")]
+    #[case::sha256_abc(&SHA256_ABC, "ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=")]
+    #[case::sha256_long(&SHA256_LONG, "JI1qYdIGOLjlwCaTDD5gOaM85Flk/yFn9uzt1BnbBsE=")]
+    #[case::sha512_abc(&SHA512_ABC, "3a81oZNherrMQXNJriBBMRLm+k6JqX6iCp7u5ktV05ohkpkqJ0/BqDa6PCOj/uu9RU1EI2Q86A4qmslPpUyknw==")]
+    #[case::sha512_long(&SHA512_LONG, "jpWbddrjE9qM9PcoFPwUP493ecbrn3+hcpmurbaIkBhQHSieSQD35DMbmd7EtUM6x9Mp7rbdJlReluVbh0vpCQ==")]
+    fn base64_encode(#[case] hash: &Hash, #[case] base64: &str) {
+        let algo = hash.algorithm();
+        let base64_p = format!("{}:{}", algo, base64);
+
         assert_eq!(format!("{}", hash.to_base64()), base64_p);
         assert_eq!(format!("{:#}", hash.to_base64()), base64);
         assert_eq!(hash.encode_base64(), base64);
+
+        let sri = format!("{}-{}", algo, base64);
         assert_eq!(format!("{}", hash.to_sri()), sri);
-        assert_eq!(*hash, *Hash::parse_any_prefixed(&base16_p).unwrap());
-        assert_eq!(hash, base16_p.parse().unwrap());
-        assert_eq!(hash, base16_hp.parse().unwrap());
-        assert_eq!(hash, Hash::parse_any(&base16_p, None).unwrap());
-        assert_eq!(hash, Hash::parse_any(&base16_p, Some(algo)).unwrap());
-        assert_eq!(hash, Hash::parse_any(base16, Some(algo)).unwrap());
-        assert_eq!(hash, Hash::parse_non_sri_unprefixed(base16, algo).unwrap());
-        assert_eq!(
-            hash,
-            Hash::parse_non_sri_unprefixed(&base16_h, algo).unwrap()
-        );
-        assert_eq!(hash, base32_p.parse().unwrap());
-        assert_eq!(hash, Hash::parse_any(&base32_p, None).unwrap());
-        assert_eq!(hash, Hash::parse_any(&base32_p, Some(algo)).unwrap());
-        assert_eq!(hash, Hash::parse_any(base32, Some(algo)).unwrap());
-        assert_eq!(hash, Hash::parse_non_sri_unprefixed(base32, algo).unwrap());
-        assert_eq!(hash, base64_p.parse().unwrap());
-        assert_eq!(hash, Hash::parse_any(&base64_p, None).unwrap());
-        assert_eq!(hash, Hash::parse_any(&base64_p, Some(algo)).unwrap());
-        assert_eq!(hash, Hash::parse_any(base64, Some(algo)).unwrap());
-        assert_eq!(hash, Hash::parse_non_sri_unprefixed(base64, algo).unwrap());
-        assert_eq!(hash, sri.parse().unwrap());
-        assert_eq!(hash, Hash::parse_sri(&sri).unwrap());
     }
 
-    #[cfg(feature = "md5")]
-    #[test]
-    fn test_known_md5_hashes_1() {
-        // values taken from: https://tools.ietf.org/html/rfc1321
-        let s1 = "";
-        let algo = Algorithm::MD5;
-        let base16 = "d41d8cd98f00b204e9800998ecf8427e";
-        let base32 = "3y8bwfr609h3lh9ch0izcqq7fl";
-        let base64 = "1B2M2Y8AsgTpgAmY7PhCfg==";
-        test_hash(s1, algo, base16, base32, base64);
-    }
+    #[rstest]
+    #[case::md5_empty(&MD5_EMPTY, "1B2M2Y8AsgTpgAmY7PhCfg==")]
+    #[case::md5_abc(&MD5_ABC, "kAFQmDzST7DWlj99KOF/cg==")]
+    #[case::sha1_abc(&SHA1_ABC, "qZk+NkcGgWq6PiVxeFDCbJzQ2J0=")]
+    #[case::sha1_long(&SHA1_LONG, "hJg+RBw70m66rkqh+VEp5eVGcPE=")]
+    #[case::sha256_abc(&SHA256_ABC, "ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=")]
+    #[case::sha256_long(&SHA256_LONG, "JI1qYdIGOLjlwCaTDD5gOaM85Flk/yFn9uzt1BnbBsE=")]
+    #[case::sha512_abc(&SHA512_ABC, "3a81oZNherrMQXNJriBBMRLm+k6JqX6iCp7u5ktV05ohkpkqJ0/BqDa6PCOj/uu9RU1EI2Q86A4qmslPpUyknw==")]
+    #[case::sha512_long(&SHA512_LONG, "jpWbddrjE9qM9PcoFPwUP493ecbrn3+hcpmurbaIkBhQHSieSQD35DMbmd7EtUM6x9Mp7rbdJlReluVbh0vpCQ==")]
+    fn base64_parse(#[case] hash: &Hash, #[case] base64: &str) {
+        let algo = hash.algorithm();
+        let base64_p = format!("{}:{}", algo, base64);
 
-    #[cfg(feature = "md5")]
-    #[test]
-    fn test_known_md5_hashes_2() {
-        // values taken from: https://tools.ietf.org/html/rfc1321
-        let s1 = "abc";
-        let algo = Algorithm::MD5;
-        let base16 = "900150983cd24fb0d6963f7d28e17f72";
-        let base32 = "3jgzhjhz9zjvbb0kyj7jc500ch";
-        let base64 = "kAFQmDzST7DWlj99KOF/cg==";
-        test_hash(s1, algo, base16, base32, base64);
+        assert_eq!(*hash, base64_p.parse().unwrap());
+        assert_eq!(*hash, Hash::parse_any(&base64_p, None).unwrap());
+        assert_eq!(*hash, Hash::parse_any(&base64_p, Some(algo)).unwrap());
+        assert_eq!(*hash, Hash::parse_any(base64, Some(algo)).unwrap());
+        assert_eq!(*hash, Hash::parse_non_sri_unprefixed(base64, algo).unwrap());
+
+        let sri = format!("{}-{}", algo, base64);
+        assert_eq!(*hash, sri.parse().unwrap());
+        assert_eq!(*hash, Hash::parse_any(&sri, None).unwrap());
+        assert_eq!(*hash, Hash::parse_any(&sri, Some(algo)).unwrap());
+        assert_eq!(*hash, Hash::parse_sri(&sri).unwrap());
     }
 
     #[test]
-    fn test_known_sha1_hashes_1() {
-        // values taken from: https://tools.ietf.org/html/rfc3174
-        let s1 = "abc";
-        let algo = Algorithm::SHA1;
-        let base16 = "a9993e364706816aba3e25717850c26c9cd0d89d";
-        let base32 = "kpcd173cq987hw957sx6m0868wv3x6d9";
-        let base64 = "qZk+NkcGgWq6PiVxeFDCbJzQ2J0=";
-        test_hash(s1, algo, base16, base32, base64);
-    }
-
-    #[test]
-    fn test_known_sha1_hashes_2() {
-        // values taken from: https://tools.ietf.org/html/rfc3174
-        let s1 = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
-        let algo = Algorithm::SHA1;
-        let base16 = "84983e441c3bd26ebaae4aa1f95129e5e54670f1";
-        let base32 = "y5q4drg5558zk8aamsx6xliv3i23x644";
-        let base64 = "hJg+RBw70m66rkqh+VEp5eVGcPE=";
-        test_hash(s1, algo, base16, base32, base64);
-    }
-
-    #[test]
-    fn test_known_sha256_hashes_1() {
-        // values taken from: https://tools.ietf.org/html/rfc4634
-        let s1 = "abc";
-        let algo = Algorithm::SHA256;
-        let base16 = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
-        let base32 = "1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s";
-        let base64 = "ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=";
-        test_hash(s1, algo, base16, base32, base64);
-    }
-
-    #[test]
-    fn test_known_sha256_hashes_2() {
-        // values taken from: https://tools.ietf.org/html/rfc4634
-        let s1 = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
-        let algo = Algorithm::SHA256;
-        let base16 = "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1";
-        let base32 = "1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394";
-        let base64 = "JI1qYdIGOLjlwCaTDD5gOaM85Flk/yFn9uzt1BnbBsE=";
-        test_hash(s1, algo, base16, base32, base64);
-    }
-
-    #[test]
-    fn test_known_sha512_hashes_1() {
-        // values taken from: https://tools.ietf.org/html/rfc4634
-        let s1 = "abc";
-        let algo = Algorithm::SHA512;
-        let base16 = "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f";
-        let base32 = "2gs8k559z4rlahfx0y688s49m2vvszylcikrfinm30ly9rak69236nkam5ydvly1ai7xac99vxfc4ii84hawjbk876blyk1jfhkbbyx";
-        let base64 = "3a81oZNherrMQXNJriBBMRLm+k6JqX6iCp7u5ktV05ohkpkqJ0/BqDa6PCOj/uu9RU1EI2Q86A4qmslPpUyknw==";
-        test_hash(s1, algo, base16, base32, base64);
-    }
-
-    #[test]
-    fn test_known_sha512_hashes_2() {
-        // values taken from: https://tools.ietf.org/html/rfc4634
-        let s1 = "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu";
-        let algo = Algorithm::SHA512;
-        let base16 = "8e959b75dae313da8cf4f72814fc143f8f7779c6eb9f7fa17299aeadb6889018501d289e4900f7e4331b99dec4b5433ac7d329eeb6dd26545e96e55b874be909";
-        let base32 = "04yjjw7bgjrcpjl4vfvdvi9sg3klhxmqkg9j6rkwkvh0jcy50fm064hi2vavblrfahpz7zbqrwpg3rz2ky18a7pyj6dl4z3v9srp5cf";
-        let base64 = "jpWbddrjE9qM9PcoFPwUP493ecbrn3+hcpmurbaIkBhQHSieSQD35DMbmd7EtUM6x9Mp7rbdJlReluVbh0vpCQ==";
-        test_hash(s1, algo, base16, base32, base64);
-    }
-
-    #[test]
-    fn test_errors() {
+    fn unknown_algorithm() {
         assert_eq!(
             Err(UnknownAlgorithm("test".into())),
             "test".parse::<Algorithm>()
         );
+    }
+
+    #[test]
+    fn unknown_digest() {
         assert_eq!(
             Err(UnknownAlgorithm("SHA384".into())),
             Algorithm::try_from(&digest::SHA384)
         );
+    }
+
+    #[test]
+    fn hash_unknown_algorithm() {
         assert_eq!(
             Err(ParseHashError::Algorithm(UnknownAlgorithm("test".into()))),
             Hash::parse_any_prefixed("test:12345")
         );
+    }
+
+    #[test]
+    fn hash_not_sri() {
         assert_eq!(
-            Err(ParseHashError::NotSRI("test:1234".into())),
-            Hash::parse_sri("test:1234")
+            Err(ParseHashError::NotSRI("sha256:1234".into())),
+            Hash::parse_sri("sha256:1234")
         );
+    }
+
+    #[test]
+    fn parse_any_prefied_missing() {
         assert_eq!(
             Err(ParseHashError::MissingTypePrefix("12345".into())),
             Hash::parse_any_prefixed("12345")
         );
+    }
+
+    #[test]
+    fn parse_non_sri_prefixed_missing() {
         assert_eq!(
             Err(ParseHashError::MissingTypePrefix("12345".into())),
             Hash::parse_non_sri_prefixed("12345")
         );
+    }
+
+    #[test]
+    fn parse_any_type_mismatch() {
         assert_eq!(
             Err(ParseHashError::TypeMismatch {
                 expected: Algorithm::SHA256,
@@ -820,50 +955,46 @@ mod tests {
             }),
             Hash::parse_any("sha1:12345", Some(Algorithm::SHA256))
         );
+    }
+
+    #[test]
+    fn parse_any_missing_type() {
         assert_eq!(
             Err(ParseHashError::MissingType("12345".into())),
             Hash::parse_any("12345", None)
         );
-        assert_eq!(
-            Err(ParseHashError::BadBase16Hash(
-                "k9993e364706816aba3e25717850c26c9cd0d89d".into(),
-                FromHexError::InvalidHexCharacter { c: 'k', index: 0 }
-            )),
-            "sha1:k9993e364706816aba3e25717850c26c9cd0d89d".parse::<Hash>()
-        );
-        assert_eq!(
-            Err(ParseHashError::BadBase32Hash(
-                "!pcd173cq987hw957sx6m0868wv3x6d9".into(),
-                base32::BadBase32
-            )),
-            "sha1:!pcd173cq987hw957sx6m0868wv3x6d9".parse::<Hash>()
-        );
-        assert_eq!(
-            Err(ParseHashError::BadBase64Hash(
-                "!Zk+NkcGgWq6PiVxeFDCbJzQ2J0=".into(),
-                base64::DecodeError::InvalidByte(0, b'!')
-            )),
-            "sha1:!Zk+NkcGgWq6PiVxeFDCbJzQ2J0=".parse::<Hash>()
-        );
-        assert_eq!(
-            Err(ParseHashError::BadBase64Hash(
-                "qZk+NkcGgWq6PiVxeFDCbJzQ2J0a".into(),
-                base64::DecodeError::InvalidLength
-            )),
-            "sha1:qZk+NkcGgWq6PiVxeFDCbJzQ2J0a".parse::<Hash>()
-        );
-        assert_eq!(
-            Err(ParseHashError::BadSRIHash(
-                "qZk+NkcGgWq6PiVxeFDCbJzQ2J0a".into()
-            )),
-            "sha1-qZk+NkcGgWq6PiVxeFDCbJzQ2J0a".parse::<Hash>()
-        );
-        assert_eq!(
-            Err(ParseHashError::WrongHashLength(
-                Algorithm::SHA1,
-                "12345".into()
-            )),
-            "sha1:12345".parse::<Hash>()
-        );
+    }
+
+    #[rstest]
+    #[case::bad_hex(ParseHashError::BadEncoding(
+        "k9993e364706816aba3e25717850c26c9cd0d89d".into(),
+        "hex".into(),
+        DecodeError { position: 0, kind: data_encoding::DecodeKind::Symbol }
+    ), "sha1:k9993e364706816aba3e25717850c26c9cd0d89d")]
+    #[case::bad_nixbase32(ParseHashError::BadEncoding(
+        "!pcd173cq987hw957sx6m0868wv3x6d9".into(),
+        "nixbase32".into(),
+        DecodeError { position: 0, kind: data_encoding::DecodeKind::Symbol }
+    ), "sha1:!pcd173cq987hw957sx6m0868wv3x6d9")]
+    #[case::bad_base64_symbol(ParseHashError::BadEncoding(
+        "!Zk+NkcGgWq6PiVxeFDCbJzQ2J0=".into(),
+        "base64".into(),
+        DecodeError { position: 0, kind: data_encoding::DecodeKind::Symbol }
+    ), "sha1:!Zk+NkcGgWq6PiVxeFDCbJzQ2J0=")]
+    #[case::bad_base64_length(ParseHashError::BadEncoding(
+        "qZk+NkcGgWq6PiVxeFDCbJzQ2J0a".into(),
+        "base64".into(),
+        DecodeError { position: 0, kind: data_encoding::DecodeKind::Length }
+    ), "sha1:qZk+NkcGgWq6PiVxeFDCbJzQ2J0a")]
+    #[case::bad_sri(ParseHashError::BadSRIHash(
+        "qZk+NkcGgWq6PiVxeFDCbJzQ2J0a".into()
+    ), "sha1-qZk+NkcGgWq6PiVxeFDCbJzQ2J0a")]
+    #[case::wrong_length(ParseHashError::WrongHashLength(
+        Algorithm::SHA1,
+        "12345".into()
+    ), "sha1:12345")]
+    #[test]
+    fn parse_errors(#[case] error: ParseHashError, #[case] input: &str) {
+        assert_eq!(Err(error), input.parse::<Hash>());
     }
 }

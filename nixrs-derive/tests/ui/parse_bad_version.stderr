@@ -1,0 +1,5 @@
+error: expected nix attribute version to be string
+ --> tests/ui/parse_bad_version.rs
+  |
+  |     #[nix(version = 12)]
+  |                     ^^

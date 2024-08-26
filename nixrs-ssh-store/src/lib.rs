@@ -3,8 +3,8 @@ use std::fmt;
 use std::future::Future;
 
 use self::io::ExtendedDataWrite;
-use nixrs::store::daemon::DaemonStore;
-use nixrs::store::legacy_worker::LegacyStore;
+use nixrs_legacy::store::daemon::DaemonStore;
+use nixrs_legacy::store::legacy_worker::LegacyStore;
 
 mod error;
 

@@ -6,6 +6,8 @@ use std::sync::Arc;
 
 use futures::future::Ready;
 use futures::{Future, FutureExt};
+use nixrs_legacy::store::daemon::TrustedFlag;
+use nixrs_legacy::store::{daemon, legacy_worker};
 use thrussh::server::Config;
 use thrussh::{
     server::{self, Handle},
@@ -311,7 +313,7 @@ where
             .await?
         {
             select! {
-                res = nixrs::store::legacy_worker::run_server_with_log(self.stdin, self.stdout, store, self.stderr, write_allowed) => {
+                res = legacy_worker::run_server_with_log(self.stdin, self.stdout, store, self.stderr, write_allowed) => {
                     match res {
                         Ok(_) => {},
                         Err(err) => {
@@ -334,11 +336,11 @@ where
 
     async fn run_daemon_command(self) -> Result<(), anyhow::Error> {
         if let Some(store) = self.store_provider.get_daemon_store().await? {
-            let fut = Box::pin(nixrs::store::daemon::run_server(
+            let fut = Box::pin(daemon::run_server(
                 self.stdin,
                 self.stdout,
                 store,
-                nixrs::store::daemon::TrustedFlag::Trusted,
+                TrustedFlag::Trusted,
             ));
             select! {
                 res = fut => {

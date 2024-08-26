@@ -1,0 +1,5 @@
+error: expected `=`
+ --> tests/ui/parse_mising_version.rs
+  |
+  |     #[nix(version)]
+  |                  ^

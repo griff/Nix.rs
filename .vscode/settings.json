@@ -1,0 +1,5 @@
+{
+    "rust-analyzer.showUnlinkedFileNotification": false,
+    "rust-analyzer.diagnostics.enable": false,
+    "rust-analyzer.checkOnSave.enable": true
+}

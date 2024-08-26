@@ -1,3 +1,11 @@
 [workspace]
 resolver = "2"
-members = [ "nixrs", "nixrs-nix-store", "nixrs-ssh-store", "nix-docker-build", "nixrs-tvix" ]
+members = [
+  "nixrs",
+  "nixrs-derive",
+  "nixrs-legacy",
+  "nixrs-ssh-store",
+  "examples/nixrs-nix-store",
+  "examples/nix-docker-build",
+  "examples/nixrs-tvix",
+]
