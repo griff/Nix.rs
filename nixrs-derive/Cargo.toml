@@ -13,8 +13,7 @@ license = "EUPL-1.2 OR MIT"
 proc-macro = true
 
 [features]
-external = []
-default = ["external"]
+default = []
 
 [dependencies]
 proc-macro2 = { version = "1.0.86",  features = ["proc-macro"] }

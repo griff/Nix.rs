@@ -1,6 +1,6 @@
 use bytes::Bytes;
 #[cfg(feature="nixrs-derive")]
-use nnixrs_derive::nix_deserialize_remote;
+use nixrs_derive::nix_deserialize_remote;
 
 use super::{Error, NixDeserialize, NixRead};
 #[cfg(feature="nixrs-derive")]

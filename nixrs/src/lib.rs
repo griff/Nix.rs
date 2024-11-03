@@ -1,3 +1,5 @@
+extern crate self as nixrs;
+
 pub mod base32;
 pub mod daemon;
 pub mod hash;
