@@ -388,7 +388,7 @@ mod tests {
             format!("r:{}", hash_s),
             FixedOutputHash {
                 method: FileIngestionMethod::Recursive,
-                hash: hash.clone(),
+                hash,
             }
             .to_string()
         );
@@ -398,7 +398,7 @@ mod tests {
                 "{}",
                 FixedOutputHash {
                     method: FileIngestionMethod::Recursive,
-                    hash: hash.clone(),
+                    hash,
                 }
             )
         );
@@ -408,7 +408,7 @@ mod tests {
                 "{:#}",
                 FixedOutputHash {
                     method: FileIngestionMethod::Recursive,
-                    hash: hash.clone(),
+                    hash,
                 }
             )
         );
@@ -417,7 +417,7 @@ mod tests {
             hash_s,
             FixedOutputHash {
                 method: FileIngestionMethod::Flat,
-                hash: hash.clone(),
+                hash,
             }
             .to_string()
         );
@@ -427,7 +427,7 @@ mod tests {
                 "{}",
                 FixedOutputHash {
                     method: FileIngestionMethod::Flat,
-                    hash: hash.clone(),
+                    hash,
                 }
             )
         );
@@ -437,7 +437,7 @@ mod tests {
                 "{:#}",
                 FixedOutputHash {
                     method: FileIngestionMethod::Flat,
-                    hash: hash.clone(),
+                    hash,
                 }
             )
         );

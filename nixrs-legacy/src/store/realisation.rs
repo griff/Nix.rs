@@ -249,7 +249,7 @@ mod tests {
             id.to_string(),
             "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad!out"
         );
-        let s = String::try_from(id).unwrap();
+        let s = String::from(id);
         assert_eq!(
             s,
             "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad!out"

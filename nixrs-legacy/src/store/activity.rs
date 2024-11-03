@@ -130,11 +130,7 @@ struct StartActivityVisitor {
 
 impl StartActivityVisitor {
     pub fn into_activity(self) -> Option<StartActivity> {
-        let parent = if let Some(parent_id) = self.parent {
-            parent_id
-        } else {
-            0
-        };
+        let parent = self.parent.unwrap_or_default();
         let act = self.act?;
         let level = self.level?;
         let activity_type = self.activity_type?;

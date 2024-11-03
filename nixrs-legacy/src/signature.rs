@@ -375,7 +375,7 @@ mod tests {
         let pk: PublicKey = "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
             .parse()
             .unwrap();
-        assert_eq!(pk.verify(data, &s), true);
+        assert!(pk.verify(data, &s));
     }
 
     #[test]
@@ -386,7 +386,7 @@ mod tests {
         let pk_s = "cache.example.org-1:LY9vz7UFrxViujMPmsvJBon/AGZEeSqLBy77sJcw5YI=";
         let pk: PublicKey = pk_s.parse().unwrap();
 
-        let s = sk.sign(&data);
-        assert_eq!(pk.verify(data, &s), true);
+        let s = sk.sign(data);
+        assert!(pk.verify(data, &s));
     }
 }

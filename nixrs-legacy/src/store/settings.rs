@@ -229,9 +229,9 @@ impl From<BuildSettings> for DefaultSettings {
 }
 
 thread_local! {
-    static CURRENT_STATE: State = State {
+    static CURRENT_STATE: State = const { State {
         default: RefCell::new(None),
-    };
+    } };
 }
 
 static NONE: BuildSettings = BuildSettings::const_default();

@@ -168,12 +168,12 @@ mod test {
         spec.bit_order = BitOrder::LeastSignificantFirst;
         //spec.padding = Some('=');
         let encoding = spec.encoding().unwrap();
-        let mut actual = encoding.encode(&data);
+        let mut actual = encoding.encode(data);
         unsafe { actual.as_bytes_mut() }.reverse();
         assert_eq!(&actual[..], expected);
 
         let mut output = vec![0u8; encode_len(data.len())];
-        encode_mut(&data, &mut output);
+        encode_mut(data, &mut output);
         let actual2 = String::from_utf8(output).unwrap();
         assert_eq!(actual2, expected);
     }
@@ -242,7 +242,7 @@ mod test {
     #[case::nix1("x0xf8v9fxf3jk8zln1cwlsrmhqvp0f88", &hex!("0839 7037 8635 6bca 59b0 f4a3 2987 eb2e 6de4 3ae8"))]
     fn test_decode_bytes(#[case] data: &str, #[case] expected: &[u8]) {
         let mut output = vec![0u8; decode_len(data.len())];
-        decode_mut(&data.as_bytes(), &mut output).unwrap();
+        decode_mut(data.as_bytes(), &mut output).unwrap();
         assert_eq!(output, expected);
     }
 
@@ -258,7 +258,7 @@ mod test {
     #[case::invalid_char_chunk_2("c|zzzzzzzzz0", fail(1, DecodeKind::Symbol))]
     fn test_decode_bytes_fail(#[case] data: &str, #[case] expected: Result<(), DecodePartial>) {
         let mut output = vec![0u8; decode_len(data.len())];
-        assert_eq!(decode_mut(&data.as_bytes(), &mut output), expected);
+        assert_eq!(decode_mut(data.as_bytes(), &mut output), expected);
     }
 
     proptest! {

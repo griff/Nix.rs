@@ -112,14 +112,14 @@ mod tests {
         let mut buf = Vec::new();
         buf.write_bool(true).await.unwrap();
         assert_eq!(buf.len(), 8);
-        assert_eq!((&buf[..]).read_bool().await.unwrap(), true);
+        assert!((&buf[..]).read_bool().await.unwrap());
     }
 
     #[tokio::test]
     async fn test_write_bool_false() {
         let mut buf = Vec::new();
         buf.write_bool(false).await.unwrap();
-        assert_eq!((&buf[..]).read_bool().await.unwrap(), false);
+        assert!(!(&buf[..]).read_bool().await.unwrap());
         assert_eq!(buf.len(), 8);
     }
 
@@ -127,7 +127,7 @@ mod tests {
     async fn test_write_bool_trueish() {
         let mut buf = Vec::new();
         buf.write_usize(12).await.unwrap();
-        assert_eq!((&buf[..]).read_bool().await.unwrap(), true);
+        assert!((&buf[..]).read_bool().await.unwrap());
     }
 
     #[tokio::test]
@@ -279,12 +279,12 @@ mod tests {
     #[tokio::test]
     async fn test_write_printed() {
         let mut buf = Vec::new();
-        buf.write_printed(&(45 as u64), &(195 as u64))
+        buf.write_printed(45_u64, &195_u64)
             .await
             .unwrap();
-        let read: u64 = (&buf[..]).read_parsed(&(45 as u64)).await.unwrap();
+        let read: u64 = (&buf[..]).read_parsed(&45_u64).await.unwrap();
         assert_eq!(read, 195);
-        let read: u64 = (&buf[..]).read_parsed(&(0 as u64)).await.unwrap();
+        let read: u64 = (&buf[..]).read_parsed(&0_u64).await.unwrap();
         assert_eq!(read, 150);
         assert_eq!(buf.len(), 16);
     }
@@ -295,13 +295,13 @@ mod tests {
         let mut set: HashSet<u64> = HashSet::new();
         set.insert(195);
         set.insert(290);
-        buf.write_printed_coll(&(45 as u64), &set).await.unwrap();
-        let read: HashSet<u64> = (&buf[..]).read_parsed_coll(&(45 as u64)).await.unwrap();
+        buf.write_printed_coll(&45_u64, &set).await.unwrap();
+        let read: HashSet<u64> = (&buf[..]).read_parsed_coll(&45_u64).await.unwrap();
         assert_eq!(read, set);
         let mut set2: HashSet<u64> = HashSet::new();
         set2.insert(150);
         set2.insert(245);
-        let read: HashSet<u64> = (&buf[..]).read_parsed_coll(&(0 as u64)).await.unwrap();
+        let read: HashSet<u64> = (&buf[..]).read_parsed_coll(&0_u64).await.unwrap();
         assert_eq!(read, set2);
         assert_eq!(buf.len(), 40);
     }

@@ -377,7 +377,7 @@ mod tests {
     #[test]
     fn test_parse() {
         let s = "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3";
-        let p = StorePath::new_from_base_name(&s).unwrap();
+        let p = StorePath::new_from_base_name(s).unwrap();
         assert_eq!(p.name.0, "konsole-18.12.3");
         assert_eq!(p.name.name(), "konsole-18.12.3");
         assert_eq!(p.name.as_ref(), "konsole-18.12.3");
@@ -394,7 +394,7 @@ mod tests {
             format!("{}", p),
             "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3"
         );
-        assert_eq!(p.is_derivation(), false);
+        assert!(!p.is_derivation());
         let p2 = StorePath::from_parts(value, "konsole-18.12.3").unwrap();
         assert_eq!(p, p2);
     }
@@ -413,7 +413,7 @@ mod tests {
         let s3 = "7h7qgvs4kgzsn8a6rb274saxyqh4jxlz-konsole-18.12.3.drv";
         let p2 = StorePath::new_from_base_name(s3).unwrap();
         assert!(p2 > p);
-        assert_eq!(p.is_derivation(), true);
+        assert!(p.is_derivation());
     }
 
     #[test]
@@ -433,7 +433,7 @@ mod tests {
     fn test_no_name() {
         let s = "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-";
         assert_matches!(
-            StorePath::new_from_base_name(&s),
+            StorePath::new_from_base_name(s),
             Err(ParseStorePathError::StorePathNameEmpty)
         );
     }
@@ -442,7 +442,7 @@ mod tests {
     fn test_no_dash() {
         let s = "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz";
         assert_matches!(
-            StorePath::new_from_base_name(&s),
+            StorePath::new_from_base_name(s),
             Err(ParseStorePathError::BadStorePath(_))
         );
     }
@@ -451,7 +451,7 @@ mod tests {
     fn test_short_hash() {
         let s = "7h7qgvs4kgzsn8a6rb273saxyqh4jxl-konsole-18.12.3";
         assert_matches!(
-            StorePath::new_from_base_name(&s),
+            StorePath::new_from_base_name(s),
             Err(ParseStorePathError::BadStorePath(_))
         );
     }
@@ -460,7 +460,7 @@ mod tests {
     fn test_invalid_hash() {
         let s = "7h7qgvs4kgzsn8e6rb273saxyqh4jxlz-konsole-18.12.3";
         assert_matches!(
-            StorePath::new_from_base_name(&s),
+            StorePath::new_from_base_name(s),
             Err(ParseStorePathError::BadBase32(BadBase32, _))
         );
     }
@@ -468,14 +468,14 @@ mod tests {
     #[test]
     fn test_long_name() {
         let s = "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
-        assert_matches!(StorePath::new_from_base_name(&s), Ok(_));
+        assert_matches!(StorePath::new_from_base_name(s), Ok(_));
     }
 
     #[test]
     fn test_too_long_name() {
         let s = "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
         assert_matches!(
-            StorePath::new_from_base_name(&s),
+            StorePath::new_from_base_name(s),
             Err(ParseStorePathError::StorePathNameTooLong)
         );
     }
@@ -484,13 +484,13 @@ mod tests {
     fn test_bad_name() {
         let s = "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-foo bar";
         assert_matches!(
-            StorePath::new_from_base_name(&s),
+            StorePath::new_from_base_name(s),
             Err(ParseStorePathError::BadStorePathName(_))
         );
 
         let s = "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-kónsole";
         assert_matches!(
-            StorePath::new_from_base_name(&s),
+            StorePath::new_from_base_name(s),
             Err(ParseStorePathError::BadStorePathName(_))
         );
     }
@@ -498,27 +498,27 @@ mod tests {
     #[test]
     fn test_roundtrip() {
         let s = "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3";
-        assert_eq!(StorePath::new_from_base_name(&s).unwrap().to_string(), s);
+        assert_eq!(StorePath::new_from_base_name(s).unwrap().to_string(), s);
     }
 
     #[test]
     fn test_is_drv() {
         let s = "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3";
-        let p = StorePath::new_from_base_name(&s).unwrap();
+        let p = StorePath::new_from_base_name(s).unwrap();
         assert!(!p.is_derivation());
     }
 
     #[test]
     fn test_is_drv2() {
         let s = "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv";
-        let p = StorePath::new_from_base_name(&s).unwrap();
+        let p = StorePath::new_from_base_name(s).unwrap();
         assert!(p.is_derivation());
     }
 
     #[test]
     fn test_name_from_drv() {
         let s = "7h7qgvs4kgzsn8a6rb273saxyqh4jxlz-konsole-18.12.3.drv";
-        let p = StorePath::new_from_base_name(&s).unwrap();
+        let p = StorePath::new_from_base_name(s).unwrap();
         assert_eq!(p.name_from_drv(), "konsole-18.12.3");
     }
 

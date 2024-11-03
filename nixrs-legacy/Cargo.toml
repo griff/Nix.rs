@@ -8,7 +8,7 @@ license = "LGPL-2.1-or-later"
 [features]
 default = ["full"]
 full = ["md5", "test"]
-test = ["pretty_assertions", "proptest"]
+test = ["pretty_assertions", "proptest", "nixrs-io/test", "nixrs-archive/test"]
 slowtests = []
 
 [dependencies]

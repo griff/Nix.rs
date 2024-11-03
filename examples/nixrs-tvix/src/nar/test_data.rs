@@ -53,6 +53,7 @@ pub fn empty_file() -> (proto::Node, (B3Digest, Bytes)) {
     )
 }
 
+#[allow(clippy::type_complexity)]
 pub fn empty_file_in_dir() -> (
     proto::Node,
     Vec<(B3Digest, proto::Directory)>,
@@ -84,6 +85,7 @@ pub fn empty_file_in_dir() -> (
     )
 }
 
+#[allow(clippy::type_complexity)]
 pub fn dir_example() -> (
     proto::Node,
     Vec<(B3Digest, proto::Directory)>,

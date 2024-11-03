@@ -883,7 +883,7 @@ mod tests {
             let trusted_flag : TrustedFlag = trusted_flag.into();
             prop_store_cmd!(
                 trusted_flag,
-                assert_query_valid_paths(Some(trusted_flag.into()), &paths, SubstituteFlag::NoSubstitute, Ok(result.clone())),
+                assert_query_valid_paths(Some(trusted_flag), &paths, SubstituteFlag::NoSubstitute, Ok(result.clone())),
                 query_valid_paths(&paths, SubstituteFlag::NoSubstitute),
                 result
             );

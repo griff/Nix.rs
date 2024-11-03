@@ -1,5 +1,6 @@
 use std::collections::{BTreeSet, HashSet};
 
+#[allow(clippy::len_without_is_empty)]
 pub trait CollectionSize {
     fn len(&self) -> usize;
 }

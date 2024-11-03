@@ -480,7 +480,7 @@ mod tests {
             .unwrap();
         let fingerprint = info.path_info.fingerprint(&store_dir).unwrap().to_string();
 
-        assert_eq!(key.verify(fingerprint, &sig), true);
+        assert!(key.verify(fingerprint, &sig));
     }
 
     #[test]
@@ -536,6 +536,6 @@ mod tests {
             .unwrap();
         let fingerprint = info.path_info.fingerprint(&store_dir).unwrap().to_string();
 
-        assert_eq!(key.verify(fingerprint, &sig), true);
+        assert!(key.verify(fingerprint, &sig));
     }
 }

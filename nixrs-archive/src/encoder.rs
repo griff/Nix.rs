@@ -311,7 +311,7 @@ mod tests {
                 let mut ctx = ring::digest::Context::new(&ring::digest::SHA256);
                 let mut nar_size = 0;
                 let iio = InspectWriter::new(io, |buf| {
-                    ctx.update(&buf);
+                    ctx.update(buf);
                     nar_size += buf.len() as u64;
                 });
                 let encoder = FramedWrite::new(iio, NAREncoder);
