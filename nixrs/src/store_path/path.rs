@@ -2,6 +2,8 @@ use std::borrow::Cow;
 use std::fmt;
 use std::hash as std_hash;
 use std::ops::Deref;
+use std::path::Path;
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use thiserror::Error;
@@ -10,15 +12,33 @@ use nixrs_derive::NixDeserialize;
 
 use crate::base32;
 
+use super::FromStoreDirStr;
+use super::StoreDir;
+use super::StoreDirDisplay;
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(from_str))]
+#[cfg_attr(feature = "nixrs-derive", nix(from_store_dir_str))]
 pub struct StorePath {
     hash: StorePathHash,
     name: StorePathName,
 }
 
 impl StorePath {
+    fn new(s: &str, store_dir: &StoreDir) -> Result<Self, StorePathError> {
+        let path = Path::new(s);
+        if !path.is_absolute() {
+            return Err(StorePathError::NonAbsolute(path.to_owned()));
+        }
+        let name = s.strip_prefix(store_dir.to_str())
+            .ok_or_else(|| StorePathError::NotInStore(path.into()))?;
+        if name.as_bytes()[0] != b'/' {
+            return Err(StorePathError::NotInStore(path.into()));
+        }
+
+        name[1..].parse()
+    }
+
     fn from_bytes(buf: &[u8]) -> Result<Self, StorePathError> {
         if buf.len() < STORE_PATH_HASH_ENCODED_SIZE + 1 {
             return Err(StorePathError::HashLength);
@@ -77,6 +97,20 @@ impl AsRef<StorePathName> for StorePath {
 impl AsRef<StorePathHash> for StorePath {
     fn as_ref(&self) -> &StorePathHash {
         &self.hash
+    }
+}
+
+impl FromStoreDirStr for StorePath {
+    type Error = StorePathError;
+
+    fn from_store_dir_str(store_dir: &super::StoreDir, s: &str) -> Result<Self, Self::Error> {
+        StorePath::new(s, store_dir)
+    }
+}
+
+impl StoreDirDisplay for StorePath {
+    fn fmt(&self, store_dir: &StoreDir, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}/{}", store_dir, self)
     }
 }
 
@@ -274,6 +308,10 @@ partial_eq!(StorePathName, Cow<'_, str>);
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum StorePathError {
+    #[error("non-absolute store path {0:?}")]
+    NonAbsolute(PathBuf),
+    #[error("path {0:?} is not in store")]
+    NotInStore(PathBuf),
     #[error("invalid store path hash length")]
     HashLength,
     #[error("invalid store path name length")]
@@ -291,12 +329,84 @@ impl StorePathError {
     }
 }
 
+#[cfg(any(test, feature = "test"))]
+pub mod proptest {
+    use super::*;
+    use ::proptest::{arbitrary::Arbitrary, prelude::*};
+
+    pub fn arb_output_name() -> impl Strategy<Value = String> {
+        "[a-zA-Z0-9+\\-_?=][a-zA-Z0-9+\\-_?=.]{0,13}"
+    }
+
+
+    impl Arbitrary for StorePathHash {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<StorePathHash>;
+
+        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+            any::<[u8; STORE_PATH_HASH_SIZE]>()
+                .prop_map(StorePathHash)
+                .boxed()
+        }
+    }
+
+    pub fn arb_store_path_name(
+        max: u8,
+        extension: Option<String>,
+    ) -> impl Strategy<Value = StorePathName> {
+        "[a-zA-Z0-9+\\-_?=][a-zA-Z0-9+\\-_?=.]{0,210}".prop_map(move |mut s| {
+            let mut max = max;
+            let len = extension.as_ref().map(|e| e.len() + 1).unwrap_or(0) as u8;
+            if max > 211 - len {
+                max = 211 - len;
+            }
+            max -= 1;
+            if s.len() > max as usize {
+                s.truncate(max as usize);
+            }
+            if let Some(ext) = extension.as_ref() {
+                s.push('.');
+                s.push_str(ext);
+            }
+            s.parse().unwrap()
+        })
+    }
+
+    impl Arbitrary for StorePathName {
+        type Parameters = Option<String>;
+        type Strategy = BoxedStrategy<StorePathName>;
+
+        fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+            arb_store_path_name(211, args).boxed()
+        }
+    }
+
+    pub fn arb_store_path(max: u8, extension: Option<String>) -> impl Strategy<Value = StorePath> {
+        (any::<StorePathHash>(), arb_store_path_name(max, extension))
+            .prop_map(|(hash, name)| StorePath { hash, name })
+    }
+
+    pub fn arb_drv_store_path() -> impl Strategy<Value = StorePath> {
+        arb_store_path(211 - 4 - 15, Some("drv".into()))
+    }
+
+    impl Arbitrary for StorePath {
+        type Parameters = Option<String>;
+        type Strategy = BoxedStrategy<StorePath>;
+        fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+            arb_store_path(211, args).boxed()
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::cmp::Ordering;
 
     use hex_literal::hex;
     use rstest::rstest;
+    use ::proptest::proptest;
+    use ::proptest::prelude::*;
 
     use super::*;
 
@@ -439,7 +549,102 @@ mod test {
         );
     }
 
-    // TODO: StorePath order
-    // TODO: StorePathName proptest
-    // TODO: StorePath proptest
+    #[test]
+    fn store_path_order() {
+        let list = [
+            "3431a7m1xm7k8ggibfqjciji1h4hcpdg-polly-12.0.1.src.tar.xz.drv",
+            "3n3vph932sfznfvp472jsr02wypg00c1-apple-framework-OpenGL.drv",
+            "3rf1grj8n7akzy98rm4xlw0k0bsrhhb7-apple-framework-CoreFoundation.drv",
+            "3sld67h643yp9l2496k567gn8zs63xmd-string_argv___string_argv_0.0.2.tgz.drv",
+            "4ql4g3ss782y7c7a5i8bdj2v7b5izs4d-codemap-diagnostic-0.1.2.drv",
+            "5qgdakl33rc83dcdln68ca62llp5zy9q-guava-parent-26.0-android.pom",
+            "63k48d02cs6fqc5qb4m4qij2lp21rd74-cargo-build-hook.sh.drv",
+            "6ky7iz3c7bbv35d7nkb69kjgl0mpkn6b-6531da946949a94643e6d8424236174ae64fe0ca.patch.drv",
+            "6vb5s19cbmsfybizb67xv1y6pgricmk9-pytest-7.1.3.tar.gz.drv",
+            "84ilav9kiyhfzw7a5lppngdhw48bbihs-hatchling-1.24.2.tar.gz.drv",
+            "8hlynkqwgg3dkgyx6x6m549yqrx28py7-tools.logging-1.2.4.jar.drv",
+            "9klylswa11kr8sqq65x1pfcl5y2lghls-tr46___tr46_0.0.3.tgz",
+            "djg6gy8iymm9arxnmg0yyz3pms831wr0-libcxx-headers-src-16.0.6.drv",
+            "inhj4681cf02mqvhkw3xrbbwmy6xbn9x-perl5.38.0-gettext-1.07.drv",
+            "jdsl20r8mqjnr8vasqwsjvf2yg7ykdzw-libwebp-1.4.0.drv",
+            "jnklxpwl49zdvqv04g2jfiq3719ic12z-xz-5.4.7-bin",
+            "kkszlid4fss1s74bchh7hbpbndxzqq6i-https___registry.npmjs.org_assert___assert_1.5.0.tgz",
+            "m2iin4fliaplacyrwq7l7bxyvk7cd9y0-https___registry.npmjs.org_is_svg___is_svg_3.0.0.tgz",
+            "p0fgxad36glz02fpmfkbd4v19b58ja52-https___registry.npmjs.org_string_width___string_width_1.0.2.tgz.drv",
+            "pfhr3caay320aklm05bf0z39aajk4sjx-transit-js-0.8.874.jar.drv",
+            "q8abgca8z91caq4jkwh6sh3qyprrqmwl-rouge-4.1.3.gem.drv",
+            "q8lq5j433pf27m3j6l7ki217dy9dpdgs-jackson-coreutils-1.8.pom.drv",
+            "yishjp1jmaq1gw1n84v0k8hmj73d60p9-bash52-017.drv",
+            "yq0lz1byj4v2rym2ng23a3nj4n6pvqdj-pgrp-pipe-5.patch",
+            "ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home",
+        ];
+        let parsed_list = list.map(|i| i.parse::<StorePath>().unwrap());
+        for window in parsed_list.windows(2) {
+            assert_eq!(Ordering::Less, window[0].cmp(&window[1]));
+        }
+    }
+
+    #[rstest]
+    #[case("/nix/store/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home", "ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home")]
+    #[case("/nix/store/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-.-_?+=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSSTUVWXYZ", "ywrs8hr8fa4244bpdxi88bd87qxqgmy0-.-_?+=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSSTUVWXYZ")]
+    #[test]
+    fn from_store_dir_str(#[case] store_path: &str, #[case] base_path: StorePath) {
+        let store = StoreDir::default();
+        let path : StorePath = store.parse(store_path).expect("Can parse store path");
+        assert_eq!(path, base_path);
+    }
+
+    #[rstest]
+    #[case::empty("", StorePathError::NonAbsolute(PathBuf::from("")))]
+    #[case::mising_file_name("/nix/store/", StorePathError::HashLength)]
+    #[case::not_in_store("/outsise/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home", StorePathError::NotInStore(PathBuf::from("/outsise/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home")))]
+    #[case::missing_slash("/nix/storeywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home", StorePathError::NotInStore(PathBuf::from("/nix/storeywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home")))]
+    #[case::too_short("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq2417", StorePathError::HashLength)]
+    #[case::hash_too_long("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179a-app", StorePathError::Symbol(32))]
+    #[case::missing_name("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179-", StorePathError::NameLength)]
+    #[case::bad_name("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179-å", StorePathError::Symbol(33))]
+    #[case::invalid_symbol("/nix/store/zzcfcjwxkn4|f1nh8dh521vffyq24179-app", StorePathError::Symbol(11))]
+    #[test]
+    fn from_store_dir_str_error(#[case] store_path: &str, #[case] expected: StorePathError) {
+        let store = StoreDir::default();
+        let err = store.parse::<StorePath>(store_path).expect_err("parse failure");
+        assert_eq!(err, expected);
+    }
+
+    #[rstest]
+    #[case("/nix/store/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home", "ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home")]
+    #[case("/nix/store/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-.-_?+=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSSTUVWXYZ", "ywrs8hr8fa4244bpdxi88bd87qxqgmy0-.-_?+=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSSTUVWXYZ")]
+    #[test]
+    fn store_dir_display(#[case] store_path: &str, #[case] base_path: StorePath) {
+        let store = StoreDir::default();
+        let s = store.display(&base_path).to_string();
+        assert_eq!(store_path, s);
+    }
+
+    proptest! {
+        #[test]
+        fn proptest_store_name_parse_display(path in any::<StorePathName>()) {
+            let s = path.to_string();
+            let parsed = s.parse::<StorePathName>().expect("Parsing display");
+            prop_assert_eq!(path, parsed);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn proptest_store_path_parse_display(path in any::<StorePath>()) {
+            let s = path.to_string();
+            let parsed = s.parse::<StorePath>().expect("Parsing display");
+            prop_assert_eq!(path, parsed);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn proptest_store_dir_display_parse(store_dir in any::<StoreDir>(), path in any::<StorePath>()) {
+            let s = store_dir.display(&path).to_string();
+            let parsed = store_dir.parse::<StorePath>(&s).expect("Parsing display");
+            prop_assert_eq!(path, parsed);
+        }
+    }
 }

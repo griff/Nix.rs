@@ -5,6 +5,8 @@ use std::{fmt, io};
 
 use ::bytes::Bytes;
 
+use crate::store_path::StoreDir;
+
 use super::ProtocolVersion;
 
 mod bytes;
@@ -60,7 +62,7 @@ pub trait NixRead: Send {
     /// Some types are serialized differently depending on the version
     /// of the protocol and so this can be used for implementing that.
     fn version(&self) -> ProtocolVersion;
-    fn store_dir(&self) -> &str;
+    fn store_dir(&self) -> &StoreDir;
 
     /// Read a single u64 from the protocol.
     /// This returns an Option to support gracefull shutdown.
@@ -149,7 +151,7 @@ impl<T: ?Sized + NixRead> NixRead for &mut T {
         (**self).version()
     }
 
-    fn store_dir(&self) -> &str {
+    fn store_dir(&self) -> &StoreDir {
         (**self).store_dir()
     }
 

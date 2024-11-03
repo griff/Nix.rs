@@ -7,6 +7,7 @@ use bytes::Bytes;
 use thiserror::Error;
 
 use crate::daemon::ProtocolVersion;
+use crate::store_path::StoreDir;
 
 use super::NixRead;
 
@@ -84,7 +85,7 @@ impl From<Operation> for OperationType {
 
 pub struct Builder {
     version: ProtocolVersion,
-    store_dir: String,
+    store_dir: StoreDir,
     ops: VecDeque<Operation>,
 }
 
@@ -92,7 +93,7 @@ impl Builder {
     pub fn new() -> Builder {
         Builder {
             version: Default::default(),
-            store_dir: String::from("/nix/store"),
+            store_dir: Default::default(),
             ops: VecDeque::new(),
         }
     }
@@ -102,8 +103,8 @@ impl Builder {
         self
     }
 
-    pub fn store_dir(&mut self, store_dir: &str) -> &mut Self {
-        self.store_dir = store_dir.to_owned();
+    pub fn store_dir(&mut self, store_dir: &StoreDir) -> &mut Self {
+        self.store_dir = store_dir.clone();
         self
     }
 
@@ -150,7 +151,7 @@ impl Default for Builder {
 
 pub struct Mock {
     version: ProtocolVersion,
-    store_dir: String,
+    store_dir: StoreDir,
     ops: VecDeque<Operation>,
 }
 
@@ -161,7 +162,7 @@ impl NixRead for Mock {
         self.version
     }
 
-    fn store_dir(&self) -> &str {
+    fn store_dir(&self) -> &StoreDir {
         &self.store_dir
     }
 

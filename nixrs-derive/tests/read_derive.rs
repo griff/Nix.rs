@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use nixrs::daemon::de::mock::{Builder, Error};
 use nixrs::daemon::de::NixRead;
+use nixrs::store_path::{FromStoreDirStr, StoreDir};
 use nixrs_derive::NixDeserialize;
 
 #[derive(Debug, PartialEq, Eq, NixDeserialize)]
@@ -288,6 +289,58 @@ async fn read_from_str_reader_error() {
     assert_eq!(Error::InvalidData("Bad reader".into()), err);
 }
 
+
+#[derive(Debug, PartialEq, Eq, NixDeserialize)]
+#[nix(from_store_dir_str)]
+struct TestFromStoreDirStr;
+
+impl FromStoreDirStr for TestFromStoreDirStr {
+    type Error = std::io::Error;
+
+    fn from_store_dir_str(_store_dir: &StoreDir, s: &str) -> Result<Self, Self::Error> {
+        if s == "test" {
+            Ok(TestFromStoreDirStr)
+        } else {
+            Err(std::io::Error::new(std::io::ErrorKind::InvalidData, s))
+        }
+    }
+}
+
+#[tokio::test]
+async fn read_from_store_dir_str() {
+    let mut mock = Builder::new().read_slice(b"test").build();
+    let value = mock.read_value::<TestFromStoreDirStr>().await.unwrap();
+    assert_eq!(TestFromStoreDirStr, value);
+}
+
+#[tokio::test]
+async fn read_from_store_dir_str_invalid_data() {
+    let mut mock = Builder::new().read_slice(b"wrong string").build();
+    let err = mock.read_value::<TestFromStoreDirStr>().await.unwrap_err();
+    assert_eq!(Error::InvalidData("wrong string".into()), err);
+}
+
+#[tokio::test]
+async fn read_from_store_dir_str_invalid_string() {
+    let mut mock = Builder::new()
+        .read_slice(b"The quick brown \xED\xA0\x80 jumped.")
+        .build();
+    let err = mock.read_value::<TestFromStoreDirStr>().await.unwrap_err();
+    assert_eq!(
+        Error::InvalidData("invalid utf-8 sequence of 1 bytes from index 16".into()),
+        err
+    );
+}
+
+#[tokio::test]
+async fn read_from_store_dir_str_reader_error() {
+    let mut mock = Builder::new()
+        .read_bytes_error(Error::InvalidData("Bad reader".into()))
+        .build();
+    let err = mock.read_value::<TestFromStoreDirStr>().await.unwrap_err();
+    assert_eq!(Error::InvalidData("Bad reader".into()), err);
+}
+
 #[derive(Debug, PartialEq, Eq, NixDeserialize)]
 #[nix(try_from = "u64")]
 struct TestTryFromU64;
@@ -356,16 +409,31 @@ async fn read_from_u64_reader_error() {
 #[derive(Debug, PartialEq, Eq, NixDeserialize)]
 enum TestEnum {
     #[nix(version = "..=19")]
-    Pre20(TestTryFromU64),
-    #[nix(version = "20..")]
+    Pre20(TestTryFromU64, #[nix(version = "10..")] u64),
+    #[nix(version = "20..=29")]
     Post20(StructVersionTest),
+    #[nix(version = "30..=39")]
+    Post30,
+    #[nix(version = "40..")]
+    Post40 {
+        msg: String,
+        #[nix(version = "45..")]
+        level: u64,
+    },
+}
+
+#[tokio::test]
+async fn read_enum_9() {
+    let mut mock = Builder::new().version((1, 9)).read_number(42).build();
+    let value = mock.read_value::<TestEnum>().await.unwrap();
+    assert_eq!(TestEnum::Pre20(TestTryFromU64, 0), value);
 }
 
 #[tokio::test]
 async fn read_enum_19() {
-    let mut mock = Builder::new().version((1, 19)).read_number(42).build();
+    let mut mock = Builder::new().version((1, 19)).read_number(42).read_number(666).build();
     let value = mock.read_value::<TestEnum>().await.unwrap();
-    assert_eq!(TestEnum::Pre20(TestTryFromU64), value);
+    assert_eq!(TestEnum::Pre20(TestTryFromU64, 666), value);
 }
 
 #[tokio::test]
@@ -386,6 +454,49 @@ async fn read_enum_20() {
 }
 
 #[tokio::test]
+async fn read_enum_30() {
+    let mut mock = Builder::new().version((1, 30)).build();
+    let value = mock.read_value::<TestEnum>().await.unwrap();
+    assert_eq!(
+        TestEnum::Post30,
+        value
+    );
+}
+
+#[tokio::test]
+async fn read_enum_40() {
+    let mut mock = Builder::new()
+        .version((1, 40))
+        .read_slice(b"hello world")
+        .build();
+    let value = mock.read_value::<TestEnum>().await.unwrap();
+    assert_eq!(
+        TestEnum::Post40 {
+            msg: "hello world".into(),
+            level: 0,
+        },
+        value
+    );
+}
+
+#[tokio::test]
+async fn read_enum_45() {
+    let mut mock = Builder::new()
+        .version((1, 45))
+        .read_slice(b"hello world")
+        .read_number(9001)
+        .build();
+    let value = mock.read_value::<TestEnum>().await.unwrap();
+    assert_eq!(
+        TestEnum::Post40 {
+            msg: "hello world".into(),
+            level: 9001,
+        },
+        value
+    );
+}
+
+#[tokio::test]
 async fn read_enum_reader_error() {
     let mut mock = Builder::new()
         .version((1, 19))
@@ -396,8 +507,8 @@ async fn read_enum_reader_error() {
 }
 
 #[tokio::test]
-async fn read_enum_invalid_data_19() {
-    let mut mock = Builder::new().version((1, 19)).read_number(666).build();
+async fn read_enum_invalid_data_9() {
+    let mut mock = Builder::new().version((1, 9)).read_number(666).build();
     let err = mock.read_value::<TestEnum>().await.unwrap_err();
     assert_eq!(Error::InvalidData("666".into()), err);
 }

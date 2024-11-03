@@ -11,6 +11,7 @@ pub const DEFAULT: Symbol = Symbol("default");
 pub const FROM: Symbol = Symbol("from");
 pub const TRY_FROM: Symbol = Symbol("try_from");
 pub const FROM_STR: Symbol = Symbol("from_str");
+pub const FROM_STORE_DIR_STR: Symbol = Symbol("from_store_dir_str");
 pub const CRATE: Symbol = Symbol("crate");
 
 impl PartialEq<Symbol> for Path {

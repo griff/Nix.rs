@@ -9,6 +9,7 @@ use pin_project_lite::pin_project;
 use tokio::io::{AsyncBufRead, AsyncRead, AsyncReadExt, ReadBuf};
 
 use crate::daemon::ProtocolVersion;
+use crate::store_path::StoreDir;
 
 use super::{Error, NixRead};
 
@@ -17,7 +18,7 @@ pub struct NixReaderBuilder {
     reserved_buf_size: usize,
     max_buf_size: usize,
     version: ProtocolVersion,
-    store_dir: String,
+    store_dir: StoreDir,
 }
 
 impl Default for NixReaderBuilder {
@@ -27,7 +28,7 @@ impl Default for NixReaderBuilder {
             reserved_buf_size: 8192,
             max_buf_size: 8192,
             version: Default::default(),
-            store_dir: String::from("/nix/store"),
+            store_dir: Default::default(),
         }
     }
 }
@@ -53,8 +54,8 @@ impl NixReaderBuilder {
         self
     }
 
-    pub fn set_store_dir(mut self, store_dir: String) -> Self {
-        self.store_dir = store_dir;
+    pub fn set_store_dir(mut self, store_dir: &StoreDir) -> Self {
+        self.store_dir = store_dir.clone();
         self
     }
 
@@ -79,7 +80,7 @@ pin_project! {
         reserved_buf_size: usize,
         max_buf_size: usize,
         version: ProtocolVersion,
-        store_dir: String,
+        store_dir: StoreDir,
     }
 }
 
@@ -164,7 +165,7 @@ where
         self.version
     }
 
-    fn store_dir(&self) -> &str {
+    fn store_dir(&self) -> &StoreDir {
         &self.store_dir
     }
 

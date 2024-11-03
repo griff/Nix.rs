@@ -3,14 +3,14 @@ use syn::meta::ParseNestedMeta;
 use syn::parse::Parse;
 use syn::{parse_quote, Attribute, Expr, ExprLit, ExprPath, Lit, Token};
 
-use super::symbol::{Symbol, CRATE, DEFAULT, FROM, FROM_STR, NIX, TRY_FROM, VERSION};
+use super::symbol::{Symbol, CRATE, DEFAULT, FROM, FROM_STORE_DIR_STR, FROM_STR, NIX, TRY_FROM, VERSION};
 use super::Context;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Default {
     None,
     #[allow(clippy::enum_variant_names)]
-    Default,
+    Default(syn::Path),
     Path(ExprPath),
 }
 
@@ -100,6 +100,7 @@ impl Variant {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Container {
     pub from_str: Option<syn::Path>,
+    pub from_store_dir_str: Option<syn::Path>,
     pub type_from: Option<syn::Type>,
     pub type_try_from: Option<syn::Type>,
     pub crate_path: Option<syn::Path>,
@@ -111,6 +112,7 @@ impl Container {
         let mut type_try_from = None;
         let mut crate_path = None;
         let mut from_str = None;
+        let mut from_store_dir_str = None;
 
         for attr in attrs {
             if attr.path() != NIX {
@@ -123,6 +125,8 @@ impl Container {
                     type_try_from = parse_lit(ctx, &meta, TRY_FROM)?;
                 } else if meta.path == FROM_STR {
                     from_str = Some(meta.path);
+                } else if meta.path == FROM_STORE_DIR_STR {
+                    from_store_dir_str = Some(meta.path);
                 } else if meta.path == CRATE {
                     crate_path = parse_lit(ctx, &meta, CRATE)?;
                 } else {
@@ -140,6 +144,7 @@ impl Container {
 
         Container {
             from_str,
+            from_store_dir_str,
             type_from,
             type_try_from,
             crate_path,
@@ -340,6 +345,72 @@ mod test {
     }
 
     #[test]
+    fn parse_container_from_str() {
+        let attrs: Vec<Attribute> = vec![parse_quote!(#[nix(from_str)])];
+        let ctx = Context::new();
+        let container = Container::from_ast(&ctx, &attrs);
+        ctx.check().unwrap();
+        assert_eq!(
+            container,
+            Container {
+                from_str: Some(parse_quote!(from_str)),
+                from_store_dir_str: None,
+                type_from: None,
+                type_try_from: None,
+                type_into: None,
+                type_try_into: None,
+                display: Default::None,
+                store_dir_display: None,
+                crate_path: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_container_from_store_dir_str() {
+        let attrs: Vec<Attribute> = vec![parse_quote!(#[nix(from_store_dir_str)])];
+        let ctx = Context::new();
+        let container = Container::from_ast(&ctx, &attrs);
+        ctx.check().unwrap();
+        assert_eq!(
+            container,
+            Container {
+                from_str: None,
+                from_store_dir_str: Some(parse_quote!(from_store_dir_str)),
+                type_from: None,
+                type_try_from: None,
+                type_into: None,
+                type_try_into: None,
+                display: Default::None,
+                store_dir_display: None,
+                crate_path: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_container_from() {
+        let attrs: Vec<Attribute> = vec![parse_quote!(#[nix(from="u64")])];
+        let ctx = Context::new();
+        let container = Container::from_ast(&ctx, &attrs);
+        ctx.check().unwrap();
+        assert_eq!(
+            container,
+            Container {
+                from_str: None,
+                from_store_dir_str: None,
+                type_from: Some(parse_quote!(u64)),
+                type_try_from: None,
+                type_into: None,
+                type_try_into: None,
+                display: Default::None,
+                store_dir_display: None,
+                crate_path: None,
+            }
+        );
+    }
+
+    #[test]
     fn parse_container_try_from() {
         let attrs: Vec<Attribute> = vec![parse_quote!(#[nix(try_from="u64")])];
         let ctx = Context::new();
@@ -349,6 +420,7 @@ mod test {
             container,
             Container {
                 from_str: None,
+                from_store_dir_str: None,
                 type_from: None,
                 type_try_from: Some(parse_quote!(u64)),
                 crate_path: None,

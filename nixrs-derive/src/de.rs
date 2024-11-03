@@ -31,7 +31,11 @@ pub fn expand_nix_deserialize_remote(
 ) -> syn::Result<TokenStream> {
     let cx = Context::new();
     let remote = Remote::from_ast(&cx, crate_path, input);
-    // TODO: Check that we have attributes to deserialize
+    if let Some(attrs) = remote.as_ref().map(|r| &r.attrs) {
+        if attrs.from_str.is_none() && attrs.from_store_dir_str.is_none() && attrs.type_from.is_none() && attrs.type_try_from.is_none() {
+            cx.error_spanned(input, "Missing from_str, from_store_dir_str, from or try_from attribute");
+        }
+    }
     cx.check()?;
     let remote = remote.unwrap();
 
@@ -74,6 +78,8 @@ fn nix_deserialize_body_from(
 ) -> Option<TokenStream> {
     if let Some(span) = attrs.from_str.as_ref() {
         Some(nix_deserialize_from_str(crate_path, span.span()))
+    } else if let Some(span) = attrs.from_store_dir_str.as_ref() {
+        Some(nix_deserialize_from_store_dir_str(crate_path, span.span()))
     } else if let Some(type_from) = attrs.type_from.as_ref() {
         Some(nix_deserialize_from(type_from))
     } else {
@@ -265,6 +271,26 @@ fn nix_deserialize_from_str(crate_path: &Path, span: Span) -> TokenStream {
                 let s = ::std::str::from_utf8(&buf)
                     .map_err(Error::invalid_data)?;
                 <Self as ::std::str::FromStr>::from_str(s)
+                    .map_err(Error::invalid_data)
+                    .map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+}
+
+fn nix_deserialize_from_store_dir_str(crate_path: &Path, span: Span) -> TokenStream {
+    quote_spanned! {
+        span =>
+        {
+            use #crate_path::daemon::de::Error;
+            use #crate_path::store_path::FromStoreDirStr;
+            if let Some(buf) = reader.try_read_bytes().await? {
+                let s = ::std::str::from_utf8(&buf)
+                    .map_err(Error::invalid_data)?;
+                let dir = reader.store_dir();
+                <Self as FromStoreDirStr>::from_store_dir_str(dir, s)
                     .map_err(Error::invalid_data)
                     .map(Some)
             } else {

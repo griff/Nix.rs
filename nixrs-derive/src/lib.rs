@@ -1,32 +1,34 @@
 //! # Using derive
-//! 
+//!
 //! 1. [Overview](#overview)
 //! 3. [Attributes](#attributes)
 //!     1. [Container attributes](#container-attributes)
 //!         1. [`#[nix(from_str)]`](#nixfrom_str)
-//!         2. [`#[nix(from = "FromType")]`](#nixfrom--fromtype)
-//!         3. [`#[nix(try_from = "FromType")]`](#nixtry_from--fromtype)
-//!         4. [`#[nix(crate = "...")]`](#nixcrate--)
+//!         2. [`#[nix(from_store_dir_str)]`](#nixfrom_store_dir_str)
+//!         3. [`#[nix(from = "FromType")]`](#nixfrom--fromtype)
+//!         4. [`#[nix(try_from = "FromType")]`](#nixtry_from--fromtype)
+//!         5. [`#[nix(crate = "...")]`](#nixcrate--)
 //!     2. [Variant attributes](#variant-attributes)
 //!         1. [`#[nix(version = "range")]`](#nixversion--range)
 //!     3. [Field attributes](#field-attributes)
 //!         1. [`#[nix(version = "range")]`](#nixversion--range-1)
 //!         2. [`#[nix(default)]`](#nixdefault)
 //!         3. [`#[nix(default = "path")]`](#nixdefault--path)
-//! 
+//!
 //! ## Overview
-//! 
+//!
 //! This crate contains derive macros and function-like macros for implementing
 //! `NixDeserialize` with less boilerplate.
-//! 
+//!
 //! ### Examples
+//!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
 //! # 
 //! #[derive(NixDeserialize)]
 //! struct Unnamed(u64, String);
 //! ```
-//! 
+//!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
 //! # 
@@ -43,13 +45,13 @@
 //! #[derive(NixDeserialize)]
 //! struct Ignored;
 //! ```
-//! 
+//!
 //! ## Attributes
-//! 
+//!
 //! To customize the derived trait implementations you can add
 //! [attributes](https://doc.rust-lang.org/reference/attributes.html)
 //! to containers, fields and variants.
-//! 
+//!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
 //! # 
@@ -60,7 +62,7 @@
 //!     #[nix(version="..20")] // <-- This is a field attribute
 //!     message: String,
 //! };
-//! 
+//!
 //! #[derive(NixDeserialize)]
 //! #[nix(crate="nixrs")] // <-- This is also a container attribute
 //! enum E {
@@ -70,20 +72,20 @@
 //!     B(String),
 //! }
 //! ```
-//! 
+//!
 //! ### Container attributes
-//! 
+//!
 //! ##### `#[nix(from_str)]`
 //!
 //! When `from_str` is specified the fields are all ignored and instead a
 //! `String` is first deserialized and then `FromStr::from_str` is used
 //! to convert this `String` to the container type.
-//! 
+//!
 //! This means that the container must implement `FromStr` and the error
 //! returned from the `from_str` must implement `Display`.
-//! 
+//!
 //! ###### Example
-//! 
+//!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
 //! # 
@@ -101,18 +103,48 @@
 //!     }
 //! }
 //! ```
-//! 
+//!
+//! ##### `#[nix(from_store_dir_str)]`
+//!
+//! When `from_store_dir_str` is specified the fields are all
+//! ignored and instead a `String` is first deserialized and then
+//! `FromStoreDirStr::from_store_dir_str` is used to convert this
+//! `String` to the container type.
+//!
+//! This means that the container must implement `FromStoreDirStr`.
+//!
+//! ###### Example
+//!
+//! ```rust
+//! # use nixrs_derive::NixDeserialize;
+//! # use nixrs::store_path::StoreDir;
+//! #
+//! #[derive(NixDeserialize)]
+//! #[nix(from_store_dir_str)]
+//! struct MyString(String);
+//! impl nixrs::store_path::FromStoreDirStr for MyString {
+//!     type Error = std::io::Error;
+//!     fn from_store_dir_str(store_dir: &StoreDir, s: &str) -> Result<Self, Self::Error> {
+//!         if s != "bad string" {
+//!             Ok(MyString(s.to_string()))
+//!         } else {
+//!             Err(std::io::Error::new(std::io::ErrorKind::Other, "Got a bad string"))
+//!         }
+//!     }
+//! }
+//! ```
+//!
 //! ##### `#[nix(from = "FromType")]`
-//! 
+//!
 //! When `from` is specified the fields are all ignored and instead a
 //! value of `FromType` is first deserialized and then `From::from` is
 //! used to convert from this value to the container type.
-//! 
+//!
 //! This means that the container must implement `From<FromType>` and
 //! `FromType` must implement `NixDeserialize`.
-//! 
+//!
 //! ###### Example
-//! 
+//!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
 //! # 
@@ -125,19 +157,19 @@
 //!     }
 //! }
 //! ```
-//! 
+//!
 //! ##### `#[nix(try_from = "FromType")]`
-//! 
+//!
 //! With `try_from` a value of `FromType` is first deserialized and then
 //! `TryFrom::try_from` is used to convert from this value to the container
 //! type.
-//! 
+//!
 //! This means that the container must implement `TryFrom<FromType>` and
 //! `FromType` must implement `NixDeserialize`.
 //! The error returned from `try_from` also needs to implement `Display`.
 //!
 //! ###### Example
-//! 
+//!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
 //! # 
@@ -164,15 +196,15 @@
 //! ### Variant attributes
 //!
 //! ##### `#[nix(version = "range")]`
-//! 
+//!
 //! Specifies the protocol version range where this variant is used.
 //! When deriving an enum the `version` attribute is used to select which
 //! variant of the enum to deserialize. The range is for minor version and
 //! the version ranges of all variants combined must cover all versions
 //! without any overlap or the first variant that matches is selected.
-//! 
+//!
 //! ###### Example
-//! 
+//!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
 //! #
@@ -193,9 +225,9 @@
 //! The range is for minor version. For example `version = "..20"`
 //! includes the field in protocol versions `1.0` to `1.19` and skips
 //! it in version `1.20` and above.
-//! 
+//!
 //! ###### Example
-//! 
+//!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
 //! # 
@@ -208,15 +240,15 @@
 //! ```
 //!
 //! ##### `#[nix(default)]`
-//! 
+//!
 //! When a field is skipped because the active protocol version falls
 //! outside the range specified in [`#[nix(version = "range")]`](#nixversion--range-1)
 //! this attribute indicates that `Default::default()` should be used
 //! to get a value for the field. This is also the default
 //! when you only specify [`#[nix(version = "range")]`](#nixversion--range-1).
-//! 
+//!
 //! ###### Example
-//! 
+//!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
 //! # 
@@ -227,9 +259,9 @@
 //!     messsage: String,
 //! }
 //! ```
-//! 
+//!
 //! ##### `#[nix(default = "path")]`
-//! 
+//!
 //! When a field is skipped because the active protocol version falls
 //! outside the range specified in [`#[nix(version = "range")]`](#nixversion--range-1)
 //! this attribute indicates that the function in `path` should be called to
@@ -237,9 +269,9 @@
 //! as `fn() -> T`.
 //! For example `default = "my_value"` would call `my_value()` and `default =
 //! "AType::empty"` would call `AType::empty()`.
-//! 
+//!
 //! ###### Example
-//! 
+//!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
 //! # 
@@ -249,7 +281,7 @@
 //!     #[nix(version="..20", default="missing_string")]
 //!     messsage: String,
 //! }
-//! 
+//!
 //! fn missing_string() -> String {
 //!     "missing string".to_string()
 //! }
