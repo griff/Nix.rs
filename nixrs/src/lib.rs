@@ -5,7 +5,7 @@
 
 extern crate self as nixrs;
 
-#[cfg(feature="archive")]
+#[cfg(feature = "archive")]
 pub mod archive;
 pub mod base32;
 pub mod daemon;

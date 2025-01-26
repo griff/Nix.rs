@@ -1,19 +1,28 @@
-#[cfg(feature="nixrs-derive")]
+use derive_more::Display;
+#[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-use derive_more::Display;
 
-#[cfg(feature="nixrs-derive")]
+#[cfg(feature = "nixrs-derive")]
 use crate::daemon::de::{NixDeserialize, NixRead};
-#[cfg(feature="nixrs-derive")]
+#[cfg(feature = "nixrs-derive")]
 use crate::daemon::ser::{NixSerialize, NixWrite};
-#[cfg(feature="nixrs-derive")]
-use crate::store_path::StorePath;
-#[cfg(feature="nixrs-derive")]
+#[cfg(feature = "nixrs-derive")]
 use crate::daemon::types::ContentAddress;
+#[cfg(feature = "nixrs-derive")]
+use crate::store_path::StorePath;
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    TryFromPrimitive,
+    IntoPrimitive,
     Display,
 )]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
@@ -75,7 +84,6 @@ pub enum Operation {
     HasSubstitutes = 3,
     /// Obsolete Nix 1.2 Protocol 1.12
     QuerySubstitutablePathInfo = 21,
-
     // Removed Nix 2.0 Protocol 1.16
     // QueryFailedPaths = 24,
     // Removed Nix 2.0 Protocol 1.16
@@ -88,7 +96,7 @@ pub enum Operation {
     // RemovedCollectGarbage = 15,
 }
 
-#[cfg(feature="nixrs-derive")]
+#[cfg(feature = "nixrs-derive")]
 macro_rules! optional_string {
     ($sub:ty) => {
         impl NixDeserialize for Option<$sub> {
@@ -102,8 +110,7 @@ macro_rules! optional_string {
                     use nixrs::daemon::de::Error;
                     use nixrs::store_path::FromStoreDirStr;
                     if let Some(buf) = reader.try_read_bytes().await? {
-                        let s = ::std::str::from_utf8(&buf)
-                            .map_err(Error::invalid_data)?;
+                        let s = ::std::str::from_utf8(&buf).map_err(Error::invalid_data)?;
                         if s == "" {
                             Ok(Some(None))
                         } else {
@@ -120,7 +127,8 @@ macro_rules! optional_string {
         }
         impl NixSerialize for Option<$sub> {
             async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
-                where W: NixWrite
+            where
+                W: NixWrite,
             {
                 if let Some(value) = self.as_ref() {
                     writer.write_value(value).await
@@ -131,7 +139,7 @@ macro_rules! optional_string {
         }
     };
 }
-#[cfg(feature="nixrs-derive")]
+#[cfg(feature = "nixrs-derive")]
 optional_string!(StorePath);
-#[cfg(feature="nixrs-derive")]
+#[cfg(feature = "nixrs-derive")]
 optional_string!(ContentAddress);

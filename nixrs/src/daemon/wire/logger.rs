@@ -1,24 +1,23 @@
 use std::fmt;
 use std::str::FromStr;
 
-use bytes::Bytes;
-#[cfg(feature="nixrs-derive")]
-use nixrs_derive::{NixDeserialize, NixSerialize};
-use num_enum::{IntoPrimitive, TryFromPrimitive};
 use crate::daemon::logger::{Activity, ActivityResult, LogError};
-#[cfg(feature="nixrs-derive")]
+#[cfg(feature = "nixrs-derive")]
 use crate::daemon::ser::{NixSerialize, NixWrite};
 use crate::daemon::DaemonString;
+use bytes::Bytes;
+#[cfg(feature = "nixrs-derive")]
+use nixrs_derive::{NixDeserialize, NixSerialize};
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-pub const STDERR_LAST : u64 = 0x616c7473; // 'alts' in ASCII
+pub const STDERR_LAST: u64 = 0x616c7473; // 'alts' in ASCII
 pub const STDERR_ERROR: u64 = 0x63787470; // 'cxtp' in ASCII
-pub const STDERR_NEXT: u64 = 0x6f6c6d67;  // 'olmg' in ASCII
-pub const STDERR_READ: u64 = 0x64617461;  // 'data' in ASCII
+pub const STDERR_NEXT: u64 = 0x6f6c6d67; // 'olmg' in ASCII
+pub const STDERR_READ: u64 = 0x64617461; // 'data' in ASCII
 pub const STDERR_WRITE: u64 = 0x64617416;
 pub const STDERR_START_ACTIVITY: u64 = 0x53545254; // 'STRT' in ASCII
 pub const STDERR_STOP_ACTIVITY: u64 = 0x53544f50; // 'STOP' in ASCII
 pub const STDERR_RESULT: u64 = 0x52534c54; // 'RSLT' in ASCII
-
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
@@ -51,10 +50,11 @@ pub enum RawLogMessage {
     Result(ActivityResult),
 }
 
-#[cfg(feature="nixrs-derive")]
+#[cfg(feature = "nixrs-derive")]
 impl NixSerialize for RawLogMessage {
     async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
-        where W: NixWrite
+    where
+        W: NixWrite,
     {
         use RawLogMessageType::*;
         match self {
@@ -62,7 +62,7 @@ impl NixSerialize for RawLogMessage {
             RawLogMessage::Error(err) => {
                 writer.write_value(&Error).await?;
                 writer.write_value(err).await?;
-            },
+            }
             RawLogMessage::Next(msg) => {
                 writer.write_value(&Next).await?;
                 writer.write_value(msg).await?;

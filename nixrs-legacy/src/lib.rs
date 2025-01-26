@@ -13,8 +13,8 @@ pub mod tracing;
 
 pub use closure::compute_closure;
 
-pub use nixrs_io as io;
 pub use nixrs_archive as archive;
+pub use nixrs_io as io;
 
 pub type StringSet = BTreeSet<String>;
 

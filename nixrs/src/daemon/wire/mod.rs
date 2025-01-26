@@ -1,10 +1,10 @@
-#[cfg(feature="nixrs-derive")]
+#[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
-#[cfg(any(test, feature="test"))]
+#[cfg(any(test, feature = "test"))]
 use proptest_derive::Arbitrary;
 
-pub const CLIENT_MAGIC : u64 = 0x6e697863; // 'nixc' in ASCII
-pub const SERVER_MAGIC : u64 = 0x6478696f; // 'dxio' in ASCII
+pub const CLIENT_MAGIC: u64 = 0x6e697863; // 'nixc' in ASCII
+pub const SERVER_MAGIC: u64 = 0x6478696f; // 'dxio' in ASCII
 
 pub mod logger;
 pub mod types;

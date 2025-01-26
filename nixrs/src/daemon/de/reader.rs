@@ -172,9 +172,7 @@ where
         &self.store_dir
     }
 
-    async fn try_read_number(
-        &mut self,
-    ) -> Result<Option<u64>, Self::Error> {
+    async fn try_read_number(&mut self) -> Result<Option<u64>, Self::Error> {
         let mut buf = [0u8; 8];
         let read = self.read_buf(&mut &mut buf[..]).await?;
         if read == 0 {
@@ -239,15 +237,11 @@ where
         }
     }
 
-    async fn try_read_bytes(
-        &mut self,
-    ) -> Result<Option<Bytes>, Self::Error> {
+    async fn try_read_bytes(&mut self) -> Result<Option<Bytes>, Self::Error> {
         self.try_read_bytes_limited(0..=self.max_buf_size).await
     }
 
-    async fn read_bytes(
-        &mut self,
-    ) -> Result<Bytes, Self::Error> {
+    async fn read_bytes(&mut self) -> Result<Bytes, Self::Error> {
         self.read_bytes_limited(0..=self.max_buf_size).await
     }
 }
@@ -514,9 +508,7 @@ mod test {
     #[cfg(any(target_pointer_width = "16", target_pointer_width = "32"))]
     async fn test_bytes_aligned_length_conversion_overflow() {
         let len = (usize::MAX - 6) as u64;
-        let mock = Builder::new()
-            .read(&len.to_le_bytes())
-            .build();
+        let mock = Builder::new().read(&len.to_le_bytes()).build();
         let mut reader = NixReader::new(mock);
 
         assert_eq!(

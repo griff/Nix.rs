@@ -2,10 +2,10 @@ use bytes::Bytes;
 
 use super::{NixSerialize, NixWrite};
 
-
 impl NixSerialize for Bytes {
     async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
-        where W: NixWrite
+    where
+        W: NixWrite,
     {
         writer.write_slice(&self).await
     }
@@ -13,7 +13,8 @@ impl NixSerialize for Bytes {
 
 impl<'a> NixSerialize for &'a [u8] {
     async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
-        where W: NixWrite
+    where
+        W: NixWrite,
     {
         writer.write_slice(&self).await
     }
@@ -21,7 +22,8 @@ impl<'a> NixSerialize for &'a [u8] {
 
 impl NixSerialize for String {
     async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
-        where W: NixWrite
+    where
+        W: NixWrite,
     {
         writer.write_slice(self.as_bytes()).await
     }
@@ -29,19 +31,19 @@ impl NixSerialize for String {
 
 impl NixSerialize for str {
     async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
-        where W: NixWrite
+    where
+        W: NixWrite,
     {
         writer.write_slice(self.as_bytes()).await
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use hex_literal::hex;
     use rstest::rstest;
-    use tokio_test::io::Builder;
     use tokio::io::AsyncWriteExt as _;
+    use tokio_test::io::Builder;
 
     use crate::daemon::ser::{NixWrite, NixWriter};
 

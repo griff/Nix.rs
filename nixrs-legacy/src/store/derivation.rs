@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use bstr::ByteSlice;
+use nixrs_io::flag_enum;
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncWrite};
-use nixrs_io::flag_enum;
 
 use crate::hash;
 use crate::io::{AsyncSink, AsyncSource};

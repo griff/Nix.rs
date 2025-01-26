@@ -2,8 +2,8 @@ use std::fmt;
 
 use derive_more::{LowerHex, UpperHex};
 
-use nixrs_io::flag_enum;
 use crate::num_enum::num_enum;
+use nixrs_io::flag_enum;
 
 mod client;
 mod server;

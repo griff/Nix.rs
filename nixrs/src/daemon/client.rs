@@ -6,14 +6,16 @@ use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt as _};
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::UnixStream;
 
-use crate::archive::copy_nar;
-use crate::store_path::StoreDir;
 use super::de::{NixDeserialize, NixRead as _, NixReader, NixReaderBuilder};
 use super::logger::{FutureResult, LoggerResult, ProcessStderr};
 use super::ser::{NixWrite as _, NixWriter, NixWriterBuilder};
 use super::wire::types::Operation;
 use super::wire::{CLIENT_MAGIC, SERVER_MAGIC};
-use super::{DaemonError, DaemonResult, DaemonStore, HandshakeDaemonStore, ProtocolVersion, TrustLevel};
+use super::{
+    DaemonError, DaemonResult, DaemonStore, HandshakeDaemonStore, ProtocolVersion, TrustLevel,
+};
+use crate::archive::copy_nar;
+use crate::store_path::StoreDir;
 
 pub struct DaemonClientBuilder {
     store_dir: StoreDir,
@@ -53,64 +55,91 @@ impl DaemonClientBuilder {
 
     pub fn set_min_version<P: Into<ProtocolVersion>>(&mut self, min_version: P) -> &mut Self {
         let min_version = min_version.into();
-        assert!(min_version >= ProtocolVersion::min(), "Only protocols later than {} are supported", ProtocolVersion::min());
+        assert!(
+            min_version >= ProtocolVersion::min(),
+            "Only protocols later than {} are supported",
+            ProtocolVersion::min()
+        );
         self.min_version = min_version;
         self
     }
 
     pub fn set_max_version<P: Into<ProtocolVersion>>(&mut self, max_version: P) -> &mut Self {
         let max_version = max_version.into();
-        assert!(max_version <= ProtocolVersion::max(), "Only protocols up to {} are supported", ProtocolVersion::max());
+        assert!(
+            max_version <= ProtocolVersion::max(),
+            "Only protocols up to {} are supported",
+            ProtocolVersion::max()
+        );
         self.max_version = max_version;
         self
     }
 
-    pub fn build<R, W>(self, reader: R, writer: W) -> DaemonHandshakeClient<R,W> {
-        let reader = self.reader_builder
+    pub fn build<R, W>(self, reader: R, writer: W) -> DaemonHandshakeClient<R, W> {
+        let reader = self
+            .reader_builder
             .set_store_dir(&self.store_dir)
             .build(reader);
-        let writer = self.writer_builder
+        let writer = self
+            .writer_builder
             .set_store_dir(&self.store_dir)
             .build(writer);
         let host = self.host.unwrap_or("unknown".to_string());
         let min_version = self.min_version;
         let max_version = self.max_version;
-        DaemonHandshakeClient { host, reader, writer, min_version, max_version }
+        DaemonHandshakeClient {
+            host,
+            reader,
+            writer,
+            min_version,
+            max_version,
+        }
     }
 
-    pub async fn build_unix<P>(self, path: P) -> DaemonResult<DaemonHandshakeClient<OwnedReadHalf, OwnedWriteHalf>>
-        where P: AsRef<Path>,
+    pub async fn build_unix<P>(
+        self,
+        path: P,
+    ) -> DaemonResult<DaemonHandshakeClient<OwnedReadHalf, OwnedWriteHalf>>
+    where
+        P: AsRef<Path>,
     {
         let stream = UnixStream::connect(path).await?;
         let (reader, writer) = stream.into_split();
         Ok(self.build(reader, writer))
     }
 
-    pub async fn build_daemon(self) -> DaemonResult<DaemonHandshakeClient<OwnedReadHalf, OwnedWriteHalf>>
-    {
+    pub async fn build_daemon(
+        self,
+    ) -> DaemonResult<DaemonHandshakeClient<OwnedReadHalf, OwnedWriteHalf>> {
         self.build_unix("/nix/var/nix/daemon-socket/socket").await
     }
 
-    pub fn connect<R, W>(self, reader: R, writer:W) -> impl LoggerResult<DaemonClient<R,W>, DaemonError>
-        where R: AsyncRead + fmt::Debug + Unpin + Send + 'static,
-              W: AsyncWrite + fmt::Debug + Unpin + Send + 'static,
+    pub fn connect<R, W>(
+        self,
+        reader: R,
+        writer: W,
+    ) -> impl LoggerResult<DaemonClient<R, W>, DaemonError>
+    where
+        R: AsyncRead + fmt::Debug + Unpin + Send + 'static,
+        W: AsyncWrite + fmt::Debug + Unpin + Send + 'static,
     {
         self.build(reader, writer).handshake()
     }
 
-    pub fn connect_unix<P>(self, path: P) -> impl LoggerResult<DaemonClient<OwnedReadHalf,OwnedWriteHalf>, DaemonError>
-        where P: AsRef<Path>,
+    pub fn connect_unix<P>(
+        self,
+        path: P,
+    ) -> impl LoggerResult<DaemonClient<OwnedReadHalf, OwnedWriteHalf>, DaemonError>
+    where
+        P: AsRef<Path>,
     {
-        FutureResult::new(async move {
-            Ok(self.build_unix(path).await?.handshake())
-        })
+        FutureResult::new(async move { Ok(self.build_unix(path).await?.handshake()) })
     }
 
-    pub fn connect_daemon(self) -> impl LoggerResult<DaemonClient<OwnedReadHalf,OwnedWriteHalf>, DaemonError>
-    {
-        FutureResult::new(async move {
-            Ok(self.build_daemon().await?.handshake())
-        })
+    pub fn connect_daemon(
+        self,
+    ) -> impl LoggerResult<DaemonClient<OwnedReadHalf, OwnedWriteHalf>, DaemonError> {
+        FutureResult::new(async move { Ok(self.build_daemon().await?.handshake()) })
     }
 }
 
@@ -128,25 +157,25 @@ where
     R: AsyncRead + fmt::Debug + Unpin + Send + 'static,
     W: AsyncWrite + fmt::Debug + Unpin + Send + 'static,
 {
-    type Store = DaemonClient<R,W>;
-    
+    type Store = DaemonClient<R, W>;
+
     fn handshake(self) -> impl LoggerResult<Self::Store, DaemonError> {
         FutureResult::new(async move {
             let mut reader = self.reader;
             let mut writer = self.writer;
             let mut daemon_nix_version = None;
             let mut remote_trusts_us = TrustLevel::Unknown;
-    
+
             // Send the magic greeting, check for the reply.
             writer.write_number(CLIENT_MAGIC).await?;
             writer.flush().await?;
-            
+
             let magic = reader.read_number().await?;
             if magic != SERVER_MAGIC {
                 return Err(DaemonError::WrongMagic(magic));
             }
-            
-            let server_version : ProtocolVersion = reader.read_value().await?;
+
+            let server_version: ProtocolVersion = reader.read_value().await?;
             let version = server_version.min(self.max_version);
             if version < self.min_version {
                 return Err(DaemonError::UnsupportedVersion(version));
@@ -154,43 +183,49 @@ where
             writer.write_value(&version).await?;
             reader.set_version(version);
             writer.set_version(version);
-    
+
             if version.minor() >= 14 {
                 // Obsolete CPU Affinity
                 writer.write_value(&false).await?;
             }
-    
+
             if version.minor() >= 11 {
                 // Obsolete reserved space
                 writer.write_value(&false).await?;
             }
-    
+
             if version.minor() >= 33 {
                 writer.flush().await?;
                 let version = reader.read_value().await?;
                 daemon_nix_version = Some(version);
             }
-    
+
             if version.minor() >= 35 {
                 remote_trusts_us = reader.read_value().await?;
             }
-    
+
             writer.flush().await?;
 
             let host = self.host;
 
-            Ok(ProcessStderr::new(reader).result_fn(move |result, reader, _, _, _| async move {
-                result?;
-                Ok(DaemonClient {
-                    host, reader, writer, daemon_nix_version, remote_trusts_us,
-                })
-            }))
+            Ok(
+                ProcessStderr::new(reader).result_fn(move |result, reader, _, _, _| async move {
+                    result?;
+                    Ok(DaemonClient {
+                        host,
+                        reader,
+                        writer,
+                        daemon_nix_version,
+                        remote_trusts_us,
+                    })
+                }),
+            )
         })
     }
 }
 
 #[derive(Debug)]
-pub struct DaemonClient<R,W> {
+pub struct DaemonClient<R, W> {
     host: String,
     reader: NixReader<R>,
     writer: NixWriter<W>,
@@ -227,10 +262,8 @@ where
         writer: W,
     ) -> impl LoggerResult<Self, DaemonError> {
         let mut b = DaemonClient::builder();
-        b.set_store_dir(store_dir)
-            .set_host(host);
-        b.build(reader, writer)
-            .handshake()
+        b.set_store_dir(store_dir).set_host(host);
+        b.build(reader, writer).handshake()
     }
 
     pub async fn close(&mut self) -> Result<(), DaemonError> {
@@ -239,13 +272,12 @@ where
     }
 
     fn process_stderr<'a, T>(&'a mut self) -> impl LoggerResult<T, DaemonError> + 'a
-        where T: NixDeserialize + 'a
+    where
+        T: NixDeserialize + 'a,
     {
         FutureResult::new(async {
             self.writer.flush().await?;
-            Ok(ProcessStderr::new(
-                &mut self.reader,
-            ))  
+            Ok(ProcessStderr::new(&mut self.reader))
         })
     }
 
@@ -274,7 +306,10 @@ where
         self.remote_trusts_us
     }
 
-    fn set_options<'a>(&'a mut self, options: &'a super::ClientOptions) -> impl LoggerResult<(), DaemonError> + 'a {
+    fn set_options<'a>(
+        &'a mut self,
+        options: &'a super::ClientOptions,
+    ) -> impl LoggerResult<(), DaemonError> + 'a {
         FutureResult::new(async {
             self.writer.write_value(&Operation::SetOptions).await?;
             self.writer.write_value(options).await?;
@@ -282,7 +317,10 @@ where
         })
     }
 
-    fn is_valid_path<'a>(&'a mut self, path: &'a crate::store_path::StorePath) -> impl LoggerResult<bool, DaemonError> + 'a {
+    fn is_valid_path<'a>(
+        &'a mut self,
+        path: &'a crate::store_path::StorePath,
+    ) -> impl LoggerResult<bool, DaemonError> + 'a {
         FutureResult::new(async {
             self.writer.write_value(&Operation::IsValidPath).await?;
             self.writer.write_value(path).await?;
@@ -290,7 +328,11 @@ where
         })
     }
 
-    fn query_valid_paths<'a>(&'a mut self, paths: &'a crate::store_path::StorePathSet, substitute: bool) -> impl LoggerResult<crate::store_path::StorePathSet, DaemonError> + 'a {
+    fn query_valid_paths<'a>(
+        &'a mut self,
+        paths: &'a crate::store_path::StorePathSet,
+        substitute: bool,
+    ) -> impl LoggerResult<crate::store_path::StorePathSet, DaemonError> + 'a {
         FutureResult::new(async move {
             self.writer.write_value(&Operation::QueryValidPaths).await?;
             self.writer.write_value(paths).await?;
@@ -301,7 +343,10 @@ where
         })
     }
 
-    fn query_path_info<'a>(&'a mut self, path: &'a crate::store_path::StorePath) -> impl LoggerResult<Option<super::UnkeyedValidPathInfo>, DaemonError> + 'a {
+    fn query_path_info<'a>(
+        &'a mut self,
+        path: &'a crate::store_path::StorePath,
+    ) -> impl LoggerResult<Option<super::UnkeyedValidPathInfo>, DaemonError> + 'a {
         FutureResult::new(async {
             self.writer.write_value(&Operation::QueryPathInfo).await?;
             self.writer.write_value(path).await?;
@@ -309,22 +354,28 @@ where
         })
     }
 
-    fn nar_from_path<'a, NW>(&'a mut self, path: &'a crate::store_path::StorePath, mut sink: NW) -> impl LoggerResult<(), DaemonError> + 'a
-        where NW: AsyncWrite + Unpin + 'a,
+    fn nar_from_path<'a, NW>(
+        &'a mut self,
+        path: &'a crate::store_path::StorePath,
+        mut sink: NW,
+    ) -> impl LoggerResult<(), DaemonError> + 'a
+    where
+        NW: AsyncWrite + Unpin + 'a,
     {
         FutureResult::new(async {
             self.writer.write_value(&Operation::NarFromPath).await?;
             self.writer.write_value(path).await?;
             self.writer.flush().await?;
-            Ok(ProcessStderr::new(&mut self.reader)
-                .result_fn(|result, reader, _, _, _| async move {
+            Ok(ProcessStderr::new(&mut self.reader).result_fn(
+                |result, reader, _, _, _| async move {
                     result?;
                     eprintln!("Copying NAR from client");
                     copy_nar(reader, &mut sink).await?;
                     sink.shutdown().await?;
                     eprintln!("Copied NAR from client");
                     Ok(())
-                }))
+                },
+            ))
         })
     }
 }

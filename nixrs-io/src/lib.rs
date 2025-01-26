@@ -74,7 +74,7 @@ mod tests {
         pub enum RepairFlag {
             NoRepair = false,
             Repair = true,
-        }    
+        }
     }
 
     #[derive(Debug, thiserror::Error)]
@@ -279,9 +279,7 @@ mod tests {
     #[tokio::test]
     async fn test_write_printed() {
         let mut buf = Vec::new();
-        buf.write_printed(45_u64, &195_u64)
-            .await
-            .unwrap();
+        buf.write_printed(45_u64, &195_u64).await.unwrap();
         let read: u64 = (&buf[..]).read_parsed(&45_u64).await.unwrap();
         assert_eq!(read, 195);
         let read: u64 = (&buf[..]).read_parsed(&0_u64).await.unwrap();

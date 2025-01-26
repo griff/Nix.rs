@@ -290,7 +290,6 @@ async fn read_from_str_reader_error() {
     assert_eq!(Error::InvalidData("Bad reader".into()), err);
 }
 
-
 #[derive(Debug, PartialEq, Eq, NixDeserialize)]
 #[nix(from_store_dir_str)]
 struct TestFromStoreDirStr;
@@ -432,7 +431,11 @@ async fn read_enum_9() {
 
 #[tokio::test]
 async fn read_enum_19() {
-    let mut mock = Builder::new().version((1, 19)).read_number(42).read_number(666).build();
+    let mut mock = Builder::new()
+        .version((1, 19))
+        .read_number(42)
+        .read_number(666)
+        .build();
     let value = mock.read_value::<TestEnum>().await.unwrap();
     assert_eq!(TestEnum::Pre20(TestTryFromU64, 666), value);
 }
@@ -458,10 +461,7 @@ async fn read_enum_20() {
 async fn read_enum_30() {
     let mut mock = Builder::new().version((1, 30)).build();
     let value = mock.read_value::<TestEnum>().await.unwrap();
-    assert_eq!(
-        TestEnum::Post30,
-        value
-    );
+    assert_eq!(TestEnum::Post30, value);
 }
 
 #[tokio::test]
@@ -529,8 +529,7 @@ async fn read_enum_invalid_data_20() {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive,
-    NixDeserialize
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, NixDeserialize,
 )]
 #[nix(try_from = "u64")]
 #[repr(u64)]
@@ -542,12 +541,12 @@ enum Tag {
 }
 
 #[derive(Debug, PartialEq, Eq, NixDeserialize)]
-#[nix(tag="Tag")]
+#[nix(tag = "Tag")]
 enum TestTaggedEnum {
     Pre20(TestTryFromU64, #[nix(version = "10..")] u64),
     Post20(StructVersionTest),
     Post30,
-    #[nix(tag="Unknown")]
+    #[nix(tag = "Unknown")]
     Post40 {
         msg: String,
         #[nix(version = "45..")]
@@ -578,7 +577,6 @@ async fn read_tagged_enum_pre20_19() {
     assert_eq!(TestTaggedEnum::Pre20(TestTryFromU64, 666), value);
 }
 
-
 #[tokio::test]
 async fn read_tagged_enum_post20() {
     let mut mock = Builder::new()
@@ -601,10 +599,7 @@ async fn read_tagged_enum_post20() {
 async fn read_tagged_enum_30() {
     let mut mock = Builder::new().version((1, 30)).read_number(3).build();
     let value = mock.read_value::<TestTaggedEnum>().await.unwrap();
-    assert_eq!(
-        TestTaggedEnum::Post30,
-        value
-    );
+    assert_eq!(TestTaggedEnum::Post30, value);
 }
 
 #[tokio::test]
@@ -656,12 +651,19 @@ async fn read_tagged_enum_reader_error() {
 async fn read_tagged_enum_invalid_data_tag() {
     let mut mock = Builder::new().version((1, 9)).read_number(5).build();
     let err = mock.read_value::<TestTaggedEnum>().await.unwrap_err();
-    assert_eq!(Error::InvalidData("No discriminant in enum `Tag` matches the value `5`".into()), err);
+    assert_eq!(
+        Error::InvalidData("No discriminant in enum `Tag` matches the value `5`".into()),
+        err
+    );
 }
 
 #[tokio::test]
 async fn read_tagged_enum_invalid_data_pre20() {
-    let mut mock = Builder::new().version((1, 9)).read_number(1).read_number(666).build();
+    let mut mock = Builder::new()
+        .version((1, 9))
+        .read_number(1)
+        .read_number(666)
+        .build();
     let err = mock.read_value::<TestTaggedEnum>().await.unwrap_err();
     assert_eq!(Error::InvalidData("666".into()), err);
 }

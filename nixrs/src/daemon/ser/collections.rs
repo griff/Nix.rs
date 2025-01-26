@@ -8,15 +8,16 @@ where
     T: NixSerialize + Send + Sync,
 {
     #[allow(clippy::manual_async_fn)]
-    fn serialize<W>(&self, writer: &mut W) -> impl Future<Output=Result<(), W::Error>> + Send
-        where W: NixWrite
+    fn serialize<W>(&self, writer: &mut W) -> impl Future<Output = Result<(), W::Error>> + Send
+    where
+        W: NixWrite,
     {
         async move {
             writer.write_value(&self.len()).await?;
             for value in self.iter() {
                 writer.write_value(value).await?;
             }
-            Ok(())    
+            Ok(())
         }
     }
 }
@@ -26,15 +27,16 @@ where
     T: NixSerialize + Send + Sync,
 {
     #[allow(clippy::manual_async_fn)]
-    fn serialize<W>(&self, writer: &mut W) -> impl Future<Output=Result<(), W::Error>> + Send
-        where W: NixWrite
+    fn serialize<W>(&self, writer: &mut W) -> impl Future<Output = Result<(), W::Error>> + Send
+    where
+        W: NixWrite,
     {
         async move {
             writer.write_value(&self.len()).await?;
             for value in self.iter() {
                 writer.write_value(value).await?;
             }
-            Ok(())    
+            Ok(())
         }
     }
 }
@@ -45,8 +47,9 @@ where
     V: NixSerialize + Send + Sync,
 {
     #[allow(clippy::manual_async_fn)]
-    fn serialize<W>(&self, writer: &mut W) -> impl Future<Output=Result<(), W::Error>> + Send
-        where W: NixWrite
+    fn serialize<W>(&self, writer: &mut W) -> impl Future<Output = Result<(), W::Error>> + Send
+    where
+        W: NixWrite,
     {
         async move {
             writer.write_value(&self.len()).await?;
@@ -54,11 +57,10 @@ where
                 writer.write_value(key).await?;
                 writer.write_value(value).await?;
             }
-            Ok(())    
+            Ok(())
         }
     }
 }
-
 
 #[cfg(test)]
 mod test {
@@ -67,8 +69,8 @@ mod test {
 
     use hex_literal::hex;
     use rstest::rstest;
-    use tokio_test::io::Builder;
     use tokio::io::AsyncWriteExt as _;
+    use tokio_test::io::Builder;
 
     use crate::daemon::ser::{NixSerialize, NixWrite, NixWriter};
 

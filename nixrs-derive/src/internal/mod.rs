@@ -103,7 +103,6 @@ impl<'a> Container<'a> {
                 if let Some(tag) = attrs.tag.as_ref() {
                     ctx.error_spanned(tag, "Struct cannot be tagged");
                     return None;
-    
                 }
                 match &s.fields {
                     syn::Fields::Named(fields) => {
@@ -114,7 +113,7 @@ impl<'a> Container<'a> {
                     }
                     syn::Fields::Unit => Data::Struct(Style::Unit, Vec::new()),
                 }
-            },
+            }
             syn::Data::Enum(e) => {
                 let variants = e
                     .variants

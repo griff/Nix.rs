@@ -7,7 +7,6 @@ use crate::internal::attrs::Default;
 use crate::internal::inputs::RemoteInput;
 use crate::internal::{attrs, Container, Context, Data, Field, Remote, Style, Variant};
 
-
 pub fn expand_nix_serialize(crate_path: Path, input: &mut DeriveInput) -> syn::Result<TokenStream> {
     let cx = Context::new();
     let cont = Container::from_ast(&cx, crate_path, input);
@@ -26,7 +25,6 @@ pub fn expand_nix_serialize(crate_path: Path, input: &mut DeriveInput) -> syn::R
     ))
 }
 
-
 pub fn expand_nix_serialize_remote(
     crate_path: Path,
     input: &RemoteInput,
@@ -34,9 +32,16 @@ pub fn expand_nix_serialize_remote(
     let cx = Context::new();
     let remote = Remote::from_ast(&cx, crate_path, input);
     if let Some(attrs) = remote.as_ref().map(|r| &r.attrs) {
-        if attrs.display.is_none() && attrs.store_dir_display.is_none() && attrs.type_into.is_none() && attrs.type_try_into.is_none() {
-            cx.error_spanned(input, "Missing into, try_into, display or store_dir_display attribute");
-        }    
+        if attrs.display.is_none()
+            && attrs.store_dir_display.is_none()
+            && attrs.type_into.is_none()
+            && attrs.type_try_into.is_none()
+        {
+            cx.error_spanned(
+                input,
+                "Missing into, try_into, display or store_dir_display attribute",
+            );
+        }
     }
     cx.check()?;
     let remote = remote.unwrap();
@@ -44,12 +49,7 @@ pub fn expand_nix_serialize_remote(
     let crate_path = remote.crate_path();
     let body = nix_serialize_body_into(crate_path, &remote.attrs).expect("From tokenstream");
     let generics = Generics::default();
-    Ok(nix_serialize_impl(
-        crate_path,
-        remote.ty,
-        &generics,
-        body,
-    ))
+    Ok(nix_serialize_impl(crate_path, remote.ty, &generics, body))
 }
 
 fn nix_serialize_impl(
@@ -88,7 +88,9 @@ fn nix_serialize_body_into(
     } else if let Some(type_into) = attrs.type_into.as_ref() {
         Some(nix_serialize_into(type_into))
     } else {
-        attrs.type_try_into.as_ref()
+        attrs
+            .type_try_into
+            .as_ref()
             .map(|type_try_into| nix_serialize_try_into(crate_path, type_try_into))
     }
 }
@@ -105,7 +107,7 @@ fn nix_serialize_body(cont: &Container) -> TokenStream {
                 } else {
                     nix_serialize_enum(variants)
                 }
-            },
+            }
         }
     }
 }

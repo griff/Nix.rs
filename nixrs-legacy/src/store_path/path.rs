@@ -368,11 +368,11 @@ pub mod proptest {
 mod tests {
     use super::*;
     use crate::base32::BadBase32;
-    use assert_matches::assert_matches;
-    use pretty_assertions::assert_eq;
     use ::proptest::arbitrary::any;
     use ::proptest::prop_assert_eq;
     use ::proptest::proptest;
+    use assert_matches::assert_matches;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn test_parse() {

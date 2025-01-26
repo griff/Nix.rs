@@ -29,14 +29,14 @@
 //!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
-//! # 
+//! #
 //! #[derive(NixDeserialize)]
 //! struct Unnamed(u64, String);
 //! ```
 //!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
-//! # 
+//! #
 //! #[derive(NixDeserialize)]
 //! struct Fields {
 //!     number: u64,
@@ -46,7 +46,7 @@
 //!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
-//! # 
+//! #
 //! #[derive(NixDeserialize)]
 //! struct Ignored;
 //! ```
@@ -59,7 +59,7 @@
 //!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
-//! # 
+//! #
 //! #[derive(NixDeserialize)]
 //! #[nix(crate="nixrs")] // <-- This is a container attribute
 //! struct Fields {
@@ -93,7 +93,7 @@
 //!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
-//! # 
+//! #
 //! #[derive(NixDeserialize)]
 //! #[nix(from_str)]
 //! struct MyString(String);
@@ -123,7 +123,7 @@
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
 //! # use nixrs::store_path::StoreDir;
-//! # 
+//! #
 //! #[derive(NixDeserialize)]
 //! #[nix(from_store_dir_str)]
 //! struct MyString(String);
@@ -152,7 +152,7 @@
 //!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
-//! # 
+//! #
 //! #[derive(NixDeserialize)]
 //! #[nix(from="usize")]
 //! struct MyValue(usize);
@@ -177,7 +177,7 @@
 //!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
-//! # 
+//! #
 //! #[derive(NixDeserialize)]
 //! #[nix(try_from="usize")]
 //! struct WrongAnswer(usize);
@@ -207,7 +207,7 @@
 //!
 //! ```rust
 //! # use nixrs_derive::NixSerialize;
-//! # 
+//! #
 //! #[derive(Clone, NixSerialize)]
 //! #[nix(into="usize")]
 //! struct MyValue(usize);
@@ -233,7 +233,7 @@
 //!
 //! ```rust
 //! # use nixrs_derive::NixSerialize;
-//! # 
+//! #
 //! #[derive(Clone, NixSerialize)]
 //! #[nix(try_into="usize")]
 //! struct WrongAnswer(usize);
@@ -260,7 +260,7 @@
 //! ```rust
 //! # use nixrs_derive::NixSerialize;
 //! # use std::fmt::{Display, Result, Formatter};
-//! # 
+//! #
 //! #[derive(NixSerialize)]
 //! #[nix(display)]
 //! struct WrongAnswer(usize);
@@ -285,7 +285,7 @@
 //! ```rust
 //! # use nixrs_derive::NixSerialize;
 //! # use std::fmt::{Display, Result, Formatter};
-//! # 
+//! #
 //! #[derive(NixSerialize)]
 //! #[nix(display = "format_it")]
 //! struct WrongAnswer(usize);
@@ -295,7 +295,7 @@
 //!         write!(f, "Wrong Answer = {}", self.0.0)
 //!     }
 //! }
-//! 
+//!
 //! fn format_it(value: &WrongAnswer) -> impl Display + '_ {
 //!     WrongDisplay(value)
 //! }
@@ -314,7 +314,7 @@
 //! # use std::fmt::{Display, Result, Formatter};
 //! # use nixrs::store_path::{StoreDir, StoreDirDisplay};
 //! # use nixrs_derive::NixSerialize;
-//! # 
+//! #
 //! #[derive(NixSerialize)]
 //! #[nix(store_dir_display)]
 //! struct WrongAnswer(usize);
@@ -367,7 +367,7 @@
 //!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
-//! # 
+//! #
 //! #[derive(NixDeserialize)]
 //! struct Field {
 //!     number: u64,
@@ -388,7 +388,7 @@
 //!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
-//! # 
+//! #
 //! #[derive(NixDeserialize)]
 //! struct Field {
 //!     number: u64,
@@ -411,7 +411,7 @@
 //!
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
-//! # 
+//! #
 //! #[derive(NixDeserialize)]
 //! struct Field {
 //!     number: u64,
@@ -450,7 +450,6 @@ pub fn derive_nix_serialize(item: TokenStream) -> TokenStream {
         .into()
 }
 
-
 /// Macro to implement `NixDeserialize` on a type.
 /// Sometimes you can't use the deriver to implement `NixDeserialize`
 /// (like when dealing with types in Rust standard library) but don't want
@@ -458,20 +457,20 @@ pub fn derive_nix_serialize(item: TokenStream) -> TokenStream {
 /// where you would derive using `#[nix(from_str)]`,
 /// `#[nix(from = "FromType")]` or `#[nix(try_from = "FromType")]` if you
 /// could.
-/// 
+///
 /// #### Example
-/// 
+///
 /// ```rust
 /// # use nixrs_derive::nix_deserialize_remote;
-/// # 
+/// #
 /// struct MyU64(u64);
-/// 
+///
 /// impl From<u64> for MyU64 {
 ///     fn from(value: u64) -> Self {
 ///         Self(value)
 ///     }
 /// }
-/// 
+///
 /// nix_deserialize_remote!(#[nix(from="u64")] MyU64);
 /// ```
 #[proc_macro]
@@ -490,21 +489,21 @@ pub fn nix_deserialize_remote(item: TokenStream) -> TokenStream {
 /// where you would derive using `#[nix(display)]`, `#[nix(display = "path")]`,
 /// `#[nix(store_dir_display)]`, `#[nix(into = "IntoType")]` or
 /// `#[nix(try_into = "IntoType")]` if you could.
-/// 
+///
 /// #### Example
-/// 
+///
 /// ```rust
 /// # use nixrs_derive::nix_serialize_remote;
 /// #
 /// #[derive(Clone)]
 /// struct MyU64(u64);
-/// 
+///
 /// impl From<MyU64> for u64 {
 ///     fn from(value: MyU64) -> Self {
 ///         value.0
 ///     }
 /// }
-/// 
+///
 /// nix_serialize_remote!(#[nix(into="u64")] MyU64);
 /// ```
 #[proc_macro]

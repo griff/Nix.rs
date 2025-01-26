@@ -4,21 +4,20 @@ use std::future::{ready, Future};
 use std::io::Cursor;
 use std::marker::PhantomData;
 
-#[cfg(feature="nixrs-derive")]
+#[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{FromPrimitive, IntoPrimitive, TryFromPrimitive};
-#[cfg(any(test, feature="test"))]
+#[cfg(any(test, feature = "test"))]
 use proptest_derive::Arbitrary;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt as _, AsyncRead, AsyncWrite, AsyncWriteExt as _};
 
-#[cfg(feature="nixrs-derive")]
-use crate::daemon::ser::NixSerialize;
 use super::de::{NixDeserialize, NixRead};
 use super::ser::{NixWrite, NixWriter};
 use super::wire::logger::{IgnoredErrorType, RawLogMessage, RawLogMessageType};
 use super::wire::IgnoredZero;
 use super::{DaemonError, DaemonInt, DaemonResult, DaemonString, RemoteError};
-
+#[cfg(feature = "nixrs-derive")]
+use crate::daemon::ser::NixSerialize;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, FromPrimitive, IntoPrimitive, Default,
@@ -47,20 +46,20 @@ pub enum Verbosity {
 #[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
 #[repr(u16)]
 pub enum ActivityType {
-    Unknown       =   0,
-    CopyPath      = 100,
-    FileTransfer  = 101,
-    Realise       = 102,
-    CopyPaths     = 103,
-    Builds        = 104,
-    Build         = 105,
+    Unknown = 0,
+    CopyPath = 100,
+    FileTransfer = 101,
+    Realise = 102,
+    CopyPaths = 103,
+    Builds = 104,
+    Build = 105,
     OptimiseStore = 106,
-    VerifyPaths   = 107,
-    Substitute    = 108,
+    VerifyPaths = 107,
+    Substitute = 108,
     QueryPathInfo = 109,
     PostBuildHook = 110,
-    BuildWaiting  = 111,
-    FetchTree     = 112,
+    BuildWaiting = 111,
+    FetchTree = 112,
 }
 
 #[derive(
@@ -70,15 +69,15 @@ pub enum ActivityType {
 #[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
 #[repr(u16)]
 pub enum ResultType {
-    FileLinked       = 100,
-    BuildLogLine     = 101,
-    UntrustedPath    = 102,
-    CorruptedPath    = 103,
-    SetPhase         = 104,
-    Progress         = 105,
-    SetExpected      = 106,
+    FileLinked = 100,
+    BuildLogLine = 101,
+    UntrustedPath = 102,
+    CorruptedPath = 103,
+    SetPhase = 104,
+    Progress = 105,
+    SetExpected = 106,
     PostBuildLogLine = 107,
-    FetchStatus      = 108,
+    FetchStatus = 108,
 }
 
 #[derive(
@@ -112,7 +111,10 @@ pub struct LogError {
     #[cfg_attr(feature = "nixrs-derive", nix(version = "26.."))]
     _name: IgnoredErrorType,
     pub msg: DaemonString, // If logger is JSON, invalid UTF-8 is replaced with U+FFFD
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "..=25", default="default_exit_status"))]
+    #[cfg_attr(
+        feature = "nixrs-derive",
+        nix(version = "..=25", default = "default_exit_status")
+    )]
     pub exit_status: DaemonInt,
     #[cfg_attr(feature = "nixrs-derive", nix(version = "26.."))]
     _have_pos: IgnoredZero,
@@ -137,9 +139,7 @@ impl From<RemoteError> for LogError {
 impl From<DaemonError> for LogError {
     fn from(value: DaemonError) -> Self {
         match value {
-            DaemonError::Remote(remote_error) => {
-                remote_error.into()
-            },
+            DaemonError::Remote(remote_error) => remote_error.into(),
             _ => {
                 let msg = value.to_string().into_bytes().into();
                 LogError {
@@ -149,8 +149,7 @@ impl From<DaemonError> for LogError {
                     traces: Vec::new(),
                     _ty: IgnoredErrorType,
                     _name: IgnoredErrorType,
-                    _have_pos: IgnoredZero,            
-        
+                    _have_pos: IgnoredZero,
                 }
             }
         }
@@ -168,7 +167,6 @@ impl From<LogError> for RemoteError {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LogMessage {
     Next(DaemonString),
@@ -179,7 +177,8 @@ pub enum LogMessage {
 
 impl NixSerialize for LogMessage {
     async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
-        where W: super::ser::NixWrite
+    where
+        W: super::ser::NixWrite,
     {
         match self {
             LogMessage::Next(msg) => {
@@ -188,7 +187,9 @@ impl NixSerialize for LogMessage {
             }
             LogMessage::StartActivity(act) => {
                 if writer.version().minor() >= 20 {
-                    writer.write_value(&RawLogMessageType::StartActivity).await?;
+                    writer
+                        .write_value(&RawLogMessageType::StartActivity)
+                        .await?;
                     writer.write_value(act).await?;
                 } else {
                     writer.write_value(&RawLogMessageType::Next).await?;
@@ -241,16 +242,18 @@ pub enum Field {
 
 /// Credit embr and gorgon
 pub trait LoggerResult<T, E> {
-    fn next(&mut self) -> impl Future<Output=Option<Result<LogMessage, E>>>;
-    fn result(self) -> impl Future<Output=Result<T,E>>;
+    fn next(&mut self) -> impl Future<Output = Option<Result<LogMessage, E>>>;
+    fn result(self) -> impl Future<Output = Result<T, E>>;
 }
 
 pub trait LoggerResultExt<T, E> {
-    fn map_ok<F, T2>(self, f: F) -> impl LoggerResult<T2,E>
-        where F: FnOnce(T) -> T2;
-    fn and_then<F, T2, Fut,>(self, f: F) -> impl LoggerResult<T2,E>
-        where F: FnOnce(T) -> Fut,
-              Fut: Future<Output=Result<T2, E>>;
+    fn map_ok<F, T2>(self, f: F) -> impl LoggerResult<T2, E>
+    where
+        F: FnOnce(T) -> T2;
+    fn and_then<F, T2, Fut>(self, f: F) -> impl LoggerResult<T2, E>
+    where
+        F: FnOnce(T) -> Fut,
+        Fut: Future<Output = Result<T2, E>>;
 }
 
 struct MapOkResult<L, F, T> {
@@ -260,19 +263,19 @@ struct MapOkResult<L, F, T> {
 }
 
 impl<L, F, T, T2, E> LoggerResult<T2, E> for MapOkResult<L, F, T>
-    where L: LoggerResult<T, E>,
-          F: FnOnce(T) -> T2,
+where
+    L: LoggerResult<T, E>,
+    F: FnOnce(T) -> T2,
 {
     async fn next(&mut self) -> Option<Result<LogMessage, E>> {
         self.result.next().await
     }
 
-    async fn result(self) -> Result<T2,E> {
+    async fn result(self) -> Result<T2, E> {
         let original = self.result.result().await?;
         Ok((self.mapper)(original))
     }
 }
-
 
 struct AndThenResult<L, F, T, Fut> {
     result: L,
@@ -281,24 +284,27 @@ struct AndThenResult<L, F, T, Fut> {
 }
 
 impl<L, F, T, T2, E, Fut> LoggerResult<T2, E> for AndThenResult<L, F, T, Fut>
-    where L: LoggerResult<T, E>,
-          F: FnOnce(T) -> Fut,
-          Fut: Future<Output=Result<T2, E>>,
+where
+    L: LoggerResult<T, E>,
+    F: FnOnce(T) -> Fut,
+    Fut: Future<Output = Result<T2, E>>,
 {
     async fn next(&mut self) -> Option<Result<LogMessage, E>> {
         self.result.next().await
     }
 
-    async fn result(self) -> Result<T2,E> {
+    async fn result(self) -> Result<T2, E> {
         let original = self.result.result().await?;
         (self.mapper)(original).await
     }
 }
-impl<L, T, E> LoggerResultExt<T,E> for L
-    where L: LoggerResult<T,E>
+impl<L, T, E> LoggerResultExt<T, E> for L
+where
+    L: LoggerResult<T, E>,
 {
-    fn map_ok<F, T2>(self, f: F) -> impl LoggerResult<T2,E>
-        where F: FnOnce(T) -> T2
+    fn map_ok<F, T2>(self, f: F) -> impl LoggerResult<T2, E>
+    where
+        F: FnOnce(T) -> T2,
     {
         MapOkResult {
             result: self,
@@ -307,10 +313,11 @@ impl<L, T, E> LoggerResultExt<T,E> for L
         }
     }
 
-    fn and_then<F, T2, Fut,>(self, f: F) -> impl LoggerResult<T2,E>
-        where F: FnOnce(T) -> Fut,
-              Fut: Future<Output=Result<T2, E>>,
-        {
+    fn and_then<F, T2, Fut>(self, f: F) -> impl LoggerResult<T2, E>
+    where
+        F: FnOnce(T) -> Fut,
+        Fut: Future<Output = Result<T2, E>>,
+    {
         AndThenResult {
             result: self,
             mapper: f,
@@ -320,21 +327,21 @@ impl<L, T, E> LoggerResultExt<T,E> for L
 }
 
 impl<E> LoggerResult<(), E> for VecDeque<LogMessage> {
-    fn next(&mut self) -> impl Future<Output=Option<Result<LogMessage, E>>> {
+    fn next(&mut self) -> impl Future<Output = Option<Result<LogMessage, E>>> {
         ready(self.pop_front().map(Ok))
     }
 
-    fn result(self) -> impl Future<Output=Result<(),E>> {
+    fn result(self) -> impl Future<Output = Result<(), E>> {
         ready(Ok(()))
     }
 }
 
-impl<T,E> LoggerResult<T,E> for Result<T,E> {
+impl<T, E> LoggerResult<T, E> for Result<T, E> {
     async fn next(&mut self) -> Option<Result<LogMessage, E>> {
         None
     }
 
-    async fn result(self) -> Result<T,E> {
+    async fn result(self) -> Result<T, E> {
         self
     }
 }
@@ -345,45 +352,40 @@ pub enum FutureResult<Fut, T, E> {
         fut: Fut,
     },
     Resolved {
-        result: Result<T,E>
+        result: Result<T, E>,
     },
     #[default]
     Invalid,
-}    
+}
 
 impl<Fut, T, E> FutureResult<Fut, T, E>
-    where Fut: Future<Output=Result<T, E>>,
+where
+    Fut: Future<Output = Result<T, E>>,
 {
     pub fn new(fut: Fut) -> Self {
         Self::Later { fut }
     }
 
-    async fn resolved(&mut self) -> Result<&mut T, &mut E>
-    {
+    async fn resolved(&mut self) -> Result<&mut T, &mut E> {
         let this = std::mem::take(self);
         let result = match this {
             FutureResult::Invalid => panic!("Resolving invalid FutureResult"),
-            FutureResult::Later { fut } => {
-                fut.await
-            }
-            FutureResult::Resolved { result } => {
-                result
-            }
+            FutureResult::Later { fut } => fut.await,
+            FutureResult::Resolved { result } => result,
         };
         *self = FutureResult::Resolved { result };
         match self {
-            FutureResult::Resolved { result } => {
-                result.as_mut()
-            }
+            FutureResult::Resolved { result } => result.as_mut(),
             _ => unreachable!(),
         }
     }
 }
 
 impl<Fut, R, T, E> LoggerResult<T, E> for FutureResult<Fut, R, E>
-    where Fut: Future<Output = Result<R, E>>,
-          R: LoggerResult<T, E>,
-          E: Clone,
+where
+    Fut: Future<Output = Result<R, E>>,
+    R: LoggerResult<T, E>,
+    E: Clone,
 {
     async fn next(&mut self) -> Option<Result<LogMessage, E>> {
         match self.resolved().await {
@@ -392,15 +394,11 @@ impl<Fut, R, T, E> LoggerResult<T, E> for FutureResult<Fut, R, E>
         }
     }
 
-    async fn result(mut self) -> Result<T,E> {
+    async fn result(mut self) -> Result<T, E> {
         let _ = self.resolved().await;
         match self {
-            FutureResult::Resolved { result: Err(err) } => {
-                Err(err)
-            }
-            FutureResult::Resolved { result: Ok(result) } => {
-                result.result().await
-            }
+            FutureResult::Resolved { result: Err(err) } => Err(err),
+            FutureResult::Resolved { result: Ok(result) } => result.result().await,
             _ => panic!("Invalid state"),
         }
     }
@@ -422,21 +420,33 @@ impl<F, R, T, E> LoggerResult<T, E> for F
 */
 
 trait ReadResult<R, W, SR, SW, T>: Sized {
-    fn read_result(self, result: Result<(), DaemonError>, reader: R, writer: Option<W>, source: Option<SR>, sink: Option<SW>) -> impl Future<Output=DaemonResult<T>>;
+    fn read_result(
+        self,
+        result: Result<(), DaemonError>,
+        reader: R,
+        writer: Option<W>,
+        source: Option<SR>,
+        sink: Option<SW>,
+    ) -> impl Future<Output = DaemonResult<T>>;
 }
 
 impl<R, W, SR, SW, T> ReadResult<R, W, SR, SW, T> for ()
-    where T: NixDeserialize,
-          R: NixRead + AsyncRead + fmt::Debug + Unpin + Send,
-        DaemonError: From<<R as NixRead>::Error>
+where
+    T: NixDeserialize,
+    R: NixRead + AsyncRead + fmt::Debug + Unpin + Send,
+    DaemonError: From<<R as NixRead>::Error>,
 {
-    async fn read_result(self, result: Result<(), DaemonError>, mut reader: R, _writer: Option<W>, _source: Option<SR>, _sink: Option<SW>) -> DaemonResult<T>
-    {
+    async fn read_result(
+        self,
+        result: Result<(), DaemonError>,
+        mut reader: R,
+        _writer: Option<W>,
+        _source: Option<SR>,
+        _sink: Option<SW>,
+    ) -> DaemonResult<T> {
         match result {
             Err(err) => Err(err),
-            Ok(_) => {
-                Ok(reader.read_value().await?)
-            },
+            Ok(_) => Ok(reader.read_value().await?),
         }
     }
 }
@@ -447,10 +457,18 @@ pub struct ResultFn<F, FFut> {
 }
 
 impl<R, W, SR, SW, T, F, FFut> ReadResult<R, W, SR, SW, T> for ResultFn<F, FFut>
-    where F: FnOnce(Result<(), DaemonError>, R, Option<W>, Option<SR>, Option<SW>) -> FFut,
-          FFut: Future<Output=DaemonResult<T>>,
+where
+    F: FnOnce(Result<(), DaemonError>, R, Option<W>, Option<SR>, Option<SW>) -> FFut,
+    FFut: Future<Output = DaemonResult<T>>,
 {
-    async fn read_result(self, result: Result<(), DaemonError>, reader: R, writer: Option<W>, source: Option<SR>, sink: Option<SW>) -> DaemonResult<T> {
+    async fn read_result(
+        self,
+        result: Result<(), DaemonError>,
+        reader: R,
+        writer: Option<W>,
+        source: Option<SR>,
+        sink: Option<SW>,
+    ) -> DaemonResult<T> {
         (self.f)(result, reader, writer, source, sink).await
     }
 }
@@ -465,8 +483,7 @@ pub struct ProcessStderr<R, W, SR, SW, T, TFut> {
     _result_type: PhantomData<T>,
 }
 
-impl<R, T> ProcessStderr<R, NixWriter<Cursor<Vec<u8>>>, Cursor<Vec<u8>>, Cursor<Vec<u8>>, T, ()>
-{
+impl<R, T> ProcessStderr<R, NixWriter<Cursor<Vec<u8>>>, Cursor<Vec<u8>>, Cursor<Vec<u8>>, T, ()> {
     pub fn new(reader: R) -> Self {
         ProcessStderr {
             reader,
@@ -509,8 +526,9 @@ impl<R, W, SR, SW, T, TFut> ProcessStderr<R, W, SR, SW, T, TFut> {
      */
 
     pub fn result_fn<F, FFut>(self, f: F) -> ProcessStderr<R, W, SR, SW, T, ResultFn<F, FFut>>
-        where F: FnOnce(Result<(), DaemonError>, R, Option<W>, Option<SR>, Option<SW>) -> FFut,
-            FFut: Future<Output=DaemonResult<T>>,
+    where
+        F: FnOnce(Result<(), DaemonError>, R, Option<W>, Option<SR>, Option<SW>) -> FFut,
+        FFut: Future<Output = DaemonResult<T>>,
     {
         ProcessStderr {
             result: self.result,
@@ -528,9 +546,10 @@ impl<R, W, SR, SW, T, TFut> ProcessStderr<R, W, SR, SW, T, TFut> {
 }
 
 impl<R, W, SR, SW, T, TFut> ProcessStderr<R, W, SR, SW, T, TFut>
-    where W: NixWrite + AsyncWrite + fmt::Debug + Unpin + Send,
-          DaemonError: From<<W as NixWrite>::Error>,
-          SR: AsyncBufRead + fmt::Debug + Unpin + Send,
+where
+    W: NixWrite + AsyncWrite + fmt::Debug + Unpin + Send,
+    DaemonError: From<<W as NixWrite>::Error>,
+    SR: AsyncBufRead + fmt::Debug + Unpin + Send,
 {
     async fn process_read(&mut self, mut len: usize) -> Result<(), DaemonError> {
         if let Some(source) = self.source.as_mut() {
@@ -551,12 +570,13 @@ impl<R, W, SR, SW, T, TFut> ProcessStderr<R, W, SR, SW, T, TFut>
 }
 
 impl<R, W, SR, SW, T, TFut> LoggerResult<T, DaemonError> for ProcessStderr<R, W, SR, SW, T, TFut>
-    where R: NixRead + AsyncRead + fmt::Debug + Unpin + Send,
-          W: NixWrite + AsyncWrite + fmt::Debug + Unpin + Send,
-          DaemonError: From<<W as NixWrite>::Error> + From<<R as NixRead>::Error>,
-          SR: AsyncBufRead + fmt::Debug + Unpin + Send,
-          SW: AsyncWrite + fmt::Debug + Unpin + Send,
-          TFut: ReadResult<R, W, SR, SW, T>,
+where
+    R: NixRead + AsyncRead + fmt::Debug + Unpin + Send,
+    W: NixWrite + AsyncWrite + fmt::Debug + Unpin + Send,
+    DaemonError: From<<W as NixWrite>::Error> + From<<R as NixRead>::Error>,
+    SR: AsyncBufRead + fmt::Debug + Unpin + Send,
+    SW: AsyncWrite + fmt::Debug + Unpin + Send,
+    TFut: ReadResult<R, W, SR, SW, T>,
 {
     async fn next(&mut self) -> Option<Result<LogMessage, DaemonError>> {
         if self.result.is_some() {
@@ -572,7 +592,7 @@ impl<R, W, SR, SW, T, TFut> LoggerResult<T, DaemonError> for ProcessStderr<R, W,
                 }
                 Ok(RawLogMessage::Result(result)) => {
                     return Some(Ok(LogMessage::Result(result)));
-                },
+                }
                 Ok(RawLogMessage::StartActivity(act)) => {
                     return Some(Ok(LogMessage::StartActivity(act)));
                 }
@@ -603,14 +623,22 @@ impl<R, W, SR, SW, T, TFut> LoggerResult<T, DaemonError> for ProcessStderr<R, W,
                 Err(err) => {
                     return Some(Err(err.into()));
                 }
-            }    
+            }
         }
     }
-    
+
     async fn result(mut self) -> Result<T, DaemonError> {
         while let Some(msg) = self.next().await {
             msg?;
         }
-        self.read_result.read_result(self.result.unwrap(), self.reader, self.writer, self.source, self.sink).await
+        self.read_result
+            .read_result(
+                self.result.unwrap(),
+                self.reader,
+                self.writer,
+                self.source,
+                self.sink,
+            )
+            .await
     }
 }

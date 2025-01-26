@@ -2,10 +2,10 @@ use std::collections::BTreeMap;
 
 use bstr::ByteSlice;
 use bytes::Bytes;
-#[cfg(feature="nixrs-derive")]
+#[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-#[cfg(any(test, feature="nixrs-derive"))]
+#[cfg(any(test, feature = "nixrs-derive"))]
 use proptest_derive::Arbitrary;
 use thiserror::Error;
 use tokio::io::AsyncWrite;
@@ -28,13 +28,20 @@ pub struct ContentAddress(String);
 impl FromStoreDirStr for ContentAddress {
     type Error = ParseStorePathError;
 
-    fn from_store_dir_str(_store_dir: &crate::store_path::StoreDir, s: &str) -> Result<Self, Self::Error> {
+    fn from_store_dir_str(
+        _store_dir: &crate::store_path::StoreDir,
+        s: &str,
+    ) -> Result<Self, Self::Error> {
         Ok(ContentAddress(s.to_owned()))
     }
 }
 
 impl StoreDirDisplay for ContentAddress {
-    fn fmt(&self, _store_dir: &crate::store_path::StoreDir, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        _store_dir: &crate::store_path::StoreDir,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
@@ -83,9 +90,7 @@ impl Default for ClientOptions {
 }
 */
 
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct UnkeyedValidPathInfo {
@@ -126,9 +131,17 @@ pub enum DaemonError {
     #[error("no sink for logger read")]
     NoSourceForLoggerRead,
     #[error("io error {0}")]
-    IO(#[from] #[source] std::io::Error),
+    IO(
+        #[from]
+        #[source]
+        std::io::Error,
+    ),
     #[error("remote error: {0}")]
-    Remote(#[from] #[source] RemoteError),
+    Remote(
+        #[from]
+        #[source]
+        RemoteError,
+    ),
     #[error("{0}")]
     Custom(String),
 }
@@ -170,39 +183,76 @@ pub trait HandshakeDaemonStore {
 
 pub trait DaemonStore {
     fn trust_level(&self) -> TrustLevel;
-    fn set_options<'a>(&'a mut self, options: &'a ClientOptions) -> impl LoggerResult<(), DaemonError> + 'a;
-    fn is_valid_path<'a>(&'a mut self, path: &'a StorePath) -> impl LoggerResult<bool, DaemonError> + 'a;
-    fn query_valid_paths<'a>(&'a mut self, paths: &'a StorePathSet, substitute: bool) -> impl LoggerResult<StorePathSet, DaemonError> + 'a;
-    fn query_path_info<'a>(&'a mut self, path: &'a StorePath) -> impl LoggerResult<Option<UnkeyedValidPathInfo>, DaemonError> + 'a;
-    fn nar_from_path<'a, W>(&'a mut self, path: &'a StorePath, sink: W) -> impl LoggerResult<(), DaemonError> + 'a
-        where W: AsyncWrite + Unpin + 'a;
+    fn set_options<'a>(
+        &'a mut self,
+        options: &'a ClientOptions,
+    ) -> impl LoggerResult<(), DaemonError> + 'a;
+    fn is_valid_path<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl LoggerResult<bool, DaemonError> + 'a;
+    fn query_valid_paths<'a>(
+        &'a mut self,
+        paths: &'a StorePathSet,
+        substitute: bool,
+    ) -> impl LoggerResult<StorePathSet, DaemonError> + 'a;
+    fn query_path_info<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl LoggerResult<Option<UnkeyedValidPathInfo>, DaemonError> + 'a;
+    fn nar_from_path<'a, W>(
+        &'a mut self,
+        path: &'a StorePath,
+        sink: W,
+    ) -> impl LoggerResult<(), DaemonError> + 'a
+    where
+        W: AsyncWrite + Unpin + 'a;
 }
 
 impl<'s, S> DaemonStore for &'s mut S
-    where S: DaemonStore
+where
+    S: DaemonStore,
 {
     fn trust_level(&self) -> TrustLevel {
         (**self).trust_level()
     }
 
-    fn set_options<'a>(&'a mut self, options: &'a ClientOptions) -> impl LoggerResult<(), DaemonError> + 'a {
+    fn set_options<'a>(
+        &'a mut self,
+        options: &'a ClientOptions,
+    ) -> impl LoggerResult<(), DaemonError> + 'a {
         (**self).set_options(options)
     }
 
-    fn is_valid_path<'a>(&'a mut self, path: &'a StorePath) -> impl LoggerResult<bool, DaemonError> + 'a {
+    fn is_valid_path<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl LoggerResult<bool, DaemonError> + 'a {
         (**self).is_valid_path(path)
     }
 
-    fn query_valid_paths<'a>(&'a mut self, paths: &'a StorePathSet, substitute: bool) -> impl LoggerResult<StorePathSet, DaemonError> + 'a {
+    fn query_valid_paths<'a>(
+        &'a mut self,
+        paths: &'a StorePathSet,
+        substitute: bool,
+    ) -> impl LoggerResult<StorePathSet, DaemonError> + 'a {
         (**self).query_valid_paths(paths, substitute)
     }
 
-    fn query_path_info<'a>(&'a mut self, path: &'a StorePath) -> impl LoggerResult<Option<UnkeyedValidPathInfo>, DaemonError> + 'a {
+    fn query_path_info<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl LoggerResult<Option<UnkeyedValidPathInfo>, DaemonError> + 'a {
         (**self).query_path_info(path)
     }
 
-    fn nar_from_path<'a, W>(&'a mut self, path: &'a StorePath, sink: W) -> impl LoggerResult<(), DaemonError> + 'a
-        where W: AsyncWrite + Unpin + 'a,
+    fn nar_from_path<'a, W>(
+        &'a mut self,
+        path: &'a StorePath,
+        sink: W,
+    ) -> impl LoggerResult<(), DaemonError> + 'a
+    where
+        W: AsyncWrite + Unpin + 'a,
     {
         (**self).nar_from_path(path, sink)
     }
@@ -210,13 +260,15 @@ impl<'s, S> DaemonStore for &'s mut S
 
 #[cfg(any(test, feature = "test"))]
 mod proptest {
-    use ::proptest::prelude::*;
     use ::proptest::collection::btree_map;
+    use ::proptest::prelude::*;
     use ::proptest::sample::SizeRange;
 
     use super::*;
 
-    fn arb_client_settings(size: impl Into<SizeRange>) -> impl Strategy<Value = BTreeMap<String, DaemonString>> {
+    fn arb_client_settings(
+        size: impl Into<SizeRange>,
+    ) -> impl Strategy<Value = BTreeMap<String, DaemonString>> {
         let key = any::<String>();
         let value = any::<Vec<u8>>().prop_map(DaemonString::from);
         btree_map(key, value, size)
@@ -227,19 +279,49 @@ mod proptest {
         type Strategy = BoxedStrategy<Self>;
 
         fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-            (any::<bool>(), any::<bool>(), any::<bool>(), any::<Verbosity>(),
-            any::<DaemonInt>(), any::<DaemonTime>(),  any::<Verbosity>(),  any::<DaemonInt>(),  any::<bool>(),
-                arb_client_settings(..30)
-            ).prop_map(|(keep_failed, keep_going, try_fallback, verbosity, max_build_jobs,
-                max_silent_time, verbose_build, build_cores, use_substitutes,
-                other_settings)| {
-                    ClientOptions {
-                        keep_failed, keep_going, try_fallback, verbosity, max_build_jobs, max_silent_time, verbose_build, build_cores, use_substitutes, other_settings,
-                        _use_build_hook: IgnoredTrue,
-                        _log_type: IgnoredZero,
-                        _print_build_trace: IgnoredZero,
-                    }
-                }).boxed()
+            (
+                any::<bool>(),
+                any::<bool>(),
+                any::<bool>(),
+                any::<Verbosity>(),
+                any::<DaemonInt>(),
+                any::<DaemonTime>(),
+                any::<Verbosity>(),
+                any::<DaemonInt>(),
+                any::<bool>(),
+                arb_client_settings(..30),
+            )
+                .prop_map(
+                    |(
+                        keep_failed,
+                        keep_going,
+                        try_fallback,
+                        verbosity,
+                        max_build_jobs,
+                        max_silent_time,
+                        verbose_build,
+                        build_cores,
+                        use_substitutes,
+                        other_settings,
+                    )| {
+                        ClientOptions {
+                            keep_failed,
+                            keep_going,
+                            try_fallback,
+                            verbosity,
+                            max_build_jobs,
+                            max_silent_time,
+                            verbose_build,
+                            build_cores,
+                            use_substitutes,
+                            other_settings,
+                            _use_build_hook: IgnoredTrue,
+                            _log_type: IgnoredZero,
+                            _print_build_trace: IgnoredZero,
+                        }
+                    },
+                )
+                .boxed()
         }
     }
 }

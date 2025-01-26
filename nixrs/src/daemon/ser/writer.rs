@@ -8,7 +8,10 @@ use bytes::{Buf, BufMut, BytesMut};
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-use crate::{daemon::{ProtocolVersion, ZEROS}, store_path::StoreDir};
+use crate::{
+    daemon::{ProtocolVersion, ZEROS},
+    store_path::StoreDir,
+};
 
 use super::{Error, NixWrite};
 
@@ -64,7 +67,9 @@ impl NixWriterBuilder {
     }
 
     pub fn build<W>(self, writer: W) -> NixWriter<W> {
-        let buf = self.buf.unwrap_or_else(|| BytesMut::with_capacity(self.max_buf_size));
+        let buf = self
+            .buf
+            .unwrap_or_else(|| BytesMut::with_capacity(self.max_buf_size));
         NixWriter {
             buf,
             inner: writer,
@@ -123,10 +128,10 @@ where
             if n == 0 {
                 return Poll::Ready(Err(io::Error::new(
                     io::ErrorKind::WriteZero,
-                    "failed to write the buffer"
+                    "failed to write the buffer",
                 )));
             }
-            this.buf.advance(n);    
+            this.buf.advance(n);
         }
         Poll::Ready(Ok(()))
     }
@@ -143,7 +148,8 @@ where
 }
 
 impl<W> AsyncWrite for NixWriter<W>
-    where W: AsyncWrite,
+where
+    W: AsyncWrite,
 {
     fn poll_write(
         mut self: Pin<&mut Self>,
@@ -168,14 +174,18 @@ impl<W> AsyncWrite for NixWriter<W>
         self.project().inner.poll_flush(cx)
     }
 
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), io::Error>> {
         ready!(self.as_mut().poll_flush_buf(cx))?;
         self.project().inner.poll_shutdown(cx)
     }
 }
 
 impl<W> NixWrite for NixWriter<W>
-    where W: AsyncWrite + Send + Unpin,
+where
+    W: AsyncWrite + Send + Unpin,
 {
     type Error = io::Error;
 
@@ -203,10 +213,11 @@ impl<W> NixWrite for NixWriter<W>
             Ok(())
         }
     }
-    
+
     async fn write_display<D>(&mut self, msg: D) -> Result<(), Self::Error>
-        where D: fmt::Display + Send,
-              Self: Sized,
+    where
+        D: fmt::Display + Send,
+        Self: Sized,
     {
         // Ensure that buffer has space for at least reserved_buf_size bytes
         if self.remaining_mut() < self.reserved_buf_size {
@@ -219,9 +230,9 @@ impl<W> NixWrite for NixWriter<W>
         if let Err(err) = write!(self.buf, "{}", msg) {
             self.buf.truncate(offset);
             return Err(Self::Error::unsupported_data(err));
-        }        
+        }
         let len = self.buf.len() - offset - 8;
-        BufMut::put_u64_le(&mut &mut self.buf[offset..(offset+8)], len as u64);
+        BufMut::put_u64_le(&mut &mut self.buf[offset..(offset + 8)], len as u64);
         let padding = calc_padding(len);
         self.write_all(&ZEROS[..padding]).await
     }
@@ -246,9 +257,7 @@ mod test {
     #[case::max(u64::MAX, &hex!("FFFF FFFF FFFF FFFF"))]
     #[tokio::test]
     async fn test_write_number(#[case] number: u64, #[case] buf: &[u8]) {
-        let mock = Builder::new()
-            .write(buf)
-            .build();
+        let mock = Builder::new().write(buf).build();
         let mut writer = NixWriter::new(mock);
 
         writer.write_number(number).await.unwrap();
@@ -269,11 +278,11 @@ mod test {
     #[case::aligned(b"read_tea", &hex!("0800 0000 0000 0000 7265 6164 5F74 6561"))]
     #[case::more_bytes(b"read_tess", &hex!("0900 0000 0000 0000 7265 6164 5F74 6573 7300 0000 0000 0000"))]
     #[tokio::test]
-    async fn test_write_slice(#[case] value: &[u8], #[case] buf: &[u8],
-        #[values(1, 2, 3, 4, 5, 6, 7, 8, 9, 1024)]
-        chunks_size: usize,
-        #[values(1, 2, 3, 4, 5, 6, 7, 8, 9, 1024)]
-        buf_size: usize,
+    async fn test_write_slice(
+        #[case] value: &[u8],
+        #[case] buf: &[u8],
+        #[values(1, 2, 3, 4, 5, 6, 7, 8, 9, 1024)] chunks_size: usize,
+        #[values(1, 2, 3, 4, 5, 6, 7, 8, 9, 1024)] buf_size: usize,
     ) {
         let mut builder = Builder::new();
         for chunk in buf.chunks(chunks_size) {
@@ -281,9 +290,7 @@ mod test {
             builder.wait(Duration::ZERO);
         }
         let mock = builder.build();
-        let mut writer = NixWriter::builder()
-            .set_max_buf_size(buf_size)
-            .build(mock);
+        let mut writer = NixWriter::builder().set_max_buf_size(buf_size).build(mock);
 
         writer.write_slice(value).await.unwrap();
         //assert_eq!(writer.buffer(), buf);
@@ -303,9 +310,10 @@ mod test {
     #[case::aligned("read_tea", &hex!("0800 0000 0000 0000 7265 6164 5F74 6561"))]
     #[case::more_bytes("read_tess", &hex!("0900 0000 0000 0000 7265 6164 5F74 6573 7300 0000 0000 0000"))]
     #[tokio::test]
-    async fn test_write_display(#[case] value: &str, #[case] buf: &[u8],
-        #[values(1, 2, 3, 4, 5, 6, 7, 8, 9, 1024)]
-        chunks_size: usize,
+    async fn test_write_display(
+        #[case] value: &str,
+        #[case] buf: &[u8],
+        #[values(1, 2, 3, 4, 5, 6, 7, 8, 9, 1024)] chunks_size: usize,
     ) {
         let mut builder = Builder::new();
         for chunk in buf.chunks(chunks_size) {
@@ -313,8 +321,7 @@ mod test {
             builder.wait(Duration::ZERO);
         }
         let mock = builder.build();
-        let mut writer = NixWriter::builder()
-            .build(mock);
+        let mut writer = NixWriter::builder().build(mock);
 
         writer.write_display(value).await.unwrap();
         //assert_eq!(writer.buffer(), buf);

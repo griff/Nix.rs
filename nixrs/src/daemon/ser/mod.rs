@@ -1,6 +1,6 @@
 use std::error::Error as StdError;
-use std::{fmt, io};
 use std::future::Future;
+use std::{fmt, io};
 
 use crate::store_path::StoreDir;
 
@@ -15,7 +15,6 @@ pub mod mock;
 mod writer;
 
 pub use writer::{NixWriter, NixWriterBuilder};
-
 
 pub trait Error: Sized + StdError {
     fn custom<T: fmt::Display>(msg: T) -> Self;
@@ -58,25 +57,27 @@ pub trait NixWrite: Send {
     fn write_number(&mut self, value: u64) -> impl Future<Output = Result<(), Self::Error>> + Send;
     fn write_slice(&mut self, buf: &[u8]) -> impl Future<Output = Result<(), Self::Error>> + Send;
     fn write_display<D>(&mut self, msg: D) -> impl Future<Output = Result<(), Self::Error>> + Send
-        where D: fmt::Display + Send,
-              Self: Sized,
+    where
+        D: fmt::Display + Send,
+        Self: Sized,
     {
         async move {
             let s = msg.to_string();
-            self.write_slice(s.as_bytes()).await    
+            self.write_slice(s.as_bytes()).await
         }
     }
 
     /// Write a value to the protocol.
     /// Uses `NixSerialize::serialize` to write the value.
-    fn write_value<V>(&mut self, value: &V) -> impl Future<Output=Result<(), Self::Error>> + Send
-        where V: NixSerialize + Send + ?Sized,
-              Self: Sized,
+    fn write_value<V>(&mut self, value: &V) -> impl Future<Output = Result<(), Self::Error>> + Send
+    where
+        V: NixSerialize + Send + ?Sized,
+        Self: Sized,
     {
         value.serialize(self)
     }
 }
- 
+
 impl<T: NixWrite> NixWrite for &mut T {
     type Error = T::Error;
 
@@ -97,21 +98,24 @@ impl<T: NixWrite> NixWrite for &mut T {
     }
 
     fn write_display<D>(&mut self, msg: D) -> impl Future<Output = Result<(), Self::Error>> + Send
-        where D: fmt::Display + Send,
-              Self: Sized,
+    where
+        D: fmt::Display + Send,
+        Self: Sized,
     {
         (**self).write_display(msg)
     }
 
     fn write_value<V>(&mut self, value: &V) -> impl Future<Output = Result<(), Self::Error>> + Send
-        where V: NixSerialize + Send + ?Sized,
-            Self: Sized,
+    where
+        V: NixSerialize + Send + ?Sized,
+        Self: Sized,
     {
         (**self).write_value(value)
     }
 }
 
 pub trait NixSerialize {
-    fn serialize<W>(&self, writer: &mut W) -> impl Future<Output=Result<(), W::Error>> + Send
-        where W: NixWrite;
+    fn serialize<W>(&self, writer: &mut W) -> impl Future<Output = Result<(), W::Error>> + Send
+    where
+        W: NixWrite;
 }

@@ -1,12 +1,12 @@
-#[cfg(feature="nixrs-derive")]
+#[cfg(feature = "nixrs-derive")]
 use nixrs_derive::nix_serialize_remote;
 
 use super::{Error, NixSerialize, NixWrite};
 
-
 impl NixSerialize for u64 {
     async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
-        where W: NixWrite
+    where
+        W: NixWrite,
     {
         writer.write_number(*self).await
     }
@@ -14,24 +14,25 @@ impl NixSerialize for u64 {
 
 impl NixSerialize for usize {
     async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
-        where W: NixWrite
+    where
+        W: NixWrite,
     {
         let v = (*self).try_into().map_err(W::Error::unsupported_data)?;
         writer.write_number(v).await
     }
 }
 
-#[cfg(feature="nixrs-derive")]
+#[cfg(feature = "nixrs-derive")]
 nix_serialize_remote!(
     #[nix(into = "u64")]
     u8
 );
-#[cfg(feature="nixrs-derive")]
+#[cfg(feature = "nixrs-derive")]
 nix_serialize_remote!(
     #[nix(into = "u64")]
     u16
 );
-#[cfg(feature="nixrs-derive")]
+#[cfg(feature = "nixrs-derive")]
 nix_serialize_remote!(
     #[nix(into = "u64")]
     u32
@@ -39,7 +40,8 @@ nix_serialize_remote!(
 
 impl NixSerialize for bool {
     async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
-        where W: NixWrite
+    where
+        W: NixWrite,
     {
         if *self {
             writer.write_number(1).await
@@ -51,19 +53,19 @@ impl NixSerialize for bool {
 
 impl NixSerialize for i64 {
     async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
-        where W: NixWrite
+    where
+        W: NixWrite,
     {
         writer.write_number(*self as u64).await
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use hex_literal::hex;
     use rstest::rstest;
-    use tokio_test::io::Builder;
     use tokio::io::AsyncWriteExt as _;
+    use tokio_test::io::Builder;
 
     use crate::daemon::ser::{NixWrite, NixWriter};
 

@@ -202,8 +202,8 @@ mod tests {
     use tokio::fs::{self, File};
     use tokio_util::{codec::FramedWrite, io::InspectWriter};
 
-    use crate::{parse_nar, proptest::arb_nar_events, test_data};
     use crate::pretty_prop_assert_eq;
+    use crate::{parse_nar, proptest::arb_nar_events, test_data};
     use proptest::proptest;
 
     use super::*;

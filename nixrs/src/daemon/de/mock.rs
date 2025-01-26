@@ -166,9 +166,7 @@ impl NixRead for Mock {
         &self.store_dir
     }
 
-    async fn try_read_number(
-        &mut self,
-    ) -> Result<Option<u64>, Self::Error> {
+    async fn try_read_number(&mut self) -> Result<Option<u64>, Self::Error> {
         match self.ops.pop_front() {
             Some(Operation::ReadNumber(ret)) => ret.map(Some),
             Some(Operation::ReadBytes(_)) => Err(Error::expected_read_bytes()),

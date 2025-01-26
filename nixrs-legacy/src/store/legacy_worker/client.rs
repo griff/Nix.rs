@@ -126,7 +126,9 @@ impl LegacyStoreBuilder {
         Ok(self)
     }
 
-    pub async fn connect(self) -> Result<LegacyStoreClient<BufReader<ChildStdout>, BufWriter<ChildStdin>>, Error> {
+    pub async fn connect(
+        self,
+    ) -> Result<LegacyStoreClient<BufReader<ChildStdout>, BufWriter<ChildStdin>>, Error> {
         let mut cmd = self.cmd;
         cmd.stdin(Stdio::piped());
         cmd.stdout(Stdio::piped());
@@ -135,8 +137,14 @@ impl LegacyStoreBuilder {
         let reader = child.stdout.take().unwrap();
         let writer = child.stdin.take().unwrap();
         let stderr = child.stderr.take().unwrap();
-        let mut store =
-            LegacyStoreClient::new(self.store_dir, self.host, BufReader::new(reader), BufWriter::new(writer), stderr).await;
+        let mut store = LegacyStoreClient::new(
+            self.store_dir,
+            self.host,
+            BufReader::new(reader),
+            BufWriter::new(writer),
+            stderr,
+        )
+        .await;
         store.handshake().await?;
         Ok(store)
     }

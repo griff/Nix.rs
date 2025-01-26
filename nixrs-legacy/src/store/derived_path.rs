@@ -252,9 +252,9 @@ mod tests {
     use crate::string_set;
 
     use super::*;
-    use pretty_assertions::assert_eq;
     use ::proptest::prelude::*;
     use ::proptest::proptest;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn test_derived_path_parse() {

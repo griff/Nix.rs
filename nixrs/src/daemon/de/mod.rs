@@ -207,13 +207,15 @@ impl<T: ?Sized + NixRead> NixRead for &mut T {
 pub trait NixDeserialize: Sized {
     /// Read a value from the reader.
     /// This returns an Option to support gracefull shutdown.
-    fn try_deserialize<R>(reader: &mut R) -> impl Future<Output = Result<Option<Self>, R::Error>> + Send + '_
+    fn try_deserialize<R>(
+        reader: &mut R,
+    ) -> impl Future<Output = Result<Option<Self>, R::Error>> + Send + '_
     where
         R: ?Sized + NixRead + Send;
 
     fn deserialize<R>(reader: &mut R) -> impl Future<Output = Result<Self, R::Error>> + Send + '_
     where
-        R: ?Sized + NixRead + Send
+        R: ?Sized + NixRead + Send,
     {
         async move {
             match Self::try_deserialize(reader).await? {

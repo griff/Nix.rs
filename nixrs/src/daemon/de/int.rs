@@ -1,4 +1,4 @@
-#[cfg(feature="nixrs-derive")]
+#[cfg(feature = "nixrs-derive")]
 use nixrs_derive::nix_deserialize_remote;
 
 use super::{Error, NixDeserialize, NixRead};
@@ -21,17 +21,17 @@ impl NixDeserialize for u64 {
     }
 }
 
-#[cfg(feature="nixrs-derive")]
+#[cfg(feature = "nixrs-derive")]
 nix_deserialize_remote!(
     #[nix(try_from = "u64")]
     u8
 );
-#[cfg(feature="nixrs-derive")]
+#[cfg(feature = "nixrs-derive")]
 nix_deserialize_remote!(
     #[nix(try_from = "u64")]
     u16
 );
-#[cfg(feature="nixrs-derive")]
+#[cfg(feature = "nixrs-derive")]
 nix_deserialize_remote!(
     #[nix(try_from = "u64")]
     u32
@@ -39,7 +39,8 @@ nix_deserialize_remote!(
 
 impl NixDeserialize for usize {
     async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
-        where R: ?Sized + NixRead + Send
+    where
+        R: ?Sized + NixRead + Send,
     {
         if let Some(value) = reader.try_read_number().await? {
             value.try_into().map(Some).map_err(R::Error::invalid_data)

@@ -1,4 +1,7 @@
-use std::{collections::{BTreeMap, BTreeSet}, future::Future};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    future::Future,
+};
 
 use super::{NixDeserialize, NixRead};
 
@@ -7,7 +10,9 @@ where
     T: NixDeserialize + Send,
 {
     #[allow(clippy::manual_async_fn)]
-    fn try_deserialize<R>(reader: &mut R) -> impl Future<Output = Result<Option<Self>, R::Error>> + Send + '_
+    fn try_deserialize<R>(
+        reader: &mut R,
+    ) -> impl Future<Output = Result<Option<Self>, R::Error>> + Send + '_
     where
         R: ?Sized + NixRead + Send,
     {
@@ -17,7 +22,7 @@ where
                 for _ in 0..len {
                     ret.push(reader.read_value().await?);
                 }
-                Ok(Some(ret))    
+                Ok(Some(ret))
             } else {
                 Ok(None)
             }
@@ -30,8 +35,10 @@ where
     T: NixDeserialize + Ord + Send,
 {
     #[allow(clippy::manual_async_fn)]
-    fn try_deserialize<R>(reader: &mut R) -> impl Future<Output = Result<Option<Self>, R::Error>> + Send + '_
-    where 
+    fn try_deserialize<R>(
+        reader: &mut R,
+    ) -> impl Future<Output = Result<Option<Self>, R::Error>> + Send + '_
+    where
         R: ?Sized + NixRead + Send,
     {
         async move {
@@ -40,7 +47,7 @@ where
                 for _ in 0..len {
                     ret.insert(reader.read_value().await?);
                 }
-                Ok(Some(ret))    
+                Ok(Some(ret))
             } else {
                 Ok(None)
             }
@@ -54,7 +61,9 @@ where
     V: NixDeserialize + Send,
 {
     #[allow(clippy::manual_async_fn)]
-    fn try_deserialize<R>(reader: &mut R) -> impl Future<Output = Result<Option<Self>, R::Error>> + Send + '_
+    fn try_deserialize<R>(
+        reader: &mut R,
+    ) -> impl Future<Output = Result<Option<Self>, R::Error>> + Send + '_
     where
         R: ?Sized + NixRead + Send,
     {
@@ -66,7 +75,7 @@ where
                     let value = reader.read_value().await?;
                     ret.insert(key, value);
                 }
-                Ok(Some(ret))    
+                Ok(Some(ret))
             } else {
                 Ok(None)
             }

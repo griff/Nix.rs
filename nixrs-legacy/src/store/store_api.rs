@@ -3,10 +3,10 @@ use std::time::SystemTime;
 
 use async_trait::async_trait;
 use futures::future::try_join;
+use nixrs_io::flag_enum;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tracing::debug;
-use nixrs_io::flag_enum;
 
 use super::topo_sort_paths_slow;
 use super::{BasicDerivation, DerivedPath, DrvOutputs, Error, RepairFlag};

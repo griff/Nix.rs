@@ -3,7 +3,10 @@ use syn::meta::ParseNestedMeta;
 use syn::parse::Parse;
 use syn::{parse_quote, Attribute, Expr, ExprLit, ExprPath, Lit, Token};
 
-use super::symbol::{Symbol, CRATE, DEFAULT, DISPLAY, FROM, FROM_STORE_DIR_STR, FROM_STR, INTO, NIX, STORE_DIR_DISPLAY, TAG, TRY_FROM, TRY_INTO, VERSION};
+use super::symbol::{
+    Symbol, CRATE, DEFAULT, DISPLAY, FROM, FROM_STORE_DIR_STR, FROM_STR, INTO, NIX,
+    STORE_DIR_DISPLAY, TAG, TRY_FROM, TRY_INTO, VERSION,
+};
 use super::Context;
 
 #[derive(Debug, PartialEq, Eq)]

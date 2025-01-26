@@ -6,9 +6,9 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use thiserror::Error;
 #[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
+use thiserror::Error;
 
 use crate::base32;
 
@@ -29,7 +29,8 @@ fn strip_store<'s>(s: &'s str, store_dir: &StoreDir) -> Result<&'s str, StorePat
     if !path.is_absolute() {
         return Err(StorePathError::NonAbsolute(path.to_owned()));
     }
-    let name = s.strip_prefix(store_dir.to_str())
+    let name = s
+        .strip_prefix(store_dir.to_str())
         .ok_or_else(|| StorePathError::NotInStore(path.into()))?;
     if name.as_bytes()[0] != b'/' {
         return Err(StorePathError::NotInStore(path.into()));
@@ -40,17 +41,13 @@ fn strip_store<'s>(s: &'s str, store_dir: &StoreDir) -> Result<&'s str, StorePat
 
 impl StorePath {
     fn new(s: &str, store_dir: &StoreDir) -> Result<Self, ParseStorePathError> {
-        let name = strip_store(s, store_dir).map_err(|error| {
-            ParseStorePathError {
-                path: s.to_owned(),
-                error,
-            }
+        let name = strip_store(s, store_dir).map_err(|error| ParseStorePathError {
+            path: s.to_owned(),
+            error,
         })?;
-        name.parse::<Self>().map_err(|error| {
-            ParseStorePathError {
-                path: s.to_owned(),
-                error: error.error,
-            }
+        name.parse::<Self>().map_err(|error| ParseStorePathError {
+            path: s.to_owned(),
+            error: error.error,
         })
     }
 
@@ -116,11 +113,9 @@ impl FromStr for StorePath {
     type Err = ParseStorePathError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        StorePath::from_bytes(s.as_bytes()).map_err(|error| {
-            ParseStorePathError {
-                path: s.to_owned(),
-                error
-            }
+        StorePath::from_bytes(s.as_bytes()).map_err(|error| ParseStorePathError {
+            path: s.to_owned(),
+            error,
         })
     }
 }
@@ -175,8 +170,9 @@ impl StorePathHash {
             return Err(StorePathError::HashLength);
         }
         let mut hash_output = [0u8; STORE_PATH_HASH_SIZE];
-        base32::decode_mut(data, &mut hash_output)
-            .map_err(|err| StorePathError::Symbol(err.error.position as u8, data[err.error.position]))?;
+        base32::decode_mut(data, &mut hash_output).map_err(|err| {
+            StorePathError::Symbol(err.error.position as u8, data[err.error.position])
+        })?;
         Ok(StorePathHash::new(hash_output))
     }
 }
@@ -377,7 +373,6 @@ pub mod proptest {
         "[a-zA-Z0-9+\\-_?=][a-zA-Z0-9+\\-_?=.]{0,13}"
     }
 
-
     impl Arbitrary for StorePathHash {
         type Parameters = ();
         type Strategy = BoxedStrategy<StorePathHash>;
@@ -443,10 +438,10 @@ mod test {
     use std::cmp::Ordering;
     use std::collections::BTreeSet;
 
+    use ::proptest::prelude::*;
+    use ::proptest::proptest;
     use hex_literal::hex;
     use rstest::rstest;
-    use ::proptest::proptest;
-    use ::proptest::prelude::*;
 
     use super::*;
 
@@ -475,12 +470,24 @@ mod test {
 
     #[test]
     fn set_order() {
-        let e = ["2q000000000000000000000000000000", "000h0000000000000000000000000000"];
-        let o = ["000h0000000000000000000000000000", "2q000000000000000000000000000000"];
-        let e_list : Vec<_> = e.into_iter().map(|e| e.parse::<StorePathHash>().unwrap() ).collect();
-        let o_list : Vec<_> = o.into_iter().map(|e| e.parse::<StorePathHash>().unwrap() ).collect();
-        let e_list1 : BTreeSet<_> = e_list.iter().cloned().collect();
-        let o_list1 : BTreeSet<_> = o_list.iter().cloned().collect();
+        let e = [
+            "2q000000000000000000000000000000",
+            "000h0000000000000000000000000000",
+        ];
+        let o = [
+            "000h0000000000000000000000000000",
+            "2q000000000000000000000000000000",
+        ];
+        let e_list: Vec<_> = e
+            .into_iter()
+            .map(|e| e.parse::<StorePathHash>().unwrap())
+            .collect();
+        let o_list: Vec<_> = o
+            .into_iter()
+            .map(|e| e.parse::<StorePathHash>().unwrap())
+            .collect();
+        let e_list1: BTreeSet<_> = e_list.iter().cloned().collect();
+        let o_list1: BTreeSet<_> = o_list.iter().cloned().collect();
 
         let mut e_list2 = BTreeSet::new();
         for item in e_list.iter() {
@@ -592,23 +599,38 @@ mod test {
 
     #[rstest]
     #[case::empty("", ParseStorePathError::new("", StorePathError::HashLength))]
-    #[case::too_short_hash("00ljmhbmf3d12aq4l5l7yr7bxn03yqv-", ParseStorePathError::new("00ljmhbmf3d12aq4l5l7yr7bxn03yqv-", StorePathError::HashLength))]
+    #[case::too_short_hash(
+        "00ljmhbmf3d12aq4l5l7yr7bxn03yqv-",
+        ParseStorePathError::new("00ljmhbmf3d12aq4l5l7yr7bxn03yqv-", StorePathError::HashLength)
+    )]
     #[case::invalid_hash_symbol(
         "00ljmhbmf3=12aq4l5l7yr7bxn03yqvv-test",
-        ParseStorePathError::new("00ljmhbmf3=12aq4l5l7yr7bxn03yqvv-test", StorePathError::Symbol(10, b'='))
+        ParseStorePathError::new(
+            "00ljmhbmf3=12aq4l5l7yr7bxn03yqvv-test",
+            StorePathError::Symbol(10, b'=')
+        )
     )]
     #[case::wrong_dash(
         "00ljmhbmf3=12aq4l5l7yr7bxn03yqvv.test",
-        ParseStorePathError::new("00ljmhbmf3=12aq4l5l7yr7bxn03yqvv.test", StorePathError::Symbol(32, b'.'))
+        ParseStorePathError::new(
+            "00ljmhbmf3=12aq4l5l7yr7bxn03yqvv.test",
+            StorePathError::Symbol(32, b'.')
+        )
     )]
-    #[case::missing_name("00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-", ParseStorePathError::new("00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-", StorePathError::NameLength))]
+    #[case::missing_name(
+        "00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-",
+        ParseStorePathError::new("00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-", StorePathError::NameLength)
+    )]
     #[case::name_too_long(
         "00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         ParseStorePathError::new("00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", StorePathError::NameLength)
     )]
     #[case::name_with_invalid_char(
         "00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-test|more",
-        ParseStorePathError::new("00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-test|more", StorePathError::Symbol(37, b'|'))
+        ParseStorePathError::new(
+            "00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-test|more",
+            StorePathError::Symbol(37, b'|')
+        )
     )]
     fn store_path_error(#[case] path: &str, #[case] expected: ParseStorePathError) {
         assert_eq!(
@@ -653,34 +675,94 @@ mod test {
     }
 
     #[rstest]
-    #[case("/nix/store/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home", "ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home")]
+    #[case(
+        "/nix/store/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home",
+        "ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home"
+    )]
     #[case("/nix/store/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-.-_?+=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSSTUVWXYZ", "ywrs8hr8fa4244bpdxi88bd87qxqgmy0-.-_?+=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSSTUVWXYZ")]
     #[test]
     fn from_store_dir_str(#[case] store_path: &str, #[case] base_path: StorePath) {
         let store = StoreDir::default();
-        let path : StorePath = store.parse(store_path).expect("Can parse store path");
+        let path: StorePath = store.parse(store_path).expect("Can parse store path");
         assert_eq!(path, base_path);
     }
 
     #[rstest]
-    #[case::empty("", ParseStorePathError::new("", StorePathError::NonAbsolute(PathBuf::from(""))))]
-    #[case::mising_file_name("/nix/store/", ParseStorePathError::new("/nix/store/", StorePathError::HashLength))]
-    #[case::not_in_store("/outsise/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home", ParseStorePathError::new("/outsise/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home", StorePathError::NotInStore(PathBuf::from("/outsise/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home"))))]
-    #[case::missing_slash("/nix/storeywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home", ParseStorePathError::new("/nix/storeywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home", StorePathError::NotInStore(PathBuf::from("/nix/storeywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home"))))]
-    #[case::too_short("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq2417", ParseStorePathError::new("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq2417", StorePathError::HashLength))]
-    #[case::hash_too_long("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179a-app", ParseStorePathError::new("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179a-app", StorePathError::Symbol(32, b'a')))]
-    #[case::missing_name("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179-", ParseStorePathError::new("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179-", StorePathError::NameLength))]
-    #[case::bad_name("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179-å", ParseStorePathError::new("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179-å", StorePathError::Symbol(33, 195)))]
-    #[case::invalid_symbol("/nix/store/zzcfcjwxkn4|f1nh8dh521vffyq24179-app", ParseStorePathError::new("/nix/store/zzcfcjwxkn4|f1nh8dh521vffyq24179-app", StorePathError::Symbol(11, b'|')))]
+    #[case::empty(
+        "",
+        ParseStorePathError::new("", StorePathError::NonAbsolute(PathBuf::from("")))
+    )]
+    #[case::mising_file_name(
+        "/nix/store/",
+        ParseStorePathError::new("/nix/store/", StorePathError::HashLength)
+    )]
+    #[case::not_in_store(
+        "/outsise/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home",
+        ParseStorePathError::new(
+            "/outsise/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home",
+            StorePathError::NotInStore(PathBuf::from(
+                "/outsise/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home"
+            ))
+        )
+    )]
+    #[case::missing_slash(
+        "/nix/storeywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home",
+        ParseStorePathError::new(
+            "/nix/storeywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home",
+            StorePathError::NotInStore(PathBuf::from(
+                "/nix/storeywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home"
+            ))
+        )
+    )]
+    #[case::too_short(
+        "/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq2417",
+        ParseStorePathError::new(
+            "/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq2417",
+            StorePathError::HashLength
+        )
+    )]
+    #[case::hash_too_long(
+        "/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179a-app",
+        ParseStorePathError::new(
+            "/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179a-app",
+            StorePathError::Symbol(32, b'a')
+        )
+    )]
+    #[case::missing_name(
+        "/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179-",
+        ParseStorePathError::new(
+            "/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179-",
+            StorePathError::NameLength
+        )
+    )]
+    #[case::bad_name(
+        "/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179-å",
+        ParseStorePathError::new(
+            "/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179-å",
+            StorePathError::Symbol(33, 195)
+        )
+    )]
+    #[case::invalid_symbol(
+        "/nix/store/zzcfcjwxkn4|f1nh8dh521vffyq24179-app",
+        ParseStorePathError::new(
+            "/nix/store/zzcfcjwxkn4|f1nh8dh521vffyq24179-app",
+            StorePathError::Symbol(11, b'|')
+        )
+    )]
     #[test]
     fn from_store_dir_str_error(#[case] store_path: &str, #[case] expected: ParseStorePathError) {
         let store = StoreDir::default();
-        let err = store.parse::<StorePath>(store_path).expect_err("parse failure");
+        let err = store
+            .parse::<StorePath>(store_path)
+            .expect_err("parse failure");
         assert_eq!(err, expected);
     }
 
     #[rstest]
-    #[case("/nix/store/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home", "ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home")]
+    #[case(
+        "/nix/store/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home",
+        "ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home"
+    )]
     #[case("/nix/store/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-.-_?+=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSSTUVWXYZ", "ywrs8hr8fa4244bpdxi88bd87qxqgmy0-.-_?+=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSSTUVWXYZ")]
     #[test]
     fn store_dir_display(#[case] store_path: &str, #[case] base_path: StorePath) {

@@ -474,7 +474,6 @@ impl<'a> fmt::Display for SRIHash<'a> {
     }
 }
 
-
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
@@ -490,7 +489,10 @@ impl NarHash {
 
     pub fn from_slice(digest: &[u8]) -> Result<NarHash, ParseHashError> {
         if digest.len() != Algorithm::SHA256.size() {
-            return Err(ParseHashError::WrongHashLength2(Algorithm::SHA256, digest.len()));
+            return Err(ParseHashError::WrongHashLength2(
+                Algorithm::SHA256,
+                digest.len(),
+            ));
         }
         Ok(NarHash::new(digest))
     }
@@ -507,7 +509,10 @@ impl FromStr for NarHash {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.len() != Algorithm::SHA256.base16_len() {
-            return Err(ParseHashError::WrongHashLength(Algorithm::SHA256, s.to_string()));
+            return Err(ParseHashError::WrongHashLength(
+                Algorithm::SHA256,
+                s.to_string(),
+            ));
         }
         let mut data = [8u8; Algorithm::SHA256.size()];
         HEXLOWER_PERMISSIVE

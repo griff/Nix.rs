@@ -1,6 +1,6 @@
 use std::fmt;
-use std::sync::Arc;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use thiserror::Error;
 
@@ -32,7 +32,7 @@ impl StoreDir {
         let path = path.into();
         let path_s = path
             .to_str()
-            .ok_or_else(|| StoreDirError{ path: path.clone() })?
+            .ok_or_else(|| StoreDirError { path: path.clone() })?
             .to_string();
         Ok(StoreDir(Arc::new(path), Arc::new(path_s)))
     }
@@ -61,17 +61,19 @@ impl StoreDir {
     }
 
     pub fn parse<F>(&self, s: &str) -> Result<F, F::Error>
-        where F: FromStoreDirStr
+    where
+        F: FromStoreDirStr,
     {
         F::from_store_dir_str(self, s)
     }
 
     pub fn display<'v, V>(&'v self, value: &'v V) -> StoreDirDisplayImpl<'v, V>
-        where V: StoreDirDisplay
+    where
+        V: StoreDirDisplay,
     {
         StoreDirDisplayImpl {
             store_dir: self,
-            value
+            value,
         }
     }
 }
@@ -115,7 +117,8 @@ pub struct StoreDirDisplayImpl<'v, V: StoreDirDisplay> {
 }
 
 impl<'v, V> fmt::Display for StoreDirDisplayImpl<'v, V>
-    where V: StoreDirDisplay
+where
+    V: StoreDirDisplay,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         StoreDirDisplay::fmt(self.value, self.store_dir, f)
@@ -149,14 +152,13 @@ pub mod proptest {
             arb_store_dir().boxed()
         }
     }
-
 }
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-    use pretty_assertions::assert_eq;
     use super::StoreDir;
+    use pretty_assertions::assert_eq;
+    use std::path::Path;
 
     #[test]
     fn test_store_dir_display() {

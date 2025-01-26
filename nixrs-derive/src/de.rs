@@ -7,7 +7,10 @@ use crate::internal::attrs::Default;
 use crate::internal::inputs::RemoteInput;
 use crate::internal::{attrs, Container, Context, Data, Field, Remote, Style, Variant};
 
-pub fn expand_nix_deserialize(crate_path: Path, input: &mut DeriveInput) -> syn::Result<TokenStream> {
+pub fn expand_nix_deserialize(
+    crate_path: Path,
+    input: &mut DeriveInput,
+) -> syn::Result<TokenStream> {
     let cx = Context::new();
     let cont = Container::from_ast(&cx, crate_path, input);
     cx.check()?;
@@ -32,8 +35,15 @@ pub fn expand_nix_deserialize_remote(
     let cx = Context::new();
     let remote = Remote::from_ast(&cx, crate_path, input);
     if let Some(attrs) = remote.as_ref().map(|r| &r.attrs) {
-        if attrs.from_str.is_none() && attrs.from_store_dir_str.is_none() && attrs.type_from.is_none() && attrs.type_try_from.is_none() {
-            cx.error_spanned(input, "Missing from_str, from_store_dir_str, from or try_from attribute");
+        if attrs.from_str.is_none()
+            && attrs.from_store_dir_str.is_none()
+            && attrs.type_from.is_none()
+            && attrs.type_try_from.is_none()
+        {
+            cx.error_spanned(
+                input,
+                "Missing from_str, from_store_dir_str, from or try_from attribute",
+            );
         }
     }
     cx.check()?;
@@ -42,12 +52,7 @@ pub fn expand_nix_deserialize_remote(
     let crate_path = remote.crate_path();
     let body = nix_deserialize_body_from(crate_path, &remote.attrs).expect("From tokenstream");
     let generics = Generics::default();
-    Ok(nix_deserialize_impl(
-        crate_path,
-        remote.ty,
-        &generics,
-        body,
-    ))
+    Ok(nix_deserialize_impl(crate_path, remote.ty, &generics, body))
 }
 
 fn nix_deserialize_impl(
@@ -83,7 +88,9 @@ fn nix_deserialize_body_from(
     } else if let Some(type_from) = attrs.type_from.as_ref() {
         Some(nix_deserialize_from(type_from))
     } else {
-        attrs.type_try_from.as_ref()
+        attrs
+            .type_try_from
+            .as_ref()
             .map(|type_try_from| nix_deserialize_try_from(crate_path, type_try_from))
     }
 }
@@ -100,7 +107,7 @@ fn nix_deserialize_body(cont: &Container) -> TokenStream {
                 } else {
                     nix_deserialize_enum(variants)
                 }
-            },
+            }
         }
     }
 }
@@ -141,9 +148,7 @@ fn nix_deserialize_field(f: &Field) -> TokenStream {
 }
 
 fn nix_deserialize_struct(style: Style, fields: &[Field<'_>]) -> TokenStream {
-    let read_fields = fields.iter().map(|f| {
-        nix_deserialize_field(f)
-    });
+    let read_fields = fields.iter().map(|f| nix_deserialize_field(f));
 
     let field_names = fields.iter().map(|f| f.var_ident());
     let construct = match style {
@@ -171,9 +176,7 @@ fn nix_deserialize_struct(style: Style, fields: &[Field<'_>]) -> TokenStream {
 
 fn nix_deserialize_read_variant(variant: &Variant<'_>) -> TokenStream {
     let ident = variant.ident;
-    let read_fields = variant.fields.iter().map(|f| {
-        nix_deserialize_field(f)
-    });
+    let read_fields = variant.fields.iter().map(|f| nix_deserialize_field(f));
     let field_names = variant.fields.iter().map(|f| f.var_ident());
     let construct = match variant.style {
         Style::Struct => {

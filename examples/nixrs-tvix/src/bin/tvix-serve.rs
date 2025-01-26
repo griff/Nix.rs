@@ -80,7 +80,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out = tokio::io::stdout();
     let build_log = tokio::io::stderr();
 
-    legacy_worker::run_server_with_log(source, out, store, build_log, cli.write)
-        .await?;
+    legacy_worker::run_server_with_log(source, out, store, build_log, cli.write).await?;
     Ok(())
 }

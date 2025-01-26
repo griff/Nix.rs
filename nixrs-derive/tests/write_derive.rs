@@ -1,9 +1,14 @@
 use std::fmt;
 
-use nixrs::{daemon::ser::{mock::{Builder, Error}, NixWrite as _}, store_path::{StoreDir, StoreDirDisplay}};
+use nixrs::{
+    daemon::ser::{
+        mock::{Builder, Error},
+        NixWrite as _,
+    },
+    store_path::{StoreDir, StoreDirDisplay},
+};
 use nixrs_derive::NixSerialize;
 use num_enum::IntoPrimitive;
-
 
 #[derive(Debug, PartialEq, Eq, NixSerialize)]
 pub struct UnitTest;
@@ -38,10 +43,7 @@ fn default_test() -> StructVersionTest {
 pub struct TupleVersionTest(u64, #[nix(version = "25..")] String);
 
 #[derive(Debug, PartialEq, Eq, NixSerialize)]
-pub struct TupleVersionDefaultTest(
-    u64,
-    #[nix(version = "..25")] StructVersionTest,
-);
+pub struct TupleVersionDefaultTest(u64, #[nix(version = "..25")] StructVersionTest);
 
 #[tokio::test]
 async fn write_unit() {
@@ -57,17 +59,27 @@ async fn write_empty_tuple() {
 
 #[tokio::test]
 async fn write_struct() {
-    let mut mock = Builder::new().write_number(89).write_slice(b"klomp").build();
+    let mut mock = Builder::new()
+        .write_number(89)
+        .write_slice(b"klomp")
+        .build();
     mock.write_value(&StructTest {
         first: 89,
         second: String::from("klomp"),
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
 async fn write_tuple() {
-    let mut mock = Builder::new().write_number(89).write_slice(b"klomp").build();
-    mock.write_value(&TupleTest(89, String::from("klomp"))).await.unwrap();
+    let mut mock = Builder::new()
+        .write_number(89)
+        .write_slice(b"klomp")
+        .build();
+    mock.write_value(&TupleTest(89, String::from("klomp")))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -86,7 +98,9 @@ async fn write_struct_without_version() {
     mock.write_value(&StructVersionTest {
         test: 89,
         hello: String::new(),
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -96,13 +110,17 @@ async fn write_tuple_version() {
         .write_number(89)
         .write_slice(b"klomp")
         .build();
-    mock.write_value(&TupleVersionTest(89, "klomp".into())).await.unwrap();
+    mock.write_value(&TupleVersionTest(89, "klomp".into()))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
 async fn write_tuple_without_version() {
     let mut mock = Builder::new().version((1, 19)).write_number(89).build();
-    mock.write_value(&TupleVersionTest(89, String::new())).await.unwrap();
+    mock.write_value(&TupleVersionTest(89, String::new()))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -116,9 +134,11 @@ async fn write_complex_1() {
         999,
         StructVersionTest {
             test: 666,
-            hello: String::new()
-        }
-    )).await.unwrap();
+            hello: String::new(),
+        },
+    ))
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -133,9 +153,11 @@ async fn write_complex_2() {
         999,
         StructVersionTest {
             test: 666,
-            hello: String::from("The quick brown 🦊 jumps over 13 lazy 🐶.")
-        }
-    )).await.unwrap();
+            hello: String::from("The quick brown 🦊 jumps over 13 lazy 🐶."),
+        },
+    ))
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -145,9 +167,11 @@ async fn write_complex_3() {
         999,
         StructVersionTest {
             test: 89,
-            hello: String::from("klomp")
-        }
-    )).await.unwrap();
+            hello: String::from("klomp"),
+        },
+    ))
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -157,11 +181,12 @@ async fn write_complex_4() {
         999,
         StructVersionTest {
             test: 89,
-            hello: String::from("klomp")
-        }
-    )).await.unwrap();
+            hello: String::from("klomp"),
+        },
+    ))
+    .await
+    .unwrap();
 }
-
 
 #[derive(Debug, PartialEq, Eq, NixSerialize)]
 #[nix(display)]
@@ -193,7 +218,6 @@ impl TestFromStr2 {
     fn display(&self) -> TestFromStrDisplay {
         TestFromStrDisplay
     }
-    
 }
 
 #[tokio::test]
@@ -217,8 +241,6 @@ async fn write_from_store_dir_str() {
     let mut mock = Builder::new().write_display("test").build();
     mock.write_value(&TestFromStoreDirStr).await.unwrap();
 }
-
-
 
 #[derive(Clone, Debug, PartialEq, Eq, NixSerialize)]
 #[nix(try_into = "u64")]
@@ -284,13 +306,21 @@ enum TestEnum {
 #[tokio::test]
 async fn write_enum_9() {
     let mut mock = Builder::new().version((1, 9)).write_number(42).build();
-    mock.write_value(&TestEnum::Pre20(TestFromU64, 666)).await.unwrap();
+    mock.write_value(&TestEnum::Pre20(TestFromU64, 666))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
 async fn write_enum_19() {
-    let mut mock = Builder::new().version((1, 19)).write_number(42).write_number(666).build();
-    mock.write_value(&TestEnum::Pre20(TestFromU64, 666)).await.unwrap();
+    let mut mock = Builder::new()
+        .version((1, 19))
+        .write_number(42)
+        .write_number(666)
+        .build();
+    mock.write_value(&TestEnum::Pre20(TestFromU64, 666))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -303,7 +333,9 @@ async fn write_enum_20() {
     mock.write_value(&TestEnum::Post20(StructVersionTest {
         test: 666,
         hello: "klomp".into(),
-    })).await.unwrap();
+    }))
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -314,32 +346,34 @@ async fn write_enum_30() {
 
 #[tokio::test]
 async fn write_enum_40() {
-    let mut mock = Builder::new().version((1, 40))
+    let mut mock = Builder::new()
+        .version((1, 40))
         .write_slice(b"hello world")
         .build();
     mock.write_value(&TestEnum::Post40 {
         msg: "hello world".into(),
         level: 9001,
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
 async fn write_enum_45() {
-    let mut mock = Builder::new().version((1, 45))
+    let mut mock = Builder::new()
+        .version((1, 45))
         .write_slice(b"hello world")
         .write_number(9001)
         .build();
     mock.write_value(&TestEnum::Post40 {
         msg: "hello world".into(),
         level: 9001,
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
 
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, IntoPrimitive,
-    NixSerialize
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, IntoPrimitive, NixSerialize)]
 #[nix(into = "u64")]
 #[repr(u64)]
 enum Tag {
@@ -350,12 +384,12 @@ enum Tag {
 }
 
 #[derive(Debug, PartialEq, Eq, NixSerialize)]
-#[nix(tag="Tag")]
+#[nix(tag = "Tag")]
 enum TestTaggedEnum {
     Pre20(TestFromU64, #[nix(version = "10..")] u64),
     Post20(StructVersionTest),
     Post30,
-    #[nix(tag="Unknown")]
+    #[nix(tag = "Unknown")]
     Post40 {
         msg: String,
         #[nix(version = "45..")]
@@ -370,7 +404,9 @@ async fn write_tagged_enum_tuple_fields_1() {
         .write_number(1)
         .write_number(42)
         .build();
-    mock.write_value(&TestTaggedEnum::Pre20(TestFromU64, 666)).await.unwrap();
+    mock.write_value(&TestTaggedEnum::Pre20(TestFromU64, 666))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -379,8 +415,11 @@ async fn write_tagged_enum_tuple_fields_2() {
         .version((1, 19))
         .write_number(1)
         .write_number(42)
-        .write_number(666).build();
-    mock.write_value(&TestTaggedEnum::Pre20(TestFromU64, 666)).await.unwrap();
+        .write_number(666)
+        .build();
+    mock.write_value(&TestTaggedEnum::Pre20(TestFromU64, 666))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -394,7 +433,9 @@ async fn write_tagged_enum_struct() {
     mock.write_value(&TestTaggedEnum::Post20(StructVersionTest {
         test: 666,
         hello: "klomp".into(),
-    })).await.unwrap();
+    }))
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -405,19 +446,23 @@ async fn write_tagged_enum_unit() {
 
 #[tokio::test]
 async fn write_tagged_enum_struct_fields_1() {
-    let mut mock = Builder::new().version((1, 40))
+    let mut mock = Builder::new()
+        .version((1, 40))
         .write_number(4)
         .write_slice(b"hello world")
         .build();
     mock.write_value(&TestTaggedEnum::Post40 {
         msg: "hello world".into(),
         level: 9001,
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
 async fn write_tagged_enum_struct_fields_2() {
-    let mut mock = Builder::new().version((1, 45))
+    let mut mock = Builder::new()
+        .version((1, 45))
         .write_number(4)
         .write_slice(b"hello world")
         .write_number(9001)
@@ -425,5 +470,7 @@ async fn write_tagged_enum_struct_fields_2() {
     mock.write_value(&TestTaggedEnum::Post40 {
         msg: "hello world".into(),
         level: 9001,
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
