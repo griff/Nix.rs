@@ -67,7 +67,7 @@ impl<'a> Variant<'a> {
     }
 
     pub fn tag_ident(&self) -> &syn::Ident {
-        self.attrs.tag.as_ref().unwrap_or(&self.ident)
+        self.attrs.tag.as_ref().unwrap_or(self.ident)
     }
 }
 

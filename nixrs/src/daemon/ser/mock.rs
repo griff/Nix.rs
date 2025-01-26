@@ -89,17 +89,17 @@ impl fmt::Display for OperationType {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Operation {
-    WriteNumber(u64, Result<(), Error>),
-    WriteSlice(Vec<u8>, Result<(), Error>),
-    WriteDisplay(String, Result<(), Error>),
+    Number(u64, Result<(), Error>),
+    Slice(Vec<u8>, Result<(), Error>),
+    Display(String, Result<(), Error>),
 }
 
 impl From<Operation> for OperationType {
     fn from(value: Operation) -> Self {
         match value {
-            Operation::WriteNumber(_, _) => OperationType::WriteNumber,
-            Operation::WriteSlice(_, _) => OperationType::WriteSlice,
-            Operation::WriteDisplay(_, _) => OperationType::WriteDisplay,
+            Operation::Number(_, _) => OperationType::WriteNumber,
+            Operation::Slice(_, _) => OperationType::WriteSlice,
+            Operation::Display(_, _) => OperationType::WriteDisplay,
         }
     }
 }
@@ -130,24 +130,24 @@ impl Builder {
     }
 
     pub fn write_number(&mut self, value: u64) -> &mut Self {
-        self.ops.push_back(Operation::WriteNumber(value, Ok(())));
+        self.ops.push_back(Operation::Number(value, Ok(())));
         self
     }
 
     pub fn write_number_error(&mut self, value: u64, err: Error) -> &mut Self {
-        self.ops.push_back(Operation::WriteNumber(value, Err(err)));
+        self.ops.push_back(Operation::Number(value, Err(err)));
         self
     }
 
     pub fn write_slice(&mut self, value: &[u8]) -> &mut Self {
         self.ops
-            .push_back(Operation::WriteSlice(value.to_vec(), Ok(())));
+            .push_back(Operation::Slice(value.to_vec(), Ok(())));
         self
     }
 
     pub fn write_slice_error(&mut self, value: &[u8], err: Error) -> &mut Self {
         self.ops
-            .push_back(Operation::WriteSlice(value.to_vec(), Err(err)));
+            .push_back(Operation::Slice(value.to_vec(), Err(err)));
         self
     }
 
@@ -156,7 +156,7 @@ impl Builder {
         D: fmt::Display,
     {
         let msg = value.to_string();
-        self.ops.push_back(Operation::WriteDisplay(msg, Ok(())));
+        self.ops.push_back(Operation::Display(msg, Ok(())));
         self
     }
 
@@ -165,7 +165,7 @@ impl Builder {
         D: fmt::Display,
     {
         let msg = value.to_string();
-        self.ops.push_back(Operation::WriteDisplay(msg, Err(err)));
+        self.ops.push_back(Operation::Display(msg, Err(err)));
         self
     }
 
@@ -181,46 +181,46 @@ impl Builder {
     #[cfg(test)]
     fn write_operation(&mut self, op: &Operation) -> &mut Self {
         match op {
-            Operation::WriteNumber(value, Ok(_)) => self.write_number(*value),
-            Operation::WriteNumber(value, Err(Error::UnexpectedNumber(_))) => {
+            Operation::Number(value, Ok(_)) => self.write_number(*value),
+            Operation::Number(value, Err(Error::UnexpectedNumber(_))) => {
                 self.write_number(*value)
             }
-            Operation::WriteNumber(_, Err(Error::ExtraWrite(OperationType::WriteNumber))) => self,
-            Operation::WriteNumber(_, Err(Error::WrongWrite(op, OperationType::WriteNumber))) => {
+            Operation::Number(_, Err(Error::ExtraWrite(OperationType::WriteNumber))) => self,
+            Operation::Number(_, Err(Error::WrongWrite(op, OperationType::WriteNumber))) => {
                 self.write_operation_type(*op)
             }
-            Operation::WriteNumber(value, Err(Error::Custom(msg))) => {
+            Operation::Number(value, Err(Error::Custom(msg))) => {
                 self.write_number_error(*value, Error::Custom(msg.clone()))
             }
-            Operation::WriteNumber(value, Err(Error::IO(kind, msg))) => {
+            Operation::Number(value, Err(Error::IO(kind, msg))) => {
                 self.write_number_error(*value, Error::IO(*kind, msg.clone()))
             }
-            Operation::WriteSlice(value, Ok(_)) => self.write_slice(&value),
-            Operation::WriteSlice(value, Err(Error::UnexpectedSlice(_))) => {
+            Operation::Slice(value, Ok(_)) => self.write_slice(&value),
+            Operation::Slice(value, Err(Error::UnexpectedSlice(_))) => {
                 self.write_slice(&value)
             }
-            Operation::WriteSlice(_, Err(Error::ExtraWrite(OperationType::WriteSlice))) => self,
-            Operation::WriteSlice(_, Err(Error::WrongWrite(op, OperationType::WriteSlice))) => {
+            Operation::Slice(_, Err(Error::ExtraWrite(OperationType::WriteSlice))) => self,
+            Operation::Slice(_, Err(Error::WrongWrite(op, OperationType::WriteSlice))) => {
                 self.write_operation_type(*op)
             }
-            Operation::WriteSlice(value, Err(Error::Custom(msg))) => {
+            Operation::Slice(value, Err(Error::Custom(msg))) => {
                 self.write_slice_error(&value, Error::Custom(msg.clone()))
             }
-            Operation::WriteSlice(value, Err(Error::IO(kind, msg))) => {
+            Operation::Slice(value, Err(Error::IO(kind, msg))) => {
                 self.write_slice_error(&value, Error::IO(*kind, msg.clone()))
             }
-            Operation::WriteDisplay(value, Ok(_)) => self.write_display(&value),
-            Operation::WriteDisplay(value, Err(Error::Custom(msg))) => {
+            Operation::Display(value, Ok(_)) => self.write_display(&value),
+            Operation::Display(value, Err(Error::Custom(msg))) => {
                 self.write_display_error(&value, Error::Custom(msg.clone()))
             }
-            Operation::WriteDisplay(value, Err(Error::IO(kind, msg))) => {
+            Operation::Display(value, Err(Error::IO(kind, msg))) => {
                 self.write_display_error(&value, Error::IO(*kind, msg.clone()))
             }
-            Operation::WriteDisplay(value, Err(Error::UnexpectedDisplay(_))) => {
+            Operation::Display(value, Err(Error::UnexpectedDisplay(_))) => {
                 self.write_display(&value)
             }
-            Operation::WriteDisplay(_, Err(Error::ExtraWrite(OperationType::WriteDisplay))) => self,
-            Operation::WriteDisplay(_, Err(Error::WrongWrite(op, OperationType::WriteDisplay))) => {
+            Operation::Display(_, Err(Error::ExtraWrite(OperationType::WriteDisplay))) => self,
+            Operation::Display(_, Err(Error::WrongWrite(op, OperationType::WriteDisplay))) => {
                 self.write_operation_type(*op)
             }
             s => panic!("Invalid operation {:?}", s),
@@ -253,25 +253,25 @@ impl Mock {
     #[allow(dead_code)]
     async fn assert_operation(&mut self, op: Operation) {
         match op {
-            Operation::WriteNumber(_, Err(Error::UnexpectedNumber(value))) => {
+            Operation::Number(_, Err(Error::UnexpectedNumber(value))) => {
                 assert_eq!(
                     self.write_number(value).await,
                     Err(Error::UnexpectedNumber(value))
                 );
             }
-            Operation::WriteNumber(value, res) => {
+            Operation::Number(value, res) => {
                 assert_eq!(self.write_number(value).await, res);
             }
-            Operation::WriteSlice(_, ref res @ Err(Error::UnexpectedSlice(ref value))) => {
+            Operation::Slice(_, ref res @ Err(Error::UnexpectedSlice(ref value))) => {
                 assert_eq!(self.write_slice(&value).await, res.clone());
             }
-            Operation::WriteSlice(value, res) => {
+            Operation::Slice(value, res) => {
                 assert_eq!(self.write_slice(&value).await, res);
             }
-            Operation::WriteDisplay(_, ref res @ Err(Error::UnexpectedDisplay(ref value))) => {
+            Operation::Display(_, ref res @ Err(Error::UnexpectedDisplay(ref value))) => {
                 assert_eq!(self.write_display(&value).await, res.clone());
             }
-            Operation::WriteDisplay(value, res) => {
+            Operation::Display(value, res) => {
                 assert_eq!(self.write_display(&value).await, res);
             }
         }
@@ -282,25 +282,25 @@ impl Mock {
         use ::proptest::prop_assert_eq;
 
         match op {
-            Operation::WriteNumber(_, Err(Error::UnexpectedNumber(value))) => {
+            Operation::Number(_, Err(Error::UnexpectedNumber(value))) => {
                 prop_assert_eq!(
                     self.write_number(value).await,
                     Err(Error::UnexpectedNumber(value))
                 );
             }
-            Operation::WriteNumber(value, res) => {
+            Operation::Number(value, res) => {
                 prop_assert_eq!(self.write_number(value).await, res);
             }
-            Operation::WriteSlice(_, ref res @ Err(Error::UnexpectedSlice(ref value))) => {
+            Operation::Slice(_, ref res @ Err(Error::UnexpectedSlice(ref value))) => {
                 prop_assert_eq!(self.write_slice(&value).await, res.clone());
             }
-            Operation::WriteSlice(value, res) => {
+            Operation::Slice(value, res) => {
                 prop_assert_eq!(self.write_slice(&value).await, res);
             }
-            Operation::WriteDisplay(_, ref res @ Err(Error::UnexpectedDisplay(ref value))) => {
+            Operation::Display(_, ref res @ Err(Error::UnexpectedDisplay(ref value))) => {
                 prop_assert_eq!(self.write_display(&value).await, res.clone());
             }
-            Operation::WriteDisplay(value, res) => {
+            Operation::Display(value, res) => {
                 prop_assert_eq!(self.write_display(&value).await, res);
             }
         }
@@ -321,7 +321,7 @@ impl NixWrite for Mock {
 
     async fn write_number(&mut self, value: u64) -> Result<(), Self::Error> {
         match self.ops.pop_front() {
-            Some(Operation::WriteNumber(expected, ret)) => {
+            Some(Operation::Number(expected, ret)) => {
                 if value != expected {
                     return Err(Error::UnexpectedNumber(value));
                 }
@@ -334,7 +334,7 @@ impl NixWrite for Mock {
 
     async fn write_slice(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
         match self.ops.pop_front() {
-            Some(Operation::WriteSlice(expected, ret)) => {
+            Some(Operation::Slice(expected, ret)) => {
                 if buf != expected {
                     return Err(Error::UnexpectedSlice(buf.to_vec()));
                 }
@@ -352,7 +352,7 @@ impl NixWrite for Mock {
     {
         let value = msg.to_string();
         match self.ops.pop_front() {
-            Some(Operation::WriteDisplay(expected, ret)) => {
+            Some(Operation::Display(expected, ret)) => {
                 if value != expected {
                     return Err(Error::UnexpectedDisplay(value));
                 }
@@ -409,7 +409,7 @@ mod proptest {
                 Err(Error::UnexpectedNumber(exp_v)) => v != exp_v,
                 _ => true,
             })
-            .prop_map(|(v, res)| Operation::WriteNumber(v, res))
+            .prop_map(|(v, res)| Operation::Number(v, res))
     }
 
     pub fn arb_write_slice_operation() -> impl Strategy<Value = Operation> {
@@ -435,20 +435,20 @@ mod proptest {
                 Err(Error::UnexpectedSlice(exp_v)) => v != exp_v,
                 _ => true,
             })
-            .prop_map(|(v, res)| Operation::WriteSlice(v, res))
+            .prop_map(|(v, res)| Operation::Slice(v, res))
     }
 
     #[allow(dead_code)]
     pub fn arb_extra_write() -> impl Strategy<Value = Operation> {
         prop_oneof![
             any::<u64>().prop_map(|msg| {
-                Operation::WriteNumber(msg, Err(Error::ExtraWrite(OperationType::WriteNumber)))
+                Operation::Number(msg, Err(Error::ExtraWrite(OperationType::WriteNumber)))
             }),
             any::<Vec<u8>>().prop_map(|msg| {
-                Operation::WriteSlice(msg, Err(Error::ExtraWrite(OperationType::WriteSlice)))
+                Operation::Slice(msg, Err(Error::ExtraWrite(OperationType::WriteSlice)))
             }),
             any::<String>().prop_map(|msg| {
-                Operation::WriteDisplay(msg, Err(Error::ExtraWrite(OperationType::WriteDisplay)))
+                Operation::Display(msg, Err(Error::ExtraWrite(OperationType::WriteDisplay)))
             }),
         ]
     }
@@ -476,7 +476,7 @@ mod proptest {
                 Err(Error::UnexpectedDisplay(exp_v)) => v != exp_v,
                 _ => true,
             })
-            .prop_map(|(v, res)| Operation::WriteDisplay(v, res))
+            .prop_map(|(v, res)| Operation::Display(v, res))
     }
 
     pub fn arb_operation() -> impl Strategy<Value = Operation> {

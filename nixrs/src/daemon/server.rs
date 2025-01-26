@@ -59,12 +59,7 @@ pub struct Builder {
 
 impl Builder {
     pub fn new() -> Builder {
-        Builder {
-            store_trust: TrustLevel::NotTrusted,
-            min_version: ProtocolVersion::min(),
-            max_version: ProtocolVersion::max(),
-            nix_version: None,
-        }
+        Default::default()
     }
 
     pub async fn serve_connection<I, S>(&self, io: I, store: S) -> DaemonResult<()>
@@ -94,6 +89,17 @@ impl Builder {
         conn.process_requests(store).await?;
         eprintln!("Server processed all requests!");
         Ok(())
+    }
+}
+
+impl Default for Builder {
+    fn default() -> Self {
+        Self {
+            store_trust: TrustLevel::NotTrusted,
+            min_version: ProtocolVersion::min(),
+            max_version: ProtocolVersion::max(),
+            nix_version: None
+        }
     }
 }
 

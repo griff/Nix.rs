@@ -149,9 +149,9 @@ pub enum DaemonError {
 impl Clone for DaemonError {
     fn clone(&self) -> Self {
         match self {
-            Self::WrongMagic(arg0) => Self::WrongMagic(arg0.clone()),
-            Self::UnsupportedVersion(arg0) => Self::UnsupportedVersion(arg0.clone()),
-            Self::UnimplementedOperation(arg0) => Self::UnimplementedOperation(arg0.clone()),
+            Self::WrongMagic(arg0) => Self::WrongMagic(*arg0),
+            Self::UnsupportedVersion(arg0) => Self::UnsupportedVersion(*arg0),
+            Self::UnimplementedOperation(arg0) => Self::UnimplementedOperation(*arg0),
             Self::NoSinkForLoggerWrite => Self::NoSinkForLoggerWrite,
             Self::NoSourceForLoggerRead => Self::NoSourceForLoggerRead,
             Self::IO(arg0) => Self::IO(std::io::Error::new(arg0.kind(), arg0.to_string())),

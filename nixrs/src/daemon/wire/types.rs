@@ -100,28 +100,26 @@ pub enum Operation {
 macro_rules! optional_string {
     ($sub:ty) => {
         impl NixDeserialize for Option<$sub> {
-            fn try_deserialize<R>(
+            async fn try_deserialize<R>(
                 reader: &mut R,
-            ) -> impl std::future::Future<Output = Result<Option<Self>, R::Error>> + Send + '_
+            ) -> Result<Option<Self>, R::Error>
             where
                 R: ?Sized + NixRead + Send,
             {
-                async move {
-                    use nixrs::daemon::de::Error;
-                    use nixrs::store_path::FromStoreDirStr;
-                    if let Some(buf) = reader.try_read_bytes().await? {
-                        let s = ::std::str::from_utf8(&buf).map_err(Error::invalid_data)?;
-                        if s == "" {
-                            Ok(Some(None))
-                        } else {
-                            let dir = reader.store_dir();
-                            <$sub as FromStoreDirStr>::from_store_dir_str(dir, s)
-                                .map_err(Error::invalid_data)
-                                .map(|v| Some(Some(v)))
-                        }
+                use nixrs::daemon::de::Error;
+                use nixrs::store_path::FromStoreDirStr;
+                if let Some(buf) = reader.try_read_bytes().await? {
+                    let s = ::std::str::from_utf8(&buf).map_err(Error::invalid_data)?;
+                    if s == "" {
+                        Ok(Some(None))
                     } else {
-                        Ok(None)
+                        let dir = reader.store_dir();
+                        <$sub as FromStoreDirStr>::from_store_dir_str(dir, s)
+                            .map_err(Error::invalid_data)
+                            .map(|v| Some(Some(v)))
                     }
+                } else {
+                    Ok(None)
                 }
             }
         }

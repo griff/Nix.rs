@@ -220,10 +220,8 @@ where
         Self: Sized,
     {
         // Ensure that buffer has space for at least reserved_buf_size bytes
-        if self.remaining_mut() < self.reserved_buf_size {
-            if !self.buf.is_empty() {
-                self.flush_buf().await?;
-            }
+        if self.remaining_mut() < self.reserved_buf_size && !self.buf.is_empty() {
+            self.flush_buf().await?;
         }
         let offset = self.buf.len();
         self.buf.put_u64_le(0);

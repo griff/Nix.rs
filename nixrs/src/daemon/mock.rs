@@ -82,7 +82,7 @@ pub enum MockResponse {
 }
 
 impl MockResponse {
-    pub fn unwrap_empty(self) -> () {
+    pub fn unwrap_empty(self) {
         match self {
             Self::Empty => (),
             _ => panic!("Unexpected response {:?}", self),
@@ -498,11 +498,17 @@ pub struct MockStore<R> {
 
 impl MockStore<()> {
     pub fn new() -> MockStore<()> {
-        Self::builder().build()
+        Default::default()
     }
 
     pub fn builder() -> Builder<()> {
         Builder::default()
+    }
+}
+
+impl Default for MockStore<()> {
+    fn default() -> Self {
+        Self::builder().build()
     }
 }
 

@@ -26,16 +26,22 @@ pub struct DaemonClientBuilder {
     writer_builder: NixWriterBuilder,
 }
 
-impl DaemonClientBuilder {
-    pub fn new() -> Self {
+impl Default for DaemonClientBuilder {
+    fn default() -> Self {
         Self {
-            store_dir: StoreDir::default(),
-            host: None,
+            store_dir: Default::default(),
+            host: Default::default(),
             min_version: ProtocolVersion::min(),
             max_version: ProtocolVersion::max(),
-            reader_builder: NixReader::builder(),
-            writer_builder: NixWriter::builder(),
+            reader_builder: Default::default(),
+            writer_builder: Default::default()
         }
+    }
+}
+
+impl DaemonClientBuilder {
+    pub fn new() -> Self {
+        Default::default()
     }
 
     pub fn set_store_dir(&mut self, store_dir: &StoreDir) -> &mut Self {

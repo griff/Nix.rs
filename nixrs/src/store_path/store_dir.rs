@@ -127,7 +127,7 @@ where
 
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
-    use std::path::{PathBuf, MAIN_SEPARATOR};
+    use std::path::{PathBuf, MAIN_SEPARATOR_STR};
 
     use proptest::prelude::{any, Arbitrary, BoxedStrategy, Strategy};
 
@@ -137,7 +137,7 @@ pub mod proptest {
         (any::<PathBuf>()).prop_map(|mut path| {
             if !path.is_absolute() {
                 let mut out = PathBuf::new();
-                out.push(&MAIN_SEPARATOR.to_string());
+                out.push(MAIN_SEPARATOR_STR);
                 out.push(path);
                 path = out;
             }

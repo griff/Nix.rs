@@ -7,7 +7,7 @@ impl NixSerialize for Bytes {
     where
         W: NixWrite,
     {
-        writer.write_slice(&self).await
+        writer.write_slice(self).await
     }
 }
 
@@ -16,7 +16,7 @@ impl<'a> NixSerialize for &'a [u8] {
     where
         W: NixWrite,
     {
-        writer.write_slice(&self).await
+        writer.write_slice(self).await
     }
 }
 

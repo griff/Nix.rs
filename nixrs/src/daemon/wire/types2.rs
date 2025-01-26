@@ -430,22 +430,20 @@ pub struct AddPermRootRequest {
 macro_rules! optional_info {
     ($sub:ty) => {
         impl NixDeserialize for Option<$sub> {
-            fn try_deserialize<R>(
+            async fn try_deserialize<R>(
                 reader: &mut R,
-            ) -> impl std::future::Future<Output = Result<Option<Self>, R::Error>> + Send + '_
+            ) -> Result<Option<Self>, R::Error>
             where
                 R: ?Sized + NixRead + Send,
             {
-                async move {
-                    if let Some(found) = reader.try_read_value::<bool>().await? {
-                        if found {
-                            Ok(Some(Some(reader.read_value().await?)))
-                        } else {
-                            Ok(Some(None))
-                        }
+                if let Some(found) = reader.try_read_value::<bool>().await? {
+                    if found {
+                        Ok(Some(Some(reader.read_value().await?)))
                     } else {
-                        Ok(None)
+                        Ok(Some(None))
                     }
+                } else {
+                    Ok(None)
                 }
             }
         }
@@ -473,23 +471,21 @@ optional_info!(UnkeyedValidPathInfo);
 macro_rules! optional_string {
     ($sub:ty) => {
         impl NixDeserialize for Option<$sub> {
-            fn try_deserialize<R>(
+            async fn try_deserialize<R>(
                 reader: &mut R,
-            ) -> impl std::future::Future<Output = Result<Option<Self>, R::Error>> + Send + '_
+            ) -> Result<Option<Self>, R::Error>
             where
                 R: ?Sized + NixRead + Send,
             {
-                async move {
-                    if let Some(buf) = reader.try_read_bytes().await? {
-                        let s = from_utf8(&buf).map_err(R::Error::invalid_data)?;
-                        if s == "" {
-                            Ok(Some(None))
-                        } else {
-                            Ok(Some(Some(s.parse().map_err(R::Error::invalid_data)?)))
-                        }
+                if let Some(buf) = reader.try_read_bytes().await? {
+                    let s = from_utf8(&buf).map_err(R::Error::invalid_data)?;
+                    if s == "" {
+                        Ok(Some(None))
                     } else {
-                        Ok(None)
+                        Ok(Some(Some(s.parse().map_err(R::Error::invalid_data)?)))
                     }
+                } else {
+                    Ok(None)
                 }
             }
         }
@@ -512,22 +508,20 @@ optional_string!(ContentAddress);
 
 #[cfg(feature = "nixrs-derive")]
 impl NixDeserialize for Option<Microseconds> {
-    fn try_deserialize<R>(
+    async fn try_deserialize<R>(
         reader: &mut R,
-    ) -> impl std::future::Future<Output = Result<Option<Self>, R::Error>> + Send + '_
+    ) -> Result<Option<Self>, R::Error>
     where
         R: ?Sized + NixRead + Send,
     {
-        async move {
-            if let Some(tag) = reader.try_read_value::<u8>().await? {
-                match tag {
-                    0 => Ok(None),
-                    1 => Ok(Some(reader.read_value().await?)),
-                    _ => Err(R::Error::invalid_data("invalid optional tag from remote")),
-                }
-            } else {
-                Ok(None)
+        if let Some(tag) = reader.try_read_value::<u8>().await? {
+            match tag {
+                0 => Ok(None),
+                1 => Ok(Some(reader.read_value().await?)),
+                _ => Err(R::Error::invalid_data("invalid optional tag from remote")),
             }
+        } else {
+            Ok(None)
         }
     }
 }

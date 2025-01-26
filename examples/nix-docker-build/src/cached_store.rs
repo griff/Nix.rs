@@ -117,7 +117,7 @@ impl Store for CachedStore {
         for input in inputs.iter() {
             b.command_mut()
                 .arg("-v")
-                .arg(&format!("/nix/store/{}:/nix/store/{}", input, input));
+                .arg(format!("/nix/store/{}:/nix/store/{}", input, input));
         }
         b.command_mut()
             .args(["griff/nix-static", "nix-store", "--serve"]);
