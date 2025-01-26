@@ -24,7 +24,7 @@ pub type Signature = String;
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(from_store_dir_str, store_dir_display))]
-pub struct ContentAddress(String);
+pub struct ContentAddress(#[proptest(regex="\\PC+")] String);
 impl FromStoreDirStr for ContentAddress {
     type Error = ParseStorePathError;
 

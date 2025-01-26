@@ -1,0 +1,133 @@
+From d17fa38eb7990c54ddd904d0fa5561f9b66317a6 Mon Sep 17 00:00:00 2001
+From: Brian Olsen <brian@maven-group.org>
+Date: Sun, 2 Feb 2025 18:18:23 +0100
+Subject: [PATCH] feat: Add unix socket proxy store
+
+---
+ src/libstore/proxy-store.cc | 114 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 114 insertions(+)
+ create mode 100644 src/libstore/proxy-store.cc
+
+diff --git a/src/libstore/proxy-store.cc b/src/libstore/proxy-store.cc
+new file mode 100644
+index 000000000..d35ff5555
+--- /dev/null
++++ b/src/libstore/proxy-store.cc
+@@ -0,0 +1,114 @@
++#include "store-api.hh"
++#include "pool.hh"
++#include "serialise.hh"
++#include "util.hh"
++#include "remote-store.hh"
++#include "remote-fs-accessor.hh"
++#include "worker-protocol.hh"
++#include "archive.hh"
++#include "affinity.hh"
++#include "globals.hh"
++#include "derivations.hh"
++#include "pool.hh"
++#include "finally.hh"
++
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <sys/socket.h>
++#include <sys/un.h>
++#include <errno.h>
++#include <fcntl.h>
++#include <unistd.h>
++
++#include <cstring>
++
++namespace nix {
++
++static std::string uriScheme = "proxy://";
++
++class ProxyStore : public RemoteStore
++{
++public:
++    ProxyStore(const std::string & path, const Params & params)
++        : Store(params)
++        , RemoteStore(params)
++        , path(path)
++    {
++    }
++
++    std::string getUri() override
++    {
++        return uriScheme + path;
++    }
++
++    bool sameMachine()
++    { return false; }
++
++    void narFromPath(const Path & path, Sink & sink) override;
++
++    ref<FSAccessor> getFSAccessor() override;
++
++private:
++ 
++    ref<RemoteStore::Connection> openConnection() override;
++    std::string path;
++};
++
++void ProxyStore::narFromPath(const Path & path, Sink & sink)
++{
++    auto conn(connections->get());
++    conn->to << wopNarFromPath << path;
++    conn->processStderr();
++    copyNAR(conn->from, sink);
++}
++
++ref<FSAccessor> ProxyStore::getFSAccessor()
++{
++    return make_ref<RemoteFSAccessor>(ref<Store>(shared_from_this()));
++}
++
++
++ref<RemoteStore::Connection> ProxyStore::openConnection()
++{
++    auto conn = make_ref<Connection>();
++
++    /* Connect to a daemon that does the privileged work for us. */
++    conn->fd = socket(PF_UNIX, SOCK_STREAM
++        #ifdef SOCK_CLOEXEC
++        | SOCK_CLOEXEC
++        #endif
++        , 0);
++    if (!conn->fd)
++        throw SysError("cannot create Unix domain socket");
++    closeOnExec(conn->fd.get());
++
++    string socketPath = path;
++
++    struct sockaddr_un addr;
++    addr.sun_family = AF_UNIX;
++    if (socketPath.size() + 1 >= sizeof(addr.sun_path))
++        throw Error(format("socket path '%1%' is too long") % socketPath);
++    strcpy(addr.sun_path, socketPath.c_str());
++
++    if (::connect(conn->fd.get(), (struct sockaddr *) &addr, sizeof(addr)) == -1)
++        throw SysError(format("cannot connect to daemon at '%1%'") % socketPath);
++
++    conn->from.fd = conn->fd.get();
++    conn->to.fd = conn->fd.get();
++
++    conn->startTime = std::chrono::steady_clock::now();
++
++    initConnection(*conn);
++
++    return conn;
++}
++
++static RegisterStoreImplementation regStore([](
++    const std::string & uri, const Store::Params & params)
++    -> std::shared_ptr<Store>
++{
++    if (std::string(uri, 0, uriScheme.size()) != uriScheme) return 0;
++    return std::make_shared<ProxyStore>(std::string(uri, uriScheme.size()), params);
++});
++
++}
+-- 
+2.39.5 (Apple Git-154)
+
