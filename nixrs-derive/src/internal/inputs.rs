@@ -13,6 +13,21 @@ impl syn::parse::Parse for RemoteInput {
     }
 }
 
+impl quote::ToTokens for RemoteInput {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        fn is_outer(attr: &&syn::Attribute) -> bool {
+            match attr.style {
+                syn::AttrStyle::Outer => true,
+                syn::AttrStyle::Inner(_) => false,
+            }
+        }
+        for attr in self.attrs.iter().filter(is_outer) {
+            attr.to_tokens(tokens);
+        }
+        self.ident.to_tokens(tokens);
+    }
+}
+
 #[cfg(test)]
 mod test {
     use syn::parse_quote;

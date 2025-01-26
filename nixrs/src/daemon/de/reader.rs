@@ -8,7 +8,7 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncBufRead, AsyncRead, AsyncReadExt, ReadBuf};
 
-use crate::daemon::ProtocolVersion;
+use crate::daemon::{ProtocolVersion, ZEROS};
 use crate::store_path::StoreDir;
 
 use super::{Error, NixRead};
@@ -73,6 +73,7 @@ impl NixReaderBuilder {
 }
 
 pin_project! {
+    #[derive(Debug)]
     pub struct NixReader<R> {
         #[pin]
         inner: R,
@@ -100,6 +101,10 @@ where
 
     pub fn buffer(&self) -> &[u8] {
         &self.buf[..]
+    }
+
+    pub fn set_version(&mut self, version: ProtocolVersion) {
+        self.version = version;
     }
 
     #[cfg(test)]
@@ -152,8 +157,6 @@ where
         Ok(read)
     }
 }
-
-const ZEROS: [u8; 8] = [0u8; 8];
 
 impl<R> NixRead for NixReader<R>
 where

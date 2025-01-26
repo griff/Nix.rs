@@ -1,0 +1,5 @@
+error: Missing from_str, from_store_dir_str, from or try_from attribute
+ --> tests/ui/deserialize_remote_missing_attrs.rs
+  |
+  | nix_deserialize_remote!(Test);
+  |                         ^^^^

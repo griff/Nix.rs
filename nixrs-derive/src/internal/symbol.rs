@@ -12,7 +12,12 @@ pub const FROM: Symbol = Symbol("from");
 pub const TRY_FROM: Symbol = Symbol("try_from");
 pub const FROM_STR: Symbol = Symbol("from_str");
 pub const FROM_STORE_DIR_STR: Symbol = Symbol("from_store_dir_str");
+pub const INTO: Symbol = Symbol("into");
+pub const TRY_INTO: Symbol = Symbol("try_into");
+pub const DISPLAY: Symbol = Symbol("display");
+pub const STORE_DIR_DISPLAY: Symbol = Symbol("store_dir_display");
 pub const CRATE: Symbol = Symbol("crate");
+pub const TAG: Symbol = Symbol("tag");
 
 impl PartialEq<Symbol> for Path {
     fn eq(&self, word: &Symbol) -> bool {

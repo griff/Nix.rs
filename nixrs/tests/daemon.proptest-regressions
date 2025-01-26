@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc a9ef6a6946601bbed800a2d3027d79081095e8ccaf616731522ae66ff8d2750d # shrinks to paths = {}, substitute = false, result = {StorePath { hash: StorePathHash(2q000000000000000000000000000000), name: StorePathName("-") }, StorePath { hash: StorePathHash(000h0000000000000000000000000000), name: StorePathName("a") }}

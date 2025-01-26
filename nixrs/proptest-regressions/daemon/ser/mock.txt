@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc c313a95d978bda049c5722969590547712c692de87cae81072347e631f827b0a # shrinks to operations = [WriteSlice([], Err(ExtraWrite(WriteSlice))), WriteDisplay("", Err(UnexpectedDisplay("0")))]

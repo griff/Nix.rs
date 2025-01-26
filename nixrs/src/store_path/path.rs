@@ -8,7 +8,7 @@ use std::str::FromStr;
 
 use thiserror::Error;
 #[cfg(feature = "nixrs-derive")]
-use nixrs_derive::NixDeserialize;
+use nixrs_derive::{NixDeserialize, NixSerialize};
 
 use crate::base32;
 
@@ -17,26 +17,41 @@ use super::StoreDir;
 use super::StoreDirDisplay;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(from_store_dir_str))]
+#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "nixrs-derive", nix(from_store_dir_str, store_dir_display))]
 pub struct StorePath {
     hash: StorePathHash,
     name: StorePathName,
 }
 
-impl StorePath {
-    fn new(s: &str, store_dir: &StoreDir) -> Result<Self, StorePathError> {
-        let path = Path::new(s);
-        if !path.is_absolute() {
-            return Err(StorePathError::NonAbsolute(path.to_owned()));
-        }
-        let name = s.strip_prefix(store_dir.to_str())
-            .ok_or_else(|| StorePathError::NotInStore(path.into()))?;
-        if name.as_bytes()[0] != b'/' {
-            return Err(StorePathError::NotInStore(path.into()));
-        }
+fn strip_store<'s>(s: &'s str, store_dir: &StoreDir) -> Result<&'s str, StorePathError> {
+    let path = Path::new(s);
+    if !path.is_absolute() {
+        return Err(StorePathError::NonAbsolute(path.to_owned()));
+    }
+    let name = s.strip_prefix(store_dir.to_str())
+        .ok_or_else(|| StorePathError::NotInStore(path.into()))?;
+    if name.as_bytes()[0] != b'/' {
+        return Err(StorePathError::NotInStore(path.into()));
+    }
 
-        name[1..].parse()
+    Ok(&name[1..])
+}
+
+impl StorePath {
+    fn new(s: &str, store_dir: &StoreDir) -> Result<Self, ParseStorePathError> {
+        let name = strip_store(s, store_dir).map_err(|error| {
+            ParseStorePathError {
+                path: s.to_owned(),
+                error,
+            }
+        })?;
+        name.parse::<Self>().map_err(|error| {
+            ParseStorePathError {
+                path: s.to_owned(),
+                error: error.error,
+            }
+        })
     }
 
     fn from_bytes(buf: &[u8]) -> Result<Self, StorePathError> {
@@ -46,6 +61,7 @@ impl StorePath {
         if buf[STORE_PATH_HASH_ENCODED_SIZE] != b'-' {
             return Err(StorePathError::Symbol(
                 STORE_PATH_HASH_ENCODED_SIZE as u8,
+                buf[STORE_PATH_HASH_ENCODED_SIZE],
             ));
         }
         let hash = StorePathHash::decode_digest(&buf[..STORE_PATH_HASH_ENCODED_SIZE])?;
@@ -80,11 +96,32 @@ impl TryFrom<&[u8]> for StorePath {
     }
 }
 
+#[derive(Debug, Error, PartialEq, Eq, Clone)]
+#[error("parse error {path}, {error}")]
+pub struct ParseStorePathError {
+    pub path: String,
+    pub error: StorePathError,
+}
+
+impl ParseStorePathError {
+    pub fn new(path: &str, error: StorePathError) -> ParseStorePathError {
+        ParseStorePathError {
+            path: path.to_owned(),
+            error,
+        }
+    }
+}
+
 impl FromStr for StorePath {
-    type Err = StorePathError;
+    type Err = ParseStorePathError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        StorePath::from_bytes(s.as_bytes())
+        StorePath::from_bytes(s.as_bytes()).map_err(|error| {
+            ParseStorePathError {
+                path: s.to_owned(),
+                error
+            }
+        })
     }
 }
 
@@ -101,7 +138,7 @@ impl AsRef<StorePathHash> for StorePath {
 }
 
 impl FromStoreDirStr for StorePath {
-    type Error = StorePathError;
+    type Error = ParseStorePathError;
 
     fn from_store_dir_str(store_dir: &super::StoreDir, s: &str) -> Result<Self, Self::Error> {
         StorePath::new(s, store_dir)
@@ -118,6 +155,8 @@ const STORE_PATH_HASH_SIZE: usize = 20;
 const STORE_PATH_HASH_ENCODED_SIZE: usize = base32::encode_len(STORE_PATH_HASH_SIZE);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
 pub struct StorePathHash([u8; STORE_PATH_HASH_SIZE]);
 
 impl StorePathHash {
@@ -137,7 +176,7 @@ impl StorePathHash {
         }
         let mut hash_output = [0u8; STORE_PATH_HASH_SIZE];
         base32::decode_mut(data, &mut hash_output)
-            .map_err(|err| StorePathError::Symbol(err.error.position as u8))?;
+            .map_err(|err| StorePathError::Symbol(err.error.position as u8, data[err.error.position]))?;
         Ok(StorePathHash::new(hash_output))
     }
 }
@@ -183,7 +222,7 @@ impl Ord for StorePathHash {
 
 impl PartialOrd for StorePathHash {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.0.cmp(&other.0))
+        Some(self.cmp(other))
     }
 }
 
@@ -252,7 +291,7 @@ pub fn into_name<V: AsRef<[u8]>>(s: &V) -> Result<&str, StorePathError> {
 
     for (idx, ch) in s.iter().enumerate() {
         if !NAME_LOOKUP[*ch as usize] {
-            return Err(StorePathError::Symbol(idx as u8));
+            return Err(StorePathError::Symbol(idx as u8, *ch));
         }
     }
 
@@ -306,7 +345,7 @@ partial_eq!(StorePathName, &'_ str);
 partial_eq!(StorePathName, String);
 partial_eq!(StorePathName, Cow<'_, str>);
 
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum StorePathError {
     #[error("non-absolute store path {0:?}")]
     NonAbsolute(PathBuf),
@@ -316,14 +355,14 @@ pub enum StorePathError {
     HashLength,
     #[error("invalid store path name length")]
     NameLength,
-    #[error("invalid store path symbol at {0}")]
-    Symbol(u8),
+    #[error("invalid store path {ch} symbol at {0}", ch = char::from_u32(*.1 as u32).map(|c| c.to_string()).unwrap_or_else(|| .1.to_string()))]
+    Symbol(u8, u8),
 }
 
 impl StorePathError {
     fn adjust_index(prefix: u8, other: StorePathError) -> StorePathError {
         match other {
-            StorePathError::Symbol(old) => StorePathError::Symbol(prefix + old),
+            StorePathError::Symbol(old, ch) => StorePathError::Symbol(prefix + old, ch),
             c => c,
         }
     }
@@ -402,6 +441,7 @@ pub mod proptest {
 #[cfg(test)]
 mod test {
     use std::cmp::Ordering;
+    use std::collections::BTreeSet;
 
     use hex_literal::hex;
     use rstest::rstest;
@@ -426,11 +466,35 @@ mod test {
     #[case::empty("", StorePathError::HashLength)]
     #[case::too_short("zzcfcjwxkn4cf1nh8dh521vffyq2417", StorePathError::HashLength)]
     #[case::too_long("zzcfcjwxkn4cf1nh8dh521vffyq24179a", StorePathError::HashLength)]
-    #[case::invalid_symbol("zzcfcjwxkn4|f1nh8dh521vffyq24179", StorePathError::Symbol(11))]
+    #[case::invalid_symbol("zzcfcjwxkn4|f1nh8dh521vffyq24179", StorePathError::Symbol(11, b'|'))]
     #[test]
     fn parse_hash_error(#[case] hash: &str, #[case] expected: StorePathError) {
         let err = hash.parse::<StorePathHash>().expect_err("parse failure");
         assert_eq!(err, expected);
+    }
+
+    #[test]
+    fn set_order() {
+        let e = ["2q000000000000000000000000000000", "000h0000000000000000000000000000"];
+        let o = ["000h0000000000000000000000000000", "2q000000000000000000000000000000"];
+        let e_list : Vec<_> = e.into_iter().map(|e| e.parse::<StorePathHash>().unwrap() ).collect();
+        let o_list : Vec<_> = o.into_iter().map(|e| e.parse::<StorePathHash>().unwrap() ).collect();
+        let e_list1 : BTreeSet<_> = e_list.iter().cloned().collect();
+        let o_list1 : BTreeSet<_> = o_list.iter().cloned().collect();
+
+        let mut e_list2 = BTreeSet::new();
+        for item in e_list.iter() {
+            e_list2.insert(item.clone());
+        }
+
+        let mut o_list2 = BTreeSet::new();
+        for item in o_list.iter() {
+            o_list2.insert(item.clone());
+        }
+        assert_eq!(e_list1, e_list2);
+        assert_eq!(o_list1, o_list2);
+        assert_eq!(e_list1, o_list1);
+        assert_eq!(e_list2, o_list2);
     }
 
     #[test]
@@ -466,6 +530,7 @@ mod test {
         let parsed_list = list.map(|i| i.parse::<StorePathHash>().unwrap());
         for window in parsed_list.windows(2) {
             assert_eq!(Ordering::Less, window[0].cmp(&window[1]));
+            assert_eq!(Some(Ordering::Less), window[0].partial_cmp(&window[1]));
         }
     }
 
@@ -492,7 +557,7 @@ mod test {
     #[rstest]
     #[case::empty("", StorePathError::NameLength)]
     #[case::too_long("test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", StorePathError::NameLength)]
-    #[case::invalid_char("test|more", StorePathError::Symbol(4))]
+    #[case::invalid_char("test|more", StorePathError::Symbol(4, b'|'))]
     fn name_errors(#[case] name: &str, #[case] expected: StorePathError) {
         assert_eq!(
             name.parse::<StorePathName>().expect_err("parse succeeded"),
@@ -526,23 +591,26 @@ mod test {
     }
 
     #[rstest]
-    #[case::empty("", StorePathError::HashLength)]
-    #[case::too_short_hash("00ljmhbmf3d12aq4l5l7yr7bxn03yqv-", StorePathError::HashLength)]
+    #[case::empty("", ParseStorePathError::new("", StorePathError::HashLength))]
+    #[case::too_short_hash("00ljmhbmf3d12aq4l5l7yr7bxn03yqv-", ParseStorePathError::new("00ljmhbmf3d12aq4l5l7yr7bxn03yqv-", StorePathError::HashLength))]
     #[case::invalid_hash_symbol(
         "00ljmhbmf3=12aq4l5l7yr7bxn03yqvv-test",
-        StorePathError::Symbol(10)
+        ParseStorePathError::new("00ljmhbmf3=12aq4l5l7yr7bxn03yqvv-test", StorePathError::Symbol(10, b'='))
     )]
     #[case::wrong_dash(
         "00ljmhbmf3=12aq4l5l7yr7bxn03yqvv.test",
-        StorePathError::Symbol(32)
+        ParseStorePathError::new("00ljmhbmf3=12aq4l5l7yr7bxn03yqvv.test", StorePathError::Symbol(32, b'.'))
     )]
-    #[case::missing_name("00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-", StorePathError::NameLength)]
-    #[case::name_too_long("00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", StorePathError::NameLength)]
+    #[case::missing_name("00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-", ParseStorePathError::new("00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-", StorePathError::NameLength))]
+    #[case::name_too_long(
+        "00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ParseStorePathError::new("00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", StorePathError::NameLength)
+    )]
     #[case::name_with_invalid_char(
         "00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-test|more",
-        StorePathError::Symbol(37)
+        ParseStorePathError::new("00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-test|more", StorePathError::Symbol(37, b'|'))
     )]
-    fn store_path_error(#[case] path: &str, #[case] expected: StorePathError) {
+    fn store_path_error(#[case] path: &str, #[case] expected: ParseStorePathError) {
         assert_eq!(
             path.parse::<StorePath>().expect_err("parse succeeded"),
             expected
@@ -595,17 +663,17 @@ mod test {
     }
 
     #[rstest]
-    #[case::empty("", StorePathError::NonAbsolute(PathBuf::from("")))]
-    #[case::mising_file_name("/nix/store/", StorePathError::HashLength)]
-    #[case::not_in_store("/outsise/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home", StorePathError::NotInStore(PathBuf::from("/outsise/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home")))]
-    #[case::missing_slash("/nix/storeywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home", StorePathError::NotInStore(PathBuf::from("/nix/storeywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home")))]
-    #[case::too_short("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq2417", StorePathError::HashLength)]
-    #[case::hash_too_long("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179a-app", StorePathError::Symbol(32))]
-    #[case::missing_name("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179-", StorePathError::NameLength)]
-    #[case::bad_name("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179-å", StorePathError::Symbol(33))]
-    #[case::invalid_symbol("/nix/store/zzcfcjwxkn4|f1nh8dh521vffyq24179-app", StorePathError::Symbol(11))]
+    #[case::empty("", ParseStorePathError::new("", StorePathError::NonAbsolute(PathBuf::from(""))))]
+    #[case::mising_file_name("/nix/store/", ParseStorePathError::new("/nix/store/", StorePathError::HashLength))]
+    #[case::not_in_store("/outsise/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home", ParseStorePathError::new("/outsise/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home", StorePathError::NotInStore(PathBuf::from("/outsise/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home"))))]
+    #[case::missing_slash("/nix/storeywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home", ParseStorePathError::new("/nix/storeywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home", StorePathError::NotInStore(PathBuf::from("/nix/storeywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home"))))]
+    #[case::too_short("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq2417", ParseStorePathError::new("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq2417", StorePathError::HashLength))]
+    #[case::hash_too_long("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179a-app", ParseStorePathError::new("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179a-app", StorePathError::Symbol(32, b'a')))]
+    #[case::missing_name("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179-", ParseStorePathError::new("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179-", StorePathError::NameLength))]
+    #[case::bad_name("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179-å", ParseStorePathError::new("/nix/store/zzcfcjwxkn4cf1nh8dh521vffyq24179-å", StorePathError::Symbol(33, 195)))]
+    #[case::invalid_symbol("/nix/store/zzcfcjwxkn4|f1nh8dh521vffyq24179-app", ParseStorePathError::new("/nix/store/zzcfcjwxkn4|f1nh8dh521vffyq24179-app", StorePathError::Symbol(11, b'|')))]
     #[test]
-    fn from_store_dir_str_error(#[case] store_path: &str, #[case] expected: StorePathError) {
+    fn from_store_dir_str_error(#[case] store_path: &str, #[case] expected: ParseStorePathError) {
         let store = StoreDir::default();
         let err = store.parse::<StorePath>(store_path).expect_err("parse failure");
         assert_eq!(err, expected);

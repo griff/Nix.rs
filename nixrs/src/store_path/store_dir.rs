@@ -155,7 +155,6 @@ pub mod proptest {
 #[cfg(test)]
 mod tests {
     use std::path::Path;
-    use proptest::{arbitrary::any, prop_assert_eq, proptest};
     use pretty_assertions::assert_eq;
     use super::StoreDir;
 

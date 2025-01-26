@@ -8,8 +8,13 @@ use data_encoding::DecodeKind;
 use data_encoding::BASE64;
 use data_encoding::HEXLOWER_PERMISSIVE;
 use derive_more::Display;
+#[cfg(any(test, feature = "test"))]
+use proptest_derive::Arbitrary;
 use ring::digest;
 use thiserror::Error;
+
+#[cfg(feature = "nixrs-derive")]
+use nixrs_derive::{NixDeserialize, NixSerialize};
 
 use super::base32;
 
@@ -466,6 +471,90 @@ struct SRIHash<'a>(&'a Hash);
 impl<'a> fmt::Display for SRIHash<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}-{:#}", self.0.algorithm(), self.0.to_base64())
+    }
+}
+
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
+#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
+pub struct NarHash([u8; Algorithm::SHA256.size()]);
+
+impl NarHash {
+    pub fn new(digest: &[u8]) -> NarHash {
+        let mut data = [0u8; Algorithm::SHA256.size()];
+        data.copy_from_slice(digest);
+        NarHash(data)
+    }
+
+    pub fn from_slice(digest: &[u8]) -> Result<NarHash, ParseHashError> {
+        if digest.len() != Algorithm::SHA256.size() {
+            return Err(ParseHashError::WrongHashLength2(Algorithm::SHA256, digest.len()));
+        }
+        Ok(NarHash::new(digest))
+    }
+}
+
+impl AsRef<[u8]> for NarHash {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl FromStr for NarHash {
+    type Err = ParseHashError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.len() != Algorithm::SHA256.base16_len() {
+            return Err(ParseHashError::WrongHashLength(Algorithm::SHA256, s.to_string()));
+        }
+        let mut data = [8u8; Algorithm::SHA256.size()];
+        HEXLOWER_PERMISSIVE
+            .decode_mut(s.as_bytes(), &mut data)
+            .map_err(|err| ParseHashError::BadEncoding(s.into(), "hex".into(), err.error))?;
+        Ok(NarHash(data))
+    }
+}
+
+impl fmt::Display for NarHash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:x}", self)
+    }
+}
+
+impl fmt::LowerHex for NarHash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for val in self.as_ref() {
+            write!(f, "{:02x}", val)?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::UpperHex for NarHash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for val in self.as_ref() {
+            write!(f, "{:02X}", val)?;
+        }
+        Ok(())
+    }
+}
+
+impl From<NarHash> for Hash {
+    fn from(value: NarHash) -> Self {
+        Hash::new(Algorithm::SHA256, value.as_ref())
+    }
+}
+
+impl TryFrom<Hash> for NarHash {
+    type Error = UnknownAlgorithm;
+
+    fn try_from(value: Hash) -> Result<Self, Self::Error> {
+        if value.algorithm() != Algorithm::SHA256 {
+            return Err(UnknownAlgorithm(value.algorithm().to_string()));
+        }
+        Ok(NarHash::new(value.as_ref()))
     }
 }
 

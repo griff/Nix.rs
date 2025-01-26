@@ -21,6 +21,12 @@ nix_deserialize_remote!(
     hash::Algorithm
 );
 
+#[cfg(feature="nixrs-derive")]
+nix_deserialize_remote!(
+    #[nix(from_str)]
+    hash::Hash
+);
+
 impl NixDeserialize for String {
     async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
         where R: ?Sized + NixRead + Send

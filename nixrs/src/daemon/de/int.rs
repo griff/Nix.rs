@@ -3,6 +3,15 @@ use nixrs_derive::nix_deserialize_remote;
 
 use super::{Error, NixDeserialize, NixRead};
 
+impl NixDeserialize for () {
+    async fn try_deserialize<R>(_reader: &mut R) -> Result<Option<Self>, R::Error>
+    where
+        R: ?Sized + NixRead + Send,
+    {
+        Ok(Some(()))
+    }
+}
+
 impl NixDeserialize for u64 {
     async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
     where

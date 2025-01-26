@@ -17,7 +17,9 @@
     {
       devShells.default = pkgs.mkShell {
         name = "Nix.rs";
+        buildInputs = [ pkgs.bashInteractive ];
         packages = with pkgs; [
+          nix
           libsodium
           pkg-config
           fuse

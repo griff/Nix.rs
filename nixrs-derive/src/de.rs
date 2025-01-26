@@ -63,7 +63,7 @@ fn nix_deserialize_impl(
         impl #impl_generics #crate_path::daemon::de::NixDeserialize for #ty #ty_generics
             #where_clause
         {
-            async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
+            async fn try_deserialize<R>(reader: &mut R) -> std::result::Result<Option<Self>, R::Error>
                 where R: ?Sized + #crate_path::daemon::de::NixRead + Send,
             {
                 #body
@@ -94,45 +94,55 @@ fn nix_deserialize_body(cont: &Container) -> TokenStream {
     } else {
         match &cont.data {
             Data::Struct(style, fields) => nix_deserialize_struct(*style, fields),
-            Data::Enum(variants) => nix_deserialize_enum(variants),
+            Data::Enum(variants) => {
+                if let Some(tag) = cont.attrs.tag.as_ref() {
+                    nix_deserialize_tagged_enum(tag, variants)
+                } else {
+                    nix_deserialize_enum(variants)
+                }
+            },
+        }
+    }
+}
+
+fn nix_deserialize_field(f: &Field) -> TokenStream {
+    let field = f.var_ident();
+    let ty = f.ty;
+    let read_value = quote_spanned! {
+        ty.span()=> if first__ {
+            first__ = false;
+            if let Some(v) = reader.try_read_value::<#ty>().await? {
+                v
+            } else {
+                return Ok(None);
+            }
+        } else {
+            reader.read_value::<#ty>().await?
+        }
+    };
+    if let Some(version) = f.attrs.version.as_ref() {
+        let default = match &f.attrs.default {
+            Default::Default(span) => quote_spanned!(span.span()=>::std::default::Default::default),
+            Default::Path(path) => path.to_token_stream(),
+            _ => panic!("No default for versioned field"),
+        };
+        quote! {
+            let #field : #ty = if (#version).contains(&reader.version().minor()) {
+                #read_value
+            } else {
+                #default()
+            };
+        }
+    } else {
+        quote! {
+            let #field : #ty = #read_value;
         }
     }
 }
 
 fn nix_deserialize_struct(style: Style, fields: &[Field<'_>]) -> TokenStream {
     let read_fields = fields.iter().map(|f| {
-        let field = f.var_ident();
-        let ty = f.ty;
-        let read_value = quote_spanned! {
-            ty.span()=> if first__ {
-                first__ = false;
-                if let Some(v) = reader.try_read_value::<#ty>().await? {
-                    v
-                } else {
-                    return Ok(None);
-                }
-            } else {
-                reader.read_value::<#ty>().await?
-            }
-        };
-        if let Some(version) = f.attrs.version.as_ref() {
-            let default = match &f.attrs.default {
-                Default::Default => quote_spanned!(ty.span()=>::std::default::Default::default),
-                Default::Path(path) => path.to_token_stream(),
-                _ => panic!("No default for versioned field"),
-            };
-            quote! {
-                let #field : #ty = if (#version).contains(&reader.version().minor()) {
-                    #read_value
-                } else {
-                    #default()
-                };
-            }
-        } else {
-            quote! {
-                let #field : #ty = #read_value;
-            }
-        }
+        nix_deserialize_field(f)
     });
 
     let field_names = fields.iter().map(|f| f.var_ident());
@@ -159,41 +169,10 @@ fn nix_deserialize_struct(style: Style, fields: &[Field<'_>]) -> TokenStream {
     }
 }
 
-fn nix_deserialize_variant(variant: &Variant<'_>) -> TokenStream {
+fn nix_deserialize_read_variant(variant: &Variant<'_>) -> TokenStream {
     let ident = variant.ident;
     let read_fields = variant.fields.iter().map(|f| {
-        let field = f.var_ident();
-        let ty = f.ty;
-        let read_value = quote_spanned! {
-            ty.span()=> if first__ {
-                first__ = false;
-                if let Some(v) = reader.try_read_value::<#ty>().await? {
-                    v
-                } else {
-                    return Ok(None);
-                }
-            } else {
-                reader.read_value::<#ty>().await?
-            }
-        };
-        if let Some(version) = f.attrs.version.as_ref() {
-            let default = match &f.attrs.default {
-                Default::Default => quote_spanned!(ty.span()=>::std::default::Default::default),
-                Default::Path(path) => path.to_token_stream(),
-                _ => panic!("No default for versioned field"),
-            };
-            quote! {
-                let #field : #ty = if (#version).contains(&reader.version().minor()) {
-                    #read_value
-                } else {
-                    #default()
-                };
-            }
-        } else {
-            quote! {
-                let #field : #ty = #read_value;
-            }
-        }
+        nix_deserialize_field(f)
     });
     let field_names = variant.fields.iter().map(|f| f.var_ident());
     let construct = match variant.style {
@@ -209,11 +188,47 @@ fn nix_deserialize_variant(variant: &Variant<'_>) -> TokenStream {
         }
         Style::Unit => quote!(Self::#ident),
     };
+    quote! {
+        #(#read_fields)*
+        Ok(Some(#construct))
+    }
+}
+
+fn nix_deserialize_tagged_variant(tag: &Type, variant: &Variant<'_>) -> TokenStream {
+    let tag_ident = variant.tag_ident();
+    let read_variant: TokenStream = nix_deserialize_read_variant(variant);
+    quote! {
+        #tag::#tag_ident => {
+            #read_variant
+        }
+    }
+}
+
+fn nix_deserialize_tagged_enum(tag: &Type, variants: &[Variant<'_>]) -> TokenStream {
+    let match_variant = variants
+        .iter()
+        .map(|variant| nix_deserialize_tagged_variant(tag, variant));
+    quote! {
+        #[allow(unused_assignments)]
+        {
+            if let Some(tag) = reader.try_read_value::<#tag>().await? {
+                let mut first__ = false;
+                match tag {
+                    #(#match_variant)*
+                }
+            } else {
+                Ok(None)
+            }
+        }
+    }
+}
+
+fn nix_deserialize_variant(variant: &Variant<'_>) -> TokenStream {
+    let read_variant: TokenStream = nix_deserialize_read_variant(variant);
     let version = &variant.attrs.version;
     quote! {
         #version => {
-            #(#read_fields)*
-            Ok(Some(#construct))
+            #read_variant
         }
     }
 }

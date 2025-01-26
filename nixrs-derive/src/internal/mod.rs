@@ -65,6 +65,10 @@ impl<'a> Variant<'a> {
             //original: variant,
         }
     }
+
+    pub fn tag_ident(&self) -> &syn::Ident {
+        self.attrs.tag.as_ref().unwrap_or(&self.ident)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
@@ -95,14 +99,21 @@ impl<'a> Container<'a> {
     ) -> Option<Container<'a>> {
         let attrs = attrs::Container::from_ast(ctx, &input.attrs);
         let data = match &input.data {
-            syn::Data::Struct(s) => match &s.fields {
-                syn::Fields::Named(fields) => {
-                    Data::Struct(Style::Struct, fields_ast(ctx, &fields.named))
+            syn::Data::Struct(s) => {
+                if let Some(tag) = attrs.tag.as_ref() {
+                    ctx.error_spanned(tag, "Struct cannot be tagged");
+                    return None;
+    
                 }
-                syn::Fields::Unnamed(fields) => {
-                    Data::Struct(Style::Tuple, fields_ast(ctx, &fields.unnamed))
+                match &s.fields {
+                    syn::Fields::Named(fields) => {
+                        Data::Struct(Style::Struct, fields_ast(ctx, &fields.named))
+                    }
+                    syn::Fields::Unnamed(fields) => {
+                        Data::Struct(Style::Tuple, fields_ast(ctx, &fields.unnamed))
+                    }
+                    syn::Fields::Unit => Data::Struct(Style::Unit, Vec::new()),
                 }
-                syn::Fields::Unit => Data::Struct(Style::Unit, Vec::new()),
             },
             syn::Data::Enum(e) => {
                 let variants = e

@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 mod path;
 mod store_dir;
 
-pub use path::{StorePath, StorePathError, StorePathHash, StorePathName};
+pub use path::{StorePath, StorePathError, StorePathHash, StorePathName, ParseStorePathError};
 pub use store_dir::{FromStoreDirStr, StoreDir, StoreDirDisplay};
 
 pub type StorePathSet = BTreeSet<StorePath>;

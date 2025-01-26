@@ -1,0 +1,62 @@
+#[cfg(feature="nixrs-derive")]
+use nixrs_derive::{NixDeserialize, NixSerialize};
+#[cfg(any(test, feature="test"))]
+use proptest_derive::Arbitrary;
+
+pub const CLIENT_MAGIC : u64 = 0x6e697863; // 'nixc' in ASCII
+pub const SERVER_MAGIC : u64 = 0x6478696f; // 'dxio' in ASCII
+
+pub mod logger;
+pub mod types;
+pub mod types2;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
+#[derive(NixDeserialize, NixSerialize)]
+#[nix(from = "u64", into = "u64")]
+pub struct IgnoredZero;
+impl From<u64> for IgnoredZero {
+    fn from(_: u64) -> Self {
+        IgnoredZero
+    }
+}
+
+impl From<IgnoredZero> for u64 {
+    fn from(_: IgnoredZero) -> Self {
+        0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
+#[derive(NixDeserialize, NixSerialize)]
+#[nix(from = "u64", into = "u64")]
+pub struct IgnoredOne;
+impl From<u64> for IgnoredOne {
+    fn from(_: u64) -> Self {
+        IgnoredOne
+    }
+}
+
+impl From<IgnoredOne> for u64 {
+    fn from(_: IgnoredOne) -> Self {
+        1
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
+#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "nixrs-derive", nix(from = "bool", into = "bool"))]
+pub struct IgnoredTrue;
+impl From<bool> for IgnoredTrue {
+    fn from(_: bool) -> Self {
+        IgnoredTrue
+    }
+}
+
+impl From<IgnoredTrue> for bool {
+    fn from(_: IgnoredTrue) -> Self {
+        true
+    }
+}

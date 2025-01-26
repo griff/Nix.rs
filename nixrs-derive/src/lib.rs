@@ -7,7 +7,12 @@
 //!         2. [`#[nix(from_store_dir_str)]`](#nixfrom_store_dir_str)
 //!         3. [`#[nix(from = "FromType")]`](#nixfrom--fromtype)
 //!         4. [`#[nix(try_from = "FromType")]`](#nixtry_from--fromtype)
-//!         5. [`#[nix(crate = "...")]`](#nixcrate--)
+//!         5. [`#[nix(into = "IntoType")]`](#nixinto--intotype)
+//!         6. [`#[nix(try_into = "IntoType")]`](#nixtry_into--intotype)
+//!         7. [`#[nix(display)]`](#nixdisplay)
+//!         8. [`#[nix(display = "path")]`](#nixdisplay--path)
+//!         9. [`#[nix(store_dir_display)]`](#nixstore_dir_display)
+//!         10. [`#[nix(crate = "...")]`](#nixcrate--)
 //!     2. [Variant attributes](#variant-attributes)
 //!         1. [`#[nix(version = "range")]`](#nixversion--range)
 //!     3. [Field attributes](#field-attributes)
@@ -118,7 +123,7 @@
 //! ```rust
 //! # use nixrs_derive::NixDeserialize;
 //! # use nixrs::store_path::StoreDir;
-//! #
+//! # 
 //! #[derive(NixDeserialize)]
 //! #[nix(from_store_dir_str)]
 //! struct MyString(String);
@@ -184,6 +189,138 @@
 //!         } else {
 //!             Err("Got the answer to life the universe and everything".to_string())
 //!         }
+//!     }
+//! }
+//! ```
+//!
+//! ##### `#[nix(into = "IntoType")]`
+//!
+//! When `into` is specified the fields are all ignored and instead the
+//! container type is converted to `IntoType` using `Into::into` and
+//! `IntoType` is then serialized. Before converting `Clone::clone` is
+//! called.
+//!
+//! This means that the container must implement `Into<IntoType>` and `Clone`
+//! and `IntoType` must implement `NixSerialize`.
+//!
+//! ###### Example
+//!
+//! ```rust
+//! # use nixrs_derive::NixSerialize;
+//! # 
+//! #[derive(Clone, NixSerialize)]
+//! #[nix(into="usize")]
+//! struct MyValue(usize);
+//! impl From<MyValue> for usize {
+//!     fn from(val: MyValue) -> Self {
+//!         val.0
+//!     }
+//! }
+//! ```
+//!
+//! ##### `#[nix(try_into = "IntoType")]`
+//!
+//! When `try_into` is specified the fields are all ignored and instead the
+//! container type is converted to `IntoType` using `TryInto::try_into` and
+//! `IntoType` is then serialized. Before converting `Clone::clone` is
+//! called.
+//!
+//! This means that the container must implement `TryInto<IntoType>` and
+//! `Clone` and `IntoType` must implement `NixSerialize`.
+//! The error returned from `try_into` also needs to implement `Display`.
+//!
+//! ###### Example
+//!
+//! ```rust
+//! # use nixrs_derive::NixSerialize;
+//! # 
+//! #[derive(Clone, NixSerialize)]
+//! #[nix(try_into="usize")]
+//! struct WrongAnswer(usize);
+//! impl TryFrom<WrongAnswer> for usize {
+//!     type Error = String;
+//!     fn try_from(val: WrongAnswer) -> Result<Self, Self::Error> {
+//!         if val.0 != 42 {
+//!             Ok(val.0)
+//!         } else {
+//!             Err("Got the answer to life the universe and everything".to_string())
+//!         }
+//!     }
+//! }
+//! ```
+//!
+//! ##### `#[nix(display)]`
+//!
+//! When `display` is specified the fields are all ignored and instead the
+//! container must implement `Display` and `NixWrite::write_display` is used to
+//! write the container.
+//!
+//! ###### Example
+//!
+//! ```rust
+//! # use nixrs_derive::NixSerialize;
+//! # use std::fmt::{Display, Result, Formatter};
+//! # 
+//! #[derive(NixSerialize)]
+//! #[nix(display)]
+//! struct WrongAnswer(usize);
+//! impl Display for WrongAnswer {
+//!     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+//!         write!(f, "Wrong Answer = {}", self.0)
+//!     }
+//! }
+//! ```
+//!
+//! ##### `#[nix(display = "path")]`
+//!
+//! When `display` is specified the fields are all ignored and instead the
+//! container the specified path must point to a function that is callable as
+//! `fn(&T) -> impl Display`. The result from this call is then written with
+//! `NixWrite::write_display`.
+//! For example `default = "my_value"` would call `my_value(&self)` and `display =
+//! "AType::empty"` would call `AType::empty(&self)`.
+//!
+//! ###### Example
+//!
+//! ```rust
+//! # use nixrs_derive::NixSerialize;
+//! # use std::fmt::{Display, Result, Formatter};
+//! # 
+//! #[derive(NixSerialize)]
+//! #[nix(display = "format_it")]
+//! struct WrongAnswer(usize);
+//! struct WrongDisplay<'a>(&'a WrongAnswer);
+//! impl<'a> Display for WrongDisplay<'a> {
+//!     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+//!         write!(f, "Wrong Answer = {}", self.0.0)
+//!     }
+//! }
+//! 
+//! fn format_it(value: &WrongAnswer) -> impl Display + '_ {
+//!     WrongDisplay(value)
+//! }
+//! ```
+//!
+//! ##### `#[nix(store_dir_display)]`
+//!
+//! When `store_dir_display` is specified the fields are all ignored and instead the
+//! container must implement `nixrs::store_path::StoreDirDisplay` and `StoreDir::display`
+//! is used to get a `Display` value from the container and that value is then written
+//! with `NixWrite::write_display`.
+//!
+//! ###### Example
+//!
+//! ```rust
+//! # use std::fmt::{Display, Result, Formatter};
+//! # use nixrs::store_path::{StoreDir, StoreDirDisplay};
+//! # use nixrs_derive::NixSerialize;
+//! # 
+//! #[derive(NixSerialize)]
+//! #[nix(store_dir_display)]
+//! struct WrongAnswer(usize);
+//! impl StoreDirDisplay for WrongAnswer {
+//!     fn fmt(&self, _store_dir: &StoreDir, f: &mut Formatter<'_>) -> Result {
+//!         write!(f, "Wrong Answer = {}", self.0)
 //!     }
 //! }
 //! ```
@@ -293,6 +430,7 @@ use syn::{parse_quote, DeriveInput};
 
 mod de;
 mod internal;
+mod ser;
 
 #[proc_macro_derive(NixDeserialize, attributes(nix))]
 pub fn derive_nix_deserialize(item: TokenStream) -> TokenStream {
@@ -302,6 +440,16 @@ pub fn derive_nix_deserialize(item: TokenStream) -> TokenStream {
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }
+
+#[proc_macro_derive(NixSerialize, attributes(nix))]
+pub fn derive_nix_serialize(item: TokenStream) -> TokenStream {
+    let mut input = syn::parse_macro_input!(item as DeriveInput);
+    let crate_path: syn::Path = parse_quote!(nixrs);
+    ser::expand_nix_serialize(crate_path, &mut input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
 
 /// Macro to implement `NixDeserialize` on a type.
 /// Sometimes you can't use the deriver to implement `NixDeserialize`
@@ -335,3 +483,35 @@ pub fn nix_deserialize_remote(item: TokenStream) -> TokenStream {
         .into()
 }
 
+/// Macro to implement `NixSerialize` on a type.
+/// Sometimes you can't use the deriver to implement `NixSerialize`
+/// (like when dealing with types in Rust standard library) but don't want
+/// to implement it yourself. So this macro can be used for those situations
+/// where you would derive using `#[nix(display)]`, `#[nix(display = "path")]`,
+/// `#[nix(store_dir_display)]`, `#[nix(into = "IntoType")]` or
+/// `#[nix(try_into = "IntoType")]` if you could.
+/// 
+/// #### Example
+/// 
+/// ```rust
+/// # use nixrs_derive::nix_serialize_remote;
+/// #
+/// #[derive(Clone)]
+/// struct MyU64(u64);
+/// 
+/// impl From<MyU64> for u64 {
+///     fn from(value: MyU64) -> Self {
+///         value.0
+///     }
+/// }
+/// 
+/// nix_serialize_remote!(#[nix(into="u64")] MyU64);
+/// ```
+#[proc_macro]
+pub fn nix_serialize_remote(item: TokenStream) -> TokenStream {
+    let input = syn::parse_macro_input!(item as RemoteInput);
+    let crate_path = parse_quote!(nixrs);
+    ser::expand_nix_serialize_remote(crate_path, &input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
