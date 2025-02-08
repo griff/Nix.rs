@@ -3,7 +3,12 @@ extern crate capnpc;
 fn main() {
     let capnp = which::which("capnp").unwrap();
     eprintln!("Capnp {}", capnp.display());
-    let capnp_include = capnp.parent().unwrap().join("../include/capnp").canonicalize().unwrap();
+    let capnp_include = capnp
+        .parent()
+        .unwrap()
+        .join("../include/capnp")
+        .canonicalize()
+        .unwrap();
     eprintln!("Capnp include {}", capnp_include.display());
     capnpc::CompilerCommand::new()
         .src_prefix("schema")

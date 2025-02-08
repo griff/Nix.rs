@@ -333,12 +333,10 @@ where
         }
     }
 
-    async fn run_daemon_command(self) -> Result<(), anyhow::Error>
-    {
+    async fn run_daemon_command(self) -> Result<(), anyhow::Error> {
         if let Some(store) = self.store_provider.get_daemon_store().await? {
             let b = nixrs::daemon::server::Builder::new();
-            let fut = 
-                b.serve_connection(self.stdin, self.stdout, store);
+            let fut = b.serve_connection(self.stdin, self.stdout, store);
             select! {
                 res = fut => {
                     match res {

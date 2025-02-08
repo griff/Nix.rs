@@ -20,16 +20,20 @@ impl DaemonStore for FailStore {
         &'a mut self,
         _options: &'a super::ClientOptions,
     ) -> impl super::LoggerResult<(), super::DaemonError> + 'a {
-        Err(super::DaemonErrorKind::UnimplementedOperation(super::wire::types::Operation::SetOptions))
-            .with_operation(super::wire::types::Operation::SetOptions)
+        Err(super::DaemonErrorKind::UnimplementedOperation(
+            super::wire::types::Operation::SetOptions,
+        ))
+        .with_operation(super::wire::types::Operation::SetOptions)
     }
 
     fn is_valid_path<'a>(
         &'a mut self,
         _path: &'a crate::store_path::StorePath,
     ) -> impl super::LoggerResult<bool, super::DaemonError> + 'a {
-        Err(super::DaemonErrorKind::UnimplementedOperation(super::wire::types::Operation::IsValidPath))
-            .with_operation(super::wire::types::Operation::IsValidPath)
+        Err(super::DaemonErrorKind::UnimplementedOperation(
+            super::wire::types::Operation::IsValidPath,
+        ))
+        .with_operation(super::wire::types::Operation::IsValidPath)
     }
 
     fn query_valid_paths<'a>(
@@ -37,16 +41,21 @@ impl DaemonStore for FailStore {
         _paths: &'a crate::store_path::StorePathSet,
         _substitute: bool,
     ) -> impl super::LoggerResult<crate::store_path::StorePathSet, super::DaemonError> + 'a {
-        Err(super::DaemonErrorKind::UnimplementedOperation(super::wire::types::Operation::QueryValidPaths))
-            .with_operation(super::wire::types::Operation::QueryValidPaths)
+        Err(super::DaemonErrorKind::UnimplementedOperation(
+            super::wire::types::Operation::QueryValidPaths,
+        ))
+        .with_operation(super::wire::types::Operation::QueryValidPaths)
     }
 
     fn query_path_info<'a>(
         &'a mut self,
         _path: &'a crate::store_path::StorePath,
-    ) -> impl super::LoggerResult<Option<super::UnkeyedValidPathInfo>, super::DaemonError> + 'a {
-        Err(super::DaemonErrorKind::UnimplementedOperation(super::wire::types::Operation::QueryPathInfo))
-            .with_operation(super::wire::types::Operation::QueryPathInfo)
+    ) -> impl super::LoggerResult<Option<super::UnkeyedValidPathInfo>, super::DaemonError> + 'a
+    {
+        Err(super::DaemonErrorKind::UnimplementedOperation(
+            super::wire::types::Operation::QueryPathInfo,
+        ))
+        .with_operation(super::wire::types::Operation::QueryPathInfo)
     }
 
     fn nar_from_path<'a, 'p, 'r, NW>(
@@ -57,9 +66,11 @@ impl DaemonStore for FailStore {
     where
         NW: tokio::io::AsyncWrite + Unpin + Send + 'r,
         'a: 'r,
-        'p: 'r
+        'p: 'r,
     {
-        Err(super::DaemonErrorKind::UnimplementedOperation(super::wire::types::Operation::NarFromPath))
-            .with_operation(super::wire::types::Operation::NarFromPath)
+        Err(super::DaemonErrorKind::UnimplementedOperation(
+            super::wire::types::Operation::NarFromPath,
+        ))
+        .with_operation(super::wire::types::Operation::NarFromPath)
     }
 }

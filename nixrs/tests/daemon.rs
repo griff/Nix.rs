@@ -25,7 +25,8 @@ use nixrs::daemon::client::DaemonClient;
 use nixrs::daemon::mock::{self, ChannelReporter, MockReporter, MockStore, ReporterError};
 use nixrs::daemon::{server, Verbosity};
 use nixrs::daemon::{
-    ClientOptions, DaemonError, DaemonErrorKind, DaemonResult, DaemonStore as _, LoggerResult, UnkeyedValidPathInfo,
+    ClientOptions, DaemonError, DaemonErrorKind, DaemonResult, DaemonStore as _, LoggerResult,
+    UnkeyedValidPathInfo,
 };
 use nixrs::hash::{digest, Algorithm, Context, NarHash};
 use nixrs::store_path::{StorePath, StorePathSet};
@@ -33,10 +34,14 @@ use nixrs::store_path::{StorePath, StorePathSet};
 trait NixImpl: std::fmt::Debug {
     fn name(&self) -> &str;
     fn program_path(&self) -> PathBuf {
-        Path::new(env!("ALL_NIX")).join(self.name()).join("bin/nix-daemon")
+        Path::new(env!("ALL_NIX"))
+            .join(self.name())
+            .join("bin/nix-daemon")
     }
     fn conf_path(&self) -> PathBuf {
-        Path::new(env!("ALL_NIX")).join(self.name()).join("conf/nix_2_3.conf")
+        Path::new(env!("ALL_NIX"))
+            .join(self.name())
+            .join("conf/nix_2_3.conf")
     }
     fn prepare_mock(&self, mock: &mut mock::Builder<()>);
     fn prepare_program<'c>(&self, cmd: &'c mut Command) -> &'c mut Command;
@@ -67,37 +72,43 @@ impl NixImpl for StdNixImpl {
     }
 }
 
-const NIX_2_3 : StdNixImpl = StdNixImpl {
+const NIX_2_3: StdNixImpl = StdNixImpl {
     name: "nix_2_3",
     verbosity: Verbosity::Error,
     cmd_args: &[],
 };
 
-const NIX_2_24 : StdNixImpl = StdNixImpl {
+const NIX_2_24: StdNixImpl = StdNixImpl {
     name: "nix_2_24",
     verbosity: Verbosity::Error,
     cmd_args: &[
-        "--extra-experimental-features", "daemon-trust-override",
-        "--force-untrusted"],
-};
-
-const LIX_2_91 : StdNixImpl = StdNixImpl {
-    name: "lix_2_91",
-    verbosity: Verbosity::Vomit,
-    cmd_args: &[
-        "--extra-experimental-features", "daemon-trust-override",
-        "--force-untrusted"
+        "--extra-experimental-features",
+        "daemon-trust-override",
+        "--force-untrusted",
     ],
 };
 
+const LIX_2_91: StdNixImpl = StdNixImpl {
+    name: "lix_2_91",
+    verbosity: Verbosity::Vomit,
+    cmd_args: &[
+        "--extra-experimental-features",
+        "daemon-trust-override",
+        "--force-untrusted",
+    ],
+};
 
-async fn run_store_test<R, T, F, E>(nix: &dyn NixImpl, mock: mock::Builder<R>, test: T) -> Result<(), E>
+async fn run_store_test<R, T, F, E>(
+    nix: &dyn NixImpl,
+    mock: mock::Builder<R>,
+    test: T,
+) -> Result<(), E>
 where
     R: MockReporter,
     T: FnOnce(DaemonClient<ChildStdout, ChildStdin>) -> F,
-    F: Future<Output = Result<DaemonClient<ChildStdout, ChildStdin>, E>>, 
-//    T: FnOnce(DaemonClient<OwnedReadHalf, OwnedWriteHalf>) -> F,
-//    F: Future<Output = Result<DaemonClient<OwnedReadHalf, OwnedWriteHalf>, E>>, 
+    F: Future<Output = Result<DaemonClient<ChildStdout, ChildStdin>, E>>,
+    //    T: FnOnce(DaemonClient<OwnedReadHalf, OwnedWriteHalf>) -> F,
+    //    F: Future<Output = Result<DaemonClient<OwnedReadHalf, OwnedWriteHalf>, E>>,
     E: From<DaemonError> + From<std::io::Error>,
 {
     use tokio::net::UnixListener;
@@ -113,7 +124,10 @@ where
         remove_file(socket).unwrap();
     }
      */
-    let uri = format!("proxy://{}?path-info-cache-size=0", socket.to_str().unwrap());
+    let uri = format!(
+        "proxy://{}?path-info-cache-size=0",
+        socket.to_str().unwrap()
+    );
 
     let listener = UnixListener::bind(socket).unwrap();
     let server = async move {
@@ -165,7 +179,7 @@ where
         println!("Closing");
         client.close().await?;
         /*
-        
+
         */
         println!("Killing");
         child.kill().await?;
@@ -174,13 +188,8 @@ where
         println!("Done");
         Ok(())
     };
-    let reports = (try_join!(
-        stderr_copy,
-        client,
-        server,
-        reports,
-    )
-    .map(|(_,_, _, reports)| reports) as Result<Vec<ReporterError>, E>)?;
+    let reports = (try_join!(stderr_copy, client, server, reports,)
+        .map(|(_, _, _, reports)| reports) as Result<Vec<ReporterError>, E>)?;
     for report in reports.iter() {
         panic!("{}", report);
     }
@@ -279,7 +288,8 @@ async fn query_valid_paths(
     let expected: Result<StorePathSet, String> =
         expected.map(|r| r.into_iter().map(|p| p.parse().unwrap()).collect());
     let mut mock = prepare_mock(nix);
-    mock.query_valid_paths(&store_paths, substitute, response).build();
+    mock.query_valid_paths(&store_paths, substitute, response)
+        .build();
     run_store_test(nix, mock, |mut client| async move {
         assert_eq!(
             expected,
@@ -354,7 +364,7 @@ async fn query_path_info(
 async fn nar_from_path(
     #[values(&NIX_2_3, &NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
     #[case] store_path: StorePath,
-    #[case] events: Vec<NAREvent>
+    #[case] events: Vec<NAREvent>,
 ) {
     let mut buf = BytesMut::new();
     let mut ctx = Context::new(Algorithm::SHA256);
@@ -410,7 +420,7 @@ async fn nar_from_path_err(#[case] store_path: StorePath, #[case] response: Daem
 */
 
 // TODO: proptest handshake
-const ALL_NIX : &[&dyn NixImpl] = &[&NIX_2_3, &NIX_2_24, &LIX_2_91];
+const ALL_NIX: &[&dyn NixImpl] = &[&NIX_2_3, &NIX_2_24, &LIX_2_91];
 fn arb_nix() -> impl Strategy<Value = &'static dyn NixImpl> {
     any::<proptest::sample::Index>().prop_map(|idx| *idx.get(ALL_NIX))
 }

@@ -21,13 +21,14 @@ mod types;
 pub mod wire;
 
 #[cfg(feature = "nixrs-derive")]
-pub use logger::{LogError, LoggerResult, LogMessage, TraceLine, Verbosity};
-#[cfg(feature = "nixrs-derive")]
 pub use fail_store::FailStore;
 #[cfg(feature = "nixrs-derive")]
+pub use logger::{LogError, LogMessage, LoggerResult, TraceLine, Verbosity};
+#[cfg(feature = "nixrs-derive")]
 pub use types::{
-    ClientOptions, DaemonError, DaemonErrorKind, DaemonErrorContext, DaemonInt, DaemonPath, DaemonResult, DaemonResultExt, DaemonStore, DaemonString,
-    DaemonTime, HandshakeDaemonStore, RemoteError, TrustLevel, UnkeyedValidPathInfo,
+    ClientOptions, DaemonError, DaemonErrorContext, DaemonErrorKind, DaemonInt, DaemonPath,
+    DaemonResult, DaemonResultExt, DaemonStore, DaemonString, DaemonTime, HandshakeDaemonStore,
+    RemoteError, TrustLevel, UnkeyedValidPathInfo,
 };
 
 pub(crate) const ZEROS: [u8; 8] = [0u8; 8];
@@ -118,8 +119,8 @@ mod test {
     use super::{ClientOptions, UnkeyedValidPathInfo};
     use crate::archive::test_data;
     use crate::archive::NAREvent;
-    use crate::daemon::{DaemonError, DaemonErrorKind};
     use crate::daemon::{logger::LoggerResult as _, server};
+    use crate::daemon::{DaemonError, DaemonErrorKind};
     use crate::hash::{digest, Algorithm, NarHash};
     use crate::store_path::StorePath;
     use crate::store_path::StorePathSet;
@@ -136,7 +137,9 @@ mod test {
         let (client_s, server_s) = duplex(10_000);
         let (server_reader, server_writer) = split(server_s);
         let b = server::Builder::new();
-        let server = b.serve_connection(server_reader, server_writer, mock).map_err(From::from);
+        let server = b
+            .serve_connection(server_reader, server_writer, mock)
+            .map_err(From::from);
         let (client_reader, client_writer) = split(client_s);
         let client = async move {
             let logs = DaemonClient::builder().connect(client_reader, client_writer);

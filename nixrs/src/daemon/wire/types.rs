@@ -100,9 +100,7 @@ pub enum Operation {
 macro_rules! optional_string {
     ($sub:ty) => {
         impl NixDeserialize for Option<$sub> {
-            async fn try_deserialize<R>(
-                reader: &mut R,
-            ) -> Result<Option<Self>, R::Error>
+            async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
             where
                 R: ?Sized + NixRead + Send,
             {

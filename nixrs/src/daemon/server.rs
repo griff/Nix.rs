@@ -63,7 +63,12 @@ impl Builder {
         Default::default()
     }
 
-    pub async fn serve_connection<'s, R, W, S>(&'s self, reader: R, writer: W, store: S) -> DaemonResult<()>
+    pub async fn serve_connection<'s, R, W, S>(
+        &'s self,
+        reader: R,
+        writer: W,
+        store: S,
+    ) -> DaemonResult<()>
     where
         R: AsyncRead + Send + Unpin + 's,
         W: AsyncWrite + Send + Unpin + 's,
@@ -99,7 +104,7 @@ impl Default for Builder {
             store_trust: TrustLevel::NotTrusted,
             min_version: ProtocolVersion::min(),
             max_version: ProtocolVersion::max(),
-            nix_version: None
+            nix_version: None,
         }
     }
 }
@@ -120,65 +125,84 @@ where
         min_version: ProtocolVersion,
         max_version: ProtocolVersion,
         nix_version: &'s str,
-    ) -> impl std::future::Future<Output=Result<ProtocolVersion, DaemonError>> + Send + 's {
+    ) -> impl std::future::Future<Output = Result<ProtocolVersion, DaemonError>> + Send + 's {
         async move {
-        assert!(
-            min_version.major() == 1 && min_version.minor() >= 21,
-            "Only Nix 2.3 and later is supported"
-        );
-        assert!(
-            max_version <= PROTOCOL_VERSION,
-            "Only protocols up to {} is supported",
-            PROTOCOL_VERSION
-        );
+            assert!(
+                min_version.major() == 1 && min_version.minor() >= 21,
+                "Only Nix 2.3 and later is supported"
+            );
+            assert!(
+                max_version <= PROTOCOL_VERSION,
+                "Only protocols up to {} is supported",
+                PROTOCOL_VERSION
+            );
 
-        let client_magic = self.reader.read_number().await.with_field("clientMagic")?;
-        if client_magic != CLIENT_MAGIC {
-            return Err(DaemonErrorKind::WrongMagic(client_magic)).with_field("clientMagic");
-        }
-
-        self.writer.write_number(SERVER_MAGIC).await.with_field("serverMagic")?;
-        self.writer.write_value(&max_version).await.with_field("protocolVersion")?;
-        self.writer.flush().await?;
-
-        let client_version: ProtocolVersion = self.reader.read_value().await.with_field("clientVersion")?;
-        let version = client_version.min(max_version);
-        if version < min_version {
-            return Err(DaemonErrorKind::UnsupportedVersion(version)).with_field("clientVersion");
-        }
-        self.reader.set_version(version);
-        self.writer.set_version(version);
-        eprintln!("Server Version is {}, Client version is {}", version, client_version);
-
-        if version.minor() >= 14 {
-            // Obsolete CPU Affinity
-            if self.reader.read_value().await.with_field("sendCpu")? {
-                let _cpu_affinity = self.reader.read_number().await.with_field("cpuAffinity")?;
+            let client_magic = self.reader.read_number().await.with_field("clientMagic")?;
+            if client_magic != CLIENT_MAGIC {
+                return Err(DaemonErrorKind::WrongMagic(client_magic)).with_field("clientMagic");
             }
-        }
 
-        if version.minor() >= 11 {
-            // Obsolete reserved space
-            let _reserve_space: bool = self.reader.read_value().await.with_field("reserveSpace")?;
-        }
+            self.writer
+                .write_number(SERVER_MAGIC)
+                .await
+                .with_field("serverMagic")?;
+            self.writer
+                .write_value(&max_version)
+                .await
+                .with_field("protocolVersion")?;
+            self.writer.flush().await?;
 
-        if version.minor() >= 33 {
-            self.writer.write_value(nix_version).await.with_field("nixVersion")?;
-        }
+            let client_version: ProtocolVersion =
+                self.reader.read_value().await.with_field("clientVersion")?;
+            let version = client_version.min(max_version);
+            if version < min_version {
+                return Err(DaemonErrorKind::UnsupportedVersion(version))
+                    .with_field("clientVersion");
+            }
+            self.reader.set_version(version);
+            self.writer.set_version(version);
+            eprintln!(
+                "Server Version is {}, Client version is {}",
+                version, client_version
+            );
 
-        if version.minor() >= 35 {
-            self.writer.write_value(&self.store_trust).await.with_field("trusted")?;
-        }
+            if version.minor() >= 14 {
+                // Obsolete CPU Affinity
+                if self.reader.read_value().await.with_field("sendCpu")? {
+                    let _cpu_affinity =
+                        self.reader.read_number().await.with_field("cpuAffinity")?;
+                }
+            }
 
-        self.writer.flush().await?;
-        Ok(version)
+            if version.minor() >= 11 {
+                // Obsolete reserved space
+                let _reserve_space: bool =
+                    self.reader.read_value().await.with_field("reserveSpace")?;
+            }
+
+            if version.minor() >= 33 {
+                self.writer
+                    .write_value(nix_version)
+                    .await
+                    .with_field("nixVersion")?;
+            }
+
+            if version.minor() >= 35 {
+                self.writer
+                    .write_value(&self.store_trust)
+                    .await
+                    .with_field("trusted")?;
+            }
+
+            self.writer.flush().await?;
+            Ok(version)
         }
     }
 
     pub fn process_logs<'s, T: Send + 's>(
         &'s mut self,
         mut logs: impl LoggerResult<T, DaemonError> + 's,
-    ) -> impl std::future::Future<Output=Result<T, RecoverableError>> + Send + 's {
+    ) -> impl std::future::Future<Output = Result<T, RecoverableError>> + Send + 's {
         async move {
             while let Some(msg) = logs.next().await {
                 self.writer.write_value(&msg.recover()?).await?;
@@ -186,7 +210,7 @@ where
             // TODO: Test this recover
             let value = logs.result().await.recover()?;
             self.writer.write_value(&RawLogMessage::Last).await?;
-            Ok(value)    
+            Ok(value)
         }
     }
 
@@ -223,23 +247,28 @@ where
         S: DaemonStore + 's,
         NW: AsyncWrite + Unpin + Send + 'r,
         's: 'r,
-        'p: 'r
+        'p: 'r,
     {
         store.nar_from_path(path, sink)
     }
-    
-    async fn nar_from_path<'s, 't, S>(&'s mut self, store: &'t mut S, path: StorePath) -> Result<(), RecoverableError>
-        where S: DaemonStore + 't,
+
+    async fn nar_from_path<'s, 't, S>(
+        &'s mut self,
+        store: &'t mut S,
+        path: StorePath,
+    ) -> Result<(), RecoverableError>
+    where
+        S: DaemonStore + 't,
     {
         // FUTUREWORK: Fix that this whole implementation allocates 2 buffers
-        
+
         let (mut reader, sink) = simplex(10_000);
         let mut logs = Self::store_nar_from_path(store, &path, sink);
-            
+
         while let Some(msg) = logs.next().await {
             self.writer.write_value(&msg.recover()?).await?;
         }
-        
+
         self.writer.write_value(&RawLogMessage::Last).await?;
         try_join!(
             async move {
@@ -297,7 +326,8 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::QueryReferrers,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             AddToStore(req) => {
                 match req {
@@ -334,8 +364,10 @@ where
                          */
                     }
                 }
-                Err(DaemonErrorKind::UnimplementedOperation(Operation::AddToStore))
-                    .with_operation(op)?;
+                Err(DaemonErrorKind::UnimplementedOperation(
+                    Operation::AddToStore,
+                ))
+                .with_operation(op)?;
             }
             BuildPaths(_req) => {
                 /*
@@ -343,8 +375,11 @@ where
                 1 :: [Int][se-Int] (hardcoded and ignored by client)
                  */
 
-                Err(DaemonErrorKind::UnimplementedOperation(Operation::BuildPaths))
-                    .with_operation(op).recover()?;
+                Err(DaemonErrorKind::UnimplementedOperation(
+                    Operation::BuildPaths,
+                ))
+                .with_operation(op)
+                .recover()?;
             }
             EnsurePath(_path) => {
                 /*
@@ -352,8 +387,11 @@ where
                 1 :: [Int][se-Int] (hardcoded and ignored by client)
                  */
 
-                Err(DaemonErrorKind::UnimplementedOperation(Operation::EnsurePath))
-                    .with_operation(op).recover()?;
+                Err(DaemonErrorKind::UnimplementedOperation(
+                    Operation::EnsurePath,
+                ))
+                .with_operation(op)
+                .recover()?;
             }
             AddTempRoot(_path) => {
                 /*
@@ -361,8 +399,11 @@ where
                 1 :: [Int][se-Int] (hardcoded and ignored by client)
                  */
 
-                Err(DaemonErrorKind::UnimplementedOperation(Operation::AddTempRoot))
-                    .with_operation(op).recover()?;
+                Err(DaemonErrorKind::UnimplementedOperation(
+                    Operation::AddTempRoot,
+                ))
+                .with_operation(op)
+                .recover()?;
             }
             AddIndirectRoot(_path) => {
                 /*
@@ -372,14 +413,19 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::AddIndirectRoot,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             FindRoots => {
                 /*
                 ### Outputs
                 roots :: [Map][se-Map] of [Path][se-Path] to [StorePath][se-StorePath]
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(Operation::FindRoots)).with_operation(op).recover()?;
+                Err(DaemonErrorKind::UnimplementedOperation(
+                    Operation::FindRoots,
+                ))
+                .with_operation(op)
+                .recover()?;
             }
             CollectGarbage(_req) => {
                 /*
@@ -391,7 +437,8 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::CollectGarbage,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             QueryAllValidPaths => {
                 /*
@@ -401,7 +448,8 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::QueryAllValidPaths,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             QueryPathFromHashPart(_hash) => {
                 /*
@@ -411,7 +459,8 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::QueryPathFromHashPart,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             QuerySubstitutablePaths(_paths) => {
                 /*
@@ -421,7 +470,8 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::QuerySubstitutablePaths,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             QueryValidDerivers(_path) => {
                 /*
@@ -431,7 +481,8 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::QueryValidDerivers,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             OptimiseStore => {
                 /*
@@ -441,14 +492,19 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::OptimiseStore,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             VerifyStore(_req) => {
                 /*
                 ### Outputs
                 errors :: [Bool][se-Bool]
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(Operation::VerifyStore)).with_operation(op).recover()?;
+                Err(DaemonErrorKind::UnimplementedOperation(
+                    Operation::VerifyStore,
+                ))
+                .with_operation(op)
+                .recover()?;
             }
             BuildDerivation(_req) => {
                 /*
@@ -458,7 +514,8 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::BuildDerivation,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             AddSignatures(_req) => {
                 /*
@@ -468,7 +525,8 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::AddSignatures,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             AddToStoreNar(_req) => {
                 /*
@@ -487,7 +545,8 @@ where
                  */
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::AddToStoreNar,
-                )).with_operation(op)?;
+                ))
+                .with_operation(op)?;
             }
             QueryMissing(_paths) => {
                 /*
@@ -498,7 +557,11 @@ where
                 - downloadSize :: [UInt64][se-UInt64]
                 - narSize :: [UInt64][se-UInt64]
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(Operation::QueryMissing)).with_operation(op).recover()?;
+                Err(DaemonErrorKind::UnimplementedOperation(
+                    Operation::QueryMissing,
+                ))
+                .with_operation(op)
+                .recover()?;
             }
             QueryDerivationOutputMap(_path) => {
                 /*
@@ -508,7 +571,8 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::QueryDerivationOutputMap,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             RegisterDrvOutput(_req) => {
                 /*
@@ -518,7 +582,8 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::RegisterDrvOutput,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             QueryRealisation(_output_id) => {
                 /*
@@ -532,7 +597,8 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::QueryRealisation,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             AddMultipleToStore(_req) => {
                 /*
@@ -546,7 +612,8 @@ where
                  */
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::AddMultipleToStore,
-                )).with_operation(op)?;
+                ))
+                .with_operation(op)?;
             }
             AddBuildLog(BaseStorePath(_path)) => {
                 /*
@@ -557,7 +624,10 @@ where
                 ### Outputs
                 1 :: [Int][se-Int] (hardcoded and ignored by client)
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(Operation::AddBuildLog)).with_operation(op)?;
+                Err(DaemonErrorKind::UnimplementedOperation(
+                    Operation::AddBuildLog,
+                ))
+                .with_operation(op)?;
             }
             BuildPathsWithResults(_req) => {
                 /*
@@ -567,14 +637,19 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::BuildPathsWithResults,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             AddPermRoot(_req) => {
                 /*
                 ### Outputs
                 gcRoot :: [Path][se-Path]
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(Operation::AddPermRoot)).with_operation(op).recover()?;
+                Err(DaemonErrorKind::UnimplementedOperation(
+                    Operation::AddPermRoot,
+                ))
+                .with_operation(op)
+                .recover()?;
             }
 
             // Obsolete Nix 2.5.0 Protocol 1.32
@@ -583,7 +658,11 @@ where
                 ### Outputs
                 Nothing
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(Operation::SyncWithGC)).with_operation(op).recover()?;
+                Err(DaemonErrorKind::UnimplementedOperation(
+                    Operation::SyncWithGC,
+                ))
+                .with_operation(op)
+                .recover()?;
             }
             // Obsolete Nix 2.4 Protocol 1.25
             AddTextToStore(_req) => {
@@ -594,7 +673,8 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::AddTextToStore,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             // Obsolete Nix 2.4 Protocol 1.22*
             QueryDerivationOutputs(_path) => {
@@ -605,7 +685,8 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::QueryDerivationOutputs,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             // Obsolete Nix 2.4 Protocol 1.21
             QueryDerivationOutputNames(_path) => {
@@ -616,7 +697,8 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::QueryDerivationOutputNames,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             // Obsolete Nix 2.0, Protocol 1.19*
             QuerySubstitutablePathInfos(_req) => {
@@ -627,7 +709,8 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::QuerySubstitutablePathInfos,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             // Obsolete Nix 2.0 Protocol 1.17
             ExportPath(_path) => {
@@ -640,7 +723,11 @@ where
 
                 1 :: [Int][se-Int] (hardcoded)
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(Operation::ExportPath)).with_operation(op).recover()?;
+                Err(DaemonErrorKind::UnimplementedOperation(
+                    Operation::ExportPath,
+                ))
+                .with_operation(op)
+                .recover()?;
             }
             // Obsolete Nix 2.0 Protocol 1.17
             ImportPaths => {
@@ -651,7 +738,10 @@ where
                 ### Outputs
                 importedPaths :: [List][se-List] of [StorePath][se-StorePath]
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(Operation::ImportPaths)).with_operation(op)?;
+                Err(DaemonErrorKind::UnimplementedOperation(
+                    Operation::ImportPaths,
+                ))
+                .with_operation(op)?;
             }
             // Obsolete Nix 2.0 Protocol 1.16
             QueryPathHash(_path) => {
@@ -662,7 +752,8 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::QueryPathHash,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             // Obsolete Nix 2.0 Protocol 1.16
             QueryReferences(_path) => {
@@ -673,7 +764,8 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::QueryReferences,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             // Obsolete Nix 2.0 Protocol 1.16
             QueryDeriver(_path) => {
@@ -681,7 +773,11 @@ where
                 ### Outputs
                 deriver :: [OptStorePath][se-OptStorePath]
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(Operation::QueryDeriver)).with_operation(op).recover()?;
+                Err(DaemonErrorKind::UnimplementedOperation(
+                    Operation::QueryDeriver,
+                ))
+                .with_operation(op)
+                .recover()?;
             }
             // Obsolete Nix 1.2 Protocol 1.12
             HasSubstitutes(_paths) => {
@@ -692,7 +788,8 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::HasSubstitutes,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
             // Obsolete Nix 1.2 Protocol 1.12
             QuerySubstitutablePathInfo(_path) => {
@@ -706,7 +803,8 @@ where
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::QuerySubstitutablePathInfo,
                 ))
-                .with_operation(op).recover()?;
+                .with_operation(op)
+                .recover()?;
             }
         }
         Ok(())

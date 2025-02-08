@@ -479,9 +479,7 @@ pub struct AddPermRootRequest {
 macro_rules! optional_info {
     ($sub:ty) => {
         impl NixDeserialize for Option<$sub> {
-            async fn try_deserialize<R>(
-                reader: &mut R,
-            ) -> Result<Option<Self>, R::Error>
+            async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
             where
                 R: ?Sized + NixRead + Send,
             {
@@ -520,9 +518,7 @@ optional_info!(UnkeyedValidPathInfo);
 macro_rules! optional_string {
     ($sub:ty) => {
         impl NixDeserialize for Option<$sub> {
-            async fn try_deserialize<R>(
-                reader: &mut R,
-            ) -> Result<Option<Self>, R::Error>
+            async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
             where
                 R: ?Sized + NixRead + Send,
             {
@@ -557,9 +553,7 @@ optional_string!(ContentAddress);
 
 #[cfg(feature = "nixrs-derive")]
 impl NixDeserialize for Option<Microseconds> {
-    async fn try_deserialize<R>(
-        reader: &mut R,
-    ) -> Result<Option<Self>, R::Error>
+    async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
     where
         R: ?Sized + NixRead + Send,
     {

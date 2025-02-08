@@ -140,8 +140,7 @@ impl Builder {
     }
 
     pub fn write_slice(&mut self, value: &[u8]) -> &mut Self {
-        self.ops
-            .push_back(Operation::Slice(value.to_vec(), Ok(())));
+        self.ops.push_back(Operation::Slice(value.to_vec(), Ok(())));
         self
     }
 
@@ -182,9 +181,7 @@ impl Builder {
     fn write_operation(&mut self, op: &Operation) -> &mut Self {
         match op {
             Operation::Number(value, Ok(_)) => self.write_number(*value),
-            Operation::Number(value, Err(Error::UnexpectedNumber(_))) => {
-                self.write_number(*value)
-            }
+            Operation::Number(value, Err(Error::UnexpectedNumber(_))) => self.write_number(*value),
             Operation::Number(_, Err(Error::ExtraWrite(OperationType::WriteNumber))) => self,
             Operation::Number(_, Err(Error::WrongWrite(op, OperationType::WriteNumber))) => {
                 self.write_operation_type(*op)
@@ -196,9 +193,7 @@ impl Builder {
                 self.write_number_error(*value, Error::IO(*kind, msg.clone()))
             }
             Operation::Slice(value, Ok(_)) => self.write_slice(&value),
-            Operation::Slice(value, Err(Error::UnexpectedSlice(_))) => {
-                self.write_slice(&value)
-            }
+            Operation::Slice(value, Err(Error::UnexpectedSlice(_))) => self.write_slice(&value),
             Operation::Slice(_, Err(Error::ExtraWrite(OperationType::WriteSlice))) => self,
             Operation::Slice(_, Err(Error::WrongWrite(op, OperationType::WriteSlice))) => {
                 self.write_operation_type(*op)

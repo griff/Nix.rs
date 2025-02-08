@@ -13,20 +13,18 @@ use tokio::try_join;
 
 use nixrs::daemon::client::DaemonClient;
 use nixrs::daemon::mock::{MockReporter, MockStore};
-use nixrs::daemon::{
-    DaemonError, DaemonErrorKind, DaemonResult, DaemonStore as _, LoggerResult,
-};
+use nixrs::daemon::{DaemonError, DaemonErrorKind, DaemonResult, DaemonStore as _, LoggerResult};
 use nixrs::store_path::StorePath;
 
-
-struct Provider<R:MockReporter>(Arc<RwLock<Option<MockStore<R>>>>);
-impl<R:MockReporter> Clone for Provider<R> {
+struct Provider<R: MockReporter>(Arc<RwLock<Option<MockStore<R>>>>);
+impl<R: MockReporter> Clone for Provider<R> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
-} 
+}
 impl<R> StoreProvider for Provider<R>
-    where R: MockReporter + fmt::Debug + Send + 'static
+where
+    R: MockReporter + fmt::Debug + Send + 'static,
 {
     type Error = DaemonError;
 
@@ -35,10 +33,13 @@ impl<R> StoreProvider for Provider<R>
     type LegacyFuture = Ready<Result<Option<Self::LegacyStore>, Self::Error>>;
 
     type DaemonStore = MockStore<R>;
- 
+
     type DaemonFuture = Ready<Result<Option<Self::DaemonStore>, Self::Error>>;
 
-    fn get_legacy_store(&self, _stderr: nixrs_ssh_store::io::ExtendedDataWrite) -> Self::LegacyFuture {
+    fn get_legacy_store(
+        &self,
+        _stderr: nixrs_ssh_store::io::ExtendedDataWrite,
+    ) -> Self::LegacyFuture {
         ready(Ok(Some(nixrs_legacy::store::FailStore)))
     }
 
@@ -59,16 +60,26 @@ where
     config.load_default_keys("./tests").await;
     let server = nixrs_ssh_store::server::Server::with_config(config).map_err(DaemonError::from)?;
     let state = server.state();
-    let server = server.run("localhost:8222")
-    .map_err(DaemonError::from).map_err(From::from);
+    let server = server
+        .run("localhost:8222")
+        .map_err(DaemonError::from)
+        .map_err(From::from);
 
     let mut child = Command::new("ssh")
-        .args(&["-p", "8222", "-i", "./tests/id_ed25519", "-oUserKnownHostsFile=./tests/ssh_known_hosts"])
+        .args(&[
+            "-p",
+            "8222",
+            "-i",
+            "./tests/id_ed25519",
+            "-oUserKnownHostsFile=./tests/ssh_known_hosts",
+        ])
         .arg("localhost")
-        .arg("nix-daemon").arg("--stdio")
+        .arg("nix-daemon")
+        .arg("--stdio")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .spawn().unwrap();
+        .spawn()
+        .unwrap();
     /*
     let uri = "ssh-ng://localhost?ssh-key=./tests/id_ed25519".to_string();
     let mut cmd = Command::new("../../nix/result/bin/nix-daemon");
@@ -98,11 +109,7 @@ where
         eprintln!("Client done");
         Ok(())
     };
-    try_join!(
-        client,
-        server,
-    )
-    .map(|_| ())
+    try_join!(client, server,).map(|_| ())
 }
 
 #[tokio::test]

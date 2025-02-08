@@ -288,16 +288,14 @@ where
         match self.result.next().await {
             None => None,
             Some(Ok(ret)) => Some(Ok(ret)),
-            Some(Err(err)) => {
-                Some(Err((self.mapper)(err)))
-            }
+            Some(Err(err)) => Some(Err((self.mapper)(err))),
         }
     }
 
     async fn result(self) -> Result<T, E2> {
         match self.result.result().await {
             Ok(res) => Ok(res),
-            Err(err) => Err((self.mapper)(err))
+            Err(err) => Err((self.mapper)(err)),
         }
     }
 }
@@ -397,14 +395,15 @@ impl<E: Send + 'static> LoggerResult<(), E> for VecDeque<LogMessage> {
 }
 
 impl<T, E> LoggerResult<T, E> for Result<T, E>
-    where E: Send,
-          T: Send,
+where
+    E: Send,
+    T: Send,
 {
-    fn next(&mut self) -> impl Future<Output=Option<Result<LogMessage, E>>> + Send {
+    fn next(&mut self) -> impl Future<Output = Option<Result<LogMessage, E>>> + Send {
         ready(None)
     }
 
-    fn result(self) -> impl Future<Output=Result<T, E>> + Send {
+    fn result(self) -> impl Future<Output = Result<T, E>> + Send {
         ready(self)
     }
 }

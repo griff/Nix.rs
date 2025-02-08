@@ -1,8 +1,8 @@
 use std::future::ready;
 use std::io::Cursor;
 use std::mem::take;
-use std::{fmt, thread};
 use std::{collections::VecDeque, future::Future};
+use std::{fmt, thread};
 
 use bytes::Bytes;
 use futures::channel::mpsc;
@@ -14,7 +14,8 @@ use super::logger::{Activity, ActivityResult, LogMessage, LoggerResult, LoggerRe
 use super::wire::types::Operation;
 use super::wire::types2::{BuildResult, QueryMissingResult, QueryValidPathsRequest};
 use super::{
-    ClientOptions, DaemonError, DaemonErrorKind, DaemonResult, DaemonResultExt, DaemonStore, DaemonString, HandshakeDaemonStore, TrustLevel, UnkeyedValidPathInfo
+    ClientOptions, DaemonError, DaemonErrorKind, DaemonResult, DaemonResultExt, DaemonStore,
+    DaemonString, HandshakeDaemonStore, TrustLevel, UnkeyedValidPathInfo,
 };
 use crate::store_path::{StorePath, StorePathSet};
 
@@ -180,7 +181,10 @@ pub trait MockReporter {
         expected: MockOperation,
         actual: MockRequest,
     ) -> impl LoggerResult<MockResponse, DaemonError>;
-    fn extra_operation(&mut self, actual: MockRequest) -> impl LoggerResult<MockResponse, DaemonError>;
+    fn extra_operation(
+        &mut self,
+        actual: MockRequest,
+    ) -> impl LoggerResult<MockResponse, DaemonError>;
     fn unread_operation(&mut self, operation: LogOperation);
 }
 
@@ -194,7 +198,8 @@ impl MockReporter for () {
             "Unexpected operation {} expected {}",
             actual.operation(),
             expected.operation()
-        ))).with_operation(actual.operation())
+        )))
+        .with_operation(actual.operation())
     }
 
     fn invalid_operation(
@@ -206,12 +211,19 @@ impl MockReporter for () {
             "Invalid operation {:?} expected {:?}",
             actual,
             expected.request()
-        ))).with_operation(actual.operation())
+        )))
+        .with_operation(actual.operation())
     }
 
-    fn extra_operation(&mut self, actual: MockRequest) -> impl LoggerResult<MockResponse, DaemonError> {
-        Err(DaemonErrorKind::Custom(format!("Extra operation {:?}", actual)))
-            .with_operation(actual.operation())
+    fn extra_operation(
+        &mut self,
+        actual: MockRequest,
+    ) -> impl LoggerResult<MockResponse, DaemonError> {
+        Err(DaemonErrorKind::Custom(format!(
+            "Extra operation {:?}",
+            actual
+        )))
+        .with_operation(actual.operation())
     }
 
     fn unread_operation(&mut self, _operation: LogOperation) {
@@ -230,17 +242,27 @@ impl fmt::Display for ReporterError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ReporterError::Unexpected(expected, actual) => {
-                write!(f, "Unexpected operation {} expected {}", actual.operation(), expected.operation())
-            },
+                write!(
+                    f,
+                    "Unexpected operation {} expected {}",
+                    actual.operation(),
+                    expected.operation()
+                )
+            }
             ReporterError::Invalid(expected, actual) => {
-                write!(f, "Invalid operation {:?} expected {:?}", actual, expected.request())
-            },
+                write!(
+                    f,
+                    "Invalid operation {:?} expected {:?}",
+                    actual,
+                    expected.request()
+                )
+            }
             ReporterError::Extra(actual) => {
                 write!(f, "Extra operation {:?}", actual)
-            },
+            }
             ReporterError::Unread(operation) => {
                 write!(f, "store dropped with {operation:?} operation still unread")
-            },
+            }
         }
     }
 }
@@ -277,7 +299,10 @@ impl MockReporter for ChannelReporter {
         ret
     }
 
-    fn extra_operation(&mut self, actual: MockRequest) -> impl LoggerResult<MockResponse, DaemonError> {
+    fn extra_operation(
+        &mut self,
+        actual: MockRequest,
+    ) -> impl LoggerResult<MockResponse, DaemonError> {
         let op = actual.operation();
         let report = ReporterError::Extra(actual);
         let ret = Err(DaemonErrorKind::Custom(report.to_string())).with_operation(op);
@@ -286,7 +311,9 @@ impl MockReporter for ChannelReporter {
     }
 
     fn unread_operation(&mut self, operation: LogOperation) {
-        self.0.unbounded_send(ReporterError::Unread(operation)).unwrap();
+        self.0
+            .unbounded_send(ReporterError::Unread(operation))
+            .unwrap();
     }
 }
 
@@ -542,7 +569,12 @@ impl<R> Builder<R> {
         self
     }
 
-    pub fn channel_reporter(&self) -> (Builder<ChannelReporter>, mpsc::UnboundedReceiver<ReporterError>) {
+    pub fn channel_reporter(
+        &self,
+    ) -> (
+        Builder<ChannelReporter>,
+        mpsc::UnboundedReceiver<ReporterError>,
+    ) {
         let (sender, receiver) = mpsc::unbounded();
         (self.set_reporter(ChannelReporter(sender)), receiver)
     }
@@ -552,14 +584,14 @@ impl<R> Builder<R> {
             trusted_client: self.trusted_client,
             handshake_logs: self.handshake_logs.clone(),
             ops: self.ops.clone(),
-            reporter
+            reporter,
         }
     }
-
 }
 
 impl<R> Builder<R>
-where R: MockReporter + Clone
+where
+    R: MockReporter + Clone,
 {
     pub fn build(&self) -> MockStore<R> {
         MockStore {
@@ -568,7 +600,7 @@ where R: MockReporter + Clone
             ops: self.ops.clone(),
             reporter: self.reporter.clone(),
         }
-    }    
+    }
 }
 
 impl Builder<()> {
@@ -590,7 +622,8 @@ impl Default for Builder<()> {
 
 #[derive(Debug)]
 pub struct MockStore<R>
-where R: MockReporter
+where
+    R: MockReporter,
 {
     trusted_client: TrustLevel,
     handshake_logs: VecDeque<LogMessage>,
@@ -615,7 +648,8 @@ impl Default for MockStore<()> {
 }
 
 impl<R> Drop for MockStore<R>
-where R: MockReporter
+where
+    R: MockReporter,
 {
     fn drop(&mut self) {
         // No need to panic again

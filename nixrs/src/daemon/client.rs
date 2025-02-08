@@ -12,8 +12,8 @@ use super::ser::{NixWrite as _, NixWriter, NixWriterBuilder};
 use super::wire::types::Operation;
 use super::wire::{CLIENT_MAGIC, SERVER_MAGIC};
 use super::{
-    DaemonError, DaemonErrorKind, DaemonResult, DaemonStore, HandshakeDaemonStore, ProtocolVersion, TrustLevel,
-    DaemonResultExt as _,
+    DaemonError, DaemonErrorKind, DaemonResult, DaemonResultExt as _, DaemonStore,
+    HandshakeDaemonStore, ProtocolVersion, TrustLevel,
 };
 use crate::archive::copy_nar;
 use crate::store_path::StoreDir;
@@ -35,7 +35,7 @@ impl Default for DaemonClientBuilder {
             min_version: ProtocolVersion::min(),
             max_version: ProtocolVersion::max(),
             reader_builder: Default::default(),
-            writer_builder: Default::default()
+            writer_builder: Default::default(),
         }
     }
 }
@@ -174,7 +174,10 @@ where
             let mut remote_trusts_us = TrustLevel::Unknown;
 
             // Send the magic greeting, check for the reply.
-            writer.write_number(CLIENT_MAGIC).await.with_field("clientMagic")?;
+            writer
+                .write_number(CLIENT_MAGIC)
+                .await
+                .with_field("clientMagic")?;
             writer.flush().await.with_field("clientMagic")?;
 
             let magic = reader.read_number().await.with_field("serverMagic")?;
@@ -182,15 +185,23 @@ where
                 return Err(DaemonErrorKind::WrongMagic(magic)).with_field("serverMagic");
             }
 
-            let server_version: ProtocolVersion = reader.read_value().await.with_field("protocolVersion")?;
+            let server_version: ProtocolVersion =
+                reader.read_value().await.with_field("protocolVersion")?;
             let version = server_version.min(self.max_version);
             if version < self.min_version {
-                return Err(DaemonErrorKind::UnsupportedVersion(version)).with_field("protocolVersion");
+                return Err(DaemonErrorKind::UnsupportedVersion(version))
+                    .with_field("protocolVersion");
             }
-            writer.write_value(&version).await.with_field("clientVersion")?;
+            writer
+                .write_value(&version)
+                .await
+                .with_field("clientVersion")?;
             reader.set_version(version);
             writer.set_version(version);
-            eprintln!("Client Version is {}, server version is {}", version, server_version);
+            eprintln!(
+                "Client Version is {}, server version is {}",
+                version, server_version
+            );
 
             if version.minor() >= 14 {
                 // Obsolete CPU Affinity
@@ -199,7 +210,10 @@ where
 
             if version.minor() >= 11 {
                 // Obsolete reserved space
-                writer.write_value(&false).await.with_field("reserveSpace")?;
+                writer
+                    .write_value(&false)
+                    .await
+                    .with_field("reserveSpace")?;
             }
 
             if version.minor() >= 33 {
@@ -323,7 +337,8 @@ where
             self.writer.write_value(&Operation::SetOptions).await?;
             self.writer.write_value(options).await?;
             Ok(self.process_stderr())
-        }).map_err(|err| err.fill_operation(Operation::SetOptions))
+        })
+        .map_err(|err| err.fill_operation(Operation::SetOptions))
     }
 
     fn is_valid_path<'a>(
@@ -334,7 +349,8 @@ where
             self.writer.write_value(&Operation::IsValidPath).await?;
             self.writer.write_value(path).await?;
             Ok(self.process_stderr())
-        }).map_err(|err| err.fill_operation(Operation::IsValidPath))
+        })
+        .map_err(|err| err.fill_operation(Operation::IsValidPath))
     }
 
     fn query_valid_paths<'a>(
@@ -349,7 +365,8 @@ where
                 self.writer.write_value(&substitute).await?;
             }
             Ok(self.process_stderr())
-        }).map_err(|err| err.fill_operation(Operation::QueryValidPaths))
+        })
+        .map_err(|err| err.fill_operation(Operation::QueryValidPaths))
     }
 
     fn query_path_info<'a>(
@@ -360,7 +377,8 @@ where
             self.writer.write_value(&Operation::QueryPathInfo).await?;
             self.writer.write_value(path).await?;
             Ok(self.process_stderr())
-        }).map_err(|err| err.fill_operation(Operation::QueryPathInfo))
+        })
+        .map_err(|err| err.fill_operation(Operation::QueryPathInfo))
     }
 
     fn nar_from_path<'a, 'p, 'r, NW>(
@@ -371,7 +389,7 @@ where
     where
         NW: AsyncWrite + Unpin + Send + 'r,
         'a: 'r,
-        'p: 'r
+        'p: 'r,
     {
         FutureResult::new(async {
             self.writer.write_value(&Operation::NarFromPath).await?;
@@ -387,6 +405,7 @@ where
                     Ok(())
                 },
             ))
-        }).map_err(|err| err.fill_operation(Operation::NarFromPath))
+        })
+        .map_err(|err| err.fill_operation(Operation::NarFromPath))
     }
 }

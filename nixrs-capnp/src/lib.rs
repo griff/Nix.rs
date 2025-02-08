@@ -3,7 +3,6 @@ use std::future::Future;
 use ::capnp::Error;
 use nixrs::daemon::{DaemonError, DaemonErrorKind, LogMessage, LoggerResult};
 
-
 pub mod capnp {
     pub mod byte_stream_capnp {
         include!(concat!(env!("OUT_DIR"), "/byte_stream_capnp.rs"));
@@ -19,12 +18,13 @@ pub mod capnp {
 }
 
 pub struct CapnpResult<F> {
-    promise: F
+    promise: F,
 }
 
 impl<F, T> LoggerResult<T, DaemonError> for CapnpResult<F>
-    where F: Future<Output = Result<T, Error>> + Send,
-        T: 'static
+where
+    F: Future<Output = Result<T, Error>> + Send,
+    T: 'static,
 {
     async fn next(&mut self) -> Option<Result<LogMessage, DaemonError>> {
         None
@@ -107,7 +107,7 @@ impl nixrs::daemon::DaemonStore for CapnpStore {
         for (index, path) in paths.iter().enumerate() {
             let mut c_path = c_paths.reborrow().get(index as u32);
             c_path.set_hash(path.hash().as_ref());
-            c_path.set_name(path.name().as_ref());    
+            c_path.set_name(path.name().as_ref());
         }
         params.set_substitute(substitute);
         CapnpResult {

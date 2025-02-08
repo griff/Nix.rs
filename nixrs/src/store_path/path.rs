@@ -87,9 +87,7 @@ impl fmt::Display for StorePath {
 
 impl From<(StorePathHash, StorePathName)> for StorePath {
     fn from((hash, name): (StorePathHash, StorePathName)) -> Self {
-        StorePath {
-            hash, name
-        }
+        StorePath { hash, name }
     }
 }
 

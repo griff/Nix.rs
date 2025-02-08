@@ -25,7 +25,7 @@ pub type Signature = String;
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(from_store_dir_str, store_dir_display))]
-pub struct ContentAddress(#[proptest(regex="\\PC+")] String);
+pub struct ContentAddress(#[proptest(regex = "\\PC+")] String);
 impl FromStoreDirStr for ContentAddress {
     type Error = ParseStorePathError;
 
@@ -85,7 +85,7 @@ impl Default for ClientOptions {
             _print_build_trace: Default::default(),
             build_cores: 1,
             use_substitutes: true,
-            other_settings: Default::default()
+            other_settings: Default::default(),
         }
     }
 }
@@ -122,14 +122,13 @@ pub trait DaemonResultExt<T> {
     fn with_field(self, field: &'static str) -> DaemonResult<T>;
 }
 impl<T, E> DaemonResultExt<T> for Result<T, E>
-    where E: Into<DaemonError>,
+where
+    E: Into<DaemonError>,
 {
     fn with_operation(self, op: Operation) -> DaemonResult<T> {
-        self.map_err(|err| {
-            err.into().fill_operation(op)
-        })
+        self.map_err(|err| err.into().fill_operation(op))
     }
-    
+
     fn with_field(self, field: &'static str) -> DaemonResult<T> {
         self.map_err(|err| {
             let mut err = err.into();
@@ -158,7 +157,7 @@ impl fmt::Display for DaemonErrorContext {
                 f.write_str(field)?;
                 for field in it {
                     write!(f, ".{}", field)?;
-                }    
+                }
             }
         }
         Ok(())
@@ -360,7 +359,7 @@ where
     where
         W: AsyncWrite + Unpin + Send + 'r,
         'a: 'r,
-        'p: 'r
+        'p: 'r,
     {
         (**self).nar_from_path(path, sink)
     }
