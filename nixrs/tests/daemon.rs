@@ -1,8 +1,7 @@
 #![cfg(feature = "test")]
 
-use std::fs::remove_file;
-use std::future::{ready, Future};
-use std::io::{self, Cursor};
+use std::future::Future;
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Instant;
@@ -10,19 +9,16 @@ use std::time::Instant;
 use bytes::BytesMut;
 use futures::{FutureExt as _, StreamExt, TryFutureExt as _, TryStreamExt as _};
 use proptest::prelude::{any, Strategy, TestCaseError};
-use proptest::{prop_assert, prop_assert_eq, proptest};
+use proptest::{prop_assert_eq, proptest};
 use rstest::rstest;
 use tempfile::Builder;
 use tokio::io::{split, AsyncBufReadExt, BufReader};
-use tokio::net::tcp::ReadHalf;
-use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
-use tokio::net::{UnixSocket, UnixStream};
 use tokio::process::{ChildStdin, ChildStdout, Command};
 use tokio::try_join;
 
 use nixrs::archive::{parse_nar, test_data, NAREvent};
 use nixrs::daemon::client::DaemonClient;
-use nixrs::daemon::mock::{self, ChannelReporter, MockReporter, MockStore, ReporterError};
+use nixrs::daemon::mock::{self, MockReporter, MockStore, ReporterError};
 use nixrs::daemon::{server, Verbosity};
 use nixrs::daemon::{
     ClientOptions, DaemonError, DaemonErrorKind, DaemonResult, DaemonStore as _, LoggerResult,
@@ -56,7 +52,7 @@ struct StdNixImpl {
 
 impl NixImpl for StdNixImpl {
     fn name(&self) -> &str {
-        &self.name
+        self.name
     }
 
     fn prepare_mock(&self, mock: &mut mock::Builder<()>) {
@@ -190,7 +186,7 @@ where
     };
     let reports = (try_join!(stderr_copy, client, server, reports,)
         .map(|(_, _, _, reports)| reports) as Result<Vec<ReporterError>, E>)?;
-    for report in reports.iter() {
+    if let Some(report) = reports.first() {
         panic!("{}", report);
     }
     Ok(())
@@ -284,9 +280,9 @@ async fn query_valid_paths(
     #[case] expected: Result<&[&str], String>,
 ) {
     let store_paths = store_paths.iter().map(|p| p.parse().unwrap()).collect();
-    let response = response.map(|r| r.into_iter().map(|p| p.parse().unwrap()).collect());
+    let response = response.map(|r| r.iter().map(|p| p.parse().unwrap()).collect());
     let expected: Result<StorePathSet, String> =
-        expected.map(|r| r.into_iter().map(|p| p.parse().unwrap()).collect());
+        expected.map(|r| r.iter().map(|p| p.parse().unwrap()).collect());
     let mut mock = prepare_mock(nix);
     mock.query_valid_paths(&store_paths, substitute, response)
         .build();
@@ -507,6 +503,6 @@ proptest! {
 }
 
 // TODO: proptest query_valid_paths
-// TODO: proptest query_path_info
+    // TODO: proptest query_path_info
 // TODO: proptest nar_from_path
 // TODO: proptest all messages

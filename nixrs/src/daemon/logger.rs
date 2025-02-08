@@ -242,7 +242,7 @@ pub enum Field {
 
 /// Credit embr and gorgon
 pub trait LoggerResult<T, E>: Send {
-    fn next<'s>(&'s mut self) -> impl Future<Output = Option<Result<LogMessage, E>>> + Send + 's;
+    fn next(&mut self) -> impl Future<Output = Option<Result<LogMessage, E>>> + Send + '_;
     fn result(self) -> impl Future<Output = Result<T, E>> + Send;
 }
 

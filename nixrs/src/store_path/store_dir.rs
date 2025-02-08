@@ -116,7 +116,7 @@ pub struct StoreDirDisplayImpl<'v, V: StoreDirDisplay> {
     value: &'v V,
 }
 
-impl<'v, V> fmt::Display for StoreDirDisplayImpl<'v, V>
+impl<V> fmt::Display for StoreDirDisplayImpl<'_, V>
 where
     V: StoreDirDisplay,
 {

@@ -22,7 +22,7 @@ struct DisplayStorePath<'a> {
     path: &'a StorePath,
 }
 
-impl<'a> fmt::Display for DisplayStorePath<'a> {
+impl fmt::Display for DisplayStorePath<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}{}{}", self.store_dir, MAIN_SEPARATOR, self.path)
     }
@@ -552,7 +552,7 @@ mod tests {
         );
         let d = hash::digest(
             hash::Algorithm::SHA256,
-            &format!("output:out:{:x}:/nix/store:konsole-18.12.3", d),
+            format!("output:out:{:x}:/nix/store:konsole-18.12.3", d),
         );
         let p = StorePath::from_hash(&d, "konsole-18.12.3").unwrap();
 
@@ -584,7 +584,7 @@ mod tests {
         );
         let d = hash::digest(
             hash::Algorithm::SHA256,
-            &format!("output:out:{:x}:/nix/store:konsole-18.12.3", d),
+            format!("output:out:{:x}:/nix/store:konsole-18.12.3", d),
         );
         let p = StorePath::from_hash(&d, "konsole-18.12.3").unwrap();
 

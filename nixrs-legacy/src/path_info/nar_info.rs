@@ -118,7 +118,7 @@ struct DisplayNarInfo<'a> {
     nar_info: &'a NarInfo,
 }
 
-impl<'a> fmt::Display for DisplayNarInfo<'a> {
+impl fmt::Display for DisplayNarInfo<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,

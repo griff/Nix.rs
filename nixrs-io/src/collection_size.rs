@@ -5,13 +5,13 @@ pub trait CollectionSize {
     fn len(&self) -> usize;
 }
 
-impl<'a, C> CollectionSize for &'a [C] {
+impl<C> CollectionSize for &[C] {
     fn len(&self) -> usize {
         (*self).len()
     }
 }
 
-impl<'a, C> CollectionSize for &'a C
+impl<C> CollectionSize for &C
 where
     C: CollectionSize,
 {

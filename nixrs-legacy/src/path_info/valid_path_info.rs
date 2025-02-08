@@ -52,7 +52,7 @@ struct FingerprintDisplay<'a> {
     store: &'a StoreDir,
 }
 
-impl<'a> fmt::Display for FingerprintDisplay<'a> {
+impl fmt::Display for FingerprintDisplay<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,

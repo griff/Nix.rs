@@ -33,7 +33,7 @@ pub(crate) fn write_buf<W>(dst: W, buf: &[u8]) -> WriteSlice<'_, W> {
     WriteSlice::WriteSize(buf, WriteU64::new(dst, len as u64))
 }
 
-impl<'a, W> WriteSlice<'a, W> {
+impl<W> WriteSlice<'_, W> {
     pub fn inner(self) -> W {
         match self {
             WriteSlice::Invalid => panic!("invalid state"),
@@ -45,7 +45,7 @@ impl<'a, W> WriteSlice<'a, W> {
     }
 }
 
-impl<'a, W> Future for WriteSlice<'a, W>
+impl<W> Future for WriteSlice<'_, W>
 where
     W: AsyncWrite + Unpin,
 {

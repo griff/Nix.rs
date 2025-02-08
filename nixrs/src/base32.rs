@@ -13,7 +13,7 @@ const BASE32_CHARS_REVERSE: [u8; 256] = {
 };
 
 pub const fn encode_len(len: usize) -> usize {
-    (8 * len + 5 - 1) / 5
+    (8 * len).div_ceil(5)
 }
 
 const fn decode_len_internal(len: usize) -> (usize, usize) {

@@ -422,7 +422,7 @@ impl fmt::Display for Hash {
 }
 
 struct Base16Hash<'a>(&'a Hash);
-impl<'a> fmt::Display for Base16Hash<'a> {
+impl fmt::Display for Base16Hash<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if f.alternate() {
             write!(f, "{:#x}", self.0)
@@ -433,7 +433,7 @@ impl<'a> fmt::Display for Base16Hash<'a> {
 }
 
 struct Base32Hash<'a>(&'a Hash);
-impl<'a> fmt::Display for Base32Hash<'a> {
+impl fmt::Display for Base32Hash<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut buf = [0u8; LARGEST_ALGORITHM.base32_len()];
         let output = &mut buf[..self.0.algorithm.base32_len()];
@@ -450,7 +450,7 @@ impl<'a> fmt::Display for Base32Hash<'a> {
 }
 
 struct Base64Hash<'a>(&'a Hash);
-impl<'a> fmt::Display for Base64Hash<'a> {
+impl fmt::Display for Base64Hash<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut buf = [0u8; LARGEST_ALGORITHM.base64_len()];
         let output = &mut buf[..self.0.algorithm.base64_len()];
@@ -468,7 +468,7 @@ impl<'a> fmt::Display for Base64Hash<'a> {
 }
 
 struct SRIHash<'a>(&'a Hash);
-impl<'a> fmt::Display for SRIHash<'a> {
+impl fmt::Display for SRIHash<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}-{:#}", self.0.algorithm(), self.0.to_base64())
     }

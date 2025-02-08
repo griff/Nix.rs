@@ -323,7 +323,7 @@ pub enum TunnelSourceOp<'r, R> {
     Invalid,
 }
 
-impl<'r, R> fmt::Debug for TunnelSourceOp<'r, R> {
+impl<R> fmt::Debug for TunnelSourceOp<'_, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Available(_, _) => f.debug_tuple("Available").finish(),

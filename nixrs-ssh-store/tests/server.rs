@@ -66,7 +66,7 @@ where
         .map_err(From::from);
 
     let mut child = Command::new("ssh")
-        .args(&[
+        .args([
             "-p",
             "8222",
             "-i",

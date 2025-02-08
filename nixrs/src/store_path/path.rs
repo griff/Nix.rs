@@ -516,12 +516,12 @@ mod test {
 
         let mut e_list2 = BTreeSet::new();
         for item in e_list.iter() {
-            e_list2.insert(item.clone());
+            e_list2.insert(*item);
         }
 
         let mut o_list2 = BTreeSet::new();
         for item in o_list.iter() {
-            o_list2.insert(item.clone());
+            o_list2.insert(*item);
         }
         assert_eq!(e_list1, e_list2);
         assert_eq!(o_list1, o_list2);

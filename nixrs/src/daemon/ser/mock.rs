@@ -192,27 +192,27 @@ impl Builder {
             Operation::Number(value, Err(Error::IO(kind, msg))) => {
                 self.write_number_error(*value, Error::IO(*kind, msg.clone()))
             }
-            Operation::Slice(value, Ok(_)) => self.write_slice(&value),
-            Operation::Slice(value, Err(Error::UnexpectedSlice(_))) => self.write_slice(&value),
+            Operation::Slice(value, Ok(_)) => self.write_slice(value),
+            Operation::Slice(value, Err(Error::UnexpectedSlice(_))) => self.write_slice(value),
             Operation::Slice(_, Err(Error::ExtraWrite(OperationType::WriteSlice))) => self,
             Operation::Slice(_, Err(Error::WrongWrite(op, OperationType::WriteSlice))) => {
                 self.write_operation_type(*op)
             }
             Operation::Slice(value, Err(Error::Custom(msg))) => {
-                self.write_slice_error(&value, Error::Custom(msg.clone()))
+                self.write_slice_error(value, Error::Custom(msg.clone()))
             }
             Operation::Slice(value, Err(Error::IO(kind, msg))) => {
-                self.write_slice_error(&value, Error::IO(*kind, msg.clone()))
+                self.write_slice_error(value, Error::IO(*kind, msg.clone()))
             }
-            Operation::Display(value, Ok(_)) => self.write_display(&value),
+            Operation::Display(value, Ok(_)) => self.write_display(value),
             Operation::Display(value, Err(Error::Custom(msg))) => {
-                self.write_display_error(&value, Error::Custom(msg.clone()))
+                self.write_display_error(value, Error::Custom(msg.clone()))
             }
             Operation::Display(value, Err(Error::IO(kind, msg))) => {
-                self.write_display_error(&value, Error::IO(*kind, msg.clone()))
+                self.write_display_error(value, Error::IO(*kind, msg.clone()))
             }
             Operation::Display(value, Err(Error::UnexpectedDisplay(_))) => {
-                self.write_display(&value)
+                self.write_display(value)
             }
             Operation::Display(_, Err(Error::ExtraWrite(OperationType::WriteDisplay))) => self,
             Operation::Display(_, Err(Error::WrongWrite(op, OperationType::WriteDisplay))) => {
@@ -258,7 +258,7 @@ impl Mock {
                 assert_eq!(self.write_number(value).await, res);
             }
             Operation::Slice(_, ref res @ Err(Error::UnexpectedSlice(ref value))) => {
-                assert_eq!(self.write_slice(&value).await, res.clone());
+                assert_eq!(self.write_slice(value).await, res.clone());
             }
             Operation::Slice(value, res) => {
                 assert_eq!(self.write_slice(&value).await, res);
@@ -287,7 +287,7 @@ impl Mock {
                 prop_assert_eq!(self.write_number(value).await, res);
             }
             Operation::Slice(_, ref res @ Err(Error::UnexpectedSlice(ref value))) => {
-                prop_assert_eq!(self.write_slice(&value).await, res.clone());
+                prop_assert_eq!(self.write_slice(value).await, res.clone());
             }
             Operation::Slice(value, res) => {
                 prop_assert_eq!(self.write_slice(&value).await, res);

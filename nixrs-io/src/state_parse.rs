@@ -3,7 +3,7 @@ pub trait StateParse<I> {
     fn parse(&self, s: &str) -> Result<I, Self::Err>;
 }
 
-impl<'t, T, I> StateParse<I> for &'t T
+impl<T, I> StateParse<I> for &T
 where
     T: StateParse<I>,
 {

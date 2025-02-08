@@ -3,6 +3,7 @@ use std::future::Future;
 use ::capnp::Error;
 use nixrs::daemon::{DaemonError, DaemonErrorKind, LogMessage, LoggerResult};
 
+#[allow(clippy::needless_lifetimes, clippy::extra_unused_type_parameters)]
 pub mod capnp {
     pub mod byte_stream_capnp {
         include!(concat!(env!("OUT_DIR"), "/byte_stream_capnp.rs"));
@@ -38,6 +39,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 pub struct CapnpStore {
     store: capnp::nix_daemon_capnp::nix_daemon::Client,
 }

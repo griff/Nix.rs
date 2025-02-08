@@ -294,7 +294,7 @@ where
         Ok(())
     }
 
-    fn process_stderr<'a, T>(&'a mut self) -> impl LoggerResult<T, DaemonError> + 'a
+    fn process_stderr<T>(&mut self) -> impl LoggerResult<T, DaemonError> + '_
     where
         T: NixDeserialize + Send + 'static,
     {

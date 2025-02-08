@@ -59,7 +59,7 @@ struct SingleDerivedPathDisplay<'a> {
     path: &'a SingleDerivedPath,
 }
 
-impl<'a> fmt::Display for SingleDerivedPathDisplay<'a> {
+impl fmt::Display for SingleDerivedPathDisplay<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.path {
             SingleDerivedPath::Opaque(drv_path) => {

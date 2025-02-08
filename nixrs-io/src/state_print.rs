@@ -2,7 +2,7 @@ pub trait StatePrint<I> {
     fn print(&self, item: &I) -> String;
 }
 
-impl<'t, T, I> StatePrint<I> for &'t T
+impl<T, I> StatePrint<I> for &T
 where
     T: StatePrint<I>,
 {

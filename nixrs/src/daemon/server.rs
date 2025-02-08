@@ -120,98 +120,94 @@ where
     R: AsyncReadExt + Send + Unpin,
     W: AsyncWriteExt + Send + Unpin,
 {
-    pub fn handshake<'s>(
+    pub async fn handshake<'s>(
         &'s mut self,
         min_version: ProtocolVersion,
         max_version: ProtocolVersion,
         nix_version: &'s str,
-    ) -> impl std::future::Future<Output = Result<ProtocolVersion, DaemonError>> + Send + 's {
-        async move {
-            assert!(
-                min_version.major() == 1 && min_version.minor() >= 21,
-                "Only Nix 2.3 and later is supported"
-            );
-            assert!(
-                max_version <= PROTOCOL_VERSION,
-                "Only protocols up to {} is supported",
-                PROTOCOL_VERSION
-            );
+    ) -> Result<ProtocolVersion, DaemonError> {
+        assert!(
+            min_version.major() == 1 && min_version.minor() >= 21,
+            "Only Nix 2.3 and later is supported"
+        );
+        assert!(
+            max_version <= PROTOCOL_VERSION,
+            "Only protocols up to {} is supported",
+            PROTOCOL_VERSION
+        );
 
-            let client_magic = self.reader.read_number().await.with_field("clientMagic")?;
-            if client_magic != CLIENT_MAGIC {
-                return Err(DaemonErrorKind::WrongMagic(client_magic)).with_field("clientMagic");
-            }
-
-            self.writer
-                .write_number(SERVER_MAGIC)
-                .await
-                .with_field("serverMagic")?;
-            self.writer
-                .write_value(&max_version)
-                .await
-                .with_field("protocolVersion")?;
-            self.writer.flush().await?;
-
-            let client_version: ProtocolVersion =
-                self.reader.read_value().await.with_field("clientVersion")?;
-            let version = client_version.min(max_version);
-            if version < min_version {
-                return Err(DaemonErrorKind::UnsupportedVersion(version))
-                    .with_field("clientVersion");
-            }
-            self.reader.set_version(version);
-            self.writer.set_version(version);
-            eprintln!(
-                "Server Version is {}, Client version is {}",
-                version, client_version
-            );
-
-            if version.minor() >= 14 {
-                // Obsolete CPU Affinity
-                if self.reader.read_value().await.with_field("sendCpu")? {
-                    let _cpu_affinity =
-                        self.reader.read_number().await.with_field("cpuAffinity")?;
-                }
-            }
-
-            if version.minor() >= 11 {
-                // Obsolete reserved space
-                let _reserve_space: bool =
-                    self.reader.read_value().await.with_field("reserveSpace")?;
-            }
-
-            if version.minor() >= 33 {
-                self.writer
-                    .write_value(nix_version)
-                    .await
-                    .with_field("nixVersion")?;
-            }
-
-            if version.minor() >= 35 {
-                self.writer
-                    .write_value(&self.store_trust)
-                    .await
-                    .with_field("trusted")?;
-            }
-
-            self.writer.flush().await?;
-            Ok(version)
+        let client_magic = self.reader.read_number().await.with_field("clientMagic")?;
+        if client_magic != CLIENT_MAGIC {
+            return Err(DaemonErrorKind::WrongMagic(client_magic)).with_field("clientMagic");
         }
+
+        self.writer
+            .write_number(SERVER_MAGIC)
+            .await
+            .with_field("serverMagic")?;
+        self.writer
+            .write_value(&max_version)
+            .await
+            .with_field("protocolVersion")?;
+        self.writer.flush().await?;
+
+        let client_version: ProtocolVersion =
+            self.reader.read_value().await.with_field("clientVersion")?;
+        let version = client_version.min(max_version);
+        if version < min_version {
+            return Err(DaemonErrorKind::UnsupportedVersion(version))
+                .with_field("clientVersion");
+        }
+        self.reader.set_version(version);
+        self.writer.set_version(version);
+        eprintln!(
+            "Server Version is {}, Client version is {}",
+            version, client_version
+        );
+
+        if version.minor() >= 14 {
+            // Obsolete CPU Affinity
+            if self.reader.read_value().await.with_field("sendCpu")? {
+                let _cpu_affinity =
+                    self.reader.read_number().await.with_field("cpuAffinity")?;
+            }
+        }
+
+        if version.minor() >= 11 {
+            // Obsolete reserved space
+            let _reserve_space: bool =
+                self.reader.read_value().await.with_field("reserveSpace")?;
+        }
+
+        if version.minor() >= 33 {
+            self.writer
+                .write_value(nix_version)
+                .await
+                .with_field("nixVersion")?;
+        }
+
+        if version.minor() >= 35 {
+            self.writer
+                .write_value(&self.store_trust)
+                .await
+                .with_field("trusted")?;
+        }
+
+        self.writer.flush().await?;
+        Ok(version)
     }
 
-    pub fn process_logs<'s, T: Send + 's>(
+    pub async fn process_logs<'s, T: Send + 's>(
         &'s mut self,
         mut logs: impl LoggerResult<T, DaemonError> + 's,
-    ) -> impl std::future::Future<Output = Result<T, RecoverableError>> + Send + 's {
-        async move {
-            while let Some(msg) = logs.next().await {
-                self.writer.write_value(&msg.recover()?).await?;
-            }
-            // TODO: Test this recover
-            let value = logs.result().await.recover()?;
-            self.writer.write_value(&RawLogMessage::Last).await?;
-            Ok(value)
+    ) -> Result<T, RecoverableError> {
+        while let Some(msg) = logs.next().await {
+            self.writer.write_value(&msg.recover()?).await?;
         }
+        // TODO: Test this recover
+        let value = logs.result().await.recover()?;
+        self.writer.write_value(&RawLogMessage::Last).await?;
+        Ok(value)
     }
 
     pub async fn process_requests<'s, S>(&'s mut self, mut store: S) -> Result<(), DaemonError>

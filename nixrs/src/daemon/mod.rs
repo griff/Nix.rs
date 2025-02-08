@@ -231,9 +231,9 @@ mod test {
         #[case] expected: Result<&[&str], String>,
     ) {
         let store_paths = store_paths.iter().map(|p| p.parse().unwrap()).collect();
-        let response = response.map(|r| r.into_iter().map(|p| p.parse().unwrap()).collect());
+        let response = response.map(|r| r.iter().map(|p| p.parse().unwrap()).collect());
         let expected: Result<StorePathSet, String> =
-            expected.map(|r| r.into_iter().map(|p| p.parse().unwrap()).collect());
+            expected.map(|r| r.iter().map(|p| p.parse().unwrap()).collect());
         let mock = MockStore::builder()
             .query_valid_paths(&store_paths, substitute, response)
             .build()

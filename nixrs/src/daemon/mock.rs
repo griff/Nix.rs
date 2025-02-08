@@ -457,7 +457,7 @@ pub struct LogBuilder<'b, R> {
     logs: VecDeque<LogMessage>,
 }
 
-impl<'b, R> LogBuilder<'b, R> {
+impl<R> LogBuilder<'_, R> {
     pub fn message<M: Into<DaemonString>>(mut self, msg: M) -> Self {
         let msg = msg.into();
         self.logs.push_back(LogMessage::Next(msg));

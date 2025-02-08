@@ -16,7 +16,7 @@ pin_project! {
     }
 }
 
-impl<'a, W> WriteAll<'a, W> {
+impl<W> WriteAll<'_, W> {
     pub fn inner(self) -> W {
         self.writer
     }
