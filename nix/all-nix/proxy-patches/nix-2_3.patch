@@ -1,11 +1,12 @@
-From d17fa38eb7990c54ddd904d0fa5561f9b66317a6 Mon Sep 17 00:00:00 2001
+From 12c4bda3ba7917444068a603aadd027ffd9404e1 Mon Sep 17 00:00:00 2001
 From: Brian Olsen <brian@maven-group.org>
 Date: Sun, 2 Feb 2025 18:18:23 +0100
 Subject: [PATCH] feat: Add unix socket proxy store
 
 ---
- src/libstore/proxy-store.cc | 114 ++++++++++++++++++++++++++++++++++++
- 1 file changed, 114 insertions(+)
+ src/libstore/proxy-store.cc  | 114 +++++++++++++++++++++++++++++++++++
+ src/nix-daemon/nix-daemon.cc |   2 +-
+ 2 files changed, 115 insertions(+), 1 deletion(-)
  create mode 100644 src/libstore/proxy-store.cc
 
 diff --git a/src/libstore/proxy-store.cc b/src/libstore/proxy-store.cc
@@ -128,6 +129,19 @@ index 000000000..d35ff5555
 +});
 +
 +}
+diff --git a/src/nix-daemon/nix-daemon.cc b/src/nix-daemon/nix-daemon.cc
+index 87ad4e949..95bb8f889 100644
+--- a/src/nix-daemon/nix-daemon.cc
++++ b/src/nix-daemon/nix-daemon.cc
+@@ -683,7 +683,7 @@ static void performOp(TunnelLogger * logger, ref<Store> store,
+         auto path = readStorePath(*store, from);
+         logger->startWork();
+         logger->stopWork();
+-        dumpPath(path, to);
++        store->narFromPath(path, to);
+         break;
+     }
+ 
 -- 
 2.39.5 (Apple Git-154)
 

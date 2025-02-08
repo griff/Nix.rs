@@ -1,10 +1,11 @@
 use std::future::ready;
 use std::io::Cursor;
 use std::mem::take;
-use std::thread;
+use std::{fmt, thread};
 use std::{collections::VecDeque, future::Future};
 
 use bytes::Bytes;
+use futures::channel::mpsc;
 #[cfg(any(test, feature = "test"))]
 use proptest::prelude::TestCaseError;
 use tokio::io::{AsyncWrite, AsyncWriteExt as _};
@@ -13,8 +14,7 @@ use super::logger::{Activity, ActivityResult, LogMessage, LoggerResult, LoggerRe
 use super::wire::types::Operation;
 use super::wire::types2::{BuildResult, QueryMissingResult, QueryValidPathsRequest};
 use super::{
-    ClientOptions, DaemonError, DaemonResult, DaemonStore, DaemonString, HandshakeDaemonStore,
-    TrustLevel, UnkeyedValidPathInfo,
+    ClientOptions, DaemonError, DaemonErrorKind, DaemonResult, DaemonResultExt, DaemonStore, DaemonString, HandshakeDaemonStore, TrustLevel, UnkeyedValidPathInfo
 };
 use crate::store_path::{StorePath, StorePathSet};
 
@@ -171,45 +171,122 @@ impl From<QueryMissingResult> for MockResponse {
 
 pub trait MockReporter {
     fn unexpected_operation(
-        &self,
+        &mut self,
         expected: MockOperation,
         actual: MockRequest,
     ) -> impl LoggerResult<MockResponse, DaemonError>;
     fn invalid_operation(
-        &self,
+        &mut self,
         expected: MockOperation,
         actual: MockRequest,
     ) -> impl LoggerResult<MockResponse, DaemonError>;
-    fn extra_operation(&self, actual: MockRequest) -> impl LoggerResult<MockResponse, DaemonError>;
+    fn extra_operation(&mut self, actual: MockRequest) -> impl LoggerResult<MockResponse, DaemonError>;
+    fn unread_operation(&mut self, operation: LogOperation);
 }
 
 impl MockReporter for () {
     fn unexpected_operation(
-        &self,
+        &mut self,
         expected: MockOperation,
         actual: MockRequest,
     ) -> impl LoggerResult<MockResponse, DaemonError> {
-        Err(DaemonError::Custom(format!(
+        Err(DaemonErrorKind::Custom(format!(
             "Unexpected operation {} expected {}",
             actual.operation(),
             expected.operation()
-        )))
+        ))).with_operation(actual.operation())
     }
 
     fn invalid_operation(
-        &self,
+        &mut self,
         expected: MockOperation,
         actual: MockRequest,
     ) -> impl LoggerResult<MockResponse, DaemonError> {
-        Err(DaemonError::Custom(format!(
+        Err(DaemonErrorKind::Custom(format!(
             "Invalid operation {:?} expected {:?}",
             actual,
             expected.request()
-        )))
+        ))).with_operation(actual.operation())
     }
 
-    fn extra_operation(&self, actual: MockRequest) -> impl LoggerResult<MockResponse, DaemonError> {
-        Err(DaemonError::Custom(format!("Extra operation {:?}", actual)))
+    fn extra_operation(&mut self, actual: MockRequest) -> impl LoggerResult<MockResponse, DaemonError> {
+        Err(DaemonErrorKind::Custom(format!("Extra operation {:?}", actual)))
+            .with_operation(actual.operation())
+    }
+
+    fn unread_operation(&mut self, _operation: LogOperation) {
+        //panic!("store dropped with {operation:?} operation still unread");
+    }
+}
+
+pub enum ReporterError {
+    Unexpected(MockOperation, MockRequest),
+    Invalid(MockOperation, MockRequest),
+    Extra(MockRequest),
+    Unread(LogOperation),
+}
+
+impl fmt::Display for ReporterError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ReporterError::Unexpected(expected, actual) => {
+                write!(f, "Unexpected operation {} expected {}", actual.operation(), expected.operation())
+            },
+            ReporterError::Invalid(expected, actual) => {
+                write!(f, "Invalid operation {:?} expected {:?}", actual, expected.request())
+            },
+            ReporterError::Extra(actual) => {
+                write!(f, "Extra operation {:?}", actual)
+            },
+            ReporterError::Unread(operation) => {
+                write!(f, "store dropped with {operation:?} operation still unread")
+            },
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ChannelReporter(futures::channel::mpsc::UnboundedSender<ReporterError>);
+impl Drop for ChannelReporter {
+    fn drop(&mut self) {
+        self.0.close_channel();
+    }
+}
+impl MockReporter for ChannelReporter {
+    fn unexpected_operation(
+        &mut self,
+        expected: MockOperation,
+        actual: MockRequest,
+    ) -> impl LoggerResult<MockResponse, DaemonError> {
+        let op = actual.operation();
+        let report = ReporterError::Unexpected(expected, actual);
+        let ret = Err(DaemonErrorKind::Custom(report.to_string())).with_operation(op);
+        self.0.unbounded_send(report).unwrap();
+        ret
+    }
+
+    fn invalid_operation(
+        &mut self,
+        expected: MockOperation,
+        actual: MockRequest,
+    ) -> impl LoggerResult<MockResponse, DaemonError> {
+        let op = actual.operation();
+        let report = ReporterError::Invalid(expected, actual);
+        let ret = Err(DaemonErrorKind::Custom(report.to_string())).with_operation(op);
+        self.0.unbounded_send(report).unwrap();
+        ret
+    }
+
+    fn extra_operation(&mut self, actual: MockRequest) -> impl LoggerResult<MockResponse, DaemonError> {
+        let op = actual.operation();
+        let report = ReporterError::Extra(actual);
+        let ret = Err(DaemonErrorKind::Custom(report.to_string())).with_operation(op);
+        self.0.unbounded_send(report).unwrap();
+        ret
+    }
+
+    fn unread_operation(&mut self, operation: LogOperation) {
+        self.0.unbounded_send(ReporterError::Unread(operation)).unwrap();
     }
 }
 
@@ -299,7 +376,9 @@ pub struct LogResult<Fut> {
 
 impl<Fut, T, E> LoggerResult<T, E> for LogResult<Fut>
 where
-    Fut: Future<Output = Result<T, E>>,
+    Fut: Future<Output = Result<T, E>> + Send,
+    T: 'static,
+    E: 'static,
 {
     async fn next(&mut self) -> Option<Result<LogMessage, E>> {
         self.logs.pop_front().map(Result::Ok)
@@ -323,6 +402,8 @@ where
     R2: LoggerResult<T, E>,
     R3: LoggerResult<T, E>,
     R4: LoggerResult<T, E>,
+    T: 'static,
+    E: 'static,
 {
     async fn next(&mut self) -> Option<Result<LogMessage, E>> {
         match self {
@@ -389,7 +470,7 @@ pub struct Builder<R> {
     reporter: R,
 }
 
-impl<R: Clone> Builder<R> {
+impl<R> Builder<R> {
     pub fn set_options(
         &mut self,
         options: &super::ClientOptions,
@@ -461,18 +542,37 @@ impl<R: Clone> Builder<R> {
         self
     }
 
-    pub fn build(&mut self) -> MockStore<R> {
+    pub fn channel_reporter(&self) -> (Builder<ChannelReporter>, mpsc::UnboundedReceiver<ReporterError>) {
+        let (sender, receiver) = mpsc::unbounded();
+        (self.set_reporter(ChannelReporter(sender)), receiver)
+    }
+
+    pub fn set_reporter<R2>(&self, reporter: R2) -> Builder<R2> {
+        Builder {
+            trusted_client: self.trusted_client,
+            handshake_logs: self.handshake_logs.clone(),
+            ops: self.ops.clone(),
+            reporter
+        }
+    }
+
+}
+
+impl<R> Builder<R>
+where R: MockReporter + Clone
+{
+    pub fn build(&self) -> MockStore<R> {
         MockStore {
             trusted_client: self.trusted_client,
             handshake_logs: self.handshake_logs.clone(),
             ops: self.ops.clone(),
             reporter: self.reporter.clone(),
         }
-    }
+    }    
 }
 
 impl Builder<()> {
-    pub fn new() -> Builder<()> {
+    pub fn new() -> Self {
         Builder {
             trusted_client: TrustLevel::Unknown,
             ops: Default::default(),
@@ -489,7 +589,9 @@ impl Default for Builder<()> {
 }
 
 #[derive(Debug)]
-pub struct MockStore<R> {
+pub struct MockStore<R>
+where R: MockReporter
+{
     trusted_client: TrustLevel,
     handshake_logs: VecDeque<LogMessage>,
     ops: VecDeque<LogOperation>,
@@ -512,14 +614,16 @@ impl Default for MockStore<()> {
     }
 }
 
-impl<R> Drop for MockStore<R> {
+impl<R> Drop for MockStore<R>
+where R: MockReporter
+{
     fn drop(&mut self) {
         // No need to panic again
         if thread::panicking() {
             return;
         }
-        if let Some(op) = self.ops.front() {
-            panic!("store dropped with {op:?} operation still unread")
+        for op in self.ops.drain(..) {
+            self.reporter.unread_operation(op);
         }
     }
 }
@@ -747,7 +851,7 @@ impl<R> MockStore<R> {
 
 impl<R> HandshakeDaemonStore for MockStore<R>
 where
-    R: MockReporter,
+    R: MockReporter + Send + 'static,
 {
     type Store = Self;
 
@@ -759,7 +863,7 @@ where
 
 impl<R> DaemonStore for MockStore<R>
 where
-    R: MockReporter,
+    R: MockReporter + Send,
 {
     fn trust_level(&self) -> TrustLevel {
         self.trusted_client
@@ -913,13 +1017,15 @@ where
         }
     }
 
-    fn nar_from_path<'a, W>(
+    fn nar_from_path<'a, 'p, 'r, W>(
         &'a mut self,
-        path: &'a StorePath,
+        path: &'p StorePath,
         mut sink: W,
-    ) -> impl super::logger::LoggerResult<(), DaemonError> + 'a
+    ) -> impl super::logger::LoggerResult<(), DaemonError> + 'r
     where
-        W: AsyncWrite + Unpin + 'a,
+        W: AsyncWrite + Unpin + Send + 'r,
+        'a: 'r,
+        'p: 'r,
     {
         let actual = MockRequest::NarFromPath(path.clone());
         let result = match self.ops.pop_front() {

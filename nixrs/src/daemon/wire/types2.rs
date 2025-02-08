@@ -193,6 +193,55 @@ pub enum Request {
     QuerySubstitutablePathInfo(StorePath),
 }
 
+impl Request {
+    pub fn operation(&self) -> Operation {
+        match self {
+            Request::IsValidPath(_) => Operation::IsValidPath,
+            Request::QueryReferrers(_) => Operation::QueryReferences,
+            Request::AddToStore(_) => Operation::AddToStore,
+            Request::BuildPaths(_) => Operation::BuildPaths,
+            Request::EnsurePath(_) => Operation::EnsurePath,
+            Request::AddTempRoot(_) => Operation::AddTempRoot,
+            Request::AddIndirectRoot(_) => Operation::AddIndirectRoot,
+            Request::FindRoots => Operation::FindRoots,
+            Request::SetOptions(_) => Operation::SetOptions,
+            Request::CollectGarbage(_) => Operation::CollectGarbage,
+            Request::QueryAllValidPaths => Operation::QueryAllValidPaths,
+            Request::QueryPathInfo(_) => Operation::QueryPathInfo,
+            Request::QueryPathFromHashPart(_) => Operation::QueryPathFromHashPart,
+            Request::QueryValidPaths(_) => Operation::QueryValidPaths,
+            Request::QuerySubstitutablePaths(_) => Operation::QuerySubstitutablePaths,
+            Request::QueryValidDerivers(_) => Operation::QueryValidDerivers,
+            Request::OptimiseStore => Operation::OptimiseStore,
+            Request::VerifyStore(_) => Operation::VerifyStore,
+            Request::BuildDerivation(_) => Operation::BuildDerivation,
+            Request::AddSignatures(_) => Operation::AddSignatures,
+            Request::NarFromPath(_) => Operation::NarFromPath,
+            Request::AddToStoreNar(_) => Operation::AddToStoreNar,
+            Request::QueryMissing(_) => Operation::QueryMissing,
+            Request::QueryDerivationOutputMap(_) => Operation::QueryDerivationOutputMap,
+            Request::RegisterDrvOutput(_) => Operation::RegisterDrvOutput,
+            Request::QueryRealisation(_) => Operation::QueryRealisation,
+            Request::AddMultipleToStore(_) => Operation::AddMultipleToStore,
+            Request::AddBuildLog(_) => Operation::AddBuildLog,
+            Request::BuildPathsWithResults(_) => Operation::BuildPathsWithResults,
+            Request::AddPermRoot(_) => Operation::AddPermRoot,
+            Request::SyncWithGC => Operation::SyncWithGC,
+            Request::AddTextToStore(_) => Operation::AddTextToStore,
+            Request::QueryDerivationOutputs(_) => Operation::QueryDerivationOutputs,
+            Request::QueryDerivationOutputNames(_) => Operation::QueryDerivationOutputNames,
+            Request::QuerySubstitutablePathInfos(_) => Operation::QuerySubstitutablePathInfos,
+            Request::ExportPath(_) => Operation::ExportPath,
+            Request::ImportPaths => Operation::ImportPaths,
+            Request::QueryPathHash(_) => Operation::QueryPathHash,
+            Request::QueryReferences(_) => Operation::QueryReferences,
+            Request::QueryDeriver(_) => Operation::QueryDeriver,
+            Request::HasSubstitutes(_) => Operation::HasSubstitutes,
+            Request::QuerySubstitutablePathInfo(_) => Operation::QuerySubstitutablePathInfo,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct ValidPathInfo {

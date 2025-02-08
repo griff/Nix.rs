@@ -7,6 +7,7 @@ members = [
   "nixrs-io",
   "nixrs-legacy",
   "nixrs-ssh-store",
+  "nixrs-capnp",
   "examples/nixrs-nix-store",
   "examples/nix-docker-build",
   "examples/nixrs-tvix",

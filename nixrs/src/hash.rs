@@ -727,7 +727,7 @@ impl tokio::io::AsyncWrite for HashSink {
 }
 
 #[cfg(any(test, feature = "test"))]
-pub mod proptest {
+pub mod proptests {
     use super::*;
     use ::proptest::prelude::*;
 

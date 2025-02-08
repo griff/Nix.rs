@@ -7,6 +7,8 @@ use nixrs_derive::{NixDeserialize, NixSerialize};
 pub mod client;
 pub mod de;
 #[cfg(feature = "nixrs-derive")]
+mod fail_store;
+#[cfg(feature = "nixrs-derive")]
 mod logger;
 #[cfg(all(feature = "nixrs-derive", any(test, feature = "test")))]
 pub mod mock;
@@ -19,10 +21,12 @@ mod types;
 pub mod wire;
 
 #[cfg(feature = "nixrs-derive")]
-pub use logger::{LogError, LoggerResult, TraceLine, Verbosity};
+pub use logger::{LogError, LoggerResult, LogMessage, TraceLine, Verbosity};
+#[cfg(feature = "nixrs-derive")]
+pub use fail_store::FailStore;
 #[cfg(feature = "nixrs-derive")]
 pub use types::{
-    ClientOptions, DaemonError, DaemonInt, DaemonPath, DaemonResult, DaemonStore, DaemonString,
+    ClientOptions, DaemonError, DaemonErrorKind, DaemonErrorContext, DaemonInt, DaemonPath, DaemonResult, DaemonResultExt, DaemonStore, DaemonString,
     DaemonTime, HandshakeDaemonStore, RemoteError, TrustLevel, UnkeyedValidPathInfo,
 };
 
@@ -68,7 +72,7 @@ impl Default for ProtocolVersion {
 
 impl From<u16> for ProtocolVersion {
     fn from(value: u16) -> Self {
-        ProtocolVersion::from_parts((value & 0xff00 >> 8) as u8, (value & 0x00ff) as u8)
+        ProtocolVersion::from_parts(((value & 0xff00) >> 8) as u8, (value & 0x00ff) as u8)
     }
 }
 
@@ -80,7 +84,7 @@ impl From<(u8, u8)> for ProtocolVersion {
 
 impl From<ProtocolVersion> for u16 {
     fn from(value: ProtocolVersion) -> Self {
-        (value.major() as u16) << 8 | (value.minor() as u16)
+        ((value.major() as u16) << 8) | (value.minor() as u16)
     }
 }
 
@@ -114,7 +118,7 @@ mod test {
     use super::{ClientOptions, UnkeyedValidPathInfo};
     use crate::archive::test_data;
     use crate::archive::NAREvent;
-    use crate::daemon::DaemonError;
+    use crate::daemon::{DaemonError, DaemonErrorKind};
     use crate::daemon::{logger::LoggerResult as _, server};
     use crate::hash::{digest, Algorithm, NarHash};
     use crate::store_path::StorePath;
@@ -122,7 +126,7 @@ mod test {
 
     async fn run_store_test<R, T, F, E>(mock: MockStore<R>, test: T) -> Result<(), E>
     where
-        R: MockReporter,
+        R: MockReporter + Send + 'static,
         T: FnOnce(DaemonClient<ReadHalf<DuplexStream>, WriteHalf<DuplexStream>>) -> F,
         F: Future<
             Output = Result<DaemonClient<ReadHalf<DuplexStream>, WriteHalf<DuplexStream>>, E>,
@@ -130,8 +134,9 @@ mod test {
         E: From<DaemonError>,
     {
         let (client_s, server_s) = duplex(10_000);
+        let (server_reader, server_writer) = split(server_s);
         let b = server::Builder::new();
-        let server = b.serve_connection(server_s, mock).map_err(From::from);
+        let server = b.serve_connection(server_reader, server_writer, mock).map_err(From::from);
         let (client_reader, client_writer) = split(client_s);
         let client = async move {
             let logs = DaemonClient::builder().connect(client_reader, client_writer);
@@ -154,7 +159,7 @@ mod test {
     #[tokio::test]
     #[rstest]
     #[case(ClientOptions::default(), Ok(()), Ok(()))]
-    #[case(ClientOptions::default(), Err(DaemonError::Custom("bad input path".into())), Err("remote error: bad input path".into()))]
+    #[case(ClientOptions::default(), Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("SetOptions: remote error: SetOptions: bad input path".into()))]
     async fn set_options(
         #[case] options: ClientOptions,
         #[case] response: DaemonResult<()>,
@@ -183,7 +188,7 @@ mod test {
     #[rstest]
     #[case("00000000000000000000000000000000-_", Ok(true), Ok(true))]
     #[case("00000000000000000000000000000000-_", Ok(false), Ok(false))]
-    #[case("00000000000000000000000000000000-_", Err(DaemonError::Custom("bad input path".into())), Err("remote error: bad input path".into()))]
+    #[case("00000000000000000000000000000000-_", Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("IsValidPath: remote error: IsValidPath: bad input path".into()))]
     async fn is_valid_path(
         #[case] store_path: StorePath,
         #[case] response: DaemonResult<bool>,
@@ -214,8 +219,8 @@ mod test {
     #[case(&["00000000000000000000000000000000-_"][..], true, Ok(&[][..]), Ok(&[][..]))]
     #[case(&["00000000000000000000000000000000-_"][..], false, Ok(&["10000000000000000000000000000000-_"][..]), Ok(&["10000000000000000000000000000000-_"][..]))]
     #[case(&["00000000000000000000000000000000-_"][..], false, Ok(&[][..]), Ok(&[][..]))]
-    #[case(&["00000000000000000000000000000000-_"][..], true, Err(DaemonError::Custom("bad input path".into())), Err("remote error: bad input path".into()))]
-    #[case(&["00000000000000000000000000000000-_"][..], false, Err(DaemonError::Custom("bad input path".into())), Err("remote error: bad input path".into()))]
+    #[case(&["00000000000000000000000000000000-_"][..], true, Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("QueryValidPaths: remote error: QueryValidPaths: bad input path".into()))]
+    #[case(&["00000000000000000000000000000000-_"][..], false, Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("QueryValidPaths: remote error: QueryValidPaths: bad input path".into()))]
     async fn query_valid_paths(
         #[case] store_paths: &[&str],
         #[case] substitute: bool,
@@ -267,7 +272,7 @@ mod test {
         ca: None,
     })))]
     #[case("00000000000000000000000000000000-_", Ok(None), Ok(None))]
-    #[case("00000000000000000000000000000000-_", Err(DaemonError::Custom("bad input path".into())), Err("remote error: bad input path".into()))]
+    #[case("00000000000000000000000000000000-_", Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("QueryPathInfo: remote error: QueryPathInfo: bad input path".into()))]
     async fn query_path_info(
         #[case] store_path: StorePath,
         #[case] response: DaemonResult<Option<UnkeyedValidPathInfo>>,

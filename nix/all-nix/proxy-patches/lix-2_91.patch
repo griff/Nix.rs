@@ -1,19 +1,38 @@
-From 734bfcc68554c07ec4806aab55d24f1972916eee Mon Sep 17 00:00:00 2001
+From 7d6ee2223033cf2c2f0a916c659437c571579909 Mon Sep 17 00:00:00 2001
 From: Brian Olsen <brian@maven-group.org>
 Date: Mon, 3 Feb 2025 01:15:46 +0100
 Subject: [PATCH] libstore: Add unix socket proxy store
 
 Change-Id: I5e02ee0fd75a0884d3250e0382e16f9efd3539de
 ---
- src/libstore/meson.build    |  2 +
- src/libstore/proxy-store.cc | 73 +++++++++++++++++++++++++++++++++++++
- src/libstore/proxy-store.hh | 49 +++++++++++++++++++++++++
- src/libstore/proxy-store.md |  7 ++++
- 4 files changed, 131 insertions(+)
+ src/libstore/daemon.cc       |  4 +-
+ src/libstore/meson.build     |  2 +
+ src/libstore/proxy-store.cc  | 73 ++++++++++++++++++++++++++++++++++++
+ src/libstore/proxy-store.hh  | 49 ++++++++++++++++++++++++
+ src/libstore/proxy-store.md  |  7 ++++
+ src/libstore/remote-store.cc |  6 ++-
+ src/libstore/store-api.cc    |  4 ++
+ src/nix/daemon.cc            | 16 ++++++--
+ 8 files changed, 156 insertions(+), 5 deletions(-)
  create mode 100644 src/libstore/proxy-store.cc
  create mode 100644 src/libstore/proxy-store.hh
  create mode 100644 src/libstore/proxy-store.md
 
+diff --git a/src/libstore/daemon.cc b/src/libstore/daemon.cc
+index 5ac9cd2ef..48dc91224 100644
+--- a/src/libstore/daemon.cc
++++ b/src/libstore/daemon.cc
+@@ -872,7 +872,9 @@ static void performOp(TunnelLogger * logger, ref<Store> store,
+         auto path = store->parseStorePath(readString(from));
+         logger->startWork();
+         logger->stopWork();
+-        to << dumpPath(store->toRealPath(path));
++        vomit("Dumping path");
++        to << store->narFromPath(path);
++        vomit("Dumped path");
+         break;
+     }
+ 
 diff --git a/src/libstore/meson.build b/src/libstore/meson.build
 index 5416bd2b5..3121b3945 100644
 --- a/src/libstore/meson.build
@@ -181,6 +200,96 @@ index 000000000..c267fff94
 +This store type accesses a Nix store by talking to a Nix daemon
 +listening on the Unix domain socket *path*.
 +)"
+diff --git a/src/libstore/remote-store.cc b/src/libstore/remote-store.cc
+index 36223051b..a1ebb27ef 100644
+--- a/src/libstore/remote-store.cc
++++ b/src/libstore/remote-store.cc
+@@ -192,10 +192,14 @@ void RemoteStore::setOptions()
+ 
+ bool RemoteStore::isValidPathUncached(const StorePath & path)
+ {
++    vomit("sending isValidPath to remote");
+     auto conn(getConnection());
+     conn->to << WorkerProto::Op::IsValidPath << printStorePath(path);
+     conn.processStderr();
+-    return readInt(conn->from);
++    vomit("isValidPath processed logs");
++    int ret = readInt(conn->from);
++    vomit("isValidPath read result %d", ret);
++    return ret;
+ }
+ 
+ 
+diff --git a/src/libstore/store-api.cc b/src/libstore/store-api.cc
+index 6d9fec41b..b6c3caa25 100644
+--- a/src/libstore/store-api.cc
++++ b/src/libstore/store-api.cc
+@@ -616,11 +616,13 @@ void Store::querySubstitutablePathInfos(const StorePathCAMap & paths, Substituta
+ 
+ bool Store::isValidPath(const StorePath & storePath)
+ {
++    vomit("isValidPath");
+     {
+         auto state_(state.lock());
+         auto res = state_->pathInfoCache.get(std::string(storePath.to_string()));
+         if (res && res->isKnownNow()) {
+             stats.narInfoReadAverted++;
++            vomit("isValidPath in cache");
+             return res->didExist();
+         }
+     }
+@@ -632,10 +634,12 @@ bool Store::isValidPath(const StorePath & storePath)
+             auto state_(state.lock());
+             state_->pathInfoCache.upsert(std::string(storePath.to_string()),
+                 res.first == NarInfoDiskCache::oInvalid ? PathInfoCacheValue{} : PathInfoCacheValue { .value = res.second });
++            vomit("isValidPath in disk cache");
+             return res.first == NarInfoDiskCache::oValid;
+         }
+     }
+ 
++    vomit("isValidPath uncached");
+     bool valid = isValidPathUncached(storePath);
+ 
+     if (diskCache && !valid)
+diff --git a/src/nix/daemon.cc b/src/nix/daemon.cc
+index ca65c38e6..d384eacfd 100644
+--- a/src/nix/daemon.cc
++++ b/src/nix/daemon.cc
+@@ -433,7 +433,14 @@ static void processStdioConnection(ref<Store> store, TrustedFlag trustClient)
+ {
+     FdSource from(STDIN_FILENO);
+     FdSink to(STDOUT_FILENO);
+-    processConnection(store, from, to, trustClient, NotRecursive);
++    try {
++        processConnection(store, from, to, trustClient, Recursive);
++    } catch (Error & error) {
++        auto ei = error.info();
++        // FIXME: add to trace?
++        ei.msg = HintFmt("error processing connection: %1%", ei.msg.str());
++        logError(ei);
++    }
+ }
+ 
+ /**
+@@ -451,13 +458,16 @@ static void runDaemon(bool stdio, std::optional<TrustedFlag> forceTrustClientOpt
+         // If --force-untrusted is passed, we cannot forward the connection and
+         // must process it ourselves (before delegating to the next store) to
+         // force untrusting the client.
+-        if (auto remoteStore = store.dynamic_pointer_cast<RemoteStore>(); remoteStore && (!forceTrustClientOpt || *forceTrustClientOpt != NotTrusted))
++        if (auto remoteStore = store.dynamic_pointer_cast<RemoteStore>(); remoteStore && (!forceTrustClientOpt || *forceTrustClientOpt != NotTrusted)) {
++            vomit("Forward STDIO");
+             forwardStdioConnection(*remoteStore);
+-        else
++        } else {
++            vomit("Process connection");
+             // `Trusted` is passed in the auto (no override case) because we
+             // cannot see who is on the other side of a plain pipe. Limiting
+             // access to those is explicitly not `nix-daemon`'s responsibility.
+             processStdioConnection(store, forceTrustClientOpt.value_or(Trusted));
++        }
+     } else
+         daemonLoop(forceTrustClientOpt);
+ }
 -- 
 2.44.1
 

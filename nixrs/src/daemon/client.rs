@@ -7,12 +7,13 @@ use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::UnixStream;
 
 use super::de::{NixDeserialize, NixRead as _, NixReader, NixReaderBuilder};
-use super::logger::{FutureResult, LoggerResult, ProcessStderr};
+use super::logger::{FutureResult, LoggerResult, LoggerResultExt, ProcessStderr};
 use super::ser::{NixWrite as _, NixWriter, NixWriterBuilder};
 use super::wire::types::Operation;
 use super::wire::{CLIENT_MAGIC, SERVER_MAGIC};
 use super::{
-    DaemonError, DaemonResult, DaemonStore, HandshakeDaemonStore, ProtocolVersion, TrustLevel,
+    DaemonError, DaemonErrorKind, DaemonResult, DaemonStore, HandshakeDaemonStore, ProtocolVersion, TrustLevel,
+    DaemonResultExt as _,
 };
 use crate::archive::copy_nar;
 use crate::store_path::StoreDir;
@@ -137,7 +138,7 @@ impl DaemonClientBuilder {
         path: P,
     ) -> impl LoggerResult<DaemonClient<OwnedReadHalf, OwnedWriteHalf>, DaemonError>
     where
-        P: AsRef<Path>,
+        P: AsRef<Path> + Send,
     {
         FutureResult::new(async move { Ok(self.build_unix(path).await?.handshake()) })
     }
@@ -173,41 +174,43 @@ where
             let mut remote_trusts_us = TrustLevel::Unknown;
 
             // Send the magic greeting, check for the reply.
-            writer.write_number(CLIENT_MAGIC).await?;
-            writer.flush().await?;
+            writer.write_number(CLIENT_MAGIC).await.with_field("clientMagic")?;
+            writer.flush().await.with_field("clientMagic")?;
 
-            let magic = reader.read_number().await?;
+            let magic = reader.read_number().await.with_field("serverMagic")?;
             if magic != SERVER_MAGIC {
-                return Err(DaemonError::WrongMagic(magic));
+                return Err(DaemonErrorKind::WrongMagic(magic)).with_field("serverMagic");
             }
 
-            let server_version: ProtocolVersion = reader.read_value().await?;
+            let server_version: ProtocolVersion = reader.read_value().await.with_field("protocolVersion")?;
             let version = server_version.min(self.max_version);
             if version < self.min_version {
-                return Err(DaemonError::UnsupportedVersion(version));
+                return Err(DaemonErrorKind::UnsupportedVersion(version)).with_field("protocolVersion");
             }
-            writer.write_value(&version).await?;
+            writer.write_value(&version).await.with_field("clientVersion")?;
             reader.set_version(version);
             writer.set_version(version);
+            eprintln!("Client Version is {}, server version is {}", version, server_version);
 
             if version.minor() >= 14 {
                 // Obsolete CPU Affinity
-                writer.write_value(&false).await?;
+                writer.write_value(&false).await.with_field("sendCpu")?;
             }
 
             if version.minor() >= 11 {
                 // Obsolete reserved space
-                writer.write_value(&false).await?;
+                writer.write_value(&false).await.with_field("reserveSpace")?;
             }
 
             if version.minor() >= 33 {
                 writer.flush().await?;
-                let version = reader.read_value().await?;
+                let version = reader.read_value().await.with_field("nixVersion")?;
+                eprintln!("Nix Version {}", version);
                 daemon_nix_version = Some(version);
             }
 
             if version.minor() >= 35 {
-                remote_trusts_us = reader.read_value().await?;
+                remote_trusts_us = reader.read_value().await.with_field("trusted")?;
             }
 
             writer.flush().await?;
@@ -279,7 +282,7 @@ where
 
     fn process_stderr<'a, T>(&'a mut self) -> impl LoggerResult<T, DaemonError> + 'a
     where
-        T: NixDeserialize + 'a,
+        T: NixDeserialize + Send + 'static,
     {
         FutureResult::new(async {
             self.writer.flush().await?;
@@ -320,7 +323,7 @@ where
             self.writer.write_value(&Operation::SetOptions).await?;
             self.writer.write_value(options).await?;
             Ok(self.process_stderr())
-        })
+        }).map_err(|err| err.fill_operation(Operation::SetOptions))
     }
 
     fn is_valid_path<'a>(
@@ -331,7 +334,7 @@ where
             self.writer.write_value(&Operation::IsValidPath).await?;
             self.writer.write_value(path).await?;
             Ok(self.process_stderr())
-        })
+        }).map_err(|err| err.fill_operation(Operation::IsValidPath))
     }
 
     fn query_valid_paths<'a>(
@@ -346,7 +349,7 @@ where
                 self.writer.write_value(&substitute).await?;
             }
             Ok(self.process_stderr())
-        })
+        }).map_err(|err| err.fill_operation(Operation::QueryValidPaths))
     }
 
     fn query_path_info<'a>(
@@ -357,16 +360,18 @@ where
             self.writer.write_value(&Operation::QueryPathInfo).await?;
             self.writer.write_value(path).await?;
             Ok(self.process_stderr())
-        })
+        }).map_err(|err| err.fill_operation(Operation::QueryPathInfo))
     }
 
-    fn nar_from_path<'a, NW>(
+    fn nar_from_path<'a, 'p, 'r, NW>(
         &'a mut self,
-        path: &'a crate::store_path::StorePath,
+        path: &'p crate::store_path::StorePath,
         mut sink: NW,
-    ) -> impl LoggerResult<(), DaemonError> + 'a
+    ) -> impl LoggerResult<(), DaemonError> + 'r
     where
-        NW: AsyncWrite + Unpin + 'a,
+        NW: AsyncWrite + Unpin + Send + 'r,
+        'a: 'r,
+        'p: 'r
     {
         FutureResult::new(async {
             self.writer.write_value(&Operation::NarFromPath).await?;
@@ -382,6 +387,6 @@ where
                     Ok(())
                 },
             ))
-        })
+        }).map_err(|err| err.fill_operation(Operation::NarFromPath))
     }
 }

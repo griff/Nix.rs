@@ -6,8 +6,7 @@ use std::sync::Arc;
 
 use futures::future::Ready;
 use futures::{Future, FutureExt};
-use nixrs_legacy::store::daemon::TrustedFlag;
-use nixrs_legacy::store::{daemon, legacy_worker};
+use nixrs_legacy::store::legacy_worker;
 use thrussh::server::Config;
 use thrussh::{
     server::{self, Handle},
@@ -303,7 +302,7 @@ struct StoreCommand<S> {
 
 impl<S> StoreCommand<S>
 where
-    S: StoreProvider,
+    S: StoreProvider + Send,
     S::Error: 'static,
 {
     async fn run_legacy_command(self, write_allowed: bool) -> Result<(), anyhow::Error> {
@@ -334,14 +333,12 @@ where
         }
     }
 
-    async fn run_daemon_command(self) -> Result<(), anyhow::Error> {
+    async fn run_daemon_command(self) -> Result<(), anyhow::Error>
+    {
         if let Some(store) = self.store_provider.get_daemon_store().await? {
-            let fut = Box::pin(daemon::run_server(
-                self.stdin,
-                self.stdout,
-                store,
-                TrustedFlag::Trusted,
-            ));
+            let b = nixrs::daemon::server::Builder::new();
+            let fut = 
+                b.serve_connection(self.stdin, self.stdout, store);
             select! {
                 res = fut => {
                     match res {

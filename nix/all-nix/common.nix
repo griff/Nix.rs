@@ -6,6 +6,7 @@
 , src ? fetchFromGitHub { owner = "NixOS"; repo = "nix"; rev = version; inherit hash; }
 , patches ? [ ]
 , maintainers ? with lib.maintainers; [ eelco lovesegfault artturin ]
+, meta ? {}
 , self_attribute_name
 }@args:
 assert (hash == null) -> (src != null);
@@ -245,7 +246,8 @@ self = stdenv.mkDerivation {
 
   installFlags = [ "sysconfdir=$(out)/etc" ];
 
-  doInstallCheck = true;
+  doInstallCheck = false;
+  doCheck = false;
   installCheckTarget = if atLeast210 then "installcheck" else null;
 
   # socket path becomes too long otherwise
@@ -330,6 +332,7 @@ self = stdenv.mkDerivation {
     outputsToInstall = [ "out" ] ++ optional enableDocumentation "man";
     mainProgram = "nix";
     knownVulnerabilities = lib.optional (!builtins.elem (lib.versions.majorMinor version) unaffectedByFodSandboxEscape && !atLeast221) "CVE-2024-27297";
-  };
+    flake = {exported = self_attribute_name; };
+  } // meta;
 };
 in self

@@ -15,7 +15,7 @@ use super::de::{NixDeserialize, NixRead};
 use super::ser::{NixWrite, NixWriter};
 use super::wire::logger::{IgnoredErrorType, RawLogMessage, RawLogMessageType};
 use super::wire::IgnoredZero;
-use super::{DaemonError, DaemonInt, DaemonResult, DaemonString, RemoteError};
+use super::{DaemonError, DaemonErrorKind, DaemonInt, DaemonResult, DaemonString, RemoteError};
 #[cfg(feature = "nixrs-derive")]
 use crate::daemon::ser::NixSerialize;
 
@@ -138,8 +138,8 @@ impl From<RemoteError> for LogError {
 
 impl From<DaemonError> for LogError {
     fn from(value: DaemonError) -> Self {
-        match value {
-            DaemonError::Remote(remote_error) => remote_error.into(),
+        match value.kind().clone() {
+            DaemonErrorKind::Remote(remote_error) => remote_error.into(),
             _ => {
                 let msg = value.to_string().into_bytes().into();
                 LogError {
@@ -241,19 +241,9 @@ pub enum Field {
 }
 
 /// Credit embr and gorgon
-pub trait LoggerResult<T, E> {
-    fn next(&mut self) -> impl Future<Output = Option<Result<LogMessage, E>>>;
-    fn result(self) -> impl Future<Output = Result<T, E>>;
-}
-
-pub trait LoggerResultExt<T, E> {
-    fn map_ok<F, T2>(self, f: F) -> impl LoggerResult<T2, E>
-    where
-        F: FnOnce(T) -> T2;
-    fn and_then<F, T2, Fut>(self, f: F) -> impl LoggerResult<T2, E>
-    where
-        F: FnOnce(T) -> Fut,
-        Fut: Future<Output = Result<T2, E>>;
+pub trait LoggerResult<T, E>: Send {
+    fn next<'s>(&'s mut self) -> impl Future<Output = Option<Result<LogMessage, E>>> + Send + 's;
+    fn result(self) -> impl Future<Output = Result<T, E>> + Send;
 }
 
 struct MapOkResult<L, F, T> {
@@ -265,7 +255,10 @@ struct MapOkResult<L, F, T> {
 impl<L, F, T, T2, E> LoggerResult<T2, E> for MapOkResult<L, F, T>
 where
     L: LoggerResult<T, E>,
-    F: FnOnce(T) -> T2,
+    F: FnOnce(T) -> T2 + Send,
+    T: Send,
+    E: 'static,
+    T2: 'static,
 {
     async fn next(&mut self) -> Option<Result<LogMessage, E>> {
         self.result.next().await
@@ -277,6 +270,37 @@ where
     }
 }
 
+struct MapErrResult<L, F, E> {
+    result: L,
+    mapper: F,
+    value: PhantomData<E>,
+}
+
+impl<L, F, T, E2, E> LoggerResult<T, E2> for MapErrResult<L, F, E>
+where
+    L: LoggerResult<T, E>,
+    F: Fn(E) -> E2 + Send,
+    T: 'static,
+    E: Send,
+    E2: 'static,
+{
+    async fn next(&mut self) -> Option<Result<LogMessage, E2>> {
+        match self.result.next().await {
+            None => None,
+            Some(Ok(ret)) => Some(Ok(ret)),
+            Some(Err(err)) => {
+                Some(Err((self.mapper)(err)))
+            }
+        }
+    }
+
+    async fn result(self) -> Result<T, E2> {
+        match self.result.result().await {
+            Ok(res) => Ok(res),
+            Err(err) => Err((self.mapper)(err))
+        }
+    }
+}
 struct AndThenResult<L, F, T, Fut> {
     result: L,
     mapper: F,
@@ -286,8 +310,11 @@ struct AndThenResult<L, F, T, Fut> {
 impl<L, F, T, T2, E, Fut> LoggerResult<T2, E> for AndThenResult<L, F, T, Fut>
 where
     L: LoggerResult<T, E>,
-    F: FnOnce(T) -> Fut,
-    Fut: Future<Output = Result<T2, E>>,
+    F: FnOnce(T) -> Fut + Send,
+    Fut: Future<Output = Result<T2, E>> + Send,
+    T: Send,
+    T2: 'static,
+    E: 'static,
 {
     async fn next(&mut self) -> Option<Result<LogMessage, E>> {
         self.result.next().await
@@ -298,13 +325,33 @@ where
         (self.mapper)(original).await
     }
 }
+
+pub trait LoggerResultExt<T, E> {
+    fn map_ok<F, T2>(self, f: F) -> impl LoggerResult<T2, E>
+    where
+        F: FnOnce(T) -> T2 + Send,
+        T2: 'static;
+    fn map_err<F, E2>(self, f: F) -> impl LoggerResult<T, E2>
+    where
+        F: Fn(E) -> E2 + Send,
+        E2: 'static;
+    fn and_then<F, T2, Fut>(self, f: F) -> impl LoggerResult<T2, E>
+    where
+        F: FnOnce(T) -> Fut + Send,
+        Fut: Future<Output = Result<T2, E>> + Send,
+        T2: 'static;
+}
+
 impl<L, T, E> LoggerResultExt<T, E> for L
 where
     L: LoggerResult<T, E>,
+    T: Send + 'static,
+    E: Send + 'static,
 {
     fn map_ok<F, T2>(self, f: F) -> impl LoggerResult<T2, E>
     where
-        F: FnOnce(T) -> T2,
+        F: FnOnce(T) -> T2 + Send,
+        T2: 'static,
     {
         MapOkResult {
             result: self,
@@ -313,10 +360,23 @@ where
         }
     }
 
+    fn map_err<F, E2>(self, f: F) -> impl LoggerResult<T, E2>
+    where
+        F: Fn(E) -> E2 + Send,
+        E2: 'static,
+    {
+        MapErrResult {
+            result: self,
+            mapper: f,
+            value: PhantomData,
+        }
+    }
+
     fn and_then<F, T2, Fut>(self, f: F) -> impl LoggerResult<T2, E>
     where
-        F: FnOnce(T) -> Fut,
-        Fut: Future<Output = Result<T2, E>>,
+        F: FnOnce(T) -> Fut + Send,
+        Fut: Future<Output = Result<T2, E>> + Send,
+        T2: 'static,
     {
         AndThenResult {
             result: self,
@@ -326,8 +386,8 @@ where
     }
 }
 
-impl<E> LoggerResult<(), E> for VecDeque<LogMessage> {
-    fn next(&mut self) -> impl Future<Output = Option<Result<LogMessage, E>>> {
+impl<E: Send + 'static> LoggerResult<(), E> for VecDeque<LogMessage> {
+    fn next(&mut self) -> impl Future<Output = Option<Result<LogMessage, E>>> + Send {
         ready(self.pop_front().map(Ok))
     }
 
@@ -336,13 +396,16 @@ impl<E> LoggerResult<(), E> for VecDeque<LogMessage> {
     }
 }
 
-impl<T, E> LoggerResult<T, E> for Result<T, E> {
-    async fn next(&mut self) -> Option<Result<LogMessage, E>> {
-        None
+impl<T, E> LoggerResult<T, E> for Result<T, E>
+    where E: Send,
+          T: Send,
+{
+    fn next(&mut self) -> impl Future<Output=Option<Result<LogMessage, E>>> + Send {
+        ready(None)
     }
 
-    async fn result(self) -> Result<T, E> {
-        self
+    fn result(self) -> impl Future<Output=Result<T, E>> + Send {
+        ready(self)
     }
 }
 
@@ -383,9 +446,10 @@ where
 
 impl<Fut, R, T, E> LoggerResult<T, E> for FutureResult<Fut, R, E>
 where
-    Fut: Future<Output = Result<R, E>>,
+    Fut: Future<Output = Result<R, E>> + Send,
     R: LoggerResult<T, E>,
-    E: Clone,
+    E: Clone + Send,
+    T: 'static,
 {
     async fn next(&mut self) -> Option<Result<LogMessage, E>> {
         match self.resolved().await {
@@ -427,7 +491,7 @@ trait ReadResult<R, W, SR, SW, T>: Sized {
         writer: Option<W>,
         source: Option<SR>,
         sink: Option<SW>,
-    ) -> impl Future<Output = DaemonResult<T>>;
+    ) -> impl Future<Output = DaemonResult<T>> + Send;
 }
 
 impl<R, W, SR, SW, T> ReadResult<R, W, SR, SW, T> for ()
@@ -435,6 +499,9 @@ where
     T: NixDeserialize,
     R: NixRead + AsyncRead + fmt::Debug + Unpin + Send,
     DaemonError: From<<R as NixRead>::Error>,
+    W: Send,
+    SR: Send,
+    SW: Send,
 {
     async fn read_result(
         self,
@@ -458,8 +525,12 @@ pub struct ResultFn<F, FFut> {
 
 impl<R, W, SR, SW, T, F, FFut> ReadResult<R, W, SR, SW, T> for ResultFn<F, FFut>
 where
-    F: FnOnce(Result<(), DaemonError>, R, Option<W>, Option<SR>, Option<SW>) -> FFut,
-    FFut: Future<Output = DaemonResult<T>>,
+    F: FnOnce(Result<(), DaemonError>, R, Option<W>, Option<SR>, Option<SW>) -> FFut + Send,
+    FFut: Future<Output = DaemonResult<T>> + Send,
+    R: Send,
+    W: Send,
+    SR: Send,
+    SW: Send,
 {
     async fn read_result(
         self,
@@ -564,7 +635,7 @@ where
             source.consume(len);
             Ok(())
         } else {
-            Err(DaemonError::NoSourceForLoggerRead)
+            Err(DaemonErrorKind::NoSourceForLoggerRead.into())
         }
     }
 }
@@ -576,7 +647,8 @@ where
     DaemonError: From<<W as NixWrite>::Error> + From<<R as NixRead>::Error>,
     SR: AsyncBufRead + fmt::Debug + Unpin + Send,
     SW: AsyncWrite + fmt::Debug + Unpin + Send,
-    TFut: ReadResult<R, W, SR, SW, T>,
+    TFut: ReadResult<R, W, SR, SW, T> + Send,
+    T: Send,
 {
     async fn next(&mut self) -> Option<Result<LogMessage, DaemonError>> {
         if self.result.is_some() {

@@ -1,0 +1,20 @@
+[package]
+name = "nixrs-capnp"
+version = "0.1.0"
+authors = ["Brian Olsen <brian@maven-group.org>"]
+edition = "2021"
+license = "EUPL-1.2 OR MIT"
+build = "build.rs"
+
+[dependencies]
+futures = "^0.3.31"
+nixrs = { path = "../nixrs" }
+capnp = "^0.20.3"
+
+[dependencies.tokio]
+version = "^1.42"
+features = ["io-util", "macros", "fs"]
+
+[build-dependencies]
+capnpc = "^0.20.1"
+which = "^4.4.0"

@@ -1,11 +1,12 @@
 use std::collections::BTreeMap;
+use std::fmt;
 
 use bstr::ByteSlice;
 use bytes::Bytes;
 #[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-#[cfg(any(test, feature = "nixrs-derive"))]
+#[cfg(any(test, feature = "test"))]
 use proptest_derive::Arbitrary;
 use thiserror::Error;
 use tokio::io::AsyncWrite;
@@ -51,7 +52,7 @@ pub type DaemonPath = Bytes;
 pub type DaemonInt = libc::c_uint;
 pub type DaemonTime = libc::time_t;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct ClientOptions {
     pub keep_failed: bool,
@@ -68,7 +69,7 @@ pub struct ClientOptions {
     pub use_substitutes: bool,
     pub other_settings: BTreeMap<String, DaemonString>,
 }
-/*
+
 impl Default for ClientOptions {
     fn default() -> Self {
         Self {
@@ -76,19 +77,18 @@ impl Default for ClientOptions {
             keep_going: Default::default(),
             try_fallback: Default::default(),
             verbosity: Default::default(),
-            max_build_jobs: Default::default(),
+            max_build_jobs: 1,
             max_silent_time: Default::default(),
             _use_build_hook: Default::default(),
             verbose_build: Default::default(),
             _log_type: Default::default(),
             _print_build_trace: Default::default(),
-            build_cores: Default::default(),
-            use_substributes: Default::default(),
+            build_cores: 1,
+            use_substitutes: true,
             other_settings: Default::default()
         }
     }
 }
-*/
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
@@ -117,9 +117,83 @@ pub enum TrustLevel {
 }
 
 pub type DaemonResult<T> = Result<T, DaemonError>;
+pub trait DaemonResultExt<T> {
+    fn with_operation(self, op: Operation) -> DaemonResult<T>;
+    fn with_field(self, field: &'static str) -> DaemonResult<T>;
+}
+impl<T, E> DaemonResultExt<T> for Result<T, E>
+    where E: Into<DaemonError>,
+{
+    fn with_operation(self, op: Operation) -> DaemonResult<T> {
+        self.map_err(|err| {
+            err.into().fill_operation(op)
+        })
+    }
+    
+    fn with_field(self, field: &'static str) -> DaemonResult<T> {
+        self.map_err(|err| {
+            let mut err = err.into();
+            err.context.fields.push(field);
+            err
+        })
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct DaemonErrorContext {
+    operation: Option<Operation>,
+    fields: Vec<&'static str>,
+}
+
+impl fmt::Display for DaemonErrorContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(op) = self.operation.as_ref() {
+            write!(f, "{}", op)?;
+            for field in self.fields.iter() {
+                write!(f, ".{}", field)?;
+            }
+        } else {
+            let mut it = self.fields.iter();
+            if let Some(field) = it.next() {
+                f.write_str(field)?;
+                for field in it {
+                    write!(f, ".{}", field)?;
+                }    
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Error, Debug, Clone)]
+#[error("{context}: {kind}")]
+pub struct DaemonError {
+    context: DaemonErrorContext,
+    kind: DaemonErrorKind,
+}
+
+impl DaemonError {
+    pub fn fill_operation(mut self, op: Operation) -> Self {
+        if self.context.operation.is_none() {
+            self.context.operation = Some(op);
+        }
+        self
+    }
+    pub fn kind(&self) -> &DaemonErrorKind {
+        &self.kind
+    }
+
+    pub fn operation(&self) -> Option<&Operation> {
+        self.context.operation.as_ref()
+    }
+
+    pub fn fields(&self) -> &[&'static str] {
+        &self.context.fields
+    }
+}
 
 #[derive(Error, Debug)]
-pub enum DaemonError {
+pub enum DaemonErrorKind {
     #[error("wrong magic 0x{0:x}")]
     WrongMagic(u64),
     #[error("unsupported version {0}")]
@@ -146,7 +220,7 @@ pub enum DaemonError {
     Custom(String),
 }
 
-impl Clone for DaemonError {
+impl Clone for DaemonErrorKind {
     fn clone(&self) -> Self {
         match self {
             Self::WrongMagic(arg0) => Self::WrongMagic(*arg0),
@@ -163,7 +237,37 @@ impl Clone for DaemonError {
 
 impl From<LogError> for DaemonError {
     fn from(value: LogError) -> Self {
-        DaemonError::Remote(value.into())
+        DaemonError {
+            context: DaemonErrorContext::default(),
+            kind: DaemonErrorKind::Remote(value.into()),
+        }
+    }
+}
+
+impl From<std::io::Error> for DaemonError {
+    fn from(value: std::io::Error) -> Self {
+        DaemonError {
+            context: DaemonErrorContext::default(),
+            kind: DaemonErrorKind::IO(value),
+        }
+    }
+}
+
+impl From<RemoteError> for DaemonError {
+    fn from(value: RemoteError) -> Self {
+        DaemonError {
+            context: DaemonErrorContext::default(),
+            kind: DaemonErrorKind::Remote(value),
+        }
+    }
+}
+
+impl From<DaemonErrorKind> for DaemonError {
+    fn from(kind: DaemonErrorKind) -> Self {
+        DaemonError {
+            context: DaemonErrorContext::default(),
+            kind,
+        }
     }
 }
 
@@ -177,11 +281,11 @@ pub struct RemoteError {
 }
 
 pub trait HandshakeDaemonStore {
-    type Store: DaemonStore;
+    type Store: DaemonStore + Send;
     fn handshake(self) -> impl LoggerResult<Self::Store, DaemonError>;
 }
 
-pub trait DaemonStore {
+pub trait DaemonStore: Send {
     fn trust_level(&self) -> TrustLevel;
     fn set_options<'a>(
         &'a mut self,
@@ -200,13 +304,15 @@ pub trait DaemonStore {
         &'a mut self,
         path: &'a StorePath,
     ) -> impl LoggerResult<Option<UnkeyedValidPathInfo>, DaemonError> + 'a;
-    fn nar_from_path<'a, W>(
-        &'a mut self,
-        path: &'a StorePath,
+    fn nar_from_path<'s, 'p, 'r, W>(
+        &'s mut self,
+        path: &'p StorePath,
         sink: W,
-    ) -> impl LoggerResult<(), DaemonError> + 'a
+    ) -> impl LoggerResult<(), DaemonError> + 'r
     where
-        W: AsyncWrite + Unpin + 'a;
+        W: AsyncWrite + Unpin + Send + 'r,
+        's: 'r,
+        'p: 'r;
 }
 
 impl<'s, S> DaemonStore for &'s mut S
@@ -246,20 +352,22 @@ where
         (**self).query_path_info(path)
     }
 
-    fn nar_from_path<'a, W>(
+    fn nar_from_path<'a, 'p, 'r, W>(
         &'a mut self,
-        path: &'a StorePath,
+        path: &'p StorePath,
         sink: W,
-    ) -> impl LoggerResult<(), DaemonError> + 'a
+    ) -> impl LoggerResult<(), DaemonError> + 'r
     where
-        W: AsyncWrite + Unpin + 'a,
+        W: AsyncWrite + Unpin + Send + 'r,
+        'a: 'r,
+        'p: 'r
     {
         (**self).nar_from_path(path, sink)
     }
 }
 
 #[cfg(any(test, feature = "test"))]
-mod proptest {
+mod proptests {
     use ::proptest::collection::btree_map;
     use ::proptest::prelude::*;
     use ::proptest::sample::SizeRange;

@@ -85,6 +85,14 @@ impl fmt::Display for StorePath {
     }
 }
 
+impl From<(StorePathHash, StorePathName)> for StorePath {
+    fn from((hash, name): (StorePathHash, StorePathName)) -> Self {
+        StorePath {
+            hash, name
+        }
+    }
+}
+
 impl TryFrom<&[u8]> for StorePath {
     type Error = StorePathError;
 
@@ -155,6 +163,14 @@ const STORE_PATH_HASH_ENCODED_SIZE: usize = base32::encode_len(STORE_PATH_HASH_S
 pub struct StorePathHash([u8; STORE_PATH_HASH_SIZE]);
 
 impl StorePathHash {
+    pub const fn len() -> usize {
+        STORE_PATH_HASH_SIZE
+    }
+
+    pub const fn encoded_len() -> usize {
+        STORE_PATH_HASH_ENCODED_SIZE
+    }
+
     pub fn new(value: [u8; STORE_PATH_HASH_SIZE]) -> StorePathHash {
         StorePathHash(value)
     }
@@ -191,6 +207,17 @@ impl fmt::Display for StorePathHash {
         // SAFETY: Nix Base32 is a subset of ASCII, which guarantees valid UTF-8.
         let s = unsafe { std::str::from_utf8_unchecked(&output) };
         f.write_str(s)
+    }
+}
+
+impl TryFrom<&[u8]> for StorePathHash {
+    type Error = StorePathError;
+
+    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
+        if data.len() != Self::len() {
+            return Err(StorePathError::HashLength);
+        }
+        Ok(Self::copy_from_slice(data))
     }
 }
 

@@ -1,23 +1,39 @@
-From 4ccb2e79b6965383d6c98a241747549beb46a321 Mon Sep 17 00:00:00 2001
+From ab1a113cb4b34e995b3c7723c50faf135baef5f7 Mon Sep 17 00:00:00 2001
 From: Brian Olsen <brian@maven-group.org>
 Date: Sun, 2 Feb 2025 18:18:23 +0100
 Subject: [PATCH] feat: Add unix socket proxy store
 
 ---
- src/libstore/proxy-store.cc | 93 +++++++++++++++++++++++++++++++++++++
- src/libstore/proxy-store.hh | 72 ++++++++++++++++++++++++++++
- src/libstore/proxy-store.md |  8 ++++
- 3 files changed, 173 insertions(+)
+ src/libstore/daemon.cc       |  2 +-
+ src/libstore/proxy-store.cc  | 84 ++++++++++++++++++++++++++++++++++++
+ src/libstore/proxy-store.hh  | 69 +++++++++++++++++++++++++++++
+ src/libstore/proxy-store.md  |  8 ++++
+ src/libstore/remote-store.cc |  5 +++
+ src/nix/unix/daemon.cc       | 44 +++++++++++++++----
+ 6 files changed, 203 insertions(+), 9 deletions(-)
  create mode 100644 src/libstore/proxy-store.cc
  create mode 100644 src/libstore/proxy-store.hh
  create mode 100644 src/libstore/proxy-store.md
 
+diff --git a/src/libstore/daemon.cc b/src/libstore/daemon.cc
+index ef3326cd6..b6b0cb52f 100644
+--- a/src/libstore/daemon.cc
++++ b/src/libstore/daemon.cc
+@@ -885,7 +885,7 @@ static void performOp(TunnelLogger * logger, ref<Store> store,
+         auto path = store->parseStorePath(readString(conn.from));
+         logger->startWork();
+         logger->stopWork();
+-        dumpPath(store->toRealPath(path), conn.to);
++        store->narFromPath(path, conn.to);
+         break;
+     }
+ 
 diff --git a/src/libstore/proxy-store.cc b/src/libstore/proxy-store.cc
 new file mode 100644
-index 000000000..694cf5725
+index 000000000..77035d958
 --- /dev/null
 +++ b/src/libstore/proxy-store.cc
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,84 @@
 +#include "proxy-store.hh"
 +#include "unix-domain-socket.hh"
 +#include "worker-protocol.hh"
@@ -57,15 +73,6 @@ index 000000000..694cf5725
 +        #include "proxy-store.md"
 +        ;
 +}
-+
-+
-+// A bit gross that we now pass empty string but this is knowing that
-+// empty string will later default to the same nixDaemonSocketFile. Why
-+// don't we just wire it all through? I believe there are cases where it
-+// will live reload so we want to continue to account for that.
-+ProxyStore::ProxyStore(const Params & params)
-+    : ProxyStore(scheme, "", params)
-+{}
 +
 +
 +ProxyStore::ProxyStore(std::string_view scheme, std::string_view authority, const Params & params)
@@ -113,20 +120,19 @@ index 000000000..694cf5725
 +}
 diff --git a/src/libstore/proxy-store.hh b/src/libstore/proxy-store.hh
 new file mode 100644
-index 000000000..eb1f81925
+index 000000000..a179b6651
 --- /dev/null
 +++ b/src/libstore/proxy-store.hh
-@@ -0,0 +1,72 @@
+@@ -0,0 +1,69 @@
 +#pragma once
 +///@file
 +
 +#include "remote-store.hh"
 +#include "remote-store-connection.hh"
-+#include "indirect-root-store.hh"
 +
 +namespace nix {
 +
-+struct ProxyStoreConfig : virtual virtual RemoteStoreConfig
++struct ProxyStoreConfig : virtual RemoteStoreConfig
 +{
 +    // TODO(fzakaria): Delete this constructor once moved over to the factory pattern
 +    // outlined in https://github.com/NixOS/nix/issues/10766
@@ -157,15 +163,9 @@ index 000000000..eb1f81925
 +    { return {scheme}; }
 +};
 +
-+class ProxyStore : public virtual ProxyStoreConfig
-+    , public virtual RemoteStore
++class ProxyStore : public virtual ProxyStoreConfig, public virtual RemoteStore
 +{
 +public:
-+
-+    /**
-+     * @deprecated This is the old API to construct the store.
-+    */
-+    ProxyStore(const Params & params);
 +
 +    /**
 +     * @param authority is the socket path.
@@ -176,6 +176,10 @@ index 000000000..eb1f81925
 +        const Params & params);
 +
 +    std::string getUri() override;
++
++    // FIXME extend daemon protocol, move implementation to RemoteStore
++    std::optional<std::string> getBuildLogExact(const StorePath & path) override
++    { unsupported("getBuildLogExact"); }
 +
 +private:
 +
@@ -203,6 +207,118 @@ index 000000000..96a94d5a5
 +listening on the Unix domain socket *path*.
 +
 +)"
+diff --git a/src/libstore/remote-store.cc b/src/libstore/remote-store.cc
+index 555936c18..4a3a57613 100644
+--- a/src/libstore/remote-store.cc
++++ b/src/libstore/remote-store.cc
+@@ -89,7 +89,12 @@ void RemoteStore::initConnection(Connection & conn)
+             throw Error("protocol mismatch, got '%s'", chomp(saved.s));
+         }
+ 
++        vomit("client pre handshake");
+         static_cast<WorkerProto::ClientHandshakeInfo &>(conn) = conn.postHandshake(*this);
++        vomit("client post handshake done");
++        if (conn.daemonNixVersion) {
++            vomit("client daemonVersion '%s'", *conn.daemonNixVersion);
++        }
+ 
+         for (auto & feature : conn.features)
+             debug("negotiated feature '%s'", feature);
+diff --git a/src/nix/unix/daemon.cc b/src/nix/unix/daemon.cc
+index 66d8dbcf0..74699653c 100644
+--- a/src/nix/unix/daemon.cc
++++ b/src/nix/unix/daemon.cc
+@@ -440,11 +440,18 @@ static void forwardStdioConnection(RemoteStore & store) {
+  */
+ static void processStdioConnection(ref<Store> store, TrustedFlag trustClient)
+ {
+-    processConnection(
+-        store,
+-        FdSource(STDIN_FILENO),
+-        FdSink(STDOUT_FILENO),
+-        trustClient, NotRecursive);
++    try {
++        processConnection(
++            store,
++            FdSource(STDIN_FILENO),
++            FdSink(STDOUT_FILENO),
++            trustClient, Recursive);
++    } catch (Error & error) {
++        auto ei = error.info();
++        // FIXME: add to trace?
++        ei.msg = HintFmt("error processing connection: %1%", ei.msg.str());
++        logError(ei);
++    }
+ }
+ 
+ /**
+@@ -467,15 +474,24 @@ static void runDaemon(bool stdio, std::optional<TrustedFlag> forceTrustClientOpt
+         // If --force-untrusted is passed, we cannot forward the connection and
+         // must process it ourselves (before delegating to the next store) to
+         // force untrusting the client.
+-        processOps |= !forceTrustClientOpt || *forceTrustClientOpt != NotTrusted;
++        vomit("Process %d %d", processOps, !forceTrustClientOpt || *forceTrustClientOpt != NotTrusted);
++        processOps |= forceTrustClientOpt && *forceTrustClientOpt == NotTrusted;
++        vomit("Process %d %d", processOps, !forceTrustClientOpt || *forceTrustClientOpt != NotTrusted);
+ 
+-        if (!processOps && (remoteStore = store.dynamic_pointer_cast<RemoteStore>()))
++        if (!processOps && (remoteStore = store.dynamic_pointer_cast<RemoteStore>())) {
++            vomit("Forward STDIO");
++            if (forceTrustClientOpt)
++                vomit("Trust %d", *forceTrustClientOpt);
++            else
++                vomit("Trust default");
+             forwardStdioConnection(*remoteStore);
+-        else
++        } else {
++             vomit("Process connection");
+             // `Trusted` is passed in the auto (no override case) because we
+             // cannot see who is on the other side of a plain pipe. Limiting
+             // access to those is explicitly not `nix-daemon`'s responsibility.
+             processStdioConnection(store, forceTrustClientOpt.value_or(Trusted));
++        }
+     } else
+         daemonLoop(forceTrustClientOpt);
+ }
+@@ -487,7 +503,12 @@ static int main_nix_daemon(int argc, char * * argv)
+         std::optional<TrustedFlag> isTrustedOpt = std::nullopt;
+         auto processOps = false;
+ 
++        if (isTrustedOpt)
++            vomit("Trust %d", *isTrustedOpt);
++        else
++            vomit("Trust default");
+         parseCmdLine(argc, argv, [&](Strings::iterator & arg, const Strings::iterator & end) {
++            vomit("Arg: %s", *arg);
+             if (*arg == "--daemon")
+                 ; //  ignored for backwards compatibility
+             else if (*arg == "--help")
+@@ -499,18 +520,25 @@ static int main_nix_daemon(int argc, char * * argv)
+             else if (*arg == "--force-trusted") {
+                 experimentalFeatureSettings.require(Xp::DaemonTrustOverride);
+                 isTrustedOpt = Trusted;
++                vomit("Forced trusted");
+             } else if (*arg == "--force-untrusted") {
+                 experimentalFeatureSettings.require(Xp::DaemonTrustOverride);
+                 isTrustedOpt = NotTrusted;
++                vomit("Forced untrusted");
+             } else if (*arg == "--default-trust") {
+                 experimentalFeatureSettings.require(Xp::DaemonTrustOverride);
+                 isTrustedOpt = std::nullopt;
++                vomit("Default trust");
+             } else if (*arg == "--process-ops") {
+                 experimentalFeatureSettings.require(Xp::MountedSSHStore);
+                 processOps = true;
+             } else return false;
+             return true;
+         });
++        if (isTrustedOpt)
++            vomit("Trust %d", *isTrustedOpt);
++        else
++            vomit("Trust default");
+ 
+         runDaemon(stdio, isTrustedOpt, processOps);
+ 
 -- 
 2.39.5 (Apple Git-154)
 
