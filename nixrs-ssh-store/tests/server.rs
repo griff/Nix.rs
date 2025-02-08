@@ -124,7 +124,7 @@ async fn handshake() {
 #[rstest]
 #[case("00000000000000000000000000000000-_", Ok(true), Ok(true))]
 #[case("00000000000000000000000000000000-_", Ok(false), Ok(false))]
-#[case("00000000000000000000000000000000-_", Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("remote error: bad input path".into()))]
+#[case("00000000000000000000000000000000-_", Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("IsValidPath: remote error: IsValidPath: bad input path".into()))]
 #[serial]
 #[tokio::test]
 async fn is_valid_path(
