@@ -359,7 +359,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_dump_exec_file() {
-        let s = dump("test-data/nar/dir/more/Deep~nix~case~hack~1")
+        let s = dump("test-data/nar/dir/more/Deep")
             .try_collect::<Vec<NAREvent>>()
             .await
             .unwrap();
@@ -368,7 +368,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_dump_empty_file() {
-        let s = dump("test-data/nar/dir/more/deep/empty.keep")
+        let s = dump("test-data/nar/dir/more/deep~nix~case~hack~1/empty.keep")
             .try_collect::<Vec<NAREvent>>()
             .await
             .unwrap();
@@ -377,7 +377,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_dump_symlink() {
-        let s = dump("test-data/nar/dir/more/deep/loop")
+        let s = dump("test-data/nar/dir/more/deep~nix~case~hack~1/loop")
             .try_collect::<Vec<NAREvent>>()
             .await
             .unwrap();

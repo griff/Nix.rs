@@ -13,6 +13,7 @@
     inherit args;
   };
   eligible = node: (node ? outPath) && ((node.meta.flake.exported or null) != null) && !(node.meta.broken or false);
+  eligibleCheck = node: (node ? outPath) && !(node.meta.broken or false);
   tree = readTree.fix (self: let
     args = {
       inherit pkgs;
@@ -21,10 +22,15 @@
     };
   in (readProject args) // {
     packages = readTree.gather (t: eligible t) self;
+    checks = readTree.gather (t: eligibleCheck t) self;
     flake = {
+      tree = self;
       packages = (pkgs.lib.listToAttrs
         (map (p: {name = p.meta.flake.exported; value = p;})
-        self.packages)) // {project = self;};
+        self.packages));
+      checks = pkgs.lib.listToAttrs
+        (map (p: {name = p.name; value = p;})
+        self.checks);
       devShells.default = pkgs.mkShell {
         name = "Nix.rs";
         buildInputs = [ pkgs.bashInteractive ];
@@ -44,6 +50,7 @@
           rustc.llvmPackages.llvm
           capnproto
           nix-output-monitor
+          cloc
         ] ++ lib.optionals stdenv.isDarwin [
           darwin.apple_sdk.frameworks.CoreServices
           darwin.apple_sdk.frameworks.Security

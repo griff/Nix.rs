@@ -7,14 +7,14 @@ license = "EUPL-1.2 OR MIT"
 build = "build.rs"
 
 [dependencies]
-futures = "^0.3.31"
+futures = { workspace = true }
 nixrs = { path = "../nixrs" }
-capnp = "^0.20.3"
+capnp = { workspace = true }
 
 [dependencies.tokio]
-version = "^1.42"
+workspace = true
 features = ["io-util", "macros", "fs"]
 
 [build-dependencies]
-capnpc = "^0.20.1"
-which = "^4.4.0"
+capnpc = { workspace = true }
+which = { workspace = true }

@@ -5,55 +5,11 @@ on:
     branches:
     - main
 jobs:
-  test:
-    name: test
-    runs-on: ubuntu-22.04
+  tests:
+    runs-on: ubuntu-latest
     steps:
-
-    - name: Checkout repository
-      uses: actions/checkout@v3
+    - uses: actions/checkout@v4
+    - uses: cachix/install-nix-action@v27
       with:
-        fetch-depth: 1
-
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: stable-x86_64-gnu
-        profile: minimal
-        override: true
-
-    - name: Install Dependencies
-      run: sudo apt-get install -y libarchive-dev libsodium-dev protobuf-compiler
-
-    - name: Basic build
-      run: cargo build --verbose
-
-    - name: Build docs
-      run: cargo doc --verbose
-
-    - name: Run full test suite
-      run: cargo test --features slowtests
-
-  rustfmt:
-    name: rustfmt
-    runs-on: ubuntu-22.04
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 1
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: stable
-        profile: minimal
-        override: true
-        components: rustfmt
-    - name: Install Dependencies
-      run: sudo apt-get install -y libarchive-dev libsodium-dev protobuf-compiler
-    - name: Install rustfmt
-      run: rustup component add rustfmt
-    - name: Check formatting
-      run: |
-        cargo fmt --all -- --check
-        cargo clippy --all -- -Dwarnings
+        github_access_token: ${{ secrets.GITHUB_TOKEN }}
+    - run: nix flake check

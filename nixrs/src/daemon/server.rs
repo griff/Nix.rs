@@ -155,8 +155,7 @@ where
             self.reader.read_value().await.with_field("clientVersion")?;
         let version = client_version.min(max_version);
         if version < min_version {
-            return Err(DaemonErrorKind::UnsupportedVersion(version))
-                .with_field("clientVersion");
+            return Err(DaemonErrorKind::UnsupportedVersion(version)).with_field("clientVersion");
         }
         self.reader.set_version(version);
         self.writer.set_version(version);
@@ -168,15 +167,13 @@ where
         if version.minor() >= 14 {
             // Obsolete CPU Affinity
             if self.reader.read_value().await.with_field("sendCpu")? {
-                let _cpu_affinity =
-                    self.reader.read_number().await.with_field("cpuAffinity")?;
+                let _cpu_affinity = self.reader.read_number().await.with_field("cpuAffinity")?;
             }
         }
 
         if version.minor() >= 11 {
             // Obsolete reserved space
-            let _reserve_space: bool =
-                self.reader.read_value().await.with_field("reserveSpace")?;
+            let _reserve_space: bool = self.reader.read_value().await.with_field("reserveSpace")?;
         }
 
         if version.minor() >= 33 {

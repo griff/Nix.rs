@@ -182,6 +182,7 @@ let
         ./patches/install-nlohmann_json-headers.patch
         ./proxy-patches/nix-2_3.patch
       ];
+      meta.broken = true;
       self_attribute_name = "nix_2_4";
     };
 

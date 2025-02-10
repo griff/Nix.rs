@@ -13,7 +13,7 @@ use super::write_all::{write_all, WriteAll};
 use super::write_int::WriteU64;
 
 pub(crate) fn write_string<W>(dst: W, s: String) -> WriteString<W> {
-    let len = s.as_bytes().len();
+    let len = s.len();
     WriteString::WriteSize(s, WriteU64::new(dst, len as u64))
 }
 

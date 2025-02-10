@@ -11,7 +11,7 @@ impl NixSerialize for Bytes {
     }
 }
 
-impl<'a> NixSerialize for &'a [u8] {
+impl NixSerialize for &[u8] {
     async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
     where
         W: NixWrite,

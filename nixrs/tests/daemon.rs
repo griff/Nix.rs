@@ -503,6 +503,6 @@ proptest! {
 }
 
 // TODO: proptest query_valid_paths
-    // TODO: proptest query_path_info
+// TODO: proptest query_path_info
 // TODO: proptest nar_from_path
 // TODO: proptest all messages

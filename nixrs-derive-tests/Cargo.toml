@@ -3,25 +3,11 @@
 # SPDX-License-Identifier: EUPL-1.2 or MIT
 
 [package]
-name = "nixrs-derive"
+name = "nixrs-derive-tests"
 version = "0.1.0"
 authors = ["Brian Olsen <brian@maven-group.org>"]
 edition = "2021"
 license = "EUPL-1.2 OR MIT"
-
-[lib]
-proc-macro = true
-
-[features]
-default = []
-
-[dependencies]
-proc-macro2 = { workspace = true,  features = ["proc-macro"] }
-quote = { workspace = true, features = ["proc-macro"] }
-
-[dependencies.syn]
-workspace = true
-features = ["clone-impls", "derive", "extra-traits", "full", "parsing", "printing", "proc-macro"]
 
 
 [dev-dependencies]
@@ -37,6 +23,10 @@ version = "0.1.0"
 path = "../nixrs"
 default-features = false
 features = ["test"]
+
+[dev-dependencies.nixrs-derive]
+version = "0.1.0"
+path = "../nixrs-derive"
 
 [dev-dependencies.tokio]
 workspace = true

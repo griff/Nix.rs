@@ -314,7 +314,7 @@ pub trait DaemonStore: Send {
         'p: 'r;
 }
 
-impl<'s, S> DaemonStore for &'s mut S
+impl<S> DaemonStore for &mut S
 where
     S: DaemonStore,
 {
