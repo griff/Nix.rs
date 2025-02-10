@@ -14,7 +14,7 @@ use tokio::io::AsyncWrite;
 use crate::store_path::{FromStoreDirStr, ParseStorePathError, StoreDirDisplay, StorePathSet};
 use crate::{hash::NarHash, store_path::StorePath};
 
-use super::logger::{LogError, LoggerResult, TraceLine, Verbosity};
+use super::logger::{LocalLoggerResult, LogError, LoggerResult, TraceLine, Verbosity};
 use super::wire::types::Operation;
 use super::wire::{IgnoredTrue, IgnoredZero};
 use super::ProtocolVersion;
@@ -284,6 +284,11 @@ pub trait HandshakeDaemonStore {
     fn handshake(self) -> impl LoggerResult<Self::Store, DaemonError>;
 }
 
+pub trait LocalHandshakeDaemonStore {
+    type Store: LocalDaemonStore + Send;
+    fn handshake(self) -> impl LocalLoggerResult<Self::Store, DaemonError>;
+}
+
 pub trait DaemonStore: Send {
     fn trust_level(&self) -> TrustLevel;
     fn set_options<'a>(
@@ -358,6 +363,87 @@ where
     ) -> impl LoggerResult<(), DaemonError> + 'r
     where
         W: AsyncWrite + Unpin + Send + 'r,
+        'a: 'r,
+        'p: 'r,
+    {
+        (**self).nar_from_path(path, sink)
+    }
+}
+
+pub trait LocalDaemonStore {
+    fn trust_level(&self) -> TrustLevel;
+    fn set_options< 'a>(
+        &'a mut self,
+        options: &'a ClientOptions,
+    ) -> impl LocalLoggerResult<(), DaemonError> + 'a;
+    fn is_valid_path<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl LocalLoggerResult<bool, DaemonError> + 'a;
+    fn query_valid_paths<'a>(
+        &'a mut self,
+        paths: &'a StorePathSet,
+        substitute: bool,
+    ) -> impl LocalLoggerResult<StorePathSet, DaemonError> + 'a;
+    fn query_path_info<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl LocalLoggerResult<Option<UnkeyedValidPathInfo>, DaemonError> + 'a;
+    fn nar_from_path<'s, 'p, 'r, W>(
+        &'s mut self,
+        path: &'p StorePath,
+        sink: W,
+    ) -> impl LocalLoggerResult<(), DaemonError> + 'r
+    where
+        W: AsyncWrite + Unpin + 'r,
+        's: 'r,
+        'p: 'r;
+}
+
+impl<S> LocalDaemonStore for &mut S
+where
+    S: LocalDaemonStore,
+{
+    fn trust_level(&self) -> TrustLevel {
+        (**self).trust_level()
+    }
+
+    fn set_options<'a>(
+        &'a mut self,
+        options: &'a ClientOptions,
+    ) -> impl LocalLoggerResult<(), DaemonError> + 'a {
+        (**self).set_options(options)
+    }
+
+    fn is_valid_path<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl LocalLoggerResult<bool, DaemonError> + 'a {
+        (**self).is_valid_path(path)
+    }
+
+    fn query_valid_paths<'a>(
+        &'a mut self,
+        paths: &'a StorePathSet,
+        substitute: bool,
+    ) -> impl LocalLoggerResult<StorePathSet, DaemonError> + 'a {
+        (**self).query_valid_paths(paths, substitute)
+    }
+
+    fn query_path_info<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl LocalLoggerResult<Option<UnkeyedValidPathInfo>, DaemonError> + 'a {
+        (**self).query_path_info(path)
+    }
+
+    fn nar_from_path<'a, 'p, 'r, W>(
+        &'a mut self,
+        path: &'p StorePath,
+        sink: W,
+    ) -> impl LocalLoggerResult<(), DaemonError> + 'r
+    where
+        W: AsyncWrite + Unpin + 'r,
         'a: 'r,
         'p: 'r,
     {

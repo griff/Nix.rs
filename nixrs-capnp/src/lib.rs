@@ -1,7 +1,10 @@
-use std::future::Future;
+use std::future::{ready, Future};
 
 use ::capnp::Error;
-use nixrs::daemon::{DaemonError, DaemonErrorKind, LogMessage, LoggerResult};
+use futures::TryFutureExt as _;
+use nixrs::daemon::{DaemonError, DaemonErrorKind, LocalLoggerResult, LogMessage};
+use nixrs::store_path::{StorePath, StorePathError, StorePathHash, StorePathName, StorePathSet};
+use tokio::io::AsyncWrite;
 
 #[allow(clippy::needless_lifetimes, clippy::extra_unused_type_parameters)]
 pub mod capnp {
@@ -22,9 +25,9 @@ pub struct CapnpResult<F> {
     promise: F,
 }
 
-impl<F, T> LoggerResult<T, DaemonError> for CapnpResult<F>
+impl<F, T> LocalLoggerResult<T, DaemonError> for CapnpResult<F>
 where
-    F: Future<Output = Result<T, Error>> + Send,
+    F: Future<Output = Result<T, Error>>,
     T: 'static,
 {
     async fn next(&mut self) -> Option<Result<LogMessage, DaemonError>> {
@@ -39,13 +42,11 @@ where
     }
 }
 
-#[allow(dead_code)]
 pub struct CapnpStore {
     store: capnp::nix_daemon_capnp::nix_daemon::Client,
 }
 
-/*
-impl nixrs::daemon::DaemonStore for CapnpStore {
+impl nixrs::daemon::LocalDaemonStore for CapnpStore {
     fn trust_level(&self) -> nixrs::daemon::TrustLevel {
         nixrs::daemon::TrustLevel::Trusted
     }
@@ -53,38 +54,39 @@ impl nixrs::daemon::DaemonStore for CapnpStore {
     fn set_options<'a>(
         &'a mut self,
         options: &'a nixrs::daemon::ClientOptions,
-    ) -> impl nixrs::daemon::LoggerResult<(), nixrs::daemon::DaemonError> + 'a {
-        let mut req = self.store.set_options_request();
-        let mut c_options = req.get().init_options();
-        c_options.set_keep_failed(options.keep_failed);
-        c_options.set_keep_going(options.keep_going);
-        c_options.set_try_fallback(options.try_fallback);
-        c_options.set_verbosity(options.verbosity.into());
-        c_options.set_max_build_jobs(options.max_build_jobs);
-        c_options.set_max_silent_time(options.max_silent_time as u64);
-        c_options.set_verbose_build(options.verbose_build.into());
-        c_options.set_build_cores(options.build_cores);
-        c_options.set_use_substitutes(options.use_substitutes);
-        /*
-        if !options.other_settings.is_empty() {
-            let other = c_options.init_other_settings();
-            let mut entries = other.init_entries(options.other_settings.len() as u32);
-            for (index, (k, v)) in options.other_settings.iter().enumerate() {
-                let mut entry = entries.reborrow().get(index as u32);
-                entry.set_key(k).map_err(|err| DaemonError::Custom(err.to_string()))?;
-                entry.set_value(&v[..]).map_err(|err| DaemonError::Custom(err.to_string()))?;
-            }
-        }
-         */
+    ) -> impl nixrs::daemon::LocalLoggerResult<(), nixrs::daemon::DaemonError> + 'a {
         CapnpResult {
-            promise: req.send().promise.map_ok(|_| ()),
+            promise: async move {
+                let mut req = self.store.set_options_request();
+                let mut c_options = req.get().init_options();
+                c_options.set_keep_failed(options.keep_failed);
+                c_options.set_keep_going(options.keep_going);
+                c_options.set_try_fallback(options.try_fallback);
+                c_options.set_verbosity(options.verbosity.into());
+                c_options.set_max_build_jobs(options.max_build_jobs);
+                c_options.set_max_silent_time(options.max_silent_time as u64);
+                c_options.set_verbose_build(options.verbose_build.into());
+                c_options.set_build_cores(options.build_cores);
+                c_options.set_use_substitutes(options.use_substitutes);
+                if !options.other_settings.is_empty() {
+                    let other = c_options.init_other_settings();
+                    let mut entries = other.init_entries(options.other_settings.len() as u32);
+                    for (index, (k, v)) in options.other_settings.iter().enumerate() {
+                        let mut entry = entries.reborrow().get(index as u32);
+                        entry.set_key(k)?;
+                        entry.set_value(&v[..])?;
+                    }
+                }
+                req.send().promise.await?;
+                Ok(())
+            },
         }
     }
 
     fn is_valid_path<'a>(
         &'a mut self,
         path: &'a nixrs::store_path::StorePath,
-    ) -> impl nixrs::daemon::LoggerResult<bool, nixrs::daemon::DaemonError> + 'a {
+    ) -> impl nixrs::daemon::LocalLoggerResult<bool, nixrs::daemon::DaemonError> + 'a {
         let mut req = self.store.is_valid_path_request();
         let params = req.get();
         let mut c_path = params.init_path();
@@ -102,7 +104,7 @@ impl nixrs::daemon::DaemonStore for CapnpStore {
         &'a mut self,
         paths: &'a nixrs::store_path::StorePathSet,
         substitute: bool,
-    ) -> impl nixrs::daemon::LoggerResult<nixrs::store_path::StorePathSet, nixrs::daemon::DaemonError> + 'a {
+    ) -> impl nixrs::daemon::LocalLoggerResult<nixrs::store_path::StorePathSet, nixrs::daemon::DaemonError> + 'a {
         let mut req = self.store.query_valid_paths_request();
         let mut params = req.get();
         let mut c_paths = params.reborrow().init_paths(paths.len() as u32);
@@ -135,22 +137,24 @@ impl nixrs::daemon::DaemonStore for CapnpStore {
     fn query_path_info<'a>(
         &'a mut self,
         _path: &'a nixrs::store_path::StorePath,
-    ) -> impl nixrs::daemon::LoggerResult<Option<nixrs::daemon::UnkeyedValidPathInfo>, nixrs::daemon::DaemonError> + 'a {
+    ) -> impl nixrs::daemon::LocalLoggerResult<Option<nixrs::daemon::UnkeyedValidPathInfo>, nixrs::daemon::DaemonError> + 'a {
         CapnpResult {
             promise: ready(Ok(None))
         }
     }
 
-    fn nar_from_path<'a, W>(
-        &'a mut self,
-        _path: &'a nixrs::store_path::StorePath,
+    fn nar_from_path<'s, 'p, 'r, W>(
+        &'s mut self,
+        _path: &'p nixrs::store_path::StorePath,
         _sink: W,
-    ) -> impl nixrs::daemon::LoggerResult<(), nixrs::daemon::DaemonError> + 'a
+    ) -> impl nixrs::daemon::LocalLoggerResult<(), nixrs::daemon::DaemonError> + 'r
     where
-        W: AsyncWrite + Unpin + 'a {
+        W: AsyncWrite + Unpin + 'r,
+        's: 'r,
+        'p: 'r
+    {
         CapnpResult {
             promise: ready(Ok(()))
         }
     }
 }
-     */

@@ -240,6 +240,11 @@ pub enum Field {
     String(DaemonString),
 }
 
+pub trait LocalLoggerResult<T, E> {
+    fn next(&mut self) -> impl Future<Output = Option<Result<LogMessage, E>>> + '_;
+    fn result(self) -> impl Future<Output = Result<T, E>>;
+}
+
 /// Credit embr and gorgon
 pub trait LoggerResult<T, E>: Send {
     fn next(&mut self) -> impl Future<Output = Option<Result<LogMessage, E>>> + Send + '_;

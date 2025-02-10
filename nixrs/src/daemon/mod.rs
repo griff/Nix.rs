@@ -23,12 +23,12 @@ pub mod wire;
 #[cfg(feature = "nixrs-derive")]
 pub use fail_store::FailStore;
 #[cfg(feature = "nixrs-derive")]
-pub use logger::{LogError, LogMessage, LoggerResult, TraceLine, Verbosity};
+pub use logger::{LogError, LogMessage, LoggerResult, LocalLoggerResult, TraceLine, Verbosity};
 #[cfg(feature = "nixrs-derive")]
 pub use types::{
     ClientOptions, DaemonError, DaemonErrorContext, DaemonErrorKind, DaemonInt, DaemonPath,
     DaemonResult, DaemonResultExt, DaemonStore, DaemonString, DaemonTime, HandshakeDaemonStore,
-    RemoteError, TrustLevel, UnkeyedValidPathInfo,
+    LocalDaemonStore, LocalHandshakeDaemonStore, RemoteError, TrustLevel, UnkeyedValidPathInfo,
 };
 
 pub(crate) const ZEROS: [u8; 8] = [0u8; 8];
