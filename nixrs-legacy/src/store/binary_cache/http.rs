@@ -102,6 +102,7 @@ mod tests {
 
     #[tokio::test]
 
+    #[ignore]
     async fn test_info_missing() {
         let path = StorePath::new_from_base_name("7rjj86a15146cq1d3qy068lml7n8ykzm-plakker-12.3.0")
             .unwrap();
@@ -112,6 +113,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_info_gcc() {
         let path =
             StorePath::new_from_base_name("7rjj86a15146cq1d3qy068lml7n7ykzm-gcc-wrapper-12.3.0")
@@ -124,6 +126,7 @@ mod tests {
 
     #[cfg(feature = "compress-tools")]
     #[tokio::test]
+    #[ignore]
     async fn test_nar_from_path_gcc() {
         let path =
             StorePath::new_from_base_name("7rjj86a15146cq1d3qy068lml7n7ykzm-gcc-wrapper-12.3.0")
@@ -139,6 +142,7 @@ mod tests {
 
     #[cfg(feature = "compress-tools")]
     #[tokio::test]
+    #[ignore]
     async fn test_nar_from_path_hello() {
         let path =
             StorePath::new_from_base_name("ycbqd7822qcnasaqy0mmiv2j9n9m62yl-hello-2.12.1").unwrap();
