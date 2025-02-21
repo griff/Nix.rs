@@ -1,4 +1,4 @@
-{system, nixpkgs, ...}: let
+{system, nixpkgs, flake-inputs, ...}: let
   pkgs = import nixpkgs {
     inherit system;
     config = {
@@ -31,6 +31,17 @@
       checks = pkgs.lib.listToAttrs
         (map (p: {name = p.name; value = p;})
         self.checks);
+      apps.ci = flake-inputs.flake-utils.lib.mkApp {
+        drv = pkgs.writeShellApplication {
+          name = "ci";
+          runtimeInputs = with pkgs; [
+            nix-output-monitor
+          ];
+          text = ''
+            nix flake check --impure --log-format internal-json 2>&1 | nom --json
+          '';
+        };
+      };
       devShells.default = pkgs.mkShell {
         name = "Nix.rs";
         buildInputs = [ pkgs.bashInteractive ];
