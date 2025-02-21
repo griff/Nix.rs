@@ -19,6 +19,7 @@ nixrs-derive = ["dep:nixrs-derive", "dep:libc", "dep:num_enum", "dep:bstr", "dep
 default = ["daemon", "nixrs-derive", "test"]
 
 [dependencies]
+async-stream = "0.3.6"
 bstr = { workspace = true, optional = true }
 bytes = { workspace = true }
 data-encoding = { workspace = true }
@@ -33,6 +34,7 @@ proptest-derive = { workspace = true, optional = true }
 ring = { workspace = true }
 # smallvec = { workspace = true }
 thiserror = { workspace = true }
+tokio-util = { workspace = true }
 
 [dependencies.tokio]
 workspace = true

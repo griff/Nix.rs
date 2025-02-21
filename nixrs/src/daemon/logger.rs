@@ -1,15 +1,20 @@
-use std::collections::VecDeque;
 use std::fmt;
-use std::future::{ready, Future};
+use std::future::Future;
 use std::io::Cursor;
 use std::marker::PhantomData;
+use std::pin::Pin;
+use std::task::{ready, Context, Poll};
 
+use async_stream::stream;
+use futures::Stream;
 #[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{FromPrimitive, IntoPrimitive, TryFromPrimitive};
+use pin_project_lite::pin_project;
 #[cfg(any(test, feature = "test"))]
 use proptest_derive::Arbitrary;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt as _, AsyncRead, AsyncWrite, AsyncWriteExt as _};
+use tokio::sync::oneshot;
 
 use super::de::{NixDeserialize, NixRead};
 use super::ser::{NixWrite, NixWriter};
@@ -240,189 +245,216 @@ pub enum Field {
     String(DaemonString),
 }
 
+pub trait ResultLog<T, E>: Stream<Item = LogMessage> + Future<Output = Result<T, E>> {}
+impl<R, T, E> ResultLog<T, E> for R where
+    R: Stream<Item = LogMessage> + Future<Output = Result<T, E>>
+{
+}
+
 pub trait LocalLoggerResult<T, E> {
     fn next(&mut self) -> impl Future<Output = Option<Result<LogMessage, E>>> + '_;
     fn result(self) -> impl Future<Output = Result<T, E>>;
 }
 
-/// Credit embr and gorgon
-pub trait LoggerResult<T, E>: Send {
-    fn next(&mut self) -> impl Future<Output = Option<Result<LogMessage, E>>> + Send + '_;
-    fn result(self) -> impl Future<Output = Result<T, E>> + Send;
+pin_project! {
+    struct MapOkResult<L, F, T> {
+        #[pin]
+        result: L,
+        mapper: Option<F>,
+        value: PhantomData<T>,
+    }
 }
-
-struct MapOkResult<L, F, T> {
-    result: L,
-    mapper: F,
-    value: PhantomData<T>,
-}
-
-impl<L, F, T, T2, E> LoggerResult<T2, E> for MapOkResult<L, F, T>
+impl<L, F, T> Stream for MapOkResult<L, F, T>
 where
-    L: LoggerResult<T, E>,
+    L: Stream<Item = LogMessage>,
+{
+    type Item = LogMessage;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.project().result.poll_next(cx)
+    }
+}
+impl<L, F, T, T2, E> Future for MapOkResult<L, F, T>
+where
+    L: Future<Output = Result<T, E>>,
     F: FnOnce(T) -> T2 + Send,
     T: Send,
-    E: 'static,
-    T2: 'static,
 {
-    async fn next(&mut self) -> Option<Result<LogMessage, E>> {
-        self.result.next().await
-    }
+    type Output = Result<T2, E>;
 
-    async fn result(self) -> Result<T2, E> {
-        let original = self.result.result().await?;
-        Ok((self.mapper)(original))
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let me = self.project();
+        Poll::Ready(ready!(me.result.poll(cx)).map(|value| (me.mapper.take().unwrap())(value)))
     }
 }
 
-struct MapErrResult<L, F, E> {
-    result: L,
-    mapper: F,
-    value: PhantomData<E>,
+pin_project! {
+    struct MapErrResult<L, F, E> {
+        #[pin]
+        result: L,
+        mapper: Option<F>,
+        value: PhantomData<E>,
+    }
 }
-
-impl<L, F, T, E2, E> LoggerResult<T, E2> for MapErrResult<L, F, E>
+impl<L, F, E> Stream for MapErrResult<L, F, E>
 where
-    L: LoggerResult<T, E>,
-    F: Fn(E) -> E2 + Send,
-    T: 'static,
+    L: Stream<Item = LogMessage>,
+{
+    type Item = LogMessage;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.project().result.poll_next(cx)
+    }
+}
+impl<L, F, T, E, E2> Future for MapErrResult<L, F, E>
+where
+    L: Future<Output = Result<T, E>>,
+    F: FnOnce(E) -> E2 + Send,
     E: Send,
-    E2: 'static,
 {
-    async fn next(&mut self) -> Option<Result<LogMessage, E2>> {
-        match self.result.next().await {
-            None => None,
-            Some(Ok(ret)) => Some(Ok(ret)),
-            Some(Err(err)) => Some(Err((self.mapper)(err))),
-        }
-    }
+    type Output = Result<T, E2>;
 
-    async fn result(self) -> Result<T, E2> {
-        match self.result.result().await {
-            Ok(res) => Ok(res),
-            Err(err) => Err((self.mapper)(err)),
-        }
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let me = self.project();
+        Poll::Ready(ready!(me.result.poll(cx)).map_err(|err| (me.mapper.take().unwrap())(err)))
     }
 }
-struct AndThenResult<L, F, T, Fut> {
-    result: L,
-    mapper: F,
-    value: PhantomData<(T, Fut)>,
+
+pin_project! {
+    #[project = AndThenLogResultProj]
+    enum AndThenLogResult<F, R> {
+        First {
+            mapper: Option<F>,
+        },
+        Second {
+            #[pin]
+            result: R
+        },
+    }
 }
 
-impl<L, F, T, T2, E, Fut> LoggerResult<T2, E> for AndThenResult<L, F, T, Fut>
+pin_project! {
+    struct AndThenLog<L, F, R> {
+        #[pin]
+        stream: L,
+        #[pin]
+        result: AndThenLogResult<F, R>
+    }
+}
+
+impl<L, F, R> Stream for AndThenLog<L, F, R>
 where
-    L: LoggerResult<T, E>,
-    F: FnOnce(T) -> Fut + Send,
-    Fut: Future<Output = Result<T2, E>> + Send,
-    T: Send,
-    T2: 'static,
-    E: 'static,
+    L: Stream<Item = LogMessage>,
 {
-    async fn next(&mut self) -> Option<Result<LogMessage, E>> {
-        self.result.next().await
-    }
+    type Item = LogMessage;
 
-    async fn result(self) -> Result<T2, E> {
-        let original = self.result.result().await?;
-        (self.mapper)(original).await
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.project().stream.poll_next(cx)
     }
 }
 
-pub trait LoggerResultExt<T, E> {
-    fn map_ok<F, T2>(self, f: F) -> impl LoggerResult<T2, E>
+impl<L, F, R, T, T2, E> Future for AndThenLog<L, F, R>
+where
+    L: Future<Output = Result<T, E>> + Stream<Item = LogMessage>,
+    F: FnOnce(T) -> R,
+    R: Future<Output = Result<T2, E>>,
+{
+    type Output = Result<T2, E>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        loop {
+            let mut me = self.as_mut().project();
+            match me.result.as_mut().project() {
+                AndThenLogResultProj::First { mapper } => {
+                    let res = ready!(me.stream.poll(cx))?;
+                    let mapper = mapper.take().unwrap();
+                    let result = (mapper)(res);
+                    me.result.set(AndThenLogResult::Second { result });
+                }
+                AndThenLogResultProj::Second { result } => {
+                    return result.poll(cx);
+                }
+            }
+        }
+    }
+}
+
+pub trait ResultLogExt<T, E> {
+    fn map_ok<F, T2>(self, f: F) -> impl ResultLog<T2, E>
     where
         F: FnOnce(T) -> T2 + Send,
         T2: 'static;
-    fn map_err<F, E2>(self, f: F) -> impl LoggerResult<T, E2>
+    fn map_err<F, E2>(self, f: F) -> impl ResultLog<T, E2>
     where
-        F: Fn(E) -> E2 + Send,
+        F: FnOnce(E) -> E2 + Send,
         E2: 'static;
-    fn and_then<F, T2, Fut>(self, f: F) -> impl LoggerResult<T2, E>
+    fn and_then<F, T2, Fut>(self, f: F) -> impl ResultLog<T2, E>
     where
         F: FnOnce(T) -> Fut + Send,
         Fut: Future<Output = Result<T2, E>> + Send,
         T2: 'static;
 }
 
-impl<L, T, E> LoggerResultExt<T, E> for L
+impl<L, T, E> ResultLogExt<T, E> for L
 where
-    L: LoggerResult<T, E>,
+    L: ResultLog<T, E>,
     T: Send + 'static,
     E: Send + 'static,
 {
-    fn map_ok<F, T2>(self, f: F) -> impl LoggerResult<T2, E>
+    fn map_ok<F, T2>(self, f: F) -> impl ResultLog<T2, E>
     where
         F: FnOnce(T) -> T2 + Send,
         T2: 'static,
     {
         MapOkResult {
             result: self,
-            mapper: f,
+            mapper: Some(f),
             value: PhantomData,
         }
     }
 
-    fn map_err<F, E2>(self, f: F) -> impl LoggerResult<T, E2>
+    fn map_err<F, E2>(self, f: F) -> impl ResultLog<T, E2>
     where
-        F: Fn(E) -> E2 + Send,
+        F: FnOnce(E) -> E2 + Send,
         E2: 'static,
     {
         MapErrResult {
             result: self,
-            mapper: f,
+            mapper: Some(f),
             value: PhantomData,
         }
     }
-
-    fn and_then<F, T2, Fut>(self, f: F) -> impl LoggerResult<T2, E>
+    fn and_then<F, T2, Fut>(self, f: F) -> impl ResultLog<T2, E>
     where
         F: FnOnce(T) -> Fut + Send,
         Fut: Future<Output = Result<T2, E>> + Send,
         T2: 'static,
     {
-        AndThenResult {
-            result: self,
-            mapper: f,
-            value: PhantomData,
+        AndThenLog {
+            stream: self,
+            result: AndThenLogResult::First { mapper: Some(f) },
         }
     }
 }
 
-impl<E: Send + 'static> LoggerResult<(), E> for VecDeque<LogMessage> {
-    fn next(&mut self) -> impl Future<Output = Option<Result<LogMessage, E>>> + Send {
-        ready(self.pop_front().map(Ok))
+pin_project! {
+    #[project = FutureResultProj]
+    #[derive(Default)]
+    pub enum FutureResult<Fut, T, E> {
+        Later {
+            #[pin]
+            fut: Fut,
+        },
+        ResolvedOk {
+            #[pin]
+            result: T
+        },
+        ResolvedErr {
+            err: Option<E>,
+        },
+        #[default]
+        Invalid,
     }
-
-    fn result(self) -> impl Future<Output = Result<(), E>> {
-        ready(Ok(()))
-    }
-}
-
-impl<T, E> LoggerResult<T, E> for Result<T, E>
-where
-    E: Send,
-    T: Send,
-{
-    fn next(&mut self) -> impl Future<Output = Option<Result<LogMessage, E>>> + Send {
-        ready(None)
-    }
-
-    fn result(self) -> impl Future<Output = Result<T, E>> + Send {
-        ready(self)
-    }
-}
-
-#[derive(Default)]
-pub enum FutureResult<Fut, T, E> {
-    Later {
-        fut: Fut,
-    },
-    Resolved {
-        result: Result<T, E>,
-    },
-    #[default]
-    Invalid,
 }
 
 impl<Fut, T, E> FutureResult<Fut, T, E>
@@ -433,61 +465,74 @@ where
         Self::Later { fut }
     }
 
-    async fn resolved(&mut self) -> Result<&mut T, &mut E> {
-        let this = std::mem::take(self);
-        let result = match this {
-            FutureResult::Invalid => panic!("Resolving invalid FutureResult"),
-            FutureResult::Later { fut } => fut.await,
-            FutureResult::Resolved { result } => result,
-        };
-        *self = FutureResult::Resolved { result };
-        match self {
-            FutureResult::Resolved { result } => result.as_mut(),
-            _ => unreachable!(),
+    fn poll_resolved(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<Pin<&mut T>, ()>> {
+        match self.as_mut().project() {
+            FutureResultProj::Later { fut } => match ready!(fut.poll(cx)) {
+                Ok(result) => {
+                    self.set(FutureResult::ResolvedOk { result });
+                }
+                Err(err) => {
+                    self.set(FutureResult::ResolvedErr { err: Some(err) });
+                }
+            },
+            FutureResultProj::ResolvedOk { result: _ } => {}
+            FutureResultProj::ResolvedErr { err: _ } => {}
+            FutureResultProj::Invalid => {}
+        }
+        match self.project() {
+            FutureResultProj::Later { fut: _ } => unreachable!(),
+            FutureResultProj::ResolvedOk { result } => Poll::Ready(Ok(result)),
+            FutureResultProj::ResolvedErr { err: _ } => Poll::Ready(Err(())),
+            FutureResultProj::Invalid => unreachable!(),
         }
     }
 }
 
-impl<Fut, R, T, E> LoggerResult<T, E> for FutureResult<Fut, R, E>
+impl<Fut, R, E> Stream for FutureResult<Fut, R, E>
 where
     Fut: Future<Output = Result<R, E>> + Send,
-    R: LoggerResult<T, E>,
-    E: Clone + Send,
-    T: 'static,
+    R: Stream<Item = LogMessage>,
+    E: Send,
 {
-    async fn next(&mut self) -> Option<Result<LogMessage, E>> {
-        match self.resolved().await {
-            Ok(r) => r.next().await,
-            Err(_err) => None,
-        }
-    }
+    type Item = LogMessage;
 
-    async fn result(mut self) -> Result<T, E> {
-        let _ = self.resolved().await;
-        match self {
-            FutureResult::Resolved { result: Err(err) } => Err(err),
-            FutureResult::Resolved { result: Ok(result) } => result.result().await,
-            _ => panic!("Invalid state"),
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        if let Ok(res) = ready!(self.poll_resolved(cx)) {
+            res.poll_next(cx)
+        } else {
+            Poll::Ready(None)
         }
     }
 }
 
-/*
-impl<F, R, T, E> LoggerResult<T, E> for F
-    where F: Future<Output = Result<R, E>>,
-          R: LoggerResult<T, E>,
+impl<Fut, R, T, E> Future for FutureResult<Fut, R, E>
+where
+    Fut: Future<Output = Result<R, E>> + Send,
+    R: Future<Output = Result<T, E>>,
+    E: Send,
 {
-    async fn next(&mut self) -> Option<Result<LogMessage, E>> {
-        poll_fn(|cx| self.poll(cx)).await?;
-    }
+    type Output = Result<T, E>;
 
-    async fn value(&mut self) -> Result<T,E> {
-        todo!()
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if let Ok(res) = ready!(self.as_mut().poll_resolved(cx)) {
+            res.poll(cx)
+        } else {
+            match self.project() {
+                FutureResultProj::Later { fut: _ } => unreachable!(),
+                FutureResultProj::ResolvedOk { result } => result.poll(cx),
+                FutureResultProj::ResolvedErr { err } => {
+                    Poll::Ready(Err(err.take().expect("Polling invalid FutureRessult")))
+                }
+                _ => panic!("Polling invalid FutureRessult"),
+            }
+        }
     }
 }
-*/
 
-trait ReadResult<R, W, SR, SW, T>: Sized {
+pub trait ReadResult<R, W, SR, SW, T>: Sized {
     fn read_result(
         self,
         result: Result<(), DaemonError>,
@@ -573,8 +618,11 @@ impl<R, T> ProcessStderr<R, NixWriter<Cursor<Vec<u8>>>, Cursor<Vec<u8>>, Cursor<
 }
 
 impl<R, W, SR, SW, T, TFut> ProcessStderr<R, W, SR, SW, T, TFut> {
-    /*
-    pub fn with_source<NW, NSR>(self, writer: NW, source: NSR) -> ProcessStderr<R, NW, NSR, SW, T, TFut> {
+    pub fn with_source<NW, NSR>(
+        self,
+        writer: NW,
+        source: NSR,
+    ) -> ProcessStderr<R, NW, NSR, SW, T, TFut> {
         ProcessStderr {
             result: self.result,
             reader: self.reader,
@@ -583,10 +631,9 @@ impl<R, W, SR, SW, T, TFut> ProcessStderr<R, W, SR, SW, T, TFut> {
             sink: self.sink,
             read_result: self.read_result,
             _result_type: PhantomData,
-
         }
     }
-
+    /*
     pub fn with_sink<NSW>(self, sink: NSW) -> ProcessStderr<R, W, SR, NSW, T, TFut> {
         ProcessStderr {
             result: self.result,
@@ -624,7 +671,7 @@ impl<R, W, SR, SW, T, TFut> ProcessStderr<R, W, SR, SW, T, TFut>
 where
     W: NixWrite + AsyncWrite + fmt::Debug + Unpin + Send,
     DaemonError: From<<W as NixWrite>::Error>,
-    SR: AsyncBufRead + fmt::Debug + Unpin + Send,
+    SR: AsyncBufRead + Unpin + Send,
 {
     async fn process_read(&mut self, mut len: usize) -> Result<(), DaemonError> {
         if let Some(source) = self.source.as_mut() {
@@ -644,77 +691,174 @@ where
     }
 }
 
-impl<R, W, SR, SW, T, TFut> LoggerResult<T, DaemonError> for ProcessStderr<R, W, SR, SW, T, TFut>
+pin_project! {
+    pub struct ResultProcess<S, R> {
+        #[pin]
+        pub stream: S,
+        #[pin]
+        pub result: R,
+    }
+}
+
+impl<S, R> Stream for ResultProcess<S, R>
+where
+    S: Stream<Item = LogMessage>,
+{
+    type Item = LogMessage;
+
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        self.project().stream.poll_next(cx)
+    }
+}
+
+impl<S, R, T, E> Future for ResultProcess<S, R>
+where
+    S: Stream<Item = LogMessage>,
+    R: Future<Output = Result<T, E>>,
+{
+    type Output = Result<T, E>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+        let mut me = self.project();
+        while ready!(me.stream.as_mut().poll_next(cx)).is_some() {}
+        me.result.poll(cx)
+    }
+}
+
+pin_project! {
+    pub struct DriveResult<R, D, E> {
+        #[pin]
+        pub result: R,
+        #[pin]
+        pub driver: D,
+        pub driving: bool,
+        pub drive_err: Option<E>,
+    }
+}
+
+impl<R, D, E> Stream for DriveResult<R, D, E>
+where
+    R: Stream<Item = LogMessage>,
+    D: Future<Output = Result<(), E>>,
+{
+    type Item = LogMessage;
+
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        let me = self.project();
+        if *me.driving {
+            if let Poll::Ready(res) = me.driver.poll(cx) {
+                *me.driving = false;
+                *me.drive_err = res.err();
+            }
+        }
+        if me.drive_err.is_some() {
+            return Poll::Ready(None);
+        }
+        me.result.poll_next(cx)
+    }
+}
+
+impl<R, D, T, E> Future for DriveResult<R, D, E>
+where
+    R: Future<Output = Result<T, E>>,
+    D: Future<Output = Result<(), E>>,
+{
+    type Output = Result<T, E>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+        let me = self.project();
+        if *me.driving {
+            if let Poll::Ready(res) = me.driver.poll(cx) {
+                *me.driving = false;
+                *me.drive_err = res.err();
+            }
+        }
+        if let Some(err) = me.drive_err.take() {
+            return Poll::Ready(Err(err));
+        }
+        me.result.poll(cx)
+    }
+}
+
+impl<R, W, SR, SW, T, TFut> ProcessStderr<R, W, SR, SW, T, TFut>
 where
     R: NixRead + AsyncRead + fmt::Debug + Unpin + Send,
     W: NixWrite + AsyncWrite + fmt::Debug + Unpin + Send,
     DaemonError: From<<W as NixWrite>::Error> + From<<R as NixRead>::Error>,
-    SR: AsyncBufRead + fmt::Debug + Unpin + Send,
+    SR: AsyncBufRead + Unpin + Send,
     SW: AsyncWrite + fmt::Debug + Unpin + Send,
     TFut: ReadResult<R, W, SR, SW, T> + Send,
     T: Send,
 {
-    async fn next(&mut self) -> Option<Result<LogMessage, DaemonError>> {
-        if self.result.is_some() {
-            return None;
-        }
-        loop {
-            eprintln!("Client reading message!");
-            let msg = self.reader.read_value::<RawLogMessage>().await;
-            eprintln!("Client read message {:?}", msg);
-            match msg {
-                Ok(RawLogMessage::Next(msg)) => {
-                    return Some(Ok(LogMessage::Next(msg)));
-                }
-                Ok(RawLogMessage::Result(result)) => {
-                    return Some(Ok(LogMessage::Result(result)));
-                }
-                Ok(RawLogMessage::StartActivity(act)) => {
-                    return Some(Ok(LogMessage::StartActivity(act)));
-                }
-                Ok(RawLogMessage::StopActivity(act)) => {
-                    return Some(Ok(LogMessage::StopActivity(act)));
-                }
-                Ok(RawLogMessage::Read(len)) => {
-                    if let Err(err) = self.process_read(len).await {
-                        return Some(Err(err));
-                    }
-                }
-                Ok(RawLogMessage::Write(buf)) => {
-                    if let Some(sink) = self.sink.as_mut() {
-                        if let Err(err) = sink.write_all(&buf).await {
-                            return Some(Err(err.into()));
+    pub fn stream(mut self) -> impl Stream<Item = LogMessage> + Future<Output = DaemonResult<T>> {
+        let (sender, receiver) = oneshot::channel();
+        ResultProcess {
+            stream: stream! {
+                loop {
+                    let msg = self.reader.read_value::<RawLogMessage>().await;
+                    match msg {
+                        Ok(RawLogMessage::Next(msg)) => {
+                            yield LogMessage::Next(msg);
+                        }
+                        Ok(RawLogMessage::Result(result)) => {
+                            yield LogMessage::Result(result);
+                        }
+                        Ok(RawLogMessage::StartActivity(act)) => {
+                            yield LogMessage::StartActivity(act);
+                        }
+                        Ok(RawLogMessage::StopActivity(act)) => {
+                            yield LogMessage::StopActivity(act);
+                        }
+                        Ok(RawLogMessage::Read(len)) => {
+                            if let Err(err) = self.process_read(len).await {
+                                self.result = Some(Err(err));
+                                break;
+                            }
+                        }
+                        Ok(RawLogMessage::Write(buf)) => {
+                            if let Some(sink) = self.sink.as_mut() {
+                                if let Err(err) = sink.write_all(&buf).await {
+                                    self.result = Some(Err(DaemonError::from(err)));
+                                    break;
+                                }
+                            }
+                        }
+                        Ok(RawLogMessage::Last) => {
+                            let value = self.reader.read_value().await;
+                            self.result = Some(value.map_err(|err| err.into()));
+                            break;
+                        }
+                        Ok(RawLogMessage::Error(err)) => {
+                            self.result = Some(Err(err.into()));
+                            break;
+                        }
+                        Err(err) => {
+                            self.result = Some(Err(DaemonError::from(err)));
+                            break;
                         }
                     }
                 }
-                Ok(RawLogMessage::Last) => {
-                    let value = self.reader.read_value().await;
-                    self.result = Some(value.map_err(|err| err.into()));
-                    return None;
-                }
-                Ok(RawLogMessage::Error(err)) => {
-                    self.result = Some(Err(err.into()));
-                    return None;
-                }
-                Err(err) => {
-                    return Some(Err(err.into()));
-                }
-            }
+                let _ = sender.send(self);
+            },
+            result: async {
+                let process = receiver.await.unwrap();
+                process
+                    .read_result
+                    .read_result(
+                        process.result.unwrap(),
+                        process.reader,
+                        process.writer,
+                        process.source,
+                        process.sink,
+                    )
+                    .await
+            },
         }
-    }
-
-    async fn result(mut self) -> Result<T, DaemonError> {
-        while let Some(msg) = self.next().await {
-            msg?;
-        }
-        self.read_result
-            .read_result(
-                self.result.unwrap(),
-                self.reader,
-                self.writer,
-                self.source,
-                self.sink,
-            )
-            .await
     }
 }

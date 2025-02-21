@@ -101,7 +101,6 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-
     #[ignore]
     async fn test_info_missing() {
         let path = StorePath::new_from_base_name("7rjj86a15146cq1d3qy068lml7n8ykzm-plakker-12.3.0")

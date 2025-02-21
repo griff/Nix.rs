@@ -21,7 +21,7 @@ use nixrs::daemon::client::DaemonClient;
 use nixrs::daemon::mock::{self, MockReporter, MockStore, ReporterError};
 use nixrs::daemon::{server, Verbosity};
 use nixrs::daemon::{
-    ClientOptions, DaemonError, DaemonErrorKind, DaemonResult, DaemonStore as _, LoggerResult,
+    ClientOptions, DaemonError, DaemonErrorKind, DaemonResult, DaemonStore as _,
     UnkeyedValidPathInfo,
 };
 use nixrs::hash::{digest, Algorithm, Context, NarHash};
@@ -170,7 +170,7 @@ where
 
     let client = async move {
         let logs = DaemonClient::builder().connect(stdout, stdin);
-        let client = logs.result().await?;
+        let client = logs.await?;
         let mut client = (test)(client).await?;
         println!("Closing");
         client.close().await?;
@@ -254,7 +254,6 @@ async fn is_valid_path(
             expected,
             client
                 .is_valid_path(&store_path)
-                .result()
                 .await
                 .map_err(|err| err.to_string())
         );
@@ -291,7 +290,6 @@ async fn query_valid_paths(
             expected,
             client
                 .query_valid_paths(&store_paths, substitute)
-                .result()
                 .await
                 .map_err(|err| err.to_string())
         );
@@ -337,7 +335,6 @@ async fn query_path_info(
             expected,
             client
                 .query_path_info(&store_path)
-                .result()
                 .await
                 .map_err(|err| err.to_string())
         );
@@ -383,7 +380,6 @@ async fn nar_from_path(
         let mut out = Vec::new();
         client
             .nar_from_path(&store_path, Cursor::new(&mut out))
-            .result()
             .await
             .unwrap();
         println!("Parsing NAR {}", out.len());
@@ -465,7 +461,7 @@ proptest! {
             let mut mock = prepare_mock(nix);
             mock.is_valid_path(&path, Ok(result)).build();
             run_store_test(nix, mock, |mut client| async move {
-                let res = client.is_valid_path(&path).result().await;
+                let res = client.is_valid_path(&path).await;
                 prop_assert_eq!(res.unwrap(), result);
                 Ok(client)
             }).await?;
@@ -492,7 +488,7 @@ proptest! {
             let mut mock = prepare_mock(nix);
             mock.query_valid_paths(&paths, false, Ok(result.clone())).build();
             run_store_test(nix, mock, |mut client| async move {
-                let res = client.query_valid_paths(&paths, false).result().await;
+                let res = client.query_valid_paths(&paths, false).await;
                 prop_assert_eq!(res.unwrap(), result);
                 Ok(client)
             }).await?;

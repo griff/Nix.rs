@@ -104,7 +104,10 @@ impl nixrs::daemon::LocalDaemonStore for CapnpStore {
         &'a mut self,
         paths: &'a nixrs::store_path::StorePathSet,
         substitute: bool,
-    ) -> impl nixrs::daemon::LocalLoggerResult<nixrs::store_path::StorePathSet, nixrs::daemon::DaemonError> + 'a {
+    ) -> impl nixrs::daemon::LocalLoggerResult<
+        nixrs::store_path::StorePathSet,
+        nixrs::daemon::DaemonError,
+    > + 'a {
         let mut req = self.store.query_valid_paths_request();
         let mut params = req.get();
         let mut c_paths = params.reborrow().init_paths(paths.len() as u32);
@@ -123,23 +126,30 @@ impl nixrs::daemon::LocalDaemonStore for CapnpStore {
                     for c_path in set.iter() {
                         let c_hash = c_path.get_hash()?;
                         let c_name = c_path.get_name()?.to_str()?;
-                        let name = c_name.parse::<StorePathName>().map_err(|err| Error::failed(err.to_string()))?;
-                        let hash : StorePathHash = c_hash.try_into().map_err(|err : StorePathError | Error::failed(err.to_string()))?;
-                        let path : StorePath = (hash, name).into();
+                        let name = c_name
+                            .parse::<StorePathName>()
+                            .map_err(|err| Error::failed(err.to_string()))?;
+                        let hash: StorePathHash = c_hash
+                            .try_into()
+                            .map_err(|err: StorePathError| Error::failed(err.to_string()))?;
+                        let path: StorePath = (hash, name).into();
                         ret.insert(path);
                     }
                 }
                 Ok(ret)
-            })
+            }),
         }
     }
 
     fn query_path_info<'a>(
         &'a mut self,
         _path: &'a nixrs::store_path::StorePath,
-    ) -> impl nixrs::daemon::LocalLoggerResult<Option<nixrs::daemon::UnkeyedValidPathInfo>, nixrs::daemon::DaemonError> + 'a {
+    ) -> impl nixrs::daemon::LocalLoggerResult<
+        Option<nixrs::daemon::UnkeyedValidPathInfo>,
+        nixrs::daemon::DaemonError,
+    > + 'a {
         CapnpResult {
-            promise: ready(Ok(None))
+            promise: ready(Ok(None)),
         }
     }
 
@@ -151,10 +161,10 @@ impl nixrs::daemon::LocalDaemonStore for CapnpStore {
     where
         W: AsyncWrite + Unpin + 'r,
         's: 'r,
-        'p: 'r
+        'p: 'r,
     {
         CapnpResult {
-            promise: ready(Ok(()))
+            promise: ready(Ok(())),
         }
     }
 }

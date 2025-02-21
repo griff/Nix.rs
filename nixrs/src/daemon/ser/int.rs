@@ -22,11 +22,13 @@ impl NixSerialize for usize {
     }
 }
 
+/*
 #[cfg(feature = "nixrs-derive")]
 nix_serialize_remote!(
     #[nix(into = "u64")]
     u8
 );
+*/
 #[cfg(feature = "nixrs-derive")]
 nix_serialize_remote!(
     #[nix(into = "u64")]

@@ -23,7 +23,7 @@ pub mod wire;
 #[cfg(feature = "nixrs-derive")]
 pub use fail_store::FailStore;
 #[cfg(feature = "nixrs-derive")]
-pub use logger::{LogError, LogMessage, LoggerResult, LocalLoggerResult, TraceLine, Verbosity};
+pub use logger::{LocalLoggerResult, LogError, LogMessage, ResultLog, TraceLine, Verbosity};
 #[cfg(feature = "nixrs-derive")]
 pub use types::{
     ClientOptions, DaemonError, DaemonErrorContext, DaemonErrorKind, DaemonInt, DaemonPath,
@@ -36,6 +36,8 @@ pub(crate) const ZEROS: [u8; 8] = [0u8; 8];
 pub const NIX_VERSION: &str = "Nix.rs 1.0";
 pub const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 35);
 pub const PROTOCOL_VERSION_MIN: ProtocolVersion = ProtocolVersion::from_parts(1, 21);
+pub const DEFAULT_BUF_SIZE: usize = 32 * 1024;
+pub const RESERVED_BUF_SIZE: usize = DEFAULT_BUF_SIZE / 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
@@ -102,7 +104,7 @@ mod test {
     use std::time::Instant;
 
     use bytes::BytesMut;
-    use futures::{TryFutureExt as _, TryStreamExt as _};
+    use futures::{FutureExt as _, TryFutureExt as _, TryStreamExt as _};
     use nixrs_archive::proptest::arb_nar_contents;
     use pretty_assertions::assert_eq;
     use proptest::prelude::{any, TestCaseError};
@@ -119,7 +121,8 @@ mod test {
     use super::{ClientOptions, UnkeyedValidPathInfo};
     use crate::archive::test_data;
     use crate::archive::NAREvent;
-    use crate::daemon::{logger::LoggerResult as _, server};
+    use crate::daemon::server;
+    use crate::daemon::wire::types2::ValidPathInfo;
     use crate::daemon::{DaemonError, DaemonErrorKind};
     use crate::hash::{digest, Algorithm, NarHash};
     use crate::store_path::StorePath;
@@ -128,10 +131,10 @@ mod test {
     async fn run_store_test<R, T, F, E>(mock: MockStore<R>, test: T) -> Result<(), E>
     where
         R: MockReporter + Send + 'static,
-        T: FnOnce(DaemonClient<ReadHalf<DuplexStream>, WriteHalf<DuplexStream>>) -> F,
+        T: FnOnce(DaemonClient<ReadHalf<DuplexStream>, WriteHalf<DuplexStream>>) -> F + Send,
         F: Future<
-            Output = Result<DaemonClient<ReadHalf<DuplexStream>, WriteHalf<DuplexStream>>, E>,
-        >,
+                Output = Result<DaemonClient<ReadHalf<DuplexStream>, WriteHalf<DuplexStream>>, E>,
+            > + Send,
         E: From<DaemonError>,
     {
         let (client_s, server_s) = duplex(10_000);
@@ -139,15 +142,17 @@ mod test {
         let b = server::Builder::new();
         let server = b
             .serve_connection(server_reader, server_writer, mock)
-            .map_err(From::from);
+            .map_err(From::from)
+            .boxed();
         let (client_reader, client_writer) = split(client_s);
         let client = async move {
             let logs = DaemonClient::builder().connect(client_reader, client_writer);
-            let client = logs.result().await?;
+            let client = logs.await?;
             let mut client = (test)(client).await?;
             client.close().await?;
             Ok(())
-        };
+        }
+        .boxed();
         try_join!(client, server).map(|_| ())
     }
 
@@ -177,7 +182,6 @@ mod test {
                 expected,
                 client
                     .set_options(&options)
-                    .result()
                     .await
                     .map_err(|err| err.to_string())
             );
@@ -206,7 +210,6 @@ mod test {
                 expected,
                 client
                     .is_valid_path(&store_path)
-                    .result()
                     .await
                     .map_err(|err| err.to_string())
             );
@@ -243,7 +246,6 @@ mod test {
                 expected,
                 client
                     .query_valid_paths(&store_paths, substitute)
-                    .result()
                     .await
                     .map_err(|err| err.to_string())
             );
@@ -290,7 +292,6 @@ mod test {
                 expected,
                 client
                     .query_path_info(&store_path)
-                    .result()
                     .await
                     .map_err(|err| err.to_string())
             );
@@ -334,7 +335,6 @@ mod test {
             let mut out = Vec::new();
             client
                 .nar_from_path(&store_path, Cursor::new(&mut out))
-                .result()
                 .await
                 .unwrap();
             let nar: Vec<NAREvent> = crate::archive::parse_nar(Cursor::new(&out))
@@ -367,6 +367,79 @@ mod test {
     }
     */
 
+    #[tokio::test]
+    #[rstest]
+    #[case(
+        ValidPathInfo {
+            path: "00000000000000000000000000000000-_".parse().unwrap(),
+            info: UnkeyedValidPathInfo {
+                deriver: Some("00000000000000000000000000000000-_.drv".parse().unwrap()),
+                nar_hash: NarHash::new(&[0u8; 32]),
+                references: vec!["00000000000000000000000000000000-_".parse().unwrap()],
+                registration_time: 0,
+                nar_size: 0,
+                ultimate: true,
+                signatures: vec![],
+                ca: None,
+            }
+        },
+        true,
+        true,
+        test_data::text_file(),
+        Ok(()),
+        Ok(())
+    )]
+    #[case(ValidPathInfo {
+            path: "00000000000000000000000000000000-_".parse().unwrap(),
+            info: UnkeyedValidPathInfo {
+                deriver: Some("00000000000000000000000000000000-_.drv".parse().unwrap()),
+                nar_hash: NarHash::new(&[0u8; 32]),
+                references: vec!["00000000000000000000000000000000-_".parse().unwrap()],
+                registration_time: 0,
+                nar_size: 0,
+                ultimate: true,
+                signatures: vec![],
+                ca: None,
+            }
+        }, true, true, test_data::text_file(),
+        Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("AddToStoreNar: remote error: AddToStoreNar: bad input path".into())
+    )]
+    async fn add_to_store_nar(
+        #[case] info: ValidPathInfo,
+        #[case] repair: bool,
+        #[case] dont_check_sigs: bool,
+        #[case] events: Vec<NAREvent>,
+        #[case] response: DaemonResult<()>,
+        #[case] expected: Result<(), String>,
+    ) {
+        let mut buf = BytesMut::new();
+        for event in events.iter() {
+            let encoded = event.encoded_size();
+            buf.reserve(encoded);
+            let mut temp = buf.split_off(buf.len());
+            event.encode_into(&mut temp);
+            buf.unsplit(temp);
+        }
+        let content = buf.freeze();
+
+        let mock = MockStore::builder()
+            .add_to_store_nar(&info, repair, dont_check_sigs, content.clone(), response)
+            .build()
+            .build();
+        run_store_test(mock, |mut client| async move {
+            assert_eq!(
+                expected,
+                client
+                    .add_to_store_nar(&info, Cursor::new(content), repair, dont_check_sigs)
+                    .await
+                    .map_err(|err| err.to_string())
+            );
+            Ok(client) as DaemonResult<_>
+        })
+        .await
+        .unwrap();
+    }
+
     // TODO: proptest handshake
 
     proptest! {
@@ -385,7 +458,7 @@ mod test {
                     .set_options(&options, Ok(())).build()
                     .build();
                 run_store_test(mock, |mut client| async move {
-                    let res = client.set_options(&options).result().await;
+                    let res = client.set_options(&options).await;
                     prop_assert!(res.is_ok(), "invalid result {:?}", res);
                     Ok(client)
                 }).await?;
@@ -412,7 +485,7 @@ mod test {
                     .is_valid_path(&path, Ok(result)).build()
                     .build();
                 run_store_test(mock, |mut client| async move {
-                    let res = client.is_valid_path(&path).result().await;
+                    let res = client.is_valid_path(&path).await;
                     prop_assert_eq!(res.unwrap(), result);
                     Ok(client)
                 }).await?;
@@ -440,7 +513,7 @@ mod test {
                     .query_valid_paths(&paths, substitute, Ok(result.clone())).build()
                     .build();
                 run_store_test(mock, |mut client| async move {
-                    let res = client.query_valid_paths(&paths, substitute).result().await;
+                    let res = client.query_valid_paths(&paths, substitute).await;
                     prop_assert_eq!(res.unwrap(), result);
                     Ok(client)
                 }).await?;
@@ -467,7 +540,7 @@ mod test {
                     .query_path_info(&path, Ok(result.clone())).build()
                     .build();
                 run_store_test(mock, |mut client| async move {
-                    let res = client.query_path_info(&path).result().await;
+                    let res = client.query_path_info(&path).await;
                     prop_assert_eq!(res.unwrap(), result);
                     Ok(client)
                 }).await?;
@@ -495,12 +568,40 @@ mod test {
                     .build();
                 run_store_test(mock, |mut client| async move {
                     let mut out = Vec::new();
-                    client.nar_from_path(&path, Cursor::new(&mut out)).result().await?;
+                    client.nar_from_path(&path, Cursor::new(&mut out)).await?;
                     let _ : Vec<NAREvent> = crate::archive::parse_nar(Cursor::new(&out)).try_collect().await?;
                     prop_assert_eq!(nar_size, out.len() as u64);
                     let hash = digest(Algorithm::SHA256, &out);
                     prop_assert_eq!(hash.as_ref(), nar_hash.as_ref());
                     Ok(client)
+                }).await?;
+                Ok(()) as Result<_, TestCaseError>
+            })?;
+            eprintln!("Completed test {}", now.elapsed().as_secs_f64());
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn proptest_add_to_store_nar(
+            info in any::<ValidPathInfo>(),
+            repair in any::<bool>(),
+            dont_check_sigs in any::<bool>(),
+            (_nar_size, _nar_hash, nar_content) in arb_nar_contents(20, 20, 5),
+        )
+        {
+            let now = Instant::now();
+            let r = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            r.block_on(async {
+                let mock = MockStore::builder()
+                    .add_to_store_nar(&info, repair, dont_check_sigs, nar_content.clone(), Ok(())).build()
+                    .build();
+                run_store_test(mock, |mut client| async move {
+                    client.add_to_store_nar(&info, Cursor::new(nar_content), repair, dont_check_sigs).await?;
+                    Ok(client) as DaemonResult<_>
                 }).await?;
                 Ok(()) as Result<_, TestCaseError>
             })?;

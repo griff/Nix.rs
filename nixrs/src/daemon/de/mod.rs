@@ -11,12 +11,16 @@ use super::ProtocolVersion;
 
 mod bytes;
 mod collections;
+mod framed;
 mod int;
 #[cfg(any(test, feature = "test"))]
 pub mod mock;
 mod reader;
+mod stderr_read;
 
+pub use framed::FramedReader;
 pub use reader::{NixReader, NixReaderBuilder};
+pub use stderr_read::StderrReader;
 
 pub trait Error: Sized + StdError {
     fn custom<T: fmt::Display>(msg: T) -> Self;

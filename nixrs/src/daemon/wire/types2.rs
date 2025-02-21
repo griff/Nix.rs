@@ -6,6 +6,8 @@ use bytes::Bytes;
 #[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+#[cfg(any(test, feature = "test"))]
+use proptest_derive::Arbitrary;
 
 use crate::daemon::{
     ClientOptions, DaemonInt, DaemonPath, DaemonString, DaemonTime, UnkeyedValidPathInfo,
@@ -76,8 +78,8 @@ pub struct Realisation(String);
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
 )]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u8", into = "u8"))]
-#[repr(u8)]
+#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
+#[repr(u16)]
 pub enum FileIngestionMethod {
     Flat = 0,
     Recursive = 1,
@@ -243,6 +245,7 @@ impl Request {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct ValidPathInfo {
     pub path: StorePath,
@@ -560,7 +563,7 @@ impl NixDeserialize for Option<Microseconds> {
         if let Some(tag) = reader.try_read_value::<u8>().await? {
             match tag {
                 0 => Ok(None),
-                1 => Ok(Some(reader.read_value().await?)),
+                1 => Ok(Some(Some(reader.read_value::<Microseconds>().await?))),
                 _ => Err(R::Error::invalid_data("invalid optional tag from remote")),
             }
         } else {

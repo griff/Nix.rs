@@ -345,9 +345,9 @@ rec {
       };
       "async-stream" = rec {
         crateName = "async-stream";
-        version = "0.3.5";
-        edition = "2018";
-        sha256 = "0l8sjq1rylkb1ak0pdyjn83b3k6x36j22myngl4sqqgg7whdsmnd";
+        version = "0.3.6";
+        edition = "2021";
+        sha256 = "0xl4zqncrdmw2g6241wgr11dxdg4h7byy6bz3l6si03qyfk72nhb";
         libName = "async_stream";
         authors = [
           "Carl Lerche <me@carllerche.com>"
@@ -370,9 +370,9 @@ rec {
       };
       "async-stream-impl" = rec {
         crateName = "async-stream-impl";
-        version = "0.3.5";
-        edition = "2018";
-        sha256 = "14q179j4y8p2z1d0ic6aqgy9fhwz8p9cai1ia8kpw4bw7q12mrhn";
+        version = "0.3.6";
+        edition = "2021";
+        sha256 = "0kaplfb5axsvf1gfs2gk6c4zx6zcsns0yf3ssk7iwni7bphlvhn7";
         procMacro = true;
         libName = "async_stream_impl";
         authors = [
@@ -4165,6 +4165,10 @@ rec {
         ];
         dependencies = [
           {
+            name = "async-stream";
+            packageId = "async-stream";
+          }
+          {
             name = "bstr";
             packageId = "bstr";
             optional = true;
@@ -4237,6 +4241,10 @@ rec {
             name = "tokio";
             packageId = "tokio";
             features = [ "fs" "io-util" "macros" "net" ];
+          }
+          {
+            name = "tokio-util";
+            packageId = "tokio-util";
           }
         ];
         devDependencies = [
@@ -4624,7 +4632,7 @@ rec {
         libName = "nixrs_legacy";
         authors = [
           "Brian Olsen <brian@maven-group.org>"
-          "Eelco Dolstra <edolstra@gmail.com>"
+          "Nix Authors"
         ];
         dependencies = [
           {

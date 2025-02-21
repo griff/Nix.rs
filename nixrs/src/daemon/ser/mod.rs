@@ -9,11 +9,13 @@ use super::ProtocolVersion;
 mod bytes;
 mod collections;
 mod display;
+mod framed;
 mod int;
 #[cfg(any(test, feature = "test"))]
 pub mod mock;
 mod writer;
 
+pub use framed::FramedWriter;
 pub use writer::{NixWriter, NixWriterBuilder};
 
 pub trait Error: Sized + StdError {

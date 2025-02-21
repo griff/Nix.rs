@@ -1,21 +1,27 @@
 use std::collections::BTreeMap;
 use std::fmt;
+use std::future::ready;
 
 use bstr::ByteSlice;
 use bytes::Bytes;
+use futures::stream::empty;
+use futures::Stream;
 #[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(any(test, feature = "test"))]
 use proptest_derive::Arbitrary;
 use thiserror::Error;
-use tokio::io::AsyncWrite;
+use tokio::io::{AsyncBufRead, AsyncWrite};
 
 use crate::store_path::{FromStoreDirStr, ParseStorePathError, StoreDirDisplay, StorePathSet};
 use crate::{hash::NarHash, store_path::StorePath};
 
-use super::logger::{LocalLoggerResult, LogError, LoggerResult, TraceLine, Verbosity};
+use super::logger::{LocalLoggerResult, LogError, ResultLog, ResultProcess, TraceLine, Verbosity};
 use super::wire::types::Operation;
+use super::wire::types2::{
+    BasicDerivation, BuildMode, BuildResult, DerivedPath, QueryMissingResult, ValidPathInfo,
+};
 use super::wire::{IgnoredTrue, IgnoredZero};
 use super::ProtocolVersion;
 
@@ -108,8 +114,8 @@ pub struct UnkeyedValidPathInfo {
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
 )]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u8", into = "u8"))]
-#[repr(u8)]
+#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
+#[repr(u16)]
 pub enum TrustLevel {
     Unknown = 0,
     Trusted = 1,
@@ -279,9 +285,14 @@ pub struct RemoteError {
     pub traces: Vec<TraceLine>,
 }
 
+pub struct AddToStoreItem<R> {
+    pub info: ValidPathInfo,
+    pub reader: R,
+}
+
 pub trait HandshakeDaemonStore {
     type Store: DaemonStore + Send;
-    fn handshake(self) -> impl LoggerResult<Self::Store, DaemonError>;
+    fn handshake(self) -> impl ResultLog<Self::Store, DaemonError> + Send;
 }
 
 pub trait LocalHandshakeDaemonStore {
@@ -289,34 +300,175 @@ pub trait LocalHandshakeDaemonStore {
     fn handshake(self) -> impl LocalLoggerResult<Self::Store, DaemonError>;
 }
 
+#[allow(unused_variables)]
 pub trait DaemonStore: Send {
     fn trust_level(&self) -> TrustLevel;
     fn set_options<'a>(
         &'a mut self,
         options: &'a ClientOptions,
-    ) -> impl LoggerResult<(), DaemonError> + 'a;
+    ) -> impl ResultLog<(), DaemonError> + Send + 'a {
+        ResultProcess {
+            stream: empty(),
+            result: ready(
+                Err(super::DaemonErrorKind::UnimplementedOperation(
+                    super::wire::types::Operation::SetOptions,
+                ))
+                .with_operation(super::wire::types::Operation::SetOptions),
+            ),
+        }
+    }
     fn is_valid_path<'a>(
         &'a mut self,
         path: &'a StorePath,
-    ) -> impl LoggerResult<bool, DaemonError> + 'a;
+    ) -> impl ResultLog<bool, DaemonError> + Send + 'a {
+        ResultProcess {
+            stream: empty(),
+            result: ready(
+                Err(super::DaemonErrorKind::UnimplementedOperation(
+                    super::wire::types::Operation::IsValidPath,
+                ))
+                .with_operation(super::wire::types::Operation::IsValidPath),
+            ),
+        }
+    }
     fn query_valid_paths<'a>(
         &'a mut self,
         paths: &'a StorePathSet,
         substitute: bool,
-    ) -> impl LoggerResult<StorePathSet, DaemonError> + 'a;
+    ) -> impl ResultLog<StorePathSet, DaemonError> + Send + 'a {
+        ResultProcess {
+            stream: empty(),
+            result: ready(
+                Err(super::DaemonErrorKind::UnimplementedOperation(
+                    super::wire::types::Operation::QueryValidPaths,
+                ))
+                .with_operation(super::wire::types::Operation::QueryValidPaths),
+            ),
+        }
+    }
     fn query_path_info<'a>(
         &'a mut self,
         path: &'a StorePath,
-    ) -> impl LoggerResult<Option<UnkeyedValidPathInfo>, DaemonError> + 'a;
+    ) -> impl ResultLog<Option<UnkeyedValidPathInfo>, DaemonError> + Send + 'a {
+        ResultProcess {
+            stream: empty(),
+            result: ready(
+                Err(super::DaemonErrorKind::UnimplementedOperation(
+                    super::wire::types::Operation::QueryPathInfo,
+                ))
+                .with_operation(super::wire::types::Operation::QueryPathInfo),
+            ),
+        }
+    }
     fn nar_from_path<'s, 'p, 'r, W>(
         &'s mut self,
         path: &'p StorePath,
         sink: W,
-    ) -> impl LoggerResult<(), DaemonError> + 'r
+    ) -> impl ResultLog<(), DaemonError> + Send + 'r
     where
         W: AsyncWrite + Unpin + Send + 'r,
         's: 'r,
-        'p: 'r;
+        'p: 'r,
+    {
+        ResultProcess {
+            stream: empty(),
+            result: ready(
+                Err(super::DaemonErrorKind::UnimplementedOperation(
+                    super::wire::types::Operation::NarFromPath,
+                ))
+                .with_operation(super::wire::types::Operation::NarFromPath),
+            ),
+        }
+    }
+    fn build_paths<'a>(
+        &'a mut self,
+        paths: &'a [DerivedPath],
+        mode: BuildMode,
+    ) -> impl ResultLog<(), DaemonError> + Send + 'a {
+        ResultProcess {
+            stream: empty(),
+            result: ready(
+                Err(super::DaemonErrorKind::UnimplementedOperation(
+                    super::wire::types::Operation::BuildPaths,
+                ))
+                .with_operation(super::wire::types::Operation::BuildPaths),
+            ),
+        }
+    }
+    fn build_derivation<'a>(
+        &'a mut self,
+        drv_path: &'a StorePath,
+        drv: &'a BasicDerivation,
+        build_mode: BuildMode,
+    ) -> impl ResultLog<BuildResult, DaemonError> + Send + 'a {
+        ResultProcess {
+            stream: empty(),
+            result: ready(
+                Err(super::DaemonErrorKind::UnimplementedOperation(
+                    super::wire::types::Operation::BuildDerivation,
+                ))
+                .with_operation(super::wire::types::Operation::BuildDerivation),
+            ),
+        }
+    }
+    fn query_missing<'a>(
+        &'a mut self,
+        paths: &'a [DerivedPath],
+    ) -> impl ResultLog<QueryMissingResult, DaemonError> + Send + 'a {
+        ResultProcess {
+            stream: empty(),
+            result: ready(
+                Err(super::DaemonErrorKind::UnimplementedOperation(
+                    super::wire::types::Operation::QueryMissing,
+                ))
+                .with_operation(super::wire::types::Operation::QueryMissing),
+            ),
+        }
+    }
+    fn add_to_store_nar<'s, 'r, 'i, R>(
+        &'s mut self,
+        info: &'i ValidPathInfo,
+        source: R,
+        repair: bool,
+        dont_check_sigs: bool,
+    ) -> impl ResultLog<(), DaemonError> + Send + 'r
+    where
+        R: AsyncBufRead + Send + Unpin + 'r,
+        's: 'r,
+        'i: 'r,
+    {
+        ResultProcess {
+            stream: empty(),
+            result: ready(
+                Err(super::DaemonErrorKind::UnimplementedOperation(
+                    super::wire::types::Operation::AddToStoreNar,
+                ))
+                .with_operation(super::wire::types::Operation::AddToStoreNar),
+            ),
+        }
+    }
+    fn add_multiple_to_store<'s, 'i, 'r, S, R>(
+        &'s mut self,
+        repair: bool,
+        dont_check_sigs: bool,
+        stream: S,
+    ) -> impl ResultLog<(), DaemonError> + Send + 'r
+    where
+        S: Stream<Item = Result<AddToStoreItem<R>, DaemonError>> + 'i,
+        R: AsyncBufRead + Send + Unpin + 'i,
+        's: 'r,
+        'i: 'r,
+    {
+        ResultProcess {
+            stream: empty(),
+            result: ready(
+                Err(super::DaemonErrorKind::UnimplementedOperation(
+                    super::wire::types::Operation::AddMultipleToStore,
+                ))
+                .with_operation(super::wire::types::Operation::AddMultipleToStore),
+            ),
+        }
+    }
 }
 
 impl<S> DaemonStore for &mut S
@@ -330,14 +482,14 @@ where
     fn set_options<'a>(
         &'a mut self,
         options: &'a ClientOptions,
-    ) -> impl LoggerResult<(), DaemonError> + 'a {
+    ) -> impl ResultLog<(), DaemonError> + Send + 'a {
         (**self).set_options(options)
     }
 
     fn is_valid_path<'a>(
         &'a mut self,
         path: &'a StorePath,
-    ) -> impl LoggerResult<bool, DaemonError> + 'a {
+    ) -> impl ResultLog<bool, DaemonError> + Send + 'a {
         (**self).is_valid_path(path)
     }
 
@@ -345,14 +497,14 @@ where
         &'a mut self,
         paths: &'a StorePathSet,
         substitute: bool,
-    ) -> impl LoggerResult<StorePathSet, DaemonError> + 'a {
+    ) -> impl ResultLog<StorePathSet, DaemonError> + Send + 'a {
         (**self).query_valid_paths(paths, substitute)
     }
 
     fn query_path_info<'a>(
         &'a mut self,
         path: &'a StorePath,
-    ) -> impl LoggerResult<Option<UnkeyedValidPathInfo>, DaemonError> + 'a {
+    ) -> impl ResultLog<Option<UnkeyedValidPathInfo>, DaemonError> + 'a {
         (**self).query_path_info(path)
     }
 
@@ -360,7 +512,7 @@ where
         &'a mut self,
         path: &'p StorePath,
         sink: W,
-    ) -> impl LoggerResult<(), DaemonError> + 'r
+    ) -> impl ResultLog<(), DaemonError> + 'r
     where
         W: AsyncWrite + Unpin + Send + 'r,
         'a: 'r,
@@ -368,11 +520,65 @@ where
     {
         (**self).nar_from_path(path, sink)
     }
+
+    fn build_paths<'a>(
+        &'a mut self,
+        paths: &'a [DerivedPath],
+        mode: BuildMode,
+    ) -> impl ResultLog<(), DaemonError> + 'a {
+        (**self).build_paths(paths, mode)
+    }
+
+    fn build_derivation<'a>(
+        &'a mut self,
+        drv_path: &'a StorePath,
+        drv: &'a BasicDerivation,
+        build_mode: BuildMode,
+    ) -> impl ResultLog<BuildResult, DaemonError> + 'a {
+        (**self).build_derivation(drv_path, drv, build_mode)
+    }
+
+    fn query_missing<'a>(
+        &'a mut self,
+        paths: &'a [DerivedPath],
+    ) -> impl ResultLog<QueryMissingResult, DaemonError> + 'a {
+        (**self).query_missing(paths)
+    }
+
+    fn add_to_store_nar<'s, 'r, 'i, R>(
+        &'s mut self,
+        info: &'i ValidPathInfo,
+        source: R,
+        repair: bool,
+        dont_check_sigs: bool,
+    ) -> impl ResultLog<(), DaemonError> + 'r
+    where
+        R: AsyncBufRead + Send + Unpin + 'r,
+        's: 'r,
+        'i: 'r,
+    {
+        (**self).add_to_store_nar(info, source, repair, dont_check_sigs)
+    }
+
+    fn add_multiple_to_store<'s, 'i, 'r, I, R>(
+        &'s mut self,
+        repair: bool,
+        dont_check_sigs: bool,
+        stream: I,
+    ) -> impl ResultLog<(), DaemonError> + Send + 'r
+    where
+        I: Stream<Item = Result<AddToStoreItem<R>, DaemonError>> + 'i,
+        R: AsyncBufRead + Send + Unpin + 'i,
+        's: 'r,
+        'i: 'r,
+    {
+        (**self).add_multiple_to_store(repair, dont_check_sigs, stream)
+    }
 }
 
 pub trait LocalDaemonStore {
     fn trust_level(&self) -> TrustLevel;
-    fn set_options< 'a>(
+    fn set_options<'a>(
         &'a mut self,
         options: &'a ClientOptions,
     ) -> impl LocalLoggerResult<(), DaemonError> + 'a;

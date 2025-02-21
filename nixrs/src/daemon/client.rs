@@ -1,15 +1,17 @@
 use std::fmt;
 use std::path::Path;
 
+use futures::future::Either;
 use futures::io::Cursor;
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt as _};
+use tokio::io::{copy_buf, AsyncBufRead, AsyncRead, AsyncWrite, AsyncWriteExt as _};
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::UnixStream;
 
 use super::de::{NixDeserialize, NixRead as _, NixReader, NixReaderBuilder};
-use super::logger::{FutureResult, LoggerResult, LoggerResultExt, ProcessStderr};
-use super::ser::{NixWrite as _, NixWriter, NixWriterBuilder};
+use super::logger::{DriveResult, FutureResult, ProcessStderr, ResultLog, ResultLogExt};
+use super::ser::{FramedWriter, NixWrite as _, NixWriter, NixWriterBuilder};
 use super::wire::types::Operation;
+use super::wire::types2::{BuildMode, DerivedPath};
 use super::wire::{CLIENT_MAGIC, SERVER_MAGIC};
 use super::{
     DaemonError, DaemonErrorKind, DaemonResult, DaemonResultExt as _, DaemonStore,
@@ -125,7 +127,7 @@ impl DaemonClientBuilder {
         self,
         reader: R,
         writer: W,
-    ) -> impl LoggerResult<DaemonClient<R, W>, DaemonError>
+    ) -> impl ResultLog<DaemonClient<R, W>, DaemonError>
     where
         R: AsyncRead + fmt::Debug + Unpin + Send + 'static,
         W: AsyncWrite + fmt::Debug + Unpin + Send + 'static,
@@ -136,7 +138,7 @@ impl DaemonClientBuilder {
     pub fn connect_unix<P>(
         self,
         path: P,
-    ) -> impl LoggerResult<DaemonClient<OwnedReadHalf, OwnedWriteHalf>, DaemonError>
+    ) -> impl ResultLog<DaemonClient<OwnedReadHalf, OwnedWriteHalf>, DaemonError>
     where
         P: AsRef<Path> + Send,
     {
@@ -145,7 +147,7 @@ impl DaemonClientBuilder {
 
     pub fn connect_daemon(
         self,
-    ) -> impl LoggerResult<DaemonClient<OwnedReadHalf, OwnedWriteHalf>, DaemonError> {
+    ) -> impl ResultLog<DaemonClient<OwnedReadHalf, OwnedWriteHalf>, DaemonError> {
         FutureResult::new(async move { Ok(self.build_daemon().await?.handshake()) })
     }
 }
@@ -166,7 +168,7 @@ where
 {
     type Store = DaemonClient<R, W>;
 
-    fn handshake(self) -> impl LoggerResult<Self::Store, DaemonError> {
+    fn handshake(self) -> impl ResultLog<Self::Store, DaemonError> {
         FutureResult::new(async move {
             let mut reader = self.reader;
             let mut writer = self.writer;
@@ -231,8 +233,8 @@ where
 
             let host = self.host;
 
-            Ok(
-                ProcessStderr::new(reader).result_fn(move |result, reader, _, _, _| async move {
+            Ok(ProcessStderr::new(reader)
+                .result_fn(move |result, reader, _, _, _| async move {
                     result?;
                     Ok(DaemonClient {
                         host,
@@ -241,8 +243,8 @@ where
                         daemon_nix_version,
                         remote_trusts_us,
                     })
-                }),
-            )
+                })
+                .stream())
         })
     }
 }
@@ -283,7 +285,7 @@ where
         host: String,
         reader: R,
         writer: W,
-    ) -> impl LoggerResult<Self, DaemonError> {
+    ) -> impl ResultLog<Self, DaemonError> {
         let mut b = DaemonClient::builder();
         b.set_store_dir(store_dir).set_host(host);
         b.build(reader, writer).handshake()
@@ -294,13 +296,13 @@ where
         Ok(())
     }
 
-    fn process_stderr<T>(&mut self) -> impl LoggerResult<T, DaemonError> + '_
+    fn process_stderr<T>(&mut self) -> impl ResultLog<T, DaemonError> + '_
     where
         T: NixDeserialize + Send + 'static,
     {
         FutureResult::new(async {
             self.writer.flush().await?;
-            Ok(ProcessStderr::new(&mut self.reader))
+            Ok(ProcessStderr::new(&mut self.reader).stream())
         })
     }
 
@@ -332,7 +334,7 @@ where
     fn set_options<'a>(
         &'a mut self,
         options: &'a super::ClientOptions,
-    ) -> impl LoggerResult<(), DaemonError> + 'a {
+    ) -> impl ResultLog<(), DaemonError> + 'a {
         FutureResult::new(async {
             self.writer.write_value(&Operation::SetOptions).await?;
             self.writer.write_value(options).await?;
@@ -344,7 +346,7 @@ where
     fn is_valid_path<'a>(
         &'a mut self,
         path: &'a crate::store_path::StorePath,
-    ) -> impl LoggerResult<bool, DaemonError> + 'a {
+    ) -> impl ResultLog<bool, DaemonError> + 'a {
         FutureResult::new(async {
             self.writer.write_value(&Operation::IsValidPath).await?;
             self.writer.write_value(path).await?;
@@ -357,7 +359,7 @@ where
         &'a mut self,
         paths: &'a crate::store_path::StorePathSet,
         substitute: bool,
-    ) -> impl LoggerResult<crate::store_path::StorePathSet, DaemonError> + 'a {
+    ) -> impl ResultLog<crate::store_path::StorePathSet, DaemonError> + 'a {
         FutureResult::new(async move {
             self.writer.write_value(&Operation::QueryValidPaths).await?;
             self.writer.write_value(paths).await?;
@@ -372,7 +374,7 @@ where
     fn query_path_info<'a>(
         &'a mut self,
         path: &'a crate::store_path::StorePath,
-    ) -> impl LoggerResult<Option<super::UnkeyedValidPathInfo>, DaemonError> + 'a {
+    ) -> impl ResultLog<Option<super::UnkeyedValidPathInfo>, DaemonError> + 'a {
         FutureResult::new(async {
             self.writer.write_value(&Operation::QueryPathInfo).await?;
             self.writer.write_value(path).await?;
@@ -385,7 +387,7 @@ where
         &'a mut self,
         path: &'p crate::store_path::StorePath,
         mut sink: NW,
-    ) -> impl LoggerResult<(), DaemonError> + 'r
+    ) -> impl ResultLog<(), DaemonError> + 'r
     where
         NW: AsyncWrite + Unpin + Send + 'r,
         'a: 'r,
@@ -395,17 +397,142 @@ where
             self.writer.write_value(&Operation::NarFromPath).await?;
             self.writer.write_value(path).await?;
             self.writer.flush().await?;
-            Ok(ProcessStderr::new(&mut self.reader).result_fn(
-                |result, reader, _, _, _| async move {
+            Ok(ProcessStderr::new(&mut self.reader)
+                .result_fn(|result, reader, _, _, _| async move {
                     result?;
                     eprintln!("Copying NAR from client");
                     copy_nar(reader, &mut sink).await?;
                     sink.shutdown().await?;
                     eprintln!("Copied NAR from client");
                     Ok(())
-                },
-            ))
+                })
+                .stream())
         })
         .map_err(|err| err.fill_operation(Operation::NarFromPath))
+    }
+
+    fn build_paths<'a>(
+        &'a mut self,
+        paths: &'a [DerivedPath],
+        mode: BuildMode,
+    ) -> impl ResultLog<(), DaemonError> + 'a {
+        FutureResult::new(async move {
+            self.writer.write_value(&Operation::BuildPaths).await?;
+            self.writer.write_value(&paths).await?;
+            self.writer.write_value(&mode).await?;
+            Ok(self.process_stderr())
+        })
+        .map_err(|err| err.fill_operation(Operation::BuildPaths))
+    }
+
+    fn build_derivation<'a>(
+        &'a mut self,
+        drv_path: &'a crate::store_path::StorePath,
+        drv: &'a super::wire::types2::BasicDerivation,
+        build_mode: BuildMode,
+    ) -> impl ResultLog<super::wire::types2::BuildResult, DaemonError> + 'a {
+        FutureResult::new(async move {
+            self.writer.write_value(&Operation::BuildDerivation).await?;
+            self.writer.write_value(drv_path).await?;
+            self.writer.write_value(drv).await?;
+            self.writer.write_value(&build_mode).await?;
+            Ok(self.process_stderr())
+        })
+        .map_err(|err| err.fill_operation(Operation::BuildDerivation))
+    }
+
+    fn query_missing<'a>(
+        &'a mut self,
+        paths: &'a [DerivedPath],
+    ) -> impl ResultLog<super::wire::types2::QueryMissingResult, DaemonError> + 'a {
+        FutureResult::new(async move {
+            self.writer.write_value(&Operation::QueryMissing).await?;
+            self.writer.write_value(&paths).await?;
+            Ok(self.process_stderr())
+        })
+        .map_err(|err| err.fill_operation(Operation::QueryMissing))
+    }
+
+    fn add_to_store_nar<'s, 'r, 'i, AR>(
+        &'s mut self,
+        info: &'i super::wire::types2::ValidPathInfo,
+        source: AR,
+        repair: bool,
+        dont_check_sigs: bool,
+    ) -> impl ResultLog<(), DaemonError> + Send + 'r
+    where
+        AR: AsyncBufRead + Send + Unpin + 'r,
+        's: 'r,
+        'i: 'r,
+    {
+        FutureResult::new(async move {
+            self.writer.write_value(&Operation::AddToStoreNar).await?;
+            self.writer.write_value(info).await?;
+            self.writer.write_value(&repair).await?;
+            self.writer.write_value(&dont_check_sigs).await?;
+            if self.writer.version().minor() >= 23 {
+                Ok(Either::Left(Either::Left(DriveResult {
+                    result: ProcessStderr::new(&mut self.reader).stream(),
+                    driver: async {
+                        let mut source = source;
+                        let mut framed = FramedWriter::new(&mut self.writer);
+                        eprintln!("client:add_to_store_nar:driver: copy_buf");
+                        copy_buf(&mut source, &mut framed).await?;
+                        framed.shutdown().await?;
+                        eprintln!("client:add_to_store_nar:driver: flush");
+                        self.writer.flush().await?;
+                        eprintln!("client:add_to_store_nar:driver: done");
+                        Ok(()) as DaemonResult<()>
+                    },
+                    driving: true,
+                    drive_err: None,
+                })))
+            } else if self.writer.version().minor() >= 21 {
+                Ok(Either::Left(Either::Right(
+                    ProcessStderr::new(&mut self.reader)
+                        .with_source(&mut self.writer, source)
+                        .stream(),
+                )))
+            } else {
+                Ok(Either::Right(DriveResult {
+                    result: ProcessStderr::new(&mut self.reader).stream(),
+                    driver: async {
+                        copy_nar(source, &mut self.writer).await?;
+                        self.writer.flush().await?;
+                        Ok(()) as DaemonResult<()>
+                    },
+                    driving: true,
+                    drive_err: None,
+                }))
+            }
+        })
+        .map_err(|err| err.fill_operation(Operation::AddToStoreNar))
+        /*
+        FutureResult::new(async move {
+            self.writer.write_value(&Operation::AddToStoreNar).await?;
+            self.writer.write_value(info).await?;
+            self.writer.write_value(&repair).await?;
+            self.writer.write_value(&dont_check_sigs).await?;
+            if self.writer.version().minor() >= 23 {
+                Ok(Either::Left(ProcessStderr::new(&mut self.reader).drive(async {
+                    let mut source = source;
+                    let mut framed = FramedWriter::new(&mut self.writer);
+                    copy_buf(&mut source, &mut framed).await?;
+                    self.writer.flush().await?;
+                    Ok(())
+                }.boxed())))
+            } else if self.writer.version().minor() >= 21 {
+                Err(DaemonErrorKind::UnimplementedOperation(Operation::AddToStoreNar))
+                    .with_operation(Operation::AddToStoreNar)
+            } else {
+                Ok(Either::Right(ProcessStderr::new(&mut self.reader).drive(async {
+                    copy_nar(source, &mut self.writer).await?;
+                    self.writer.flush().await?;
+                    Ok(())
+                }.boxed())))
+            }
+        })
+        .map_err(|err| err.fill_operation(Operation::QueryMissing))
+         */
     }
 }

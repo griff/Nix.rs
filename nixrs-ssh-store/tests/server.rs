@@ -13,7 +13,7 @@ use tokio::try_join;
 
 use nixrs::daemon::client::DaemonClient;
 use nixrs::daemon::mock::{MockReporter, MockStore};
-use nixrs::daemon::{DaemonError, DaemonErrorKind, DaemonResult, DaemonStore as _, LoggerResult};
+use nixrs::daemon::{DaemonError, DaemonErrorKind, DaemonResult, DaemonStore as _};
 use nixrs::store_path::StorePath;
 
 struct Provider<R: MockReporter>(Arc<RwLock<Option<MockStore<R>>>>);
@@ -96,7 +96,7 @@ where
 
     let client = async move {
         let logs = DaemonClient::builder().connect(stdout, stdin);
-        let client = logs.result().await?;
+        let client = logs.await?;
         let mut client = (test)(client).await?;
         eprintln!("Closing client");
         client.close().await?;
@@ -141,7 +141,6 @@ async fn is_valid_path(
             expected,
             client
                 .is_valid_path(&store_path)
-                .result()
                 .await
                 .map_err(|err| err.to_string())
         );

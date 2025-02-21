@@ -1,6 +1,7 @@
 use std::fmt::{self, Write as _};
 use std::future::poll_fn;
 use std::io::{self, Cursor};
+use std::ops::{Index, IndexMut, Range, RangeFull};
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
@@ -8,6 +9,7 @@ use bytes::{Buf, BufMut, BytesMut};
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
+use crate::daemon::{DEFAULT_BUF_SIZE, RESERVED_BUF_SIZE};
 use crate::{
     daemon::{ProtocolVersion, ZEROS},
     store_path::StoreDir,
@@ -23,7 +25,8 @@ fn calc_padding(len: usize) -> usize {
 pub struct NixWriterBuilder {
     buf: Option<BytesMut>,
     reserved_buf_size: usize,
-    max_buf_size: usize,
+    display_buf_size: usize,
+    initial_buf_size: usize,
     version: ProtocolVersion,
     store_dir: StoreDir,
 }
@@ -32,8 +35,9 @@ impl Default for NixWriterBuilder {
     fn default() -> Self {
         Self {
             buf: Default::default(),
-            reserved_buf_size: 8192,
-            max_buf_size: 8192,
+            reserved_buf_size: RESERVED_BUF_SIZE,
+            display_buf_size: 8192,
+            initial_buf_size: DEFAULT_BUF_SIZE,
             version: Default::default(),
             store_dir: Default::default(),
         }
@@ -46,13 +50,28 @@ impl NixWriterBuilder {
         self
     }
 
+    pub fn set_display_buf_size(mut self, size: usize) -> Self {
+        assert!(
+            size >= 8,
+            "display_buf_size of {} is to small to store u64",
+            size
+        );
+        self.display_buf_size = size;
+        self
+    }
+
     pub fn set_reserved_buf_size(mut self, size: usize) -> Self {
+        assert!(
+            size >= 8,
+            "reserved_buf_size of {} is to small to store u64",
+            size
+        );
         self.reserved_buf_size = size;
         self
     }
 
-    pub fn set_max_buf_size(mut self, size: usize) -> Self {
-        self.max_buf_size = size;
+    pub fn set_initial_buf_size(mut self, size: usize) -> Self {
+        self.initial_buf_size = size;
         self
     }
 
@@ -69,12 +88,14 @@ impl NixWriterBuilder {
     pub fn build<W>(self, writer: W) -> NixWriter<W> {
         let buf = self
             .buf
-            .unwrap_or_else(|| BytesMut::with_capacity(self.max_buf_size));
+            .unwrap_or_else(|| BytesMut::with_capacity(self.initial_buf_size));
+        let buf = LimitBuffer(buf);
         NixWriter {
             buf,
             inner: writer,
+            display_buf_size: self.display_buf_size,
             reserved_buf_size: self.reserved_buf_size,
-            max_buf_size: self.max_buf_size,
+            max_buf_size: self.initial_buf_size,
             version: self.version,
             store_dir: self.store_dir,
         }
@@ -86,7 +107,8 @@ pin_project! {
     pub struct NixWriter<W> {
         #[pin]
         inner: W,
-        buf: BytesMut,
+        buf: LimitBuffer,
+        display_buf_size: usize,
         reserved_buf_size: usize,
         max_buf_size: usize,
         version: ProtocolVersion,
@@ -123,7 +145,17 @@ where
 
     fn poll_flush_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         let mut this = self.project();
+        eprintln!(
+            "poll_flush_buf: empty {} {}",
+            this.buf.len(),
+            this.buf.capacity()
+        );
         while !this.buf.is_empty() {
+            eprintln!(
+                "poll_flush_buf: write {} {}",
+                this.buf.len(),
+                this.buf.capacity()
+            );
             let n = ready!(this.inner.as_mut().poll_write(cx, &this.buf[..]))?;
             if n == 0 {
                 return Poll::Ready(Err(io::Error::new(
@@ -133,6 +165,20 @@ where
             }
             this.buf.advance(n);
         }
+        if this.buf.capacity() < *this.reserved_buf_size {
+            eprintln!(
+                "poll_flush_buf: reserve {} {} {}",
+                *this.reserved_buf_size,
+                this.buf.len(),
+                this.buf.capacity()
+            );
+            this.buf.reserve(*this.reserved_buf_size);
+        }
+        eprintln!(
+            "poll_flush_buf: done {} {}",
+            this.buf.len(),
+            this.buf.capacity()
+        );
         Poll::Ready(Ok(()))
     }
 }
@@ -156,14 +202,22 @@ where
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
-        // Flush
+        eprintln!("poll_write: 1 {} {}", self.buf.len(), self.buf.capacity());
+        // Flush when not enough space
         if self.remaining_mut() < buf.len() {
             ready!(self.as_mut().poll_flush_buf(cx))?;
         }
+        eprintln!("poll_write: 2 {} {}", self.buf.len(), self.buf.capacity());
         let this = self.project();
         if buf.len() > this.buf.capacity() {
+            eprintln!(
+                "poll_write: direct {} {}",
+                this.buf.len(),
+                this.buf.capacity()
+            );
             this.inner.poll_write(cx, buf)
         } else {
+            eprintln!("poll_write: buf {} {}", this.buf.len(), this.buf.capacity());
             this.buf.put_slice(buf);
             Poll::Ready(Ok(buf.len()))
         }
@@ -183,6 +237,88 @@ where
     }
 }
 
+#[derive(Debug)]
+struct LimitBuffer(BytesMut);
+impl LimitBuffer {
+    #[inline]
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+    #[inline]
+    fn advance(&mut self, cnt: usize) {
+        self.0.advance(cnt)
+    }
+    #[inline]
+    fn truncate(&mut self, len: usize) {
+        self.0.truncate(len)
+    }
+    #[inline]
+    fn capacity(&self) -> usize {
+        self.0.capacity()
+    }
+    #[inline]
+    fn reserve(&mut self, additional: usize) {
+        self.0.reserve(additional);
+    }
+}
+
+impl fmt::Write for LimitBuffer {
+    #[inline]
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        if self.remaining_mut() >= s.len() {
+            self.put_slice(s.as_bytes());
+            Ok(())
+        } else {
+            Err(fmt::Error)
+        }
+    }
+
+    #[inline]
+    fn write_fmt(&mut self, args: fmt::Arguments<'_>) -> fmt::Result {
+        fmt::write(self, args)
+    }
+}
+impl Index<RangeFull> for LimitBuffer {
+    type Output = [u8];
+
+    fn index(&self, index: RangeFull) -> &Self::Output {
+        &self.0[index]
+    }
+}
+impl Index<Range<usize>> for LimitBuffer {
+    type Output = [u8];
+
+    fn index(&self, index: Range<usize>) -> &Self::Output {
+        &self.0[index]
+    }
+}
+impl IndexMut<Range<usize>> for LimitBuffer {
+    fn index_mut(&mut self, index: Range<usize>) -> &mut Self::Output {
+        &mut self.0[index]
+    }
+}
+
+unsafe impl BufMut for LimitBuffer {
+    #[inline]
+    fn remaining_mut(&self) -> usize {
+        self.0.capacity() - self.0.len()
+    }
+
+    #[inline]
+    unsafe fn advance_mut(&mut self, cnt: usize) {
+        self.0.advance_mut(cnt);
+    }
+
+    #[inline]
+    fn chunk_mut(&mut self) -> &mut bytes::buf::UninitSlice {
+        self.0.spare_capacity_mut().into()
+    }
+}
+
 impl<W> NixWrite for NixWriter<W>
 where
     W: AsyncWrite + Send + Unpin,
@@ -198,16 +334,34 @@ where
     }
 
     async fn write_number(&mut self, value: u64) -> Result<(), Self::Error> {
-        let mut buf = [0u8; 8];
-        BufMut::put_u64_le(&mut &mut buf[..], value);
-        self.write_all(&buf).await
+        self.write_all(&value.to_le_bytes()).await
     }
 
     async fn write_slice(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
         let padding = calc_padding(buf.len());
+        eprintln!(
+            "write_slice: len {} {}",
+            self.buf.len(),
+            self.buf.capacity()
+        );
         self.write_value(&buf.len()).await?;
+        eprintln!(
+            "write_slice: slice {} {}",
+            self.buf.len(),
+            self.buf.capacity()
+        );
         self.write_all(buf).await?;
+        eprintln!(
+            "write_slice: done {} {}",
+            self.buf.len(),
+            self.buf.capacity()
+        );
         if padding > 0 {
+            eprintln!(
+                "write_slice: padding {} {}",
+                self.buf.len(),
+                self.buf.capacity()
+            );
             self.write_all(&ZEROS[..padding]).await
         } else {
             Ok(())
@@ -219,35 +373,122 @@ where
         D: fmt::Display + Send,
         Self: Sized,
     {
-        // Ensure that buffer has space for at least reserved_buf_size bytes
-        if self.remaining_mut() < self.reserved_buf_size && !self.buf.is_empty() {
+        // Ensure that buffer has space for at least display_buf_size bytes
+        if self.remaining_mut() < self.display_buf_size {
             self.flush_buf().await?;
         }
+        eprintln!(
+            "write_display: empty len {} {}",
+            self.remaining_mut(),
+            self.buf.capacity()
+        );
         let offset = self.buf.len();
         self.buf.put_u64_le(0);
+        eprintln!(
+            "write_display: fmt {} {}",
+            self.remaining_mut(),
+            self.buf.capacity()
+        );
         if let Err(err) = write!(self.buf, "{}", msg) {
             self.buf.truncate(offset);
+            eprintln!(
+                "write_display: error {} {}",
+                self.remaining_mut(),
+                self.buf.capacity()
+            );
             return Err(Self::Error::unsupported_data(err));
         }
+        eprintln!(
+            "write_display: len {} {}",
+            self.remaining_mut(),
+            self.buf.capacity()
+        );
         let len = self.buf.len() - offset - 8;
         BufMut::put_u64_le(&mut &mut self.buf[offset..(offset + 8)], len as u64);
         let padding = calc_padding(len);
-        self.write_all(&ZEROS[..padding]).await
+        self.write_all(&ZEROS[..padding]).await?;
+        eprintln!(
+            "write_display: done {} {}",
+            self.remaining_mut(),
+            self.buf.capacity()
+        );
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::time::Duration;
+    use std::{io::Cursor, time::Duration};
 
     use hex_literal::hex;
     use rstest::rstest;
     use tokio::io::AsyncWriteExt as _;
     use tokio_test::io::Builder;
 
-    use crate::daemon::ser::NixWrite;
+    use crate::daemon::ser::{NixWrite, NixWriterBuilder};
 
     use super::NixWriter;
+
+    #[tokio::test]
+    async fn test_buffer_reclaim() {
+        let under = Cursor::new(Vec::<u8>::new());
+        let mut writer = NixWriterBuilder::default()
+            .set_initial_buf_size(24)
+            .set_reserved_buf_size(16)
+            .build(under);
+        assert_eq!(24, writer.remaining_mut());
+        assert_eq!(24, writer.buf.capacity());
+        writer.write_slice("1234567".as_bytes()).await.unwrap();
+        assert_eq!(8, writer.remaining_mut());
+        assert_eq!(24, writer.buf.capacity());
+        writer.write_slice("1234567".as_bytes()).await.unwrap();
+        assert_eq!(16, writer.remaining_mut());
+        assert_eq!(24, writer.buf.capacity());
+        writer.write_slice("1234567".as_bytes()).await.unwrap();
+        assert_eq!(0, writer.remaining_mut());
+        assert_eq!(24, writer.buf.capacity());
+        writer.write_slice("1234567".as_bytes()).await.unwrap();
+        assert_eq!(8, writer.remaining_mut());
+        assert_eq!(24, writer.buf.capacity());
+    }
+
+    #[tokio::test]
+    async fn test_reserve_buf() {
+        let under = Cursor::new(Vec::<u8>::new());
+        let mut writer = NixWriterBuilder::default()
+            .set_initial_buf_size(2)
+            .set_reserved_buf_size(9)
+            .build(under);
+        writer.write_slice("1234567".as_bytes()).await.unwrap();
+        assert_eq!(1, writer.remaining_mut());
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "reserved_buf_size of 7 is to small to store u64")]
+    async fn test_invalid_reserved_buf_size() {
+        NixWriterBuilder::default().set_reserved_buf_size(7);
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "display_buf_size of 7 is to small to store u64")]
+    async fn test_invalid_display_buf_size() {
+        NixWriterBuilder::default().set_display_buf_size(7);
+    }
+
+    #[tokio::test]
+    async fn test_display_error() {
+        let under = Cursor::new(Vec::<u8>::new());
+        let mut writer = NixWriterBuilder::default()
+            .set_initial_buf_size(10)
+            .set_reserved_buf_size(10)
+            .set_display_buf_size(10)
+            .build(under);
+        writer.write_display("12").await.unwrap();
+        assert_eq!(4, writer.remaining_mut());
+        writer.write_display("123").await.unwrap_err();
+        assert_eq!(10, writer.remaining_mut());
+        assert_eq!(0, writer.buf.len());
+    }
 
     #[rstest]
     #[case(1, &hex!("0100 0000 0000 0000"))]
@@ -288,7 +529,9 @@ mod test {
             builder.wait(Duration::ZERO);
         }
         let mock = builder.build();
-        let mut writer = NixWriter::builder().set_max_buf_size(buf_size).build(mock);
+        let mut writer = NixWriter::builder()
+            .set_initial_buf_size(buf_size)
+            .build(mock);
 
         writer.write_slice(value).await.unwrap();
         //assert_eq!(writer.buffer(), buf);

@@ -1,22 +1,30 @@
-use futures::future::TryFutureExt;
-use tokio::io::{copy, simplex, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::try_join;
+use std::pin::pin;
 
+use futures::future::TryFutureExt;
+use futures::StreamExt as _;
+use tokio::io::{
+    copy, simplex, AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite,
+    AsyncWriteExt,
+};
+use tokio::{select, try_join};
+
+use crate::daemon::de::{FramedReader, StderrReader};
 use crate::daemon::wire::logger::RawLogMessage;
 use crate::daemon::wire::types::Operation;
 use crate::daemon::wire::types2::{AddToStoreRequest, BaseStorePath};
+use crate::daemon::wire::IgnoredOne;
 use crate::daemon::{DaemonErrorKind, DaemonResultExt, PROTOCOL_VERSION};
 use crate::store_path::StorePath;
 
 use super::de::{NixRead, NixReader};
-use super::logger::{LocalLoggerResult, LoggerResult};
+use super::logger::LocalLoggerResult;
 use super::ser::{NixWrite, NixWriter};
 use super::types::{LocalDaemonStore, LocalHandshakeDaemonStore};
-use super::wire::types2::Request;
+use super::wire::types2::{Request, ValidPathInfo};
 use super::wire::{CLIENT_MAGIC, SERVER_MAGIC};
 use super::{
-    DaemonError, DaemonResult, DaemonStore, HandshakeDaemonStore, ProtocolVersion, TrustLevel,
-    NIX_VERSION,
+    DaemonError, DaemonResult, DaemonStore, HandshakeDaemonStore, ProtocolVersion, ResultLog,
+    TrustLevel, NIX_VERSION,
 };
 
 pub struct RecoverableError {
@@ -144,6 +152,19 @@ impl Default for Builder {
     }
 }
 
+async fn process_logs<'s, T: Send + 's, W: AsyncWrite + Send + Unpin>(
+    writer: &'s mut NixWriter<W>,
+    logs: impl ResultLog<T, DaemonError> + 's,
+) -> Result<T, RecoverableError> {
+    let mut logs = pin!(logs);
+    while let Some(msg) = logs.next().await {
+        writer.write_value(&msg).await?;
+    }
+    let value = logs.await.recover()?;
+    writer.write_value(&RawLogMessage::Last).await?;
+    Ok(value)
+}
+
 pub struct DaemonConnection<R, W> {
     store_trust: TrustLevel,
     reader: NixReader<R>,
@@ -152,8 +173,8 @@ pub struct DaemonConnection<R, W> {
 
 impl<R, W> DaemonConnection<R, W>
 where
-    R: AsyncReadExt + Send + Unpin,
-    W: AsyncWriteExt + Send + Unpin,
+    R: AsyncRead + Send + Unpin,
+    W: AsyncWrite + Send + Unpin,
 {
     pub async fn handshake<'s>(
         &'s mut self,
@@ -231,15 +252,9 @@ where
 
     pub async fn process_logs<'s, T: Send + 's>(
         &'s mut self,
-        mut logs: impl LoggerResult<T, DaemonError> + 's,
+        logs: impl ResultLog<T, DaemonError> + Send + 's,
     ) -> Result<T, RecoverableError> {
-        while let Some(msg) = logs.next().await {
-            self.writer.write_value(&msg.recover()?).await?;
-        }
-        // TODO: Test this recover
-        let value = logs.result().await.recover()?;
-        self.writer.write_value(&RawLogMessage::Last).await?;
-        Ok(value)
+        process_logs(&mut self.writer, logs).await
     }
 
     pub async fn process_requests<'s, S>(&'s mut self, mut store: S) -> Result<(), DaemonError>
@@ -266,11 +281,27 @@ where
         Ok(())
     }
 
+    fn add_to_store_nar<'s, 'p, 'r, NW, S>(
+        store: &'s mut S,
+        info: &'p ValidPathInfo,
+        source: NW,
+        repair: bool,
+        dont_check_sigs: bool,
+    ) -> impl ResultLog<(), DaemonError> + Send + 'r
+    where
+        S: DaemonStore + 's,
+        NW: AsyncBufRead + Unpin + Send + 'r,
+        's: 'r,
+        'p: 'r,
+    {
+        store.add_to_store_nar(info, source, repair, dont_check_sigs)
+    }
+
     fn store_nar_from_path<'s, 'p, 'r, NW, S>(
         store: &'s mut S,
         path: &'p StorePath,
         sink: NW,
-    ) -> impl LoggerResult<(), DaemonError> + 'r
+    ) -> impl ResultLog<(), DaemonError> + 'r
     where
         S: DaemonStore + 's,
         NW: AsyncWrite + Unpin + Send + 'r,
@@ -291,10 +322,11 @@ where
         // FUTUREWORK: Fix that this whole implementation allocates 2 buffers
 
         let (mut reader, sink) = simplex(10_000);
-        let mut logs = Self::store_nar_from_path(store, &path, sink);
+        let logs = Self::store_nar_from_path(store, &path, sink);
 
+        let mut logs = pin!(logs);
         while let Some(msg) = logs.next().await {
-            self.writer.write_value(&msg.recover()?).await?;
+            self.writer.write_value(&msg).await?;
         }
 
         self.writer.write_value(&RawLogMessage::Last).await?;
@@ -307,7 +339,7 @@ where
                 eprintln!("Copied {:?} NAR from server", ret);
                 ret
             },
-            logs.result().map_err(DaemonError::from)
+            logs.map_err(DaemonError::from)
         )?;
         Ok(())
     }
@@ -397,17 +429,14 @@ where
                 ))
                 .with_operation(op)?;
             }
-            BuildPaths(_req) => {
+            BuildPaths(req) => {
+                let logs = store.build_paths(&req.paths, req.mode);
+                self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 1 :: [Int][se-Int] (hardcoded and ignored by client)
                  */
-
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::BuildPaths,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&IgnoredOne).await?;
             }
             EnsurePath(_path) => {
                 /*
@@ -534,16 +563,14 @@ where
                 .with_operation(op)
                 .recover()?;
             }
-            BuildDerivation(_req) => {
+            BuildDerivation(req) => {
+                let logs = store.build_derivation(&req.drv_path, &req.drv, req.build_mode);
+                let value = self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 buildResult :: [BuildResult][se-BuildResult]
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::BuildDerivation,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&value).await?;
             }
             AddSignatures(_req) => {
                 /*
@@ -556,27 +583,138 @@ where
                 .with_operation(op)
                 .recover()?;
             }
-            AddToStoreNar(_req) => {
+            AddToStoreNar(req) => {
                 /*
                 ### Inputs
-                #### If protocol version is 1.23 or newer
-                [Framed][se-Framed] NAR dump
-
-                #### If protocol version is between 1.21 and 1.23
-                NAR dump sent using [`STDERR_READ`](./logging.md#stderr_read)
-
-                #### If protocol version is older than 1.21
-                NAR dump sent raw on stream
-
+                 */
+                if self.reader.version().minor() >= 23 {
+                    /*
+                    #### If protocol version is 1.23 or newer
+                    [Framed][se-Framed] NAR dump
+                     */
+                    eprintln!("DaemonConnection: Add to store");
+                    let mut framed = FramedReader::new(&mut self.reader);
+                    eprintln!("DaemonConnection: Add to store: Framed");
+                    let logs = Self::add_to_store_nar(
+                        &mut store,
+                        &req.path_info,
+                        &mut framed,
+                        req.repair,
+                        req.dont_check_sigs,
+                    );
+                    eprintln!("DaemonConnection: Add to store: Logs");
+                    let res: Result<(), RecoverableError> = async {
+                        let mut logs = pin!(logs);
+                        eprintln!("DaemonConnection: Add to store: get log");
+                        while let Some(msg) = logs.next().await {
+                            eprintln!("DaemonConnection: Add to store: got log");
+                            self.writer.write_value(&msg).await?;
+                        }
+                        eprintln!("DaemonConnection: Add to store: get result");
+                        logs.await.recover()?;
+                        self.writer.write_value(&RawLogMessage::Last).await?;
+                        Ok(())
+                    }
+                    .await;
+                    eprintln!("DaemonConnection: Add to store: drain reader");
+                    let err = framed.drain_all().await;
+                    eprintln!("DaemonConnection: Add to store: done");
+                    res?;
+                    err?;
+                } else if self.reader.version().minor() >= 21 {
+                    /*
+                    #### If protocol version is between 1.21 and 1.23
+                    NAR dump sent using [`STDERR_READ`](./logging.md#stderr_read)
+                     */
+                    let (mut receiver, mut reader) = StderrReader::new(&mut self.reader);
+                    let logs = Self::add_to_store_nar(
+                        &mut store,
+                        &req.path_info,
+                        &mut reader,
+                        req.repair,
+                        req.dont_check_sigs,
+                    );
+                    let res: Result<(), RecoverableError> = async {
+                        let mut logs = pin!(logs);
+                        loop {
+                            select! {
+                                log = logs.next() => {
+                                    if let Some(msg) = log {
+                                        self.writer.write_value(&msg).await?;
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                read_msg = receiver.recv() => {
+                                    if let Some(read) = read_msg {
+                                        self.writer.write_value(&RawLogMessage::Read(read)).await?;
+                                    }
+                                }
+                            }
+                        }
+                        logs.await.recover()?;
+                        self.writer.write_value(&RawLogMessage::Last).await?;
+                        Ok(())
+                    }
+                    .await;
+                    let err: DaemonResult<()> = async {
+                        loop {
+                            let len = reader.fill_buf().await?.len();
+                            if len == 0 {
+                                break;
+                            }
+                            reader.consume(len);
+                        }
+                        Ok(())
+                    }
+                    .await;
+                    res?;
+                    err?;
+                } else {
+                    /*
+                    #### If protocol version is older than 1.21
+                    NAR dump sent raw on stream
+                     */
+                    let mut reader = (&mut self.reader).take(req.path_info.info.nar_size);
+                    let logs = Self::add_to_store_nar(
+                        &mut store,
+                        &req.path_info,
+                        &mut reader,
+                        req.repair,
+                        req.dont_check_sigs,
+                    );
+                    let res: Result<(), RecoverableError> = async {
+                        let mut logs = pin!(logs);
+                        while let Some(msg) = logs.next().await {
+                            self.writer.write_value(&msg).await?;
+                        }
+                        logs.await.recover()?;
+                        self.writer.write_value(&RawLogMessage::Last).await?;
+                        Ok(())
+                    }
+                    .await;
+                    let err: DaemonResult<()> = async {
+                        loop {
+                            let len = reader.fill_buf().await?.len();
+                            if len == 0 {
+                                break;
+                            }
+                            reader.consume(len);
+                        }
+                        Ok(())
+                    }
+                    .await;
+                    res?;
+                    err?;
+                }
+                /*
                 ### Outputs
                 Nothing
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::AddToStoreNar,
-                ))
-                .with_operation(op)?;
             }
-            QueryMissing(_paths) => {
+            QueryMissing(paths) => {
+                let logs = store.query_missing(&paths);
+                let value = self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 - willBuild :: [Set][se-Set] of [StorePath][se-StorePath]
@@ -585,11 +723,7 @@ where
                 - downloadSize :: [UInt64][se-UInt64]
                 - narSize :: [UInt64][se-UInt64]
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryMissing,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&value).await?;
             }
             QueryDerivationOutputMap(_path) => {
                 /*
@@ -838,7 +972,6 @@ where
         Ok(())
     }
 
-
     pub async fn local_process_logs<'s, T: Send + 's>(
         &'s mut self,
         mut logs: impl LocalLoggerResult<T, DaemonError> + 's,
@@ -852,7 +985,10 @@ where
         Ok(value)
     }
 
-    pub async fn local_process_requests<'s, S>(&'s mut self, mut store: S) -> Result<(), DaemonError>
+    pub async fn local_process_requests<'s, S>(
+        &'s mut self,
+        mut store: S,
+    ) -> Result<(), DaemonError>
     where
         S: LocalDaemonStore + 's,
     {
@@ -1448,6 +1584,3 @@ where
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod test {}

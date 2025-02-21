@@ -1,7 +1,7 @@
-use std::future::poll_fn;
+use std::future::{poll_fn, Future};
 use std::io::{self, Cursor};
 use std::ops::RangeInclusive;
-use std::pin::Pin;
+use std::pin::{pin, Pin};
 use std::task::{ready, Context, Poll};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
@@ -117,7 +117,7 @@ where
         self.buf.capacity() - self.buf.len()
     }
 
-    fn poll_force_fill_buf(
+    pub fn poll_force_fill_buf(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<usize>> {
@@ -151,7 +151,7 @@ impl<R> NixReader<R>
 where
     R: AsyncReadExt + Unpin,
 {
-    async fn force_fill(&mut self) -> io::Result<usize> {
+    pub async fn force_fill(&mut self) -> io::Result<usize> {
         let mut p = Pin::new(self);
         let read = poll_fn(|cx| p.as_mut().poll_force_fill_buf(cx)).await?;
         Ok(read)
@@ -172,17 +172,8 @@ where
         &self.store_dir
     }
 
-    async fn try_read_number(&mut self) -> Result<Option<u64>, Self::Error> {
-        let mut buf = [0u8; 8];
-        let read = self.read_buf(&mut &mut buf[..]).await?;
-        if read == 0 {
-            return Ok(None);
-        }
-        if read < 8 {
-            self.read_exact(&mut buf[read..]).await?;
-        }
-        let num = Buf::get_u64_le(&mut &buf[..]);
-        Ok(Some(num))
+    fn try_read_number(&mut self) -> impl Future<Output = Result<Option<u64>, Self::Error>> {
+        TryReadU64::new().read(self)
     }
 
     async fn try_read_bytes_limited(
@@ -194,6 +185,8 @@ where
             "The limit must be smaller than {}",
             self.max_buf_size
         );
+        TryReadBytesLimited::new(limit).read(self).await
+        /*
         match self.try_read_number().await? {
             Some(raw_len) => {
                 // Check that length is in range and convert to usize
@@ -235,6 +228,7 @@ where
             }
             None => Ok(None),
         }
+        */
     }
 
     async fn try_read_bytes(&mut self) -> Result<Option<Bytes>, Self::Error> {
@@ -253,9 +247,11 @@ impl<R: AsyncRead> AsyncRead for NixReader<R> {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
         let rem = ready!(self.as_mut().poll_fill_buf(cx))?;
-        let amt = std::cmp::min(rem.len(), buf.remaining());
-        buf.put_slice(&rem[0..amt]);
-        self.consume(amt);
+        if !rem.is_empty() {
+            let amt = std::cmp::min(rem.len(), buf.remaining());
+            buf.put_slice(&rem[0..amt]);
+            self.consume(amt);
+        }
         Poll::Ready(Ok(()))
     }
 }
@@ -272,6 +268,138 @@ impl<R: AsyncRead> AsyncBufRead for NixReader<R> {
     fn consume(self: Pin<&mut Self>, amt: usize) {
         let me = self.project();
         me.buf.advance(amt)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum TryReadBytesLimited {
+    ReadLen(RangeInclusive<usize>, TryReadU64),
+    Fill(usize, usize),
+    Done,
+}
+
+impl TryReadBytesLimited {
+    pub(crate) fn new(limit: RangeInclusive<usize>) -> Self {
+        Self::ReadLen(limit, TryReadU64::new())
+    }
+    async fn read<R: AsyncRead + Unpin>(
+        mut self,
+        reader: &mut NixReader<R>,
+    ) -> io::Result<Option<Bytes>> {
+        let mut reader = Pin::new(reader);
+        poll_fn(move |cx| self.poll_reader(cx, reader.as_mut())).await
+    }
+
+    pub(crate) fn poll_reader<R>(
+        &mut self,
+        cx: &mut Context<'_>,
+        mut reader: Pin<&mut NixReader<R>>,
+    ) -> Poll<io::Result<Option<Bytes>>>
+    where
+        R: AsyncRead,
+    {
+        loop {
+            match self {
+                Self::ReadLen(limit, try_read_u64) => {
+                    if let Some(raw_len) = ready!(try_read_u64.poll_reader(cx, reader.as_mut()))? {
+                        // Check that length is in range and convert to usize
+                        let len = raw_len
+                            .try_into()
+                            .ok()
+                            .filter(|v| limit.contains(v))
+                            .ok_or_else(|| io::Error::invalid_data("bytes length out of range"))?;
+
+                        // Calculate 64bit aligned length and convert to usize
+                        let aligned: usize = raw_len
+                            .checked_add(7)
+                            .map(|v| v & !7)
+                            .ok_or_else(|| {
+                                io::Error::invalid_data("aligned bytes length out of range")
+                            })?
+                            .try_into()
+                            .map_err(io::Error::invalid_data)?;
+
+                        let r = reader.as_mut().project();
+                        // Ensure that there is enough space in buffer for contents
+                        if r.buf.capacity() < aligned {
+                            r.buf.reserve(aligned - r.buf.len());
+                        }
+                        *self = Self::Fill(len, aligned);
+                    } else {
+                        *self = Self::Done;
+                        return Poll::Ready(Ok(None));
+                    }
+                }
+                Self::Fill(len, aligned) => {
+                    while reader.as_mut().project().buf.len() < *aligned {
+                        if ready!(reader.as_mut().poll_force_fill_buf(cx))? == 0 {
+                            *self = Self::Done;
+                            return Poll::Ready(Err(io::Error::missing_data(
+                                "unexpected end-of-file reading bytes",
+                            )));
+                        }
+                    }
+                    let mut contents = reader.as_mut().project().buf.split_to(*aligned);
+
+                    let padding = *aligned - *len;
+                    // Ensure padding is all zeros
+                    if contents[*len..] != ZEROS[..padding] {
+                        *self = Self::Done;
+                        return Poll::Ready(Err(io::Error::invalid_data("non-zero padding")));
+                    }
+
+                    contents.truncate(*len);
+                    *self = Self::Done;
+                    return Poll::Ready(Ok(Some(contents.freeze())));
+                }
+                Self::Done => panic!("Polling completed future"),
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TryReadU64 {
+    buf: [u8; 8],
+    read: u8,
+}
+
+impl TryReadU64 {
+    pub(crate) fn new() -> Self {
+        Self {
+            buf: [0u8; 8],
+            read: 0,
+        }
+    }
+    async fn read<R: AsyncRead>(mut self, reader: R) -> io::Result<Option<u64>> {
+        let mut reader = pin!(reader);
+        poll_fn(move |cx| self.poll_reader(cx, reader.as_mut())).await
+    }
+    pub(crate) fn poll_reader<R>(
+        &mut self,
+        cx: &mut Context<'_>,
+        mut reader: Pin<&mut R>,
+    ) -> Poll<io::Result<Option<u64>>>
+    where
+        R: AsyncRead,
+    {
+        while self.read < 8 {
+            let mut buf = ReadBuf::new(&mut self.buf[(self.read as usize)..]);
+            ready!(reader.as_mut().poll_read(cx, &mut buf))?;
+            if buf.filled().is_empty() {
+                if self.read == 0 {
+                    return Poll::Ready(Ok(None));
+                } else {
+                    return Poll::Ready(Err(io::Error::new(
+                        io::ErrorKind::UnexpectedEof,
+                        "EOF reading u64",
+                    )));
+                }
+            }
+            self.read += buf.filled().len() as u8;
+        }
+        let num = Buf::get_u64_le(&mut &self.buf[..]);
+        Poll::Ready(Ok(Some(num)))
     }
 }
 
