@@ -38,7 +38,7 @@
             nix-output-monitor
           ];
           text = ''
-            nix flake check --impure --log-format internal-json 2>&1 | nom --json
+            nix flake check --impure --log-format bar-with-logs
           '';
         };
       };
