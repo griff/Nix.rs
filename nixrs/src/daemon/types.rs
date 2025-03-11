@@ -114,8 +114,8 @@ pub struct UnkeyedValidPathInfo {
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
 )]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
-#[repr(u16)]
+#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u64", into = "u64"))]
+#[repr(u64)]
 pub enum TrustLevel {
     Unknown = 0,
     Trusted = 1,
@@ -454,7 +454,7 @@ pub trait DaemonStore: Send {
         stream: S,
     ) -> impl ResultLog<(), DaemonError> + Send + 'r
     where
-        S: Stream<Item = Result<AddToStoreItem<R>, DaemonError>> + 'i,
+        S: Stream<Item = Result<AddToStoreItem<R>, DaemonError>> + Send + 'i,
         R: AsyncBufRead + Send + Unpin + 'i,
         's: 'r,
         'i: 'r,
@@ -567,7 +567,7 @@ where
         stream: I,
     ) -> impl ResultLog<(), DaemonError> + Send + 'r
     where
-        I: Stream<Item = Result<AddToStoreItem<R>, DaemonError>> + 'i,
+        I: Stream<Item = Result<AddToStoreItem<R>, DaemonError>> + Send + 'i,
         R: AsyncBufRead + Send + Unpin + 'i,
         's: 'r,
         'i: 'r,

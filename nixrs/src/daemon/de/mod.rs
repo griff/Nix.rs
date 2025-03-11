@@ -25,6 +25,11 @@ pub use stderr_read::StderrReader;
 pub trait Error: Sized + StdError {
     fn custom<T: fmt::Display>(msg: T) -> Self;
 
+    #[allow(unused_variables)]
+    fn with_field(self, field: &'static str) -> Self {
+        self
+    }
+
     fn io_error(err: std::io::Error) -> Self {
         Self::custom(format_args!("There was an I/O error {}", err))
     }

@@ -1,8 +1,8 @@
 use std::io;
 use std::sync::Arc;
 
-use bytes::Bytes;
-use futures::SinkExt;
+use bytes::{Bytes, BytesMut};
+use futures::{SinkExt, TryStreamExt};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::pin;
 use tokio_util::codec::FramedWrite;
@@ -57,6 +57,28 @@ where
     pin!(parser);
     let mut framed = FramedWrite::new(writer, NAREncoder);
     framed.send_all(&mut parser).await
+}
+
+pub async fn read_nar<R>(source: R) -> io::Result<Vec<NAREvent>>
+where
+    R: AsyncRead + Unpin,
+{
+    parse_nar(source).try_collect().await
+}
+
+pub fn write_nar<'e, E>(events: E) -> Bytes
+where
+    E: IntoIterator<Item = &'e NAREvent>,
+{
+    let mut buf = BytesMut::new();
+    for event in events.into_iter() {
+        let encoded = event.encoded_size();
+        buf.reserve(encoded);
+        let mut temp = buf.split_off(buf.len());
+        event.encode_into(&mut temp);
+        buf.unsplit(temp);
+    }
+    buf.freeze()
 }
 
 #[cfg(any(test, feature = "test"))]

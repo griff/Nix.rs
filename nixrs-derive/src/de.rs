@@ -62,7 +62,6 @@ fn nix_deserialize_impl(
     body: TokenStream,
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
     quote! {
         #[automatically_derived]
         impl #impl_generics #crate_path::daemon::de::NixDeserialize for #ty #ty_generics
@@ -71,6 +70,7 @@ fn nix_deserialize_impl(
             async fn try_deserialize<R>(reader: &mut R) -> std::result::Result<Option<Self>, R::Error>
                 where R: ?Sized + #crate_path::daemon::de::NixRead + Send,
             {
+                use #crate_path::daemon::de::Error as _;
                 #body
             }
         }
@@ -114,17 +114,22 @@ fn nix_deserialize_body(cont: &Container) -> TokenStream {
 
 fn nix_deserialize_field(f: &Field) -> TokenStream {
     let field = f.var_ident();
+    let field_s = field.to_string();
+    let field_sl = syn::LitStr::new(&field_s, field.span());
     let ty = f.ty;
     let read_value = quote_spanned! {
         ty.span()=> if first__ {
             first__ = false;
-            if let Some(v) = reader.try_read_value::<#ty>().await? {
+            let value = reader.try_read_value::<#ty>().await
+                .map_err(|err| err.with_field(#field_sl))?;
+            if let Some(v) = value {
                 v
             } else {
                 return Ok(None);
             }
         } else {
-            reader.read_value::<#ty>().await?
+            reader.read_value::<#ty>().await
+                .map_err(|err| err.with_field(#field_sl))?
         }
     };
     if let Some(version) = f.attrs.version.as_ref() {

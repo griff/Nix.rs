@@ -4,6 +4,8 @@ use std::fmt;
 use nixrs_derive::{NixDeserialize, NixSerialize};
 
 #[cfg(feature = "nixrs-derive")]
+pub(crate) mod add_multiple_to_store;
+#[cfg(feature = "nixrs-derive")]
 pub mod client;
 pub mod de;
 #[cfg(feature = "nixrs-derive")]
@@ -30,8 +32,6 @@ pub use types::{
     DaemonResult, DaemonResultExt, DaemonStore, DaemonString, DaemonTime, HandshakeDaemonStore,
     LocalDaemonStore, LocalHandshakeDaemonStore, RemoteError, TrustLevel, UnkeyedValidPathInfo,
 };
-
-pub(crate) const ZEROS: [u8; 8] = [0u8; 8];
 
 pub const NIX_VERSION: &str = "Nix.rs 1.0";
 pub const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 35);
@@ -104,6 +104,7 @@ mod test {
     use std::time::Instant;
 
     use bytes::BytesMut;
+    use futures::stream::iter;
     use futures::{FutureExt as _, TryFutureExt as _, TryStreamExt as _};
     use nixrs_archive::proptest::arb_nar_contents;
     use pretty_assertions::assert_eq;
@@ -112,7 +113,10 @@ mod test {
     use rstest::rstest;
     use tokio::io::{duplex, split, DuplexStream, ReadHalf, WriteHalf};
     use tokio::try_join;
+    use tracing::trace;
+    use tracing_test::traced_test;
 
+    use super::wire::types2::{BasicDerivation, QueryMissingResult};
     use super::{
         client::DaemonClient,
         mock::{MockReporter, MockStore},
@@ -121,8 +125,11 @@ mod test {
     use super::{ClientOptions, UnkeyedValidPathInfo};
     use crate::archive::test_data;
     use crate::archive::NAREvent;
-    use crate::daemon::server;
-    use crate::daemon::wire::types2::ValidPathInfo;
+    use crate::daemon::types::AddToStoreItem;
+    use crate::daemon::wire::types2::{
+        BuildMode, BuildResult, BuildStatus, DerivationOutput, DerivedPath, ValidPathInfo,
+    };
+    use crate::daemon::{server, DaemonString};
     use crate::daemon::{DaemonError, DaemonErrorKind};
     use crate::hash::{digest, Algorithm, NarHash};
     use crate::store_path::StorePath;
@@ -147,15 +154,20 @@ mod test {
         let (client_reader, client_writer) = split(client_s);
         let client = async move {
             let logs = DaemonClient::builder().connect(client_reader, client_writer);
+            trace!("Client handshake");
             let client = logs.await?;
+            trace!("Client Sending requests");
             let mut client = (test)(client).await?;
+            trace!("Client done");
             client.close().await?;
+            trace!("Client closed");
             Ok(())
         }
         .boxed();
         try_join!(client, server).map(|_| ())
     }
 
+    #[traced_test]
     #[tokio::test]
     async fn handshake() {
         let mock = MockStore::builder().build();
@@ -164,6 +176,7 @@ mod test {
             .unwrap();
     }
 
+    #[traced_test]
     #[tokio::test]
     #[rstest]
     #[case(ClientOptions::default(), Ok(()), Ok(()))]
@@ -191,6 +204,7 @@ mod test {
         .unwrap();
     }
 
+    #[traced_test]
     #[tokio::test]
     #[rstest]
     #[case("00000000000000000000000000000000-_", Ok(true), Ok(true))]
@@ -219,6 +233,7 @@ mod test {
         .unwrap();
     }
 
+    #[traced_test]
     #[tokio::test]
     #[rstest]
     #[case(&["00000000000000000000000000000000-_"][..], true, Ok(&["10000000000000000000000000000000-_"][..]), Ok(&["10000000000000000000000000000000-_"][..]))]
@@ -255,6 +270,7 @@ mod test {
         .unwrap();
     }
 
+    #[traced_test]
     #[tokio::test]
     #[rstest]
     #[case("00000000000000000000000000000000-_", Ok(Some(UnkeyedValidPathInfo {
@@ -301,6 +317,7 @@ mod test {
         .unwrap();
     }
 
+    #[traced_test]
     #[tokio::test]
     #[rstest]
     #[case("00000000000000000000000000000000-_", test_data::text_file())]
@@ -350,6 +367,7 @@ mod test {
     }
 
     /*
+    #[traced_test]
     #[tokio::test]
     #[rstest]
     #[case("00000000000000000000000000000000-_", DaemonError::Custom("bad input path".into()), "remote error: bad input path".into())]
@@ -367,9 +385,201 @@ mod test {
     }
     */
 
+    // BuildPaths
+    #[traced_test]
     #[tokio::test]
     #[rstest]
-    #[case(
+    #[case::normal(&["00000000000000000000000000000000-_"][..], BuildMode::Normal, Ok(()), Ok(()))]
+    #[case::repair(&["00000000000000000000000000000000-_"][..], BuildMode::Repair, Ok(()), Ok(()))]
+    #[case::empty(&[][..], BuildMode::Check, Ok(()), Ok(()))]
+    #[case::error(&["00000000000000000000000000000000-_"][..], BuildMode::Normal, Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("BuildPaths: remote error: BuildPaths: bad input path".into()))]
+    async fn build_paths(
+        #[case] paths: &[&str],
+        #[case] mode: BuildMode,
+        #[case] response: DaemonResult<()>,
+        #[case] expected: Result<(), String>,
+    ) {
+        let paths: Vec<DerivedPath> = paths.iter().map(|p| p.parse().unwrap()).collect();
+        let mock = MockStore::builder()
+            .build_paths(&paths, mode, response)
+            .build()
+            .build();
+        run_store_test(mock, |mut client| async move {
+            assert_eq!(
+                expected,
+                client
+                    .build_paths(&paths, mode)
+                    .await
+                    .map_err(|err| err.to_string())
+            );
+            Ok(client) as DaemonResult<_>
+        })
+        .await
+        .unwrap();
+    }
+
+    macro_rules! store_path_set {
+        () => { StorePathSet::new() };
+        ($p:expr $(, $pr:expr)*) => {{
+            let mut ret = StorePathSet::new();
+            let p = $p.parse::<StorePath>().unwrap();
+            ret.insert(p);
+            $(
+                ret.insert($pr.parse::<StorePath>().unwrap());
+            )*
+            ret
+        }}
+    }
+    macro_rules! btree_map {
+        () => {std::collections::BTreeMap::new()};
+        ($k:expr => $v:expr
+         $(, $kr:expr => $vr:expr )*) => {{
+            let mut ret = std::collections::BTreeMap::new();
+            ret.insert($k, $v);
+            $(
+                ret.insert($kr, $vr);
+            )*
+            ret
+         }}
+    }
+
+    // BuildDerivation
+    #[traced_test]
+    #[tokio::test]
+    #[rstest]
+    #[case::normal("00000000000000000000000000000000-_.drv", BasicDerivation {
+        outputs: btree_map!(
+            "out".into() => DerivationOutput {
+                path: Some("00000000000000000000000000000000-_".parse().unwrap()),
+                hash_algo: None,
+                hash: None,
+            }
+        ),
+        input_srcs: store_path_set!(),
+        platform: DaemonString::from_static(b"x86_64-linux"),
+        builder: DaemonString::from_static(b"/bin/sh"),
+        args: vec![DaemonString::from_static(b"-c"), DaemonString::from_static(b"echo Hello")],
+        env: btree_map!(),
+    }, BuildMode::Normal, Ok(BuildResult {
+        status: BuildStatus::Built,
+        error_msg: DaemonString::from_static(b""),
+        times_built: 1,
+        is_non_deterministic: false,
+        start_time: 0,
+        stop_time: 0,
+        cpu_user: None,
+        cpu_system: None,
+        built_outputs: btree_map!(),
+    }), Ok(BuildResult {
+        status: BuildStatus::Built,
+        error_msg: DaemonString::from_static(b""),
+        times_built: 1,
+        is_non_deterministic: false,
+        start_time: 0,
+        stop_time: 0,
+        cpu_user: None,
+        cpu_system: None,
+        built_outputs: btree_map!(),
+    }))]
+    #[case::error("00000000000000000000000000000000-_.drv", BasicDerivation {
+        outputs: btree_map!(
+            "out".into() => DerivationOutput {
+                path: Some("00000000000000000000000000000000-_".parse().unwrap()),
+                hash_algo: None,
+                hash: None,
+            }
+        ),
+        input_srcs: store_path_set!(),
+        platform: DaemonString::from_static(b"x86_64-linux"),
+        builder: DaemonString::from_static(b"/bin/sh"),
+        args: vec![DaemonString::from_static(b"-c"), DaemonString::from_static(b"echo Hello")],
+        env: btree_map!(),
+    }, BuildMode::Normal, Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("BuildDerivation: remote error: BuildDerivation: bad input path".into()))]
+    async fn build_derivation(
+        #[case] drv_path: StorePath,
+        #[case] drv: BasicDerivation,
+        #[case] build_mode: BuildMode,
+        #[case] response: DaemonResult<BuildResult>,
+        #[case] expected: Result<BuildResult, String>,
+    ) {
+        let mock = MockStore::builder()
+            .build_derivation(&drv_path, &drv, build_mode, response)
+            .build()
+            .build();
+        run_store_test(mock, |mut client| async move {
+            assert_eq!(
+                expected,
+                client
+                    .build_derivation(&drv_path, &drv, build_mode)
+                    .await
+                    .map_err(|err| err.to_string())
+            );
+            Ok(client) as DaemonResult<_>
+        })
+        .await
+        .unwrap();
+    }
+
+    // QueryMissing
+    #[traced_test]
+    #[tokio::test]
+    #[rstest]
+    #[case::substitute(&["00000000000000000000000000000000-_"][..],
+        Ok(QueryMissingResult {
+            will_build: store_path_set!(),
+            will_substitute: store_path_set!("00000000000000000000000000000000-_"),
+            unknown: store_path_set!(),
+            download_size: 200,
+            nar_size: 500,
+        }), Ok(QueryMissingResult {
+            will_build: store_path_set!(),
+            will_substitute: store_path_set!("00000000000000000000000000000000-_"),
+            unknown: store_path_set!(),
+            download_size: 200,
+            nar_size: 500,
+        }))]
+    #[case::empty(&[][..], Ok(QueryMissingResult {
+        will_build: store_path_set!(),
+        will_substitute: store_path_set!(),
+        unknown: store_path_set!(),
+        download_size: 0,
+        nar_size: 0,
+    }), Ok(QueryMissingResult {
+        will_build: store_path_set!(),
+        will_substitute: store_path_set!(),
+        unknown: store_path_set!(),
+        download_size: 0,
+        nar_size: 0,
+    }))]
+    #[case::error(&["00000000000000000000000000000000-_"][..], Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("QueryMissing: remote error: QueryMissing: bad input path".into()))]
+    async fn query_missing(
+        #[case] paths: &[&str],
+        #[case] response: DaemonResult<QueryMissingResult>,
+        #[case] expected: Result<QueryMissingResult, String>,
+    ) {
+        let paths: Vec<DerivedPath> = paths.iter().map(|p| p.parse().unwrap()).collect();
+        let mock = MockStore::builder()
+            .query_missing(&paths, response)
+            .build()
+            .build();
+        run_store_test(mock, |mut client| async move {
+            assert_eq!(
+                expected,
+                client
+                    .query_missing(&paths)
+                    .await
+                    .map_err(|err| err.to_string())
+            );
+            Ok(client) as DaemonResult<_>
+        })
+        .await
+        .unwrap();
+    }
+
+    #[traced_test]
+    #[tokio::test]
+    #[rstest]
+    #[case::ok(
         ValidPathInfo {
             path: "00000000000000000000000000000000-_".parse().unwrap(),
             info: UnkeyedValidPathInfo {
@@ -389,7 +599,7 @@ mod test {
         Ok(()),
         Ok(())
     )]
-    #[case(ValidPathInfo {
+    #[case::error(ValidPathInfo {
             path: "00000000000000000000000000000000-_".parse().unwrap(),
             info: UnkeyedValidPathInfo {
                 deriver: Some("00000000000000000000000000000000-_.drv".parse().unwrap()),
@@ -440,9 +650,139 @@ mod test {
         .unwrap();
     }
 
+    // AddMultipleToStore
+    #[traced_test]
+    #[tokio::test]
+    #[rstest]
+    #[case(
+        true,
+        true,
+        vec![
+            (
+                ValidPathInfo {
+                    path: "00000000000000000000000000000000-_".parse().unwrap(),
+                    info: UnkeyedValidPathInfo {
+                        deriver: Some("00000000000000000000000000000000-_.drv".parse().unwrap()),
+                        nar_hash: NarHash::new(&[0u8; 32]),
+                        references: vec!["00000000000000000000000000000000-_".parse().unwrap()],
+                        registration_time: 0,
+                        nar_size: 0,
+                        ultimate: true,
+                        signatures: vec![],
+                        ca: None,
+                    }
+                },
+                test_data::text_file(),
+            ),
+            (
+                ValidPathInfo {
+                    path: "00000000000000000000000000000011-_".parse().unwrap(),
+                    info: UnkeyedValidPathInfo {
+                        deriver: Some("00000000000000000000000000000022-_.drv".parse().unwrap()),
+                        nar_hash: NarHash::new(&[1u8; 32]),
+                        references: vec!["00000000000000000000000000000000-_".parse().unwrap()],
+                        registration_time: 0,
+                        nar_size: 200,
+                        ultimate: true,
+                        signatures: vec![],
+                        ca: None,
+                    }
+                },
+                test_data::dir_example()
+            ),
+        ],
+        Ok(()),
+        Ok(())
+    )]
+    #[case(
+        true,
+        true,
+        vec![
+            (
+                ValidPathInfo {
+                    path: "00000000000000000000000000000000-_".parse().unwrap(),
+                    info: UnkeyedValidPathInfo {
+                        deriver: Some("00000000000000000000000000000000-_.drv".parse().unwrap()),
+                        nar_hash: NarHash::new(&[0u8; 32]),
+                        references: vec!["00000000000000000000000000000000-_".parse().unwrap()],
+                        registration_time: 0,
+                        nar_size: 0,
+                        ultimate: true,
+                        signatures: vec![],
+                        ca: None,
+                    }
+                },
+                test_data::text_file(),
+            ),
+            (
+                ValidPathInfo {
+                    path: "00000000000000000000000000000011-_".parse().unwrap(),
+                    info: UnkeyedValidPathInfo {
+                        deriver: Some("00000000000000000000000000000022-_.drv".parse().unwrap()),
+                        nar_hash: NarHash::new(&[1u8; 32]),
+                        references: vec!["00000000000000000000000000000000-_".parse().unwrap()],
+                        registration_time: 0,
+                        nar_size: 200,
+                        ultimate: true,
+                        signatures: vec![],
+                        ca: None,
+                    }
+                },
+                test_data::dir_example()
+            ),
+        ],
+        Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("AddMultipleToStore: remote error: AddMultipleToStore: bad input path".into())
+    )]
+    async fn add_multiple_to_store(
+        #[case] repair: bool,
+        #[case] dont_check_sigs: bool,
+        #[case] infos: Vec<(ValidPathInfo, Vec<NAREvent>)>,
+        #[case] response: DaemonResult<()>,
+        #[case] expected: Result<(), String>,
+    ) {
+        let infos_content: Vec<_> = infos
+            .iter()
+            .map(|(info, events)| {
+                let mut buf = BytesMut::new();
+                for event in events.iter() {
+                    let encoded = event.encoded_size();
+                    buf.reserve(encoded);
+                    let mut temp = buf.split_off(buf.len());
+                    event.encode_into(&mut temp);
+                    buf.unsplit(temp);
+                }
+                (info.clone(), buf.freeze())
+            })
+            .collect();
+        let infos_stream = iter(infos_content.clone().into_iter().map(|(info, content)| {
+            Ok(AddToStoreItem {
+                info: info.clone(),
+                reader: Cursor::new(content.clone()),
+            })
+        }));
+
+        let mock = MockStore::builder()
+            .add_multiple_to_store(repair, dont_check_sigs, infos_content, response)
+            .build()
+            .build();
+        run_store_test(mock, |mut client| async move {
+            assert_eq!(
+                expected,
+                client
+                    .add_multiple_to_store(repair, dont_check_sigs, infos_stream)
+                    .await
+                    .map_err(|err| err.to_string())
+            );
+            Ok(client) as DaemonResult<_>
+        })
+        .await
+        .unwrap();
+    }
+
     // TODO: proptest handshake
 
     proptest! {
+        #[traced_test]
         #[test]
         fn proptest_set_options(
             options in any::<ClientOptions>(),
@@ -469,6 +809,7 @@ mod test {
     }
 
     proptest! {
+        #[traced_test]
         #[test]
         fn proptest_is_valid_path(
             path in any::<StorePath>(),
@@ -496,6 +837,7 @@ mod test {
     }
 
     proptest! {
+        #[traced_test]
         #[test]
         fn proptest_query_valid_paths(
             paths in any::<StorePathSet>(),
@@ -524,6 +866,7 @@ mod test {
     }
 
     proptest! {
+        #[traced_test]
         #[test]
         fn proptest_query_path_info(
             path in any::<StorePath>(),
@@ -551,6 +894,7 @@ mod test {
     }
 
     proptest! {
+        #[traced_test]
         #[test]
         fn proptest_nar_from_path(
             path in any::<StorePath>(),
@@ -582,6 +926,7 @@ mod test {
     }
 
     proptest! {
+        #[traced_test]
         #[test]
         fn proptest_add_to_store_nar(
             info in any::<ValidPathInfo>(),
@@ -612,6 +957,7 @@ mod test {
 
     /*
     proptest! {
+        #[traced_test]
         #[test]
         fn proptest_operations(
             ops in any::<Vec<LogOperation>>(),

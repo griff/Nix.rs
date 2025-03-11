@@ -10,7 +10,7 @@ use bytes::Bytes;
 use futures::channel::mpsc;
 use futures::future::Either;
 use futures::stream::empty;
-use futures::stream::iter;
+use futures::stream::{iter, TryStreamExt};
 use futures::Stream;
 #[cfg(any(test, feature = "test"))]
 use futures::StreamExt as _;
@@ -24,10 +24,12 @@ use tokio::io::{simplex, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _};
 use super::logger::{
     Activity, ActivityResult, FutureResult, LogMessage, ResultLogExt as _, ResultProcess,
 };
+use super::types::AddToStoreItem;
 use super::wire::types::Operation;
 use super::wire::types2::{
-    AddToStoreNarRequest, BuildDerivationRequest, BuildMode, BuildPathsRequest, BuildResult,
-    DerivedPath, QueryMissingResult, QueryValidPathsRequest, ValidPathInfo,
+    AddMultipleToStoreRequest, AddToStoreNarRequest, BasicDerivation, BuildDerivationRequest,
+    BuildMode, BuildPathsRequest, BuildResult, DerivedPath, QueryMissingResult,
+    QueryValidPathsRequest, ValidPathInfo,
 };
 use super::{
     ClientOptions, DaemonError, DaemonErrorKind, DaemonResult, DaemonResultExt, DaemonStore,
@@ -47,6 +49,11 @@ pub enum MockOperation {
     BuildDerivation(BuildDerivationRequest, DaemonResult<BuildResult>),
     QueryMissing(Vec<DerivedPath>, DaemonResult<QueryMissingResult>),
     AddToStoreNar(AddToStoreNarRequest, Bytes, DaemonResult<()>),
+    AddMultipleToStore(
+        AddMultipleToStoreRequest,
+        Vec<(ValidPathInfo, Bytes)>,
+        DaemonResult<()>,
+    ),
 }
 
 impl MockOperation {
@@ -63,6 +70,9 @@ impl MockOperation {
             Self::AddToStoreNar(request, nar, _) => {
                 MockRequest::AddToStoreNar(request.clone(), nar.clone())
             }
+            Self::AddMultipleToStore(request, stream, _) => {
+                MockRequest::AddMultipleToStore(request.clone(), stream.clone())
+            }
         }
     }
 
@@ -77,6 +87,7 @@ impl MockOperation {
             Self::BuildDerivation(_, _) => Operation::BuildDerivation,
             Self::QueryMissing(_, _) => Operation::QueryMissing,
             Self::AddToStoreNar(_, _, _) => Operation::AddToStoreNar,
+            Self::AddMultipleToStore(_, _, _) => Operation::AddMultipleToStore,
         }
     }
 
@@ -91,6 +102,7 @@ impl MockOperation {
             Self::BuildDerivation(_, result) => result.clone().map(|value| value.into()),
             Self::QueryMissing(_, result) => result.clone().map(|value| value.into()),
             Self::AddToStoreNar(_, _, result) => result.clone().map(|value| value.into()),
+            Self::AddMultipleToStore(_, _, result) => result.clone().map(|value| value.into()),
         }
     }
 }
@@ -106,6 +118,7 @@ pub enum MockRequest {
     BuildDerivation(BuildDerivationRequest),
     QueryMissing(Vec<DerivedPath>),
     AddToStoreNar(AddToStoreNarRequest, Bytes),
+    AddMultipleToStore(AddMultipleToStoreRequest, Vec<(ValidPathInfo, Bytes)>),
 }
 
 impl MockRequest {
@@ -120,6 +133,7 @@ impl MockRequest {
             Self::BuildDerivation(_) => Operation::BuildDerivation,
             Self::QueryMissing(_) => Operation::QueryMissing,
             Self::AddToStoreNar(_, _) => Operation::AddToStoreNar,
+            Self::AddMultipleToStore(_, _) => Operation::AddMultipleToStore,
         }
     }
     pub fn get_response<'s, S>(
@@ -171,7 +185,7 @@ impl MockRequest {
             Self::QueryMissing(paths) => Either::Left(Either::Right(Either::Right(Either::Right(
                 store.query_missing(paths).map_ok(From::from),
             )))),
-            Self::AddToStoreNar(request, source) => Either::Right(
+            Self::AddToStoreNar(request, source) => Either::Right(Either::Left(
                 store
                     .add_to_store_nar(
                         &request.path_info,
@@ -180,7 +194,21 @@ impl MockRequest {
                         request.dont_check_sigs,
                     )
                     .map_ok(|value| value.into()),
-            ),
+            )),
+            Self::AddMultipleToStore(request, stream) => Either::Right(Either::Right(
+                store
+                    .add_multiple_to_store(
+                        request.repair,
+                        request.dont_check_sigs,
+                        iter(stream.iter().map(|(info, content)| {
+                            Ok(AddToStoreItem {
+                                info: info.clone(),
+                                reader: Cursor::new(content.clone()),
+                            })
+                        })),
+                    )
+                    .map_ok(|value| value.into()),
+            )),
         }
     }
 }
@@ -788,6 +816,31 @@ impl<R> Builder<R> {
         ))
     }
 
+    pub fn build_derivation(
+        &mut self,
+        drv_path: &StorePath,
+        drv: &BasicDerivation,
+        build_mode: BuildMode,
+        response: DaemonResult<BuildResult>,
+    ) -> LogBuilder<R> {
+        self.build_operation(MockOperation::BuildDerivation(
+            BuildDerivationRequest {
+                drv_path: drv_path.clone(),
+                drv: drv.clone(),
+                build_mode,
+            },
+            response,
+        ))
+    }
+
+    pub fn query_missing(
+        &mut self,
+        paths: &[DerivedPath],
+        response: DaemonResult<QueryMissingResult>,
+    ) -> LogBuilder<R> {
+        self.build_operation(MockOperation::QueryMissing(paths.to_vec(), response))
+    }
+
     pub fn add_to_store_nar(
         &mut self,
         info: &ValidPathInfo,
@@ -799,6 +852,23 @@ impl<R> Builder<R> {
         self.build_operation(MockOperation::AddToStoreNar(
             AddToStoreNarRequest {
                 path_info: info.clone(),
+                repair,
+                dont_check_sigs,
+            },
+            contents,
+            response,
+        ))
+    }
+
+    pub fn add_multiple_to_store(
+        &mut self,
+        repair: bool,
+        dont_check_sigs: bool,
+        contents: Vec<(ValidPathInfo, Bytes)>,
+        response: DaemonResult<()>,
+    ) -> LogBuilder<R> {
+        self.build_operation(MockOperation::AddMultipleToStore(
+            AddMultipleToStoreRequest {
                 repair,
                 dont_check_sigs,
             },
@@ -1300,7 +1370,7 @@ where
         's: 'r,
         'i: 'r,
     {
-        FutureResult::new(async move {
+        Box::pin(FutureResult::new(async move {
             let actual_req = AddToStoreNarRequest {
                 path_info: info.clone(),
                 repair,
@@ -1309,6 +1379,38 @@ where
             let mut actual_nar = Vec::new();
             source.read_to_end(&mut actual_nar).await?;
             let actual = MockRequest::AddToStoreNar(actual_req.clone(), actual_nar.clone().into());
+            Ok(self.check_operation(actual))
+        }))
+    }
+
+    fn add_multiple_to_store<'s, 'i, 'r, S, SR>(
+        &'s mut self,
+        repair: bool,
+        dont_check_sigs: bool,
+        stream: S,
+    ) -> impl ResultLog<(), DaemonError> + Send + 'r
+    where
+        S: Stream<Item = Result<AddToStoreItem<SR>, DaemonError>> + Send + 'i,
+        SR: tokio::io::AsyncBufRead + Send + Unpin + 'i,
+        's: 'r,
+        'i: 'r,
+    {
+        FutureResult::new(async move {
+            let actual_req = AddMultipleToStoreRequest {
+                repair,
+                dont_check_sigs,
+            };
+            eprintln!("Size of raw stream {}", size_of_val(&stream));
+            let fut = stream
+                .and_then(|mut info| async move {
+                    let mut nar = Vec::new();
+                    info.reader.read_to_end(&mut nar).await?;
+                    Ok((info.info, nar.into()))
+                })
+                .try_collect();
+            eprintln!("Size of stream {}", size_of_val(&fut));
+            let actual_infos = fut.await?;
+            let actual = MockRequest::AddMultipleToStore(actual_req.clone(), actual_infos);
             Ok(self.check_operation(actual))
         })
     }

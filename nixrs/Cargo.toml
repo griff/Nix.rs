@@ -12,7 +12,7 @@ license = "EUPL-1.2 OR MIT"
 [features]
 test = ["proptest", "dep:proptest-derive", "nixrs-archive?/test"]
 archive = ["dep:nixrs-archive"]
-daemon = ["nixrs-derive", "archive"]
+daemon = ["nixrs-derive", "archive", "tokio/rt"]
 nixrs-derive = ["dep:nixrs-derive", "dep:libc", "dep:num_enum", "dep:bstr", "dep:futures"]
 
 # Enable all features by default.
@@ -28,6 +28,7 @@ futures = { workspace = true, optional = true }
 libc = { workspace = true, optional = true }
 md5 = { workspace = true, optional = true }
 num_enum = { workspace = true, optional = true }
+parking_lot = { version = "^0.12.3", features = ["arc_lock"] }
 pin-project-lite = { workspace = true }
 proptest = { workspace = true, optional = true }
 proptest-derive = { workspace = true, optional = true }
@@ -35,6 +36,7 @@ ring = { workspace = true }
 # smallvec = { workspace = true }
 thiserror = { workspace = true }
 tokio-util = { workspace = true }
+tracing = { workspace = true }
 
 [dependencies.tokio]
 workspace = true
@@ -59,6 +61,7 @@ proptest = { workspace = true }
 proptest-derive = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
+tracing-test = { workspace = true }
 tokio-test = { workspace = true }
 
 [dev-dependencies.nixrs-archive]

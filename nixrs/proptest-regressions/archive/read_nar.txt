@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 7d364f24e8aa3309a548f6abbb349f8ee64644faabaabf1a799efba20befc2ec # shrinks to (_nar_size, _nar_hash, content) = (112, SHA256:77ac62e2629d8e45f624589c0c8bf99e24b3a722349bf1e79bc186008534e246, b"\r\0\0\0\0\0\0\0nix-archive-1\0\0\0\x01\0\0\0\0\0\0\0(\0\0\0\0\0\0\0\x04\0\0\0\0\0\0\0type\0\0\0\0\x07\0\0\0\0\0\0\0regular\0\x08\0\0\0\0\0\0\0contents\0\0\0\0\0\0\0\0\x01\0\0\0\0\0\0\0)\0\0\0\0\0\0\0"), chunk_size = Index(0)

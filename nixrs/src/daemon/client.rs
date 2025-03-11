@@ -3,13 +3,16 @@ use std::path::Path;
 
 use futures::future::Either;
 use futures::io::Cursor;
+use futures::Stream;
 use tokio::io::{copy_buf, AsyncBufRead, AsyncRead, AsyncWrite, AsyncWriteExt as _};
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::UnixStream;
 
+use super::add_multiple_to_store::write_add_multiple_to_store_stream;
 use super::de::{NixDeserialize, NixRead as _, NixReader, NixReaderBuilder};
 use super::logger::{DriveResult, FutureResult, ProcessStderr, ResultLog, ResultLogExt};
-use super::ser::{FramedWriter, NixWrite as _, NixWriter, NixWriterBuilder};
+use super::ser::{FramedWriter, NixWrite, NixWriter, NixWriterBuilder};
+use super::types::AddToStoreItem;
 use super::wire::types::Operation;
 use super::wire::types2::{BuildMode, DerivedPath};
 use super::wire::{CLIENT_MAGIC, SERVER_MAGIC};
@@ -18,6 +21,7 @@ use super::{
     HandshakeDaemonStore, ProtocolVersion, TrustLevel,
 };
 use crate::archive::copy_nar;
+use crate::io::BytesReader;
 use crate::store_path::StoreDir;
 
 pub struct DaemonClientBuilder {
@@ -84,11 +88,14 @@ impl DaemonClientBuilder {
         self
     }
 
-    pub fn build<R, W>(self, reader: R, writer: W) -> DaemonHandshakeClient<R, W> {
+    pub fn build<R, W>(self, reader: R, writer: W) -> DaemonHandshakeClient<R, W>
+    where
+        R: AsyncRead,
+    {
         let reader = self
             .reader_builder
             .set_store_dir(&self.store_dir)
-            .build(reader);
+            .build_buffered(reader);
         let writer = self
             .writer_builder
             .set_store_dir(&self.store_dir)
@@ -157,7 +164,7 @@ pub struct DaemonHandshakeClient<R, W> {
     host: String,
     min_version: ProtocolVersion,
     max_version: ProtocolVersion,
-    reader: NixReader<R>,
+    reader: NixReader<BytesReader<R>>,
     writer: NixWriter<W>,
 }
 
@@ -221,7 +228,7 @@ where
             if version.minor() >= 33 {
                 writer.flush().await?;
                 let version = reader.read_value().await.with_field("nixVersion")?;
-                eprintln!("Nix Version {}", version);
+                eprintln!("Nix Version {:?}", version);
                 daemon_nix_version = Some(version);
             }
 
@@ -252,7 +259,7 @@ where
 #[derive(Debug)]
 pub struct DaemonClient<R, W> {
     host: String,
-    reader: NixReader<R>,
+    reader: NixReader<BytesReader<R>>,
     writer: NixWriter<W>,
     daemon_nix_version: Option<String>,
     remote_trusts_us: TrustLevel,
@@ -465,48 +472,50 @@ where
         's: 'r,
         'i: 'r,
     {
-        FutureResult::new(async move {
-            self.writer.write_value(&Operation::AddToStoreNar).await?;
-            self.writer.write_value(info).await?;
-            self.writer.write_value(&repair).await?;
-            self.writer.write_value(&dont_check_sigs).await?;
-            if self.writer.version().minor() >= 23 {
-                Ok(Either::Left(Either::Left(DriveResult {
-                    result: ProcessStderr::new(&mut self.reader).stream(),
-                    driver: async {
-                        let mut source = source;
-                        let mut framed = FramedWriter::new(&mut self.writer);
-                        eprintln!("client:add_to_store_nar:driver: copy_buf");
-                        copy_buf(&mut source, &mut framed).await?;
-                        framed.shutdown().await?;
-                        eprintln!("client:add_to_store_nar:driver: flush");
-                        self.writer.flush().await?;
-                        eprintln!("client:add_to_store_nar:driver: done");
-                        Ok(()) as DaemonResult<()>
-                    },
-                    driving: true,
-                    drive_err: None,
-                })))
-            } else if self.writer.version().minor() >= 21 {
-                Ok(Either::Left(Either::Right(
-                    ProcessStderr::new(&mut self.reader)
-                        .with_source(&mut self.writer, source)
-                        .stream(),
-                )))
-            } else {
-                Ok(Either::Right(DriveResult {
-                    result: ProcessStderr::new(&mut self.reader).stream(),
-                    driver: async {
-                        copy_nar(source, &mut self.writer).await?;
-                        self.writer.flush().await?;
-                        Ok(()) as DaemonResult<()>
-                    },
-                    driving: true,
-                    drive_err: None,
-                }))
-            }
-        })
-        .map_err(|err| err.fill_operation(Operation::AddToStoreNar))
+        Box::pin(
+            FutureResult::new(async move {
+                self.writer.write_value(&Operation::AddToStoreNar).await?;
+                self.writer.write_value(info).await?;
+                self.writer.write_value(&repair).await?;
+                self.writer.write_value(&dont_check_sigs).await?;
+                if self.writer.version().minor() >= 23 {
+                    Ok(Either::Left(Either::Left(Box::pin(DriveResult {
+                        result: ProcessStderr::new(&mut self.reader).stream(),
+                        driver: async {
+                            let mut source = source;
+                            let mut framed = FramedWriter::new(&mut self.writer);
+                            eprintln!("client:add_to_store_nar:driver: copy_buf");
+                            copy_buf(&mut source, &mut framed).await?;
+                            framed.shutdown().await?;
+                            eprintln!("client:add_to_store_nar:driver: flush");
+                            self.writer.flush().await?;
+                            eprintln!("client:add_to_store_nar:driver: done");
+                            Ok(()) as DaemonResult<()>
+                        },
+                        driving: true,
+                        drive_err: None,
+                    }))))
+                } else if self.writer.version().minor() >= 21 {
+                    Ok(Either::Left(Either::Right(Box::pin(
+                        ProcessStderr::new(&mut self.reader)
+                            .with_source(&mut self.writer, source)
+                            .stream(),
+                    ))))
+                } else {
+                    Ok(Either::Right(Box::pin(DriveResult {
+                        result: ProcessStderr::new(&mut self.reader).stream(),
+                        driver: async {
+                            copy_nar(source, &mut self.writer).await?;
+                            self.writer.flush().await?;
+                            Ok(()) as DaemonResult<()>
+                        },
+                        driving: true,
+                        drive_err: None,
+                    })))
+                }
+            })
+            .map_err(|err| err.fill_operation(Operation::AddToStoreNar)),
+        )
         /*
         FutureResult::new(async move {
             self.writer.write_value(&Operation::AddToStoreNar).await?;
@@ -534,5 +543,43 @@ where
         })
         .map_err(|err| err.fill_operation(Operation::QueryMissing))
          */
+    }
+
+    fn add_multiple_to_store<'s, 'i, 'r, S, SR>(
+        &'s mut self,
+        repair: bool,
+        dont_check_sigs: bool,
+        stream: S,
+    ) -> impl ResultLog<(), DaemonError> + Send + 'r
+    where
+        S: Stream<Item = Result<AddToStoreItem<SR>, DaemonError>> + Send + 'i,
+        SR: AsyncBufRead + Send + Unpin + 'i,
+        's: 'r,
+        'i: 'r,
+    {
+        FutureResult::new(async move {
+            self.writer
+                .write_value(&Operation::AddMultipleToStore)
+                .await?;
+            self.writer.write_value(&repair).await?;
+            self.writer.write_value(&dont_check_sigs).await?;
+
+            Ok(DriveResult {
+                result: ProcessStderr::new(&mut self.reader).stream(),
+                driver: async {
+                    let mut writer = NixWriter::builder()
+                        .set_version(self.writer.version())
+                        .build(FramedWriter::new(&mut self.writer));
+
+                    write_add_multiple_to_store_stream(&mut writer, stream).await?;
+                    writer.shutdown().await?;
+                    self.writer.flush().await?;
+                    Ok(()) as DaemonResult<()>
+                },
+                driving: true,
+                drive_err: None,
+            })
+        })
+        .map_err(|err| err.fill_operation(Operation::AddMultipleToStore))
     }
 }

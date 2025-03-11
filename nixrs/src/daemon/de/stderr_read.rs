@@ -9,9 +9,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::PollSender;
 
 use crate::daemon::DEFAULT_BUF_SIZE;
-
-use super::reader::TryReadBytesLimited;
-use super::NixReader;
+use crate::io::{AsyncBytesRead, TryReadBytesLimited};
 
 enum State {
     Sending(usize),
@@ -20,18 +18,18 @@ enum State {
 }
 
 pin_project! {
-    pub struct StderrReader<'r, R> {
-        inner: &'r mut NixReader<R>,
+    pub struct StderrReader<R> {
+        inner: R,
         sender: PollSender<usize>,
         state: State,
     }
 }
 
-impl<'r, R> StderrReader<'r, R>
+impl<R> StderrReader<R>
 where
-    R: AsyncRead + Unpin,
+    R: AsyncBytesRead + Unpin,
 {
-    pub fn new(reader: &'r mut NixReader<R>) -> (mpsc::Receiver<usize>, Self) {
+    pub fn new(reader: R) -> (mpsc::Receiver<usize>, Self) {
         let (sender, receiver) = mpsc::channel(1);
         (
             receiver,
@@ -44,9 +42,9 @@ where
     }
 }
 
-impl<R> AsyncRead for StderrReader<'_, R>
+impl<R> AsyncRead for StderrReader<R>
 where
-    R: AsyncRead + Unpin,
+    R: AsyncBytesRead + Unpin,
 {
     fn poll_read(
         mut self: std::pin::Pin<&mut Self>,
@@ -63,9 +61,9 @@ where
     }
 }
 
-impl<R> AsyncBufRead for StderrReader<'_, R>
+impl<R> AsyncBufRead for StderrReader<R>
 where
-    R: AsyncRead + Unpin,
+    R: AsyncBytesRead + Unpin,
 {
     fn poll_fill_buf(
         self: std::pin::Pin<&mut Self>,

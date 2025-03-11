@@ -1,0 +1,666 @@
+/*
+
+## Root
+- "nix-archive-1" :: String
+- Node
+
+## Node
+- "(" :: String
+- (FileNode | SymlinkNode | DirectoryNode)
+- ")" :: String
+
+## FileNode
+- "type" => "regular" :: String
+- ("executable" => "" :: String)?
+- "contents" => Bytes
+
+## SymlinkNode
+- "type" => "symlink" :: String
+- "target" => String
+
+## DirectoryNode
+- "type" => "directory" :: String
+- ("entry" => DirEntry)*
+
+### DirEntry
+
+- "(" :: String
+- "name" => String
+- "node" => Node
+- ")" :: String
+
+Root
+b"\x0d\0\0\0\0\0\0\0nix-archive-1\0\0\0\1\0\0\0\0\0\0\0(\0\0\0\0\0\0\0\4\0\0\0\0\0\0\0type\0\0\0\0"
+b"\7\0\0\0\0\0\0\0regular\0\x0a\0\0\0\0\0\0\0executable\0\0\0\0\0\0\0\0\0\0\0\0\0\0\8\0\0\0\0\0\0\0contents"
+b"\7\0\0\0\0\0\0\0regular\0\8\0\0\0\0\0\0\0contents"
+b"\7\0\0\0\0\0\0\0symlink\0\6\0\0\0\0\0\0\0target\0\0"
+b"\9\0\0\0\0\0\0\0directory\0\0\0\0\0\0\0"
+b"\4\0\0\0\0\0\0\0node\0\0\0\0\1\0\0\0\0\0\0\0(\0\0\0\0\0\0\0\4\0\0\0\0\0\0\0type\0\0\0\0"
+b"\1\0\0\0\0\0\0\0)\0\0\0\0\0\0\0"
+b"\1\0\0\0\0\0\0\0)\0\0\0\0\0\0\0\1\0\0\0\0\0\0\0)\0\0\0\0\0\0\0"
+
+Root
+"nix-archive-1" "(" "type" => SelectNode
+
+SelectNode
+"directory" => ReadDir
+"regular" "executable" "" "contents" => ReadContentsLen
+"regular" "contents" => ReadContentsLen
+"symlink" "target" => ReadContentsLen
+
+ReadContentsLen
+u64 => ReadContents
+
+ReadContents
+bytes => FinishNode
+
+FinishNode
+")" => level > 0 ? FinishEntry : EOF
+
+ReadDir
+push level
+=> ReadEntries
+
+FinishEntry
+")" => ReadEntries
+
+ReadEntries
+"entry" "(" "name" => ReadEntryNameLen
+")" => FinishReadEntry
+
+FinishReadEntry
+level > 1 ? pop level & FinishEntry : EOF
+
+ReadEntryNameLen
+len => ReadEntryName
+
+ReadEntryName
+bytes => ReadNode
+
+ReadNode
+"node" "(" "type" => SelectNode
+
+
+EOF
+ */
+
+use std::cmp::min;
+use std::io;
+use std::ops::Range;
+use std::pin::Pin;
+use std::task::{ready, Context, Poll};
+
+use pin_project_lite::pin_project;
+use tokio::io::{AsyncBufRead, AsyncRead};
+use tracing::{error, trace};
+
+use super::radix_tree::{RLookup, RMatch, RTree};
+use crate::wire::{calc_aligned, ZEROS};
+
+// https://github.com/rust-lang/rust/issues/131415
+const fn copy_from_slice(dst: &mut [u8], src: &[u8]) {
+    if dst.len() != src.len() {
+        panic!("failed");
+    }
+    // SAFETY: `self` is valid for `self.len()` elements by definition, and `src` was
+    // checked to have the same length. The slices cannot overlap because
+    // mutable references are exclusive.
+    unsafe {
+        std::ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
+    }
+}
+
+const fn encode<const R: usize>(s: &[u8]) -> [u8; R] {
+    let mut ret = [0u8; R];
+    let (len, data) = ret.split_at_mut(size_of::<u64>());
+    copy_from_slice(len, &(s.len() as u64).to_le_bytes());
+    let (data, _padding) = data.split_at_mut(s.len());
+    copy_from_slice(data, s);
+    ret
+}
+
+const fn get_slice_mut(src: &mut [u8], range: Range<usize>) -> &mut [u8] {
+    let (_prefix, rest) = src.split_at_mut(range.start);
+    let (ret, _postfix) = rest.split_at_mut(range.end - range.start);
+    ret
+}
+
+pub(crate) const fn concat<const R: usize>(list: &[&[u8]]) -> [u8; R] {
+    let mut ret = [0u8; R];
+    let mut idx = 0;
+    let mut pos = 0;
+    while idx < list.len() {
+        let src = list[idx];
+        let dst = get_slice_mut(&mut ret, pos..(pos + src.len()));
+        copy_from_slice(dst, src);
+        pos += src.len();
+        idx += 1;
+    }
+    ret
+}
+
+macro_rules! encoding {
+    ($value:expr) => {{
+        const N: &[u8] = $value;
+        const TN: usize = calc_aligned(N.len() as u64) as usize + size_of::<u64>();
+        const E: &[u8] = &encode::<{ TN }>(N);
+        E
+    }};
+}
+macro_rules! concat_slice {
+    ($($e:expr),+ $(,)?) => {{
+        const LEN : usize = $($e.len() + )+ 0;
+        let src = [$($e),+];
+        &crate::archive::read_nar::concat::<{LEN}>(&src)
+    }};
+}
+macro_rules! token {
+    ($($e:literal),+ $(,)?) => {
+        concat_slice!($(encoding!($e)),+)
+    };
+}
+pub(crate) use concat_slice;
+pub(crate) use token;
+
+pub const TOK_ROOT: &[u8] = token!(b"nix-archive-1", b"(", b"type");
+pub const TOK_PAR: &[u8] = encoding!(b")");
+pub const TOK_ENTRY: &[u8] = token!(b"entry", b"(", b"name");
+pub const TOK_NODE: &[u8] = token!(b"node", b"(", b"type");
+pub const TOK_FILE_E: &[u8] = token!(b"regular", b"executable", b"", b"contents");
+pub const TOK_FILE: &[u8] = token!(b"regular", b"contents");
+pub const TOK_SYM: &[u8] = token!(b"symlink", b"target");
+pub const TOK_DIR: &[u8] = token!(b"directory");
+
+#[derive(Debug, Clone, Copy)]
+enum InnerState {
+    Root(u8),
+    SelectNode(RLookup),
+    ReadContentsLen([u8; 8], u8),
+    ReadContents(u64),
+    FinishNode(u8),
+    ReadDir,
+    FinishEntry(u8),
+    ReadEntries(RLookup),
+    FinishReadEntry,
+    ReadEntryNameLen([u8; 8], u8),
+    ReadEntryName(u64),
+    ReadNode(u8),
+    Eof,
+}
+
+#[derive(Debug)]
+struct Inner {
+    state: InnerState,
+    level: usize,
+}
+
+macro_rules! read_token {
+    ($state:ident, $token:ident, $self:ident, $read:ident, $parsed:ident, $buf:ident) => {
+        let rem = &$token[$read as usize..];
+        let cmp = min(rem.len(), $buf.len());
+        if rem[..cmp] != $buf[..cmp] {
+            error!(rem=?rem[..cmp], buf=?$buf[..cmp], "Invalid data");
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid data in NAR"));
+        }
+        $parsed += cmp;
+        if cmp < rem.len() {
+            $self.state = InnerState::$state($read + cmp as u8);
+            break;
+        }
+        $buf = &$buf[cmp..];
+    };
+}
+
+impl Inner {
+    fn is_eof(&self) -> bool {
+        matches!(&self.state, InnerState::Eof)
+    }
+    fn drive(&mut self, mut buf: &[u8]) -> io::Result<usize> {
+        let mut parsed = 0;
+        loop {
+            match self.state {
+                /*
+                Root
+                "nix-archive-1" "(" "type" => SelectNode
+                 */
+                InnerState::Root(read) => {
+                    trace!(self.level, read, parsed, "InnerState::Root");
+                    read_token!(Root, TOK_ROOT, self, read, parsed, buf);
+                    self.state = InnerState::SelectNode(Default::default());
+                }
+                /*
+                SelectNode
+                "directory" => ReadDir
+                "regular" "executable" "" "contents" => ReadContentsLen
+                "regular" "contents" => ReadContentsLen
+                "symlink" "target" => ReadContentsLen
+                */
+                InnerState::SelectNode(mut state) => {
+                    trace!(self.level, ?state, parsed, "InnerState::SelectNode");
+                    const NODE_SELECT: RTree<7, 6, 2, InnerState> = {
+                        let mut tree = RTree::new();
+                        tree.insert(TOK_DIR, InnerState::ReadDir);
+                        tree.insert(TOK_SYM, InnerState::ReadContentsLen(ZEROS, 0));
+                        tree.insert(TOK_FILE, InnerState::ReadContentsLen(ZEROS, 0));
+                        tree.insert(TOK_FILE_E, InnerState::ReadContentsLen(ZEROS, 0));
+                        tree
+                    };
+
+                    match NODE_SELECT.lookup(&mut state, buf) {
+                        RMatch::Matched(read) => {
+                            parsed += read;
+                            buf = &buf[read..];
+                            self.state = NODE_SELECT.get_value(&state);
+                        }
+                        RMatch::NeedsMore => {
+                            parsed += buf.len();
+                            self.state = InnerState::SelectNode(state);
+                            break;
+                        }
+                        RMatch::Mismatch(_) => {
+                            return Err(io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "could not select node type",
+                            ));
+                        }
+                    }
+                }
+                /*
+                ReadContentsLen
+                u64 => ReadContents
+                */
+                InnerState::ReadContentsLen(mut value, read) => {
+                    let rem = min(buf.len(), 8 - read as usize);
+                    let new_read = read + rem as u8;
+                    value[read as usize..new_read as usize].copy_from_slice(&buf[..rem]);
+                    parsed += rem;
+                    if new_read < 8 {
+                        trace!(
+                            self.level,
+                            read,
+                            new_read,
+                            rem,
+                            parsed,
+                            buf_len = buf.len(),
+                            "InnerState::ReadContentsLen break"
+                        );
+                        self.state = InnerState::ReadContentsLen(value, new_read);
+                        break;
+                    } else {
+                        trace!(
+                            self.level,
+                            read,
+                            new_read,
+                            rem,
+                            parsed,
+                            buf_len = buf.len(),
+                            "InnerState::ReadContentsLen next"
+                        );
+                        buf = &buf[rem..];
+                        let len = u64::from_le_bytes(value);
+                        self.state = InnerState::ReadContents(calc_aligned(len));
+                    }
+                }
+                /*
+                ReadContents
+                bytes => FinishNode
+                */
+                InnerState::ReadContents(rem) => {
+                    trace!(self.level, rem, parsed, "InnerState::ReadContents");
+                    if (buf.len() as u64) < rem {
+                        parsed += buf.len();
+                        self.state = InnerState::ReadContents(rem - buf.len() as u64);
+                        break;
+                    } else {
+                        parsed += rem as usize;
+                        buf = &buf[rem as usize..];
+                        self.state = InnerState::FinishNode(0);
+                    }
+                }
+
+                /*
+                FinishNode
+                ")" => level > 0 ? FinishEntry : EOF
+                */
+                InnerState::FinishNode(read) => {
+                    trace!(self.level, read, parsed, "InnerState::FinishNode");
+                    read_token!(FinishNode, TOK_PAR, self, read, parsed, buf);
+                    if self.level > 0 {
+                        self.state = InnerState::FinishEntry(0);
+                    } else {
+                        self.state = InnerState::Eof;
+                    }
+                }
+
+                /*
+                ReadDir
+                push level
+                => ReadEntries
+                */
+                InnerState::ReadDir => {
+                    trace!(self.level, parsed, "InnerState::ReadDir");
+                    self.level += 1;
+                    self.state = InnerState::ReadEntries(Default::default());
+                }
+
+                /*
+                FinishEntry
+                ")" => ReadEntries
+                */
+                InnerState::FinishEntry(read) => {
+                    trace!(self.level, read, parsed, "InnerState::FinishEntry");
+                    read_token!(FinishEntry, TOK_PAR, self, read, parsed, buf);
+                    self.state = InnerState::ReadEntries(Default::default());
+                }
+
+                /*
+                ReadEntries
+                "entry" "(" "name" => ReadEntryNameLen
+                ")" => FinishReadEntry
+                */
+                InnerState::ReadEntries(mut state) => {
+                    trace!(
+                        self.level,
+                        ?state,
+                        parsed,
+                        buf = buf.len(),
+                        "InnerState::ReadEntries"
+                    );
+                    const ENTRY_SELECT: RTree<3, 2, 2, InnerState> = {
+                        let mut tree = RTree::new();
+                        tree.insert(TOK_ENTRY, InnerState::ReadEntryNameLen(ZEROS, 0));
+                        tree.insert(TOK_PAR, InnerState::FinishReadEntry);
+                        tree
+                    };
+                    match ENTRY_SELECT.lookup(&mut state, buf) {
+                        RMatch::Matched(read) => {
+                            parsed += read;
+                            buf = &buf[read..];
+                            self.state = ENTRY_SELECT.get_value(&state);
+                            trace!(read, ?self.state, "MATCHED!");
+                        }
+                        RMatch::NeedsMore => {
+                            trace!("NEEDS MORE");
+                            parsed += buf.len();
+                            self.state = InnerState::ReadEntries(state);
+                            break;
+                        }
+                        RMatch::Mismatch(_) => {
+                            error!("MISMATCH!");
+                            return Err(io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "could not read entry",
+                            ));
+                        }
+                    }
+                }
+
+                /*
+                FinishReadEntry
+                level > 1 ? pop level & FinishEntry : EOF
+                */
+                InnerState::FinishReadEntry => {
+                    trace!(self.level, parsed, "InnerState::FinishReadEntry");
+                    if self.level > 1 {
+                        self.level -= 1;
+                        self.state = InnerState::FinishEntry(0);
+                    } else {
+                        self.state = InnerState::Eof;
+                    }
+                }
+
+                /*
+                ReadEntryNameLen
+                len => ReadEntryName
+                */
+                InnerState::ReadEntryNameLen(mut value, read) => {
+                    trace!(self.level, read, parsed, "InnerState::ReadEntryNameLen");
+                    let rem = min(buf.len(), 8 - read as usize);
+                    let new_read = read + rem as u8;
+                    value[read as usize..new_read as usize].copy_from_slice(&buf[..rem]);
+                    parsed += rem;
+                    if new_read < 8 {
+                        self.state = InnerState::ReadEntryNameLen(value, new_read);
+                        break;
+                    } else {
+                        buf = &buf[rem..];
+                        let len = u64::from_le_bytes(value);
+                        self.state = InnerState::ReadEntryName(calc_aligned(len));
+                    }
+                }
+
+                /*
+                ReadEntryName
+                bytes => ReadNode
+                */
+                InnerState::ReadEntryName(rem) => {
+                    trace!(self.level, rem, parsed, "InnerState::ReadEntryName");
+                    if (buf.len() as u64) < rem {
+                        parsed += buf.len();
+                        self.state = InnerState::ReadEntryName(rem - buf.len() as u64);
+                        break;
+                    } else {
+                        parsed += rem as usize;
+                        buf = &buf[rem as usize..];
+                        self.state = InnerState::ReadNode(0);
+                    }
+                }
+
+                /*
+                ReadNode
+                "node" "(" "type" => SelectNode
+                */
+                InnerState::ReadNode(read) => {
+                    trace!(self.level, read, parsed, "InnerState::ReadNode");
+                    read_token!(ReadNode, TOK_NODE, self, read, parsed, buf);
+                    self.state = InnerState::SelectNode(Default::default());
+                }
+                InnerState::Eof => {
+                    trace!(self.level, parsed, buf = buf.len(), "InnerState::EOF");
+                    break;
+                }
+            }
+        }
+        Ok(parsed)
+    }
+}
+
+pin_project! {
+    pub struct NarReader<R> {
+        #[pin]
+        reader: R,
+        parsed: usize,
+        state: Inner,
+    }
+}
+
+impl<R> NarReader<R>
+where
+    R: AsyncBufRead,
+{
+    pub fn new(reader: R) -> NarReader<R> {
+        NarReader {
+            reader,
+            parsed: 0,
+            state: Inner {
+                level: 0,
+                state: InnerState::Root(0),
+            },
+        }
+    }
+}
+
+impl<R> AsyncBufRead for NarReader<R>
+where
+    R: AsyncBufRead,
+{
+    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
+        let this = self.project();
+        let buf = ready!(this.reader.poll_fill_buf(cx))?;
+        if buf.len() > *this.parsed {
+            *this.parsed += this.state.drive(&buf[*this.parsed..])?;
+        }
+        if buf.is_empty() && !this.state.is_eof() {
+            Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "not a complete NAR",
+            )))
+        } else {
+            Poll::Ready(Ok(&buf[..*this.parsed]))
+        }
+    }
+
+    fn consume(self: Pin<&mut Self>, amt: usize) {
+        let this = self.project();
+        assert!(
+            *this.parsed >= amt,
+            "consuming {} when parsed is {}",
+            amt,
+            *this.parsed
+        );
+        this.reader.consume(amt);
+        *this.parsed -= amt;
+    }
+}
+
+impl<R> AsyncRead for NarReader<R>
+where
+    R: AsyncBufRead,
+{
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        let rem = ready!(self.as_mut().poll_fill_buf(cx))?;
+        if !rem.is_empty() {
+            let amt = min(rem.len(), buf.remaining());
+            buf.put_slice(&rem[0..amt]);
+            self.consume(amt);
+        }
+        Poll::Ready(Ok(()))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::time::{Duration, Instant};
+
+    use bytes::{BufMut as _, Bytes, BytesMut};
+    use proptest::prelude::{any, TestCaseError};
+    use proptest::proptest;
+    use rstest::rstest;
+    use tokio::io::{AsyncReadExt, BufReader};
+    use tokio_test::io::Builder;
+    use tracing::trace;
+    use tracing_test::traced_test;
+
+    use crate::archive::proptest::arb_nar_contents;
+    use crate::archive::test_data::*;
+    use crate::archive::{write_nar, NAREvent};
+
+    use super::NarReader;
+
+    #[rstest]
+    #[case::text_file(text_file(), b"")]
+    #[case::exec_file(exec_file(), b"")]
+    #[case::empty_file(empty_file(), b"")]
+    #[case::empty_file_in_dir(empty_file_in_dir(), b"")]
+    #[case::empty_dir(empty_dir(), b"")]
+    #[case::empty_dir_in_dir(empty_dir_in_dir(), b"")]
+    #[case::symlink(symlink(), b"")]
+    #[case::dir_example(dir_example(), b"")]
+    #[case::text_file(text_file(), b"more")]
+    #[case::exec_file(exec_file(), b"more")]
+    #[case::empty_file(empty_file(), b"more")]
+    #[case::empty_file_in_dir(empty_file_in_dir(), b"more")]
+    #[case::empty_dir(empty_dir(), b"more")]
+    #[case::empty_dir_in_dir(empty_dir_in_dir(), b"more")]
+    #[case::symlink(symlink(), b"more")]
+    #[case::dir_example(dir_example(), b"more")]
+    #[traced_test]
+    #[tokio::test]
+    async fn read_nar(
+        #[case] events: Vec<NAREvent>,
+        #[case] postfix: &[u8],
+        #[values(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 51, 64_000)] chunk_size: usize,
+    ) {
+        let content = write_nar(&events);
+
+        let mut buf = BytesMut::new();
+        buf.put_slice(b"before");
+        buf.put_slice(&content);
+        buf.put_slice(postfix);
+        let read_content = buf.freeze();
+
+        let mut b = Builder::new();
+        for c in read_content.chunks(chunk_size) {
+            b.read(c);
+            b.wait(Duration::from_secs(0));
+        }
+        let mock = b.build();
+        let mut buf_read = BufReader::new(mock);
+
+        let mut prefix = [0u8; 6];
+        buf_read.read_exact(&mut prefix).await.unwrap();
+        trace!(contents = content.len(), "Read NAR");
+        let mut reader = NarReader::new(&mut buf_read);
+        let mut actual = Vec::new();
+        reader.read_to_end(&mut actual).await.unwrap();
+        let actual = Bytes::from(actual);
+        trace!(actual = actual.len(), "Read NAR Done");
+        assert_eq!(actual, content);
+
+        let mut rest = Vec::new();
+        buf_read.read_to_end(&mut rest).await.unwrap();
+        assert_eq!(rest, postfix);
+    }
+
+    #[traced_test]
+    #[test]
+    fn proptest_read_nar() {
+        let r = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        proptest!(|(
+            (_nar_size, _nar_hash, content) in arb_nar_contents(20, 20, 5),
+            chunk_size in any::<proptest::sample::Index>(),
+        )| {
+            let now = Instant::now();
+            r.block_on(async {
+                let mut buf = BytesMut::new();
+                buf.put_slice(b"before");
+                buf.put_slice(&content);
+                buf.put_slice(b"more");
+                let read_content = buf.freeze();
+
+                let mut b = Builder::new();
+                let chunk_size = chunk_size.index(read_content.len()) + 1;
+                for c in read_content.chunks(chunk_size) {
+                    b.read(c);
+                    b.wait(Duration::from_secs(0));
+                }
+                let mock = b.build();
+                let mut buf_read = BufReader::new(mock);
+
+                let mut prefix = [0u8; 6];
+                buf_read.read_exact(&mut prefix).await.unwrap();
+                trace!(contents=content.len(), "Read NAR");
+                let mut reader = NarReader::new(&mut buf_read);
+                let mut actual = Vec::new();
+                reader.read_to_end(&mut actual).await.unwrap();
+                let actual = Bytes::from(actual);
+                trace!(actual=actual.len(), "Read NAR Done");
+                assert_eq!(actual, content);
+
+                let mut rest = Vec::new();
+                buf_read.read_to_end(&mut rest).await.unwrap();
+                assert_eq!(rest, b"more");
+
+                Ok(()) as Result<_, TestCaseError>
+            })?;
+            eprintln!("Completed test {}", now.elapsed().as_secs_f64());
+        })
+    }
+}

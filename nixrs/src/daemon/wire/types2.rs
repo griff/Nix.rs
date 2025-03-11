@@ -1,3 +1,4 @@
+use std::convert::Infallible;
 #[cfg(feature = "nixrs-derive")]
 use std::str::from_utf8;
 use std::{collections::BTreeMap, str::FromStr};
@@ -65,6 +66,13 @@ pub struct Signature(DaemonString);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct DerivedPath(String);
+impl FromStr for DerivedPath {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(DerivedPath(s.into()))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
@@ -271,9 +279,9 @@ pub struct SubstitutablePathInfo {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct DerivationOutput {
-    pub path: DaemonString,
-    pub hash_algo: DaemonString,
-    pub hash: DaemonString,
+    pub path: Option<StorePath>,
+    pub hash_algo: Option<String>,
+    pub hash: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -311,8 +319,8 @@ pub struct BuildResult {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct KeyedBuildResult {
-    path: DerivedPath,
-    result: BuildResult,
+    pub path: DerivedPath,
+    pub result: BuildResult,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -429,11 +437,11 @@ pub struct AddToStoreNarRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct QueryMissingResult {
-    will_build: StorePathSet,
-    will_substitute: StorePathSet,
-    unknown: StorePathSet,
-    download_size: u64,
-    nar_size: u64,
+    pub will_build: StorePathSet,
+    pub will_substitute: StorePathSet,
+    pub unknown: StorePathSet,
+    pub download_size: u64,
+    pub nar_size: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -460,22 +468,22 @@ pub enum QueryRealisationResponse {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct AddMultipleToStoreRequest {
-    repair: bool,
-    dont_check_sigs: bool,
+    pub repair: bool,
+    pub dont_check_sigs: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct BuildPathsWithResultsRequest {
-    drvs: Vec<DerivedPath>,
-    mode: BuildMode,
+    pub drvs: Vec<DerivedPath>,
+    pub mode: BuildMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct AddPermRootRequest {
-    store_path: StorePath,
-    gc_root: DaemonString,
+    pub store_path: StorePath,
+    pub gc_root: DaemonString,
 }
 
 #[cfg(feature = "nixrs-derive")]
@@ -553,6 +561,8 @@ macro_rules! optional_string {
 }
 #[cfg(feature = "nixrs-derive")]
 optional_string!(ContentAddress);
+#[cfg(feature = "nixrs-derive")]
+optional_string!(String);
 
 #[cfg(feature = "nixrs-derive")]
 impl NixDeserialize for Option<Microseconds> {

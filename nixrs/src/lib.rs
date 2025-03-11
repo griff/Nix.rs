@@ -10,4 +10,11 @@ pub mod archive;
 pub mod base32;
 pub mod daemon;
 pub mod hash;
+pub(crate) mod io;
 pub mod store_path;
+pub(crate) mod wire;
+
+#[doc(hidden)]
+pub mod exports {
+    pub use tracing::trace;
+}

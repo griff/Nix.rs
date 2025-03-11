@@ -3,8 +3,9 @@ use std::task::{ready, Poll};
 
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead};
+use tracing::trace;
 
-use super::reader::TryReadU64;
+use crate::io::TryReadU64;
 
 #[derive(Debug, Default)]
 enum FramedReadState {
@@ -15,6 +16,7 @@ enum FramedReadState {
 }
 
 pin_project! {
+    #[derive(Debug)]
     pub struct FramedReader<R> {
         #[pin]
         reader: R,
@@ -35,9 +37,9 @@ where
     pub async fn drain_all(&mut self) -> io::Result<u64> {
         let mut drained = 0;
         loop {
-            eprintln!("FramedReader:drain_all: Reading");
+            trace!(drained, "FramedReader:drain_all: Reading");
             let amt = self.fill_buf().await?.len();
-            eprintln!("FramedReader:drain_all: Read {}", amt);
+            trace!(drained, amt, "FramedReader:drain_all: Read");
             if amt == 0 {
                 return Ok(drained);
             }

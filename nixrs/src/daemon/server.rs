@@ -1,25 +1,30 @@
+use std::fmt::Debug;
+use std::ops::Deref;
 use std::pin::pin;
 
 use futures::future::TryFutureExt;
-use futures::StreamExt as _;
+use futures::{FutureExt, Stream, StreamExt as _};
 use tokio::io::{
-    copy, simplex, AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite,
-    AsyncWriteExt,
+    copy, simplex, AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt,
 };
 use tokio::{select, try_join};
+use tracing::trace;
 
+use crate::archive::NarReader;
+use crate::daemon::add_multiple_to_store::parse_add_multiple_to_store;
 use crate::daemon::de::{FramedReader, StderrReader};
 use crate::daemon::wire::logger::RawLogMessage;
 use crate::daemon::wire::types::Operation;
 use crate::daemon::wire::types2::{AddToStoreRequest, BaseStorePath};
 use crate::daemon::wire::IgnoredOne;
 use crate::daemon::{DaemonErrorKind, DaemonResultExt, PROTOCOL_VERSION};
+use crate::io::{AsyncBufReadCompat, BytesReader};
 use crate::store_path::StorePath;
 
 use super::de::{NixRead, NixReader};
 use super::logger::LocalLoggerResult;
 use super::ser::{NixWrite, NixWriter};
-use super::types::{LocalDaemonStore, LocalHandshakeDaemonStore};
+use super::types::{AddToStoreItem, LocalDaemonStore, LocalHandshakeDaemonStore};
 use super::wire::types2::{Request, ValidPathInfo};
 use super::wire::{CLIENT_MAGIC, SERVER_MAGIC};
 use super::{
@@ -79,8 +84,8 @@ impl Builder {
         store: S,
     ) -> DaemonResult<()>
     where
-        R: AsyncRead + Send + Unpin + 's,
-        W: AsyncWrite + Send + Unpin + 's,
+        R: AsyncRead + Debug + Send + Unpin + 's,
+        W: AsyncWrite + Debug + Send + Unpin + 's,
         S: HandshakeDaemonStore + Send + 's,
     {
         let reader = NixReader::new(reader);
@@ -93,16 +98,16 @@ impl Builder {
         let nix_version = self.nix_version.as_deref().unwrap_or(NIX_VERSION);
         conn.handshake(self.min_version, self.max_version, nix_version)
             .await?;
-        eprintln!("Server handshake done!");
+        trace!("Server handshake done!");
         let store_result = store.handshake();
         let store = conn
             .process_logs(store_result)
             .await
             .map_err(|e| e.source)?;
         conn.writer.flush().await?;
-        eprintln!("Server handshake logs done!");
+        trace!("Server handshake logs done!");
         conn.process_requests(store).await?;
-        eprintln!("Server processed all requests!");
+        trace!("Server processed all requests!");
         Ok(())
     }
 
@@ -113,9 +118,9 @@ impl Builder {
         store: S,
     ) -> DaemonResult<()>
     where
-        R: AsyncRead + Send + Unpin + 's,
-        W: AsyncWrite + Send + Unpin + 's,
-        S: LocalHandshakeDaemonStore + Send + 's,
+        R: AsyncRead + Debug + Send + Unpin + 's,
+        W: AsyncWrite + Debug + Send + Unpin + 's,
+        S: LocalHandshakeDaemonStore + Debug + Send + 's,
     {
         let reader = NixReader::new(reader);
         let writer = NixWriter::new(writer);
@@ -165,16 +170,146 @@ async fn process_logs<'s, T: Send + 's, W: AsyncWrite + Send + Unpin>(
     Ok(value)
 }
 
+struct BoxedStore<S>(S);
+impl<S> DaemonStore for BoxedStore<S>
+where
+    S: DaemonStore,
+{
+    fn trust_level(&self) -> TrustLevel {
+        self.0.trust_level()
+    }
+
+    fn set_options<'a>(
+        &'a mut self,
+        options: &'a super::ClientOptions,
+    ) -> impl ResultLog<(), DaemonError> + Send + 'a {
+        Box::pin(self.0.set_options(options))
+    }
+
+    fn is_valid_path<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<bool, DaemonError> + Send + 'a {
+        let ret = Box::pin(self.0.is_valid_path(path));
+        eprintln!("IsValidPath Size {}", size_of_val(&ret));
+        ret
+    }
+
+    fn query_valid_paths<'a>(
+        &'a mut self,
+        paths: &'a crate::store_path::StorePathSet,
+        substitute: bool,
+    ) -> impl ResultLog<crate::store_path::StorePathSet, DaemonError> + Send + 'a {
+        let ret = Box::pin(self.0.query_valid_paths(paths, substitute));
+        eprintln!("QueryValidPaths Size {}", size_of_val(&ret));
+        ret
+    }
+
+    fn query_path_info<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Option<super::UnkeyedValidPathInfo>, DaemonError> + Send + 'a {
+        let ret = Box::pin(self.0.query_path_info(path));
+        eprintln!("QueryPathInfo Size {}", size_of_val(&ret));
+        ret
+    }
+
+    fn nar_from_path<'s, 'p, 'r, W>(
+        &'s mut self,
+        path: &'p StorePath,
+        sink: W,
+    ) -> impl ResultLog<(), DaemonError> + Send + 'r
+    where
+        W: AsyncWrite + Unpin + Send + 'r,
+        's: 'r,
+        'p: 'r,
+    {
+        let ret = Box::pin(self.0.nar_from_path(path, sink));
+        eprintln!("NarFromPath Size {}", size_of_val(&ret));
+        ret
+    }
+
+    fn build_paths<'a>(
+        &'a mut self,
+        paths: &'a [super::wire::types2::DerivedPath],
+        mode: super::wire::types2::BuildMode,
+    ) -> impl ResultLog<(), DaemonError> + Send + 'a {
+        let ret = Box::pin(self.0.build_paths(paths, mode));
+        eprintln!("BuildPaths Size {}", size_of_val(&ret));
+        ret
+    }
+
+    fn build_derivation<'a>(
+        &'a mut self,
+        drv_path: &'a StorePath,
+        drv: &'a super::wire::types2::BasicDerivation,
+        build_mode: super::wire::types2::BuildMode,
+    ) -> impl ResultLog<super::wire::types2::BuildResult, DaemonError> + Send + 'a {
+        let ret = Box::pin(self.0.build_derivation(drv_path, drv, build_mode));
+        eprintln!("BuildDerivation Size {}", size_of_val(&ret));
+        ret
+    }
+
+    fn query_missing<'a>(
+        &'a mut self,
+        paths: &'a [super::wire::types2::DerivedPath],
+    ) -> impl ResultLog<super::wire::types2::QueryMissingResult, DaemonError> + Send + 'a {
+        let ret = Box::pin(self.0.query_missing(paths));
+        eprintln!("QueryMissing Size {}", size_of_val(&ret));
+        ret
+    }
+
+    fn add_to_store_nar<'s, 'r, 'i, R>(
+        &'s mut self,
+        info: &'i ValidPathInfo,
+        source: R,
+        repair: bool,
+        dont_check_sigs: bool,
+    ) -> impl ResultLog<(), DaemonError> + Send + 'r
+    where
+        R: AsyncBufRead + Send + Unpin + 'r,
+        's: 'r,
+        'i: 'r,
+    {
+        let ret = Box::pin(
+            self.0
+                .add_to_store_nar(info, source, repair, dont_check_sigs),
+        );
+        eprintln!("AddToStoreNar Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn add_multiple_to_store<'s, 'i, 'r, ST, STR>(
+        &'s mut self,
+        repair: bool,
+        dont_check_sigs: bool,
+        stream: ST,
+    ) -> impl ResultLog<(), DaemonError> + Send + 'r
+    where
+        ST: Stream<Item = Result<AddToStoreItem<STR>, DaemonError>> + Send + 'i,
+        STR: AsyncBufRead + Send + Unpin + 'i,
+        's: 'r,
+        'i: 'r,
+    {
+        let ret = Box::pin(
+            self.0
+                .add_multiple_to_store(repair, dont_check_sigs, stream),
+        );
+        eprintln!("AddMultipleToStore Size {}", size_of_val(ret.deref()));
+        ret
+    }
+}
+
 pub struct DaemonConnection<R, W> {
     store_trust: TrustLevel,
-    reader: NixReader<R>,
+    reader: NixReader<BytesReader<R>>,
     writer: NixWriter<W>,
 }
 
 impl<R, W> DaemonConnection<R, W>
 where
-    R: AsyncRead + Send + Unpin,
-    W: AsyncWrite + Send + Unpin,
+    R: AsyncRead + Send + Unpin + Debug,
+    W: AsyncWrite + Send + Unpin + Debug,
 {
     pub async fn handshake<'s>(
         &'s mut self,
@@ -257,13 +392,22 @@ where
         process_logs(&mut self.writer, logs).await
     }
 
-    pub async fn process_requests<'s, S>(&'s mut self, mut store: S) -> Result<(), DaemonError>
+    pub async fn process_requests<'s, S>(&'s mut self, store: S) -> Result<(), DaemonError>
     where
         S: DaemonStore + 's,
     {
-        while let Some(request) = self.reader.try_read_value::<Request>().await? {
+        let mut store = BoxedStore(store);
+        loop {
+            trace!("server buffer is {:?}", self.reader.get_ref().filled());
+            let fut = self.reader.try_read_value::<Request>().boxed();
+            eprintln!("Request Size {}", size_of_val(fut.deref()));
+            let res = fut.await?;
+            if res.is_none() {
+                break;
+            }
+            let request = res.unwrap();
             let op = request.operation();
-            eprintln!("Server got operation {}", op);
+            trace!("Server got operation {}", op);
             if let Err(mut err) = self.process_request(&mut store, request).await {
                 err.source = err.source.fill_operation(op);
                 if err.can_recover {
@@ -274,10 +418,10 @@ where
                     return Err(err.source);
                 }
             }
-            eprintln!("Server flush");
+            trace!("Server flush");
             self.writer.flush().await?;
         }
-        eprintln!("Server handled all requests");
+        trace!("Server handled all requests");
         Ok(())
     }
 
@@ -295,6 +439,21 @@ where
         'p: 'r,
     {
         store.add_to_store_nar(info, source, repair, dont_check_sigs)
+    }
+
+    fn add_multiple_to_store<'s, 'r, S, ST, STR>(
+        store: &'s mut S,
+        repair: bool,
+        dont_check_sigs: bool,
+        stream: ST,
+    ) -> impl ResultLog<(), DaemonError> + Send + 'r
+    where
+        S: DaemonStore + 's,
+        ST: Stream<Item = Result<AddToStoreItem<STR>, DaemonError>> + Send + 'r,
+        STR: AsyncBufRead + Unpin + Send + 'r,
+        's: 'r,
+    {
+        store.add_multiple_to_store(repair, dont_check_sigs, stream)
     }
 
     fn store_nar_from_path<'s, 'p, 'r, NW, S>(
@@ -592,9 +751,10 @@ where
                     #### If protocol version is 1.23 or newer
                     [Framed][se-Framed] NAR dump
                      */
-                    eprintln!("DaemonConnection: Add to store");
-                    let mut framed = FramedReader::new(&mut self.reader);
-                    eprintln!("DaemonConnection: Add to store: Framed");
+                    trace!("DaemonConnection: Add to store");
+                    let buf_reader = AsyncBufReadCompat::new(&mut self.reader);
+                    let mut framed = FramedReader::new(buf_reader);
+                    trace!("DaemonConnection: Add to store: Framed");
                     let logs = Self::add_to_store_nar(
                         &mut store,
                         &req.path_info,
@@ -602,23 +762,23 @@ where
                         req.repair,
                         req.dont_check_sigs,
                     );
-                    eprintln!("DaemonConnection: Add to store: Logs");
+                    trace!("DaemonConnection: Add to store: Logs");
                     let res: Result<(), RecoverableError> = async {
                         let mut logs = pin!(logs);
-                        eprintln!("DaemonConnection: Add to store: get log");
+                        trace!("DaemonConnection: Add to store: get log");
                         while let Some(msg) = logs.next().await {
-                            eprintln!("DaemonConnection: Add to store: got log");
+                            trace!("DaemonConnection: Add to store: got log");
                             self.writer.write_value(&msg).await?;
                         }
-                        eprintln!("DaemonConnection: Add to store: get result");
+                        trace!("DaemonConnection: Add to store: get result");
                         logs.await.recover()?;
                         self.writer.write_value(&RawLogMessage::Last).await?;
                         Ok(())
                     }
                     .await;
-                    eprintln!("DaemonConnection: Add to store: drain reader");
+                    trace!("DaemonConnection: Add to store: drain reader");
                     let err = framed.drain_all().await;
-                    eprintln!("DaemonConnection: Add to store: done");
+                    trace!("DaemonConnection: Add to store: done");
                     res?;
                     err?;
                 } else if self.reader.version().minor() >= 21 {
@@ -675,7 +835,8 @@ where
                     #### If protocol version is older than 1.21
                     NAR dump sent raw on stream
                      */
-                    let mut reader = (&mut self.reader).take(req.path_info.info.nar_size);
+                    let buf_reader = AsyncBufReadCompat::new(&mut self.reader);
+                    let mut reader = NarReader::new(buf_reader);
                     let logs = Self::add_to_store_nar(
                         &mut store,
                         &req.path_info,
@@ -762,20 +923,45 @@ where
                 .with_operation(op)
                 .recover()?;
             }
-            AddMultipleToStore(_req) => {
+            AddMultipleToStore(req) => {
                 /*
                 ### Inputs
-                - repair :: [Bool64][se-Bool64]
-                - dontCheckSigs :: [Bool64][se-Bool64]
                 - [Framed][se-Framed] stream of [add multiple NAR dump][se-AddMultipleToStore]
-
+                */
+                let builder = NixReader::builder().set_version(self.reader.version());
+                let buf_reader = AsyncBufReadCompat::new(&mut self.reader);
+                let mut framed = FramedReader::new(buf_reader);
+                let source = builder.build_buffered(&mut framed);
+                let stream = parse_add_multiple_to_store(source).await?;
+                let logs = Self::add_multiple_to_store(
+                    &mut store,
+                    req.repair,
+                    req.dont_check_sigs,
+                    stream,
+                );
+                eprintln!("DaemonConnection: Add multiple to store: Logs");
+                let res: Result<(), RecoverableError> = async {
+                    let mut logs = pin!(logs);
+                    eprintln!("DaemonConnection: Add to store: get log");
+                    while let Some(msg) = logs.next().await {
+                        eprintln!("DaemonConnection: Add to store: got log");
+                        self.writer.write_value(&msg).await?;
+                    }
+                    eprintln!("DaemonConnection: Add to store: get result");
+                    logs.await.recover()?;
+                    self.writer.write_value(&RawLogMessage::Last).await?;
+                    Ok(())
+                }
+                .await;
+                eprintln!("DaemonConnection: Add to store: drain reader");
+                let err = framed.drain_all().await;
+                eprintln!("DaemonConnection: Add multiple to store: done");
+                res?;
+                err?;
+                /*
                 ### Outputs
                 Nothing
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::AddMultipleToStore,
-                ))
-                .with_operation(op)?;
             }
             AddBuildLog(BaseStorePath(_path)) => {
                 /*

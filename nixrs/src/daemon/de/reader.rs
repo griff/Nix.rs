@@ -1,20 +1,25 @@
-use std::future::{poll_fn, Future};
+use std::fmt::Debug;
+use std::future::poll_fn;
 use std::io::{self, Cursor};
 use std::ops::RangeInclusive;
-use std::pin::{pin, Pin};
+use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
-use bytes::{Buf, BufMut, Bytes, BytesMut};
+use bytes::Bytes;
 use pin_project_lite::pin_project;
-use tokio::io::{AsyncBufRead, AsyncRead, AsyncReadExt, ReadBuf};
+use tokio::io::{AsyncRead, ReadBuf};
+use tracing::{instrument, trace};
 
-use crate::daemon::{ProtocolVersion, ZEROS};
+use crate::daemon::ProtocolVersion;
+use crate::io::{
+    AsyncBytesRead, BytesReader, TryReadBytesLimited, TryReadU64, DEFAULT_MAX_BUF_SIZE,
+    DEFAULT_RESERVED_BUF_SIZE,
+};
 use crate::store_path::StoreDir;
 
-use super::{Error, NixRead};
+use super::NixRead;
 
 pub struct NixReaderBuilder {
-    buf: Option<BytesMut>,
     reserved_buf_size: usize,
     max_buf_size: usize,
     version: ProtocolVersion,
@@ -24,9 +29,8 @@ pub struct NixReaderBuilder {
 impl Default for NixReaderBuilder {
     fn default() -> Self {
         Self {
-            buf: Default::default(),
-            reserved_buf_size: 8192,
-            max_buf_size: 8192,
+            reserved_buf_size: DEFAULT_RESERVED_BUF_SIZE,
+            max_buf_size: DEFAULT_MAX_BUF_SIZE,
             version: Default::default(),
             store_dir: Default::default(),
         }
@@ -34,11 +38,6 @@ impl Default for NixReaderBuilder {
 }
 
 impl NixReaderBuilder {
-    pub fn set_buffer(mut self, buf: BytesMut) -> Self {
-        self.buf = Some(buf);
-        self
-    }
-
     pub fn set_reserved_buf_size(mut self, size: usize) -> Self {
         self.reserved_buf_size = size;
         self
@@ -59,16 +58,28 @@ impl NixReaderBuilder {
         self
     }
 
-    pub fn build<R>(self, reader: R) -> NixReader<R> {
-        let buf = self.buf.unwrap_or_else(|| BytesMut::with_capacity(0));
+    pub fn build<R>(self, reader: R) -> NixReader<R>
+    where
+        R: AsyncBytesRead,
+    {
         NixReader {
-            buf,
             inner: reader,
             reserved_buf_size: self.reserved_buf_size,
             max_buf_size: self.max_buf_size,
             version: self.version,
             store_dir: self.store_dir,
         }
+    }
+
+    pub fn build_buffered<R>(self, reader: R) -> NixReader<BytesReader<R>>
+    where
+        R: AsyncRead,
+    {
+        let reader = BytesReader::builder()
+            .set_reserved_buf_size(self.reserved_buf_size)
+            .set_max_buf_size(self.max_buf_size)
+            .build(reader);
+        self.build(reader)
     }
 }
 
@@ -77,7 +88,6 @@ pin_project! {
     pub struct NixReader<R> {
         #[pin]
         inner: R,
-        buf: BytesMut,
         reserved_buf_size: usize,
         max_buf_size: usize,
         version: ProtocolVersion,
@@ -91,67 +101,30 @@ impl NixReader<Cursor<Vec<u8>>> {
     }
 }
 
-impl<R> NixReader<R>
+impl<R> NixReader<BytesReader<R>>
 where
-    R: AsyncReadExt,
+    R: AsyncRead,
 {
-    pub fn new(reader: R) -> NixReader<R> {
-        NixReader::builder().build(reader)
+    pub fn new(reader: R) -> Self {
+        NixReader::builder().build_buffered(reader)
     }
+}
 
-    pub fn buffer(&self) -> &[u8] {
-        &self.buf[..]
-    }
-
+impl<R> NixReader<R> {
     pub fn set_version(&mut self, version: ProtocolVersion) {
         self.version = version;
     }
 
-    #[cfg(test)]
-    pub(crate) fn buffer_mut(&mut self) -> &mut BytesMut {
-        &mut self.buf
-    }
-
-    /// Remaining capacity in internal buffer
-    pub fn remaining_mut(&self) -> usize {
-        self.buf.capacity() - self.buf.len()
-    }
-
-    pub fn poll_force_fill_buf(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<io::Result<usize>> {
-        // Ensure that buffer has space for at least reserved_buf_size bytes
-        if self.remaining_mut() < self.reserved_buf_size {
-            let me = self.as_mut().project();
-            me.buf.reserve(*me.reserved_buf_size);
-        }
-        let me = self.project();
-        let n = {
-            let dst = me.buf.spare_capacity_mut();
-            let mut buf = ReadBuf::uninit(dst);
-            let ptr = buf.filled().as_ptr();
-            ready!(me.inner.poll_read(cx, &mut buf)?);
-
-            // Ensure the pointer does not change from under us
-            assert_eq!(ptr, buf.filled().as_ptr());
-            buf.filled().len()
-        };
-
-        // SAFETY: This is guaranteed to be the number of initialized (and read)
-        // bytes due to the invariants provided by `ReadBuf::filled`.
-        unsafe {
-            me.buf.advance_mut(n);
-        }
-        Poll::Ready(Ok(n))
+    pub fn get_ref(&self) -> &R {
+        &self.inner
     }
 }
 
 impl<R> NixReader<R>
 where
-    R: AsyncReadExt + Unpin,
+    R: AsyncBytesRead + Unpin,
 {
-    pub async fn force_fill(&mut self) -> io::Result<usize> {
+    pub async fn force_fill(&mut self) -> io::Result<Bytes> {
         let mut p = Pin::new(self);
         let read = poll_fn(|cx| p.as_mut().poll_force_fill_buf(cx)).await?;
         Ok(read)
@@ -160,7 +133,7 @@ where
 
 impl<R> NixRead for NixReader<R>
 where
-    R: AsyncReadExt + Send + Unpin,
+    R: AsyncBytesRead + Send + Unpin + Debug,
 {
     type Error = io::Error;
 
@@ -172,10 +145,14 @@ where
         &self.store_dir
     }
 
-    fn try_read_number(&mut self) -> impl Future<Output = Result<Option<u64>, Self::Error>> {
-        TryReadU64::new().read(self)
+    #[instrument(level = "trace", skip(self))]
+    async fn try_read_number(&mut self) -> Result<Option<u64>, Self::Error> {
+        let ret = TryReadU64::new().read(self).await;
+        trace!("try_read_number {:?}", ret);
+        ret
     }
 
+    #[instrument(level = "trace", skip(self))]
     async fn try_read_bytes_limited(
         &mut self,
         limit: RangeInclusive<usize>,
@@ -185,50 +162,9 @@ where
             "The limit must be smaller than {}",
             self.max_buf_size
         );
-        TryReadBytesLimited::new(limit).read(self).await
-        /*
-        match self.try_read_number().await? {
-            Some(raw_len) => {
-                // Check that length is in range and convert to usize
-                let len = raw_len
-                    .try_into()
-                    .ok()
-                    .filter(|v| limit.contains(v))
-                    .ok_or_else(|| Self::Error::invalid_data("bytes length out of range"))?;
-
-                // Calculate 64bit aligned length and convert to usize
-                let aligned: usize = raw_len
-                    .checked_add(7)
-                    .map(|v| v & !7)
-                    .ok_or_else(|| Self::Error::invalid_data("aligned bytes length out of range"))?
-                    .try_into()
-                    .map_err(Self::Error::invalid_data)?;
-
-                // Ensure that there is enough space in buffer for contents
-                if self.buf.len() + self.remaining_mut() < aligned {
-                    self.buf.reserve(aligned - self.buf.len());
-                }
-                while self.buf.len() < aligned {
-                    if self.force_fill().await? == 0 {
-                        return Err(Self::Error::missing_data(
-                            "unexpected end-of-file reading bytes",
-                        ));
-                    }
-                }
-                let mut contents = self.buf.split_to(aligned);
-
-                let padding = aligned - len;
-                // Ensure padding is all zeros
-                if contents[len..] != ZEROS[..padding] {
-                    return Err(Self::Error::invalid_data("non-zero padding"));
-                }
-
-                contents.truncate(len);
-                Ok(Some(contents.freeze()))
-            }
-            None => Ok(None),
-        }
-        */
+        let ret = TryReadBytesLimited::new(limit.clone()).read(self).await;
+        trace!(?limit, "try_read_bytes_limited {:?}", ret);
+        ret
     }
 
     async fn try_read_bytes(&mut self) -> Result<Option<Bytes>, Self::Error> {
@@ -240,7 +176,7 @@ where
     }
 }
 
-impl<R: AsyncRead> AsyncRead for NixReader<R> {
+impl<R: AsyncBytesRead> AsyncRead for NixReader<R> {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -256,150 +192,21 @@ impl<R: AsyncRead> AsyncRead for NixReader<R> {
     }
 }
 
-impl<R: AsyncRead> AsyncBufRead for NixReader<R> {
-    fn poll_fill_buf(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
-        if self.as_ref().project_ref().buf.is_empty() {
-            ready!(self.as_mut().poll_force_fill_buf(cx))?;
-        }
-        let me = self.project();
-        Poll::Ready(Ok(&me.buf[..]))
+impl<R: AsyncBytesRead> AsyncBytesRead for NixReader<R> {
+    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Bytes>> {
+        self.project().inner.poll_fill_buf(cx)
     }
 
     fn consume(self: Pin<&mut Self>, amt: usize) {
-        let me = self.project();
-        me.buf.advance(amt)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum TryReadBytesLimited {
-    ReadLen(RangeInclusive<usize>, TryReadU64),
-    Fill(usize, usize),
-    Done,
-}
-
-impl TryReadBytesLimited {
-    pub(crate) fn new(limit: RangeInclusive<usize>) -> Self {
-        Self::ReadLen(limit, TryReadU64::new())
-    }
-    async fn read<R: AsyncRead + Unpin>(
-        mut self,
-        reader: &mut NixReader<R>,
-    ) -> io::Result<Option<Bytes>> {
-        let mut reader = Pin::new(reader);
-        poll_fn(move |cx| self.poll_reader(cx, reader.as_mut())).await
+        self.project().inner.consume(amt)
     }
 
-    pub(crate) fn poll_reader<R>(
-        &mut self,
-        cx: &mut Context<'_>,
-        mut reader: Pin<&mut NixReader<R>>,
-    ) -> Poll<io::Result<Option<Bytes>>>
-    where
-        R: AsyncRead,
-    {
-        loop {
-            match self {
-                Self::ReadLen(limit, try_read_u64) => {
-                    if let Some(raw_len) = ready!(try_read_u64.poll_reader(cx, reader.as_mut()))? {
-                        // Check that length is in range and convert to usize
-                        let len = raw_len
-                            .try_into()
-                            .ok()
-                            .filter(|v| limit.contains(v))
-                            .ok_or_else(|| io::Error::invalid_data("bytes length out of range"))?;
-
-                        // Calculate 64bit aligned length and convert to usize
-                        let aligned: usize = raw_len
-                            .checked_add(7)
-                            .map(|v| v & !7)
-                            .ok_or_else(|| {
-                                io::Error::invalid_data("aligned bytes length out of range")
-                            })?
-                            .try_into()
-                            .map_err(io::Error::invalid_data)?;
-
-                        let r = reader.as_mut().project();
-                        // Ensure that there is enough space in buffer for contents
-                        if r.buf.capacity() < aligned {
-                            r.buf.reserve(aligned - r.buf.len());
-                        }
-                        *self = Self::Fill(len, aligned);
-                    } else {
-                        *self = Self::Done;
-                        return Poll::Ready(Ok(None));
-                    }
-                }
-                Self::Fill(len, aligned) => {
-                    while reader.as_mut().project().buf.len() < *aligned {
-                        if ready!(reader.as_mut().poll_force_fill_buf(cx))? == 0 {
-                            *self = Self::Done;
-                            return Poll::Ready(Err(io::Error::missing_data(
-                                "unexpected end-of-file reading bytes",
-                            )));
-                        }
-                    }
-                    let mut contents = reader.as_mut().project().buf.split_to(*aligned);
-
-                    let padding = *aligned - *len;
-                    // Ensure padding is all zeros
-                    if contents[*len..] != ZEROS[..padding] {
-                        *self = Self::Done;
-                        return Poll::Ready(Err(io::Error::invalid_data("non-zero padding")));
-                    }
-
-                    contents.truncate(*len);
-                    *self = Self::Done;
-                    return Poll::Ready(Ok(Some(contents.freeze())));
-                }
-                Self::Done => panic!("Polling completed future"),
-            }
-        }
+    fn poll_force_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Bytes>> {
+        self.project().inner.poll_force_fill_buf(cx)
     }
-}
 
-#[derive(Debug, Clone)]
-pub(crate) struct TryReadU64 {
-    buf: [u8; 8],
-    read: u8,
-}
-
-impl TryReadU64 {
-    pub(crate) fn new() -> Self {
-        Self {
-            buf: [0u8; 8],
-            read: 0,
-        }
-    }
-    async fn read<R: AsyncRead>(mut self, reader: R) -> io::Result<Option<u64>> {
-        let mut reader = pin!(reader);
-        poll_fn(move |cx| self.poll_reader(cx, reader.as_mut())).await
-    }
-    pub(crate) fn poll_reader<R>(
-        &mut self,
-        cx: &mut Context<'_>,
-        mut reader: Pin<&mut R>,
-    ) -> Poll<io::Result<Option<u64>>>
-    where
-        R: AsyncRead,
-    {
-        while self.read < 8 {
-            let mut buf = ReadBuf::new(&mut self.buf[(self.read as usize)..]);
-            ready!(reader.as_mut().poll_read(cx, &mut buf))?;
-            if buf.filled().is_empty() {
-                if self.read == 0 {
-                    return Poll::Ready(Ok(None));
-                } else {
-                    return Poll::Ready(Err(io::Error::new(
-                        io::ErrorKind::UnexpectedEof,
-                        "EOF reading u64",
-                    )));
-                }
-            }
-            self.read += buf.filled().len() as u8;
-        }
-        let num = Buf::get_u64_le(&mut &self.buf[..]);
-        Poll::Ready(Ok(Some(num)))
+    fn prepare(self: Pin<&mut Self>, additional: usize) {
+        self.project().inner.prepare(additional)
     }
 }
 
@@ -409,18 +216,27 @@ mod test {
 
     use hex_literal::hex;
     use rstest::rstest;
+    use tokio::io::{simplex, AsyncReadExt as _, AsyncWriteExt as _};
     use tokio_test::io::Builder;
 
     use super::*;
-    use crate::daemon::de::NixRead;
+    use crate::{
+        daemon::{
+            de::NixRead,
+            ser::{NixWrite, NixWriter},
+        },
+        hash::NarHash,
+        io::BytesReader,
+    };
 
     #[tokio::test]
     async fn test_read_u64() {
         let mock = Builder::new().read(&hex!("0100 0000 0000 0000")).build();
-        let mut reader = NixReader::new(mock);
+        let reader = BytesReader::new(mock);
+        let mut reader = NixReader::new(reader);
 
         assert_eq!(1, reader.read_number().await.unwrap());
-        assert_eq!(hex!(""), reader.buffer());
+        assert_eq!(hex!(""), reader.get_ref().buffer());
 
         let mut buf = Vec::new();
         reader.read_to_end(&mut buf).await.unwrap();
@@ -435,7 +251,7 @@ mod test {
         let mut reader = NixReader::new(mock);
 
         assert_eq!(1, reader.read_number().await.unwrap());
-        assert_eq!(hex!("0123 4567 89AB CDEF"), reader.buffer());
+        assert_eq!(hex!("0123 4567 89AB CDEF"), reader.get_ref().buffer());
 
         let mut buf = Vec::new();
         reader.read_to_end(&mut buf).await.unwrap();
@@ -454,7 +270,7 @@ mod test {
         let mut reader = NixReader::new(mock);
 
         assert_eq!(1, reader.read_number().await.unwrap());
-        assert_eq!(hex!("0123 4567 89AB CDEF"), reader.buffer());
+        assert_eq!(hex!("0123 4567 89AB CDEF"), reader.get_ref().buffer());
 
         let mut buf = Vec::new();
         reader.read_to_end(&mut buf).await.unwrap();
@@ -605,7 +421,7 @@ mod test {
         let mock = Builder::new().read(&hex!("F9FF FFFF FFFF FFFF")).build();
         let mut reader = NixReader::builder()
             .set_max_buf_size(usize::MAX)
-            .build(mock);
+            .build_buffered(mock);
 
         assert_eq!(
             io::ErrorKind::InvalidData,
@@ -646,26 +462,26 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_buffer_resize() {
-        let mock = Builder::new()
-            .read(&hex!("0100"))
-            .read(&hex!("0000 0000 0000"))
-            .build();
-        let mut reader = NixReader::builder().set_reserved_buf_size(8).build(mock);
-        // buffer has no capacity initially
-        assert_eq!(0, reader.buffer_mut().capacity());
-
-        assert_eq!(2, reader.force_fill().await.unwrap());
-
-        // After first read buffer should have capacity we chose
-        assert_eq!(8, reader.buffer_mut().capacity());
-
-        // Because there was only 6 bytes remaining in buffer,
-        // which is enough to read the last 6 bytes, but we require
-        // capacity for 8 bytes, it doubled the capacity
-        assert_eq!(6, reader.force_fill().await.unwrap());
-        assert_eq!(16, reader.buffer_mut().capacity());
-
-        assert_eq!(1, reader.read_number().await.unwrap());
+    async fn test_query_info() {
+        let (reader, writer) = simplex(DEFAULT_RESERVED_BUF_SIZE);
+        let mut writer = NixWriter::new(writer);
+        let mut reader = NixReader::new(reader);
+        writer.write_number(12).await.unwrap();
+        let value = crate::daemon::UnkeyedValidPathInfo {
+            deriver: Some("00000000000000000000000000000000-_.drv".parse().unwrap()),
+            nar_hash: NarHash::new(&[0u8; 32]),
+            references: vec!["00000000000000000000000000000000-_".parse().unwrap()],
+            registration_time: 0,
+            nar_size: 0,
+            ultimate: true,
+            signatures: vec![],
+            ca: None,
+        };
+        writer.write_value(&value).await.unwrap();
+        writer.write_number(14).await.unwrap();
+        writer.flush().await.unwrap();
+        assert_eq!(12, reader.read_number().await.unwrap());
+        assert_eq!(value, reader.read_value().await.unwrap());
+        assert_eq!(14, reader.read_number().await.unwrap());
     }
 }

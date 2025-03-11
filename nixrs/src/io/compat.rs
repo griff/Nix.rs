@@ -1,0 +1,69 @@
+use std::task::{ready, Poll};
+
+use bytes::{Buf as _, Bytes};
+use pin_project_lite::pin_project;
+use tokio::io::{AsyncBufRead, AsyncRead};
+
+use super::AsyncBytesRead;
+
+pin_project! {
+    #[derive(Debug)]
+    pub struct AsyncBufReadCompat<R> {
+        #[pin]
+        reader: R,
+        buffer: Bytes,
+    }
+}
+
+impl<R> AsyncBufReadCompat<R>
+where
+    R: AsyncBytesRead,
+{
+    pub fn new(reader: R) -> Self {
+        Self {
+            reader,
+            buffer: Bytes::new(),
+        }
+    }
+}
+
+impl<R> AsyncRead for AsyncBufReadCompat<R>
+where
+    R: AsyncBytesRead,
+{
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        let rem = ready!(self.as_mut().poll_fill_buf(cx))?;
+        if !rem.is_empty() {
+            let amt = std::cmp::min(rem.len(), buf.remaining());
+            buf.put_slice(&rem[0..amt]);
+            self.consume(amt);
+        }
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl<R> AsyncBufRead for AsyncBufReadCompat<R>
+where
+    R: AsyncBytesRead,
+{
+    fn poll_fill_buf(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<std::io::Result<&[u8]>> {
+        let this = self.project();
+        if this.buffer.is_empty() {
+            *this.buffer = ready!(this.reader.poll_fill_buf(cx))?;
+        }
+        Poll::Ready(Ok(&this.buffer[..]))
+    }
+
+    fn consume(self: std::pin::Pin<&mut Self>, amt: usize) {
+        let this = self.project();
+        this.buffer.advance(amt);
+        this.reader.consume(amt);
+    }
+}

@@ -8,19 +8,14 @@ use std::task::{ready, Context, Poll};
 use bytes::{Buf, BufMut, BytesMut};
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tracing::{instrument, trace};
 
+use crate::daemon::ProtocolVersion;
 use crate::daemon::{DEFAULT_BUF_SIZE, RESERVED_BUF_SIZE};
-use crate::{
-    daemon::{ProtocolVersion, ZEROS},
-    store_path::StoreDir,
-};
+use crate::store_path::StoreDir;
+use crate::wire::{calc_padding, ZEROS};
 
 use super::{Error, NixWrite};
-
-fn calc_padding(len: usize) -> usize {
-    let aligned = len.wrapping_add(7) & !7;
-    aligned.wrapping_sub(len)
-}
 
 pub struct NixWriterBuilder {
     buf: Option<BytesMut>,
@@ -165,14 +160,15 @@ where
             }
             this.buf.advance(n);
         }
-        if this.buf.capacity() < *this.reserved_buf_size {
+        let cap = this.buf.capacity();
+        if cap < *this.reserved_buf_size {
             eprintln!(
                 "poll_flush_buf: reserve {} {} {}",
                 *this.reserved_buf_size,
                 this.buf.len(),
                 this.buf.capacity()
             );
-            this.buf.reserve(*this.reserved_buf_size);
+            this.buf.reserve(*this.reserved_buf_size - cap);
         }
         eprintln!(
             "poll_flush_buf: done {} {}",
@@ -333,41 +329,42 @@ where
         &self.store_dir
     }
 
+    #[instrument(skip(self), level = "trace")]
     async fn write_number(&mut self, value: u64) -> Result<(), Self::Error> {
-        self.write_all(&value.to_le_bytes()).await
+        self.write_all(&value.to_le_bytes()).await?;
+        trace!("Written number");
+        Ok(())
     }
 
+    #[instrument(skip(self), level = "trace")]
     async fn write_slice(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
-        let padding = calc_padding(buf.len());
-        eprintln!(
-            "write_slice: len {} {}",
-            self.buf.len(),
-            self.buf.capacity()
+        let padding = calc_padding(buf.len() as u64);
+        trace!(
+            len = self.buf.len(),
+            cap = self.buf.capacity(),
+            "write length"
         );
         self.write_value(&buf.len()).await?;
-        eprintln!(
-            "write_slice: slice {} {}",
-            self.buf.len(),
-            self.buf.capacity()
+        trace!(
+            len = self.buf.len(),
+            cap = self.buf.capacity(),
+            "write slice"
         );
         self.write_all(buf).await?;
-        eprintln!(
-            "write_slice: done {} {}",
-            self.buf.len(),
-            self.buf.capacity()
+        trace!(
+            len = self.buf.len(),
+            cap = self.buf.capacity(),
+            "write done"
         );
         if padding > 0 {
-            eprintln!(
-                "write_slice: padding {} {}",
-                self.buf.len(),
-                self.buf.capacity()
-            );
+            trace!(len = self.buf.len(), cap = self.buf.capacity(), "padding");
             self.write_all(&ZEROS[..padding]).await
         } else {
             Ok(())
         }
     }
 
+    #[instrument(skip_all, level = "trace", fields(%msg))]
     async fn write_display<D>(&mut self, msg: D) -> Result<(), Self::Error>
     where
         D: fmt::Display + Send,
@@ -405,7 +402,7 @@ where
         );
         let len = self.buf.len() - offset - 8;
         BufMut::put_u64_le(&mut &mut self.buf[offset..(offset + 8)], len as u64);
-        let padding = calc_padding(len);
+        let padding = calc_padding(len as u64);
         self.write_all(&ZEROS[..padding]).await?;
         eprintln!(
             "write_display: done {} {}",
