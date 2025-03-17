@@ -474,7 +474,7 @@ impl fmt::Display for SRIHash<'_> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
@@ -519,6 +519,14 @@ impl FromStr for NarHash {
             .decode_mut(s.as_bytes(), &mut data)
             .map_err(|err| ParseHashError::BadEncoding(s.into(), "hex".into(), err.error))?;
         Ok(NarHash(data))
+    }
+}
+
+impl fmt::Debug for NarHash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("NarHash")
+            .field(&format_args!("{}", self))
+            .finish()
     }
 }
 

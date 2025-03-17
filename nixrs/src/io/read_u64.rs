@@ -15,6 +15,12 @@ pub struct TryReadU64 {
     read: u8,
 }
 
+impl Default for TryReadU64 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TryReadU64 {
     pub fn new() -> Self {
         Self {

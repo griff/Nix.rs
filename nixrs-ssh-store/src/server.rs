@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use futures::future::Ready;
 use futures::{Future, FutureExt};
+#[cfg(feature = "legacy")]
 use nixrs_legacy::store::legacy_worker;
 use thrussh::server::Config;
 use thrussh::{
@@ -22,7 +23,9 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info};
 
-use crate::io::{ChannelRead, DataWrite, ExtendedDataWrite};
+#[cfg(feature = "legacy")]
+use crate::io::ExtendedDataWrite;
+use crate::io::{ChannelRead, DataWrite};
 use crate::StoreProvider;
 
 #[derive(Debug)]
@@ -295,6 +298,7 @@ struct StoreCommand<S> {
     store_provider: S,
     shutdown: CancellationToken,
     channel: ChannelId,
+    #[cfg(feature = "legacy")]
     stderr: ExtendedDataWrite,
     stdout: BufWriter<DataWrite>,
     stdin: BufReader<ChannelRead>,
@@ -305,6 +309,7 @@ where
     S: StoreProvider + Send,
     S::Error: 'static,
 {
+    #[cfg(feature = "legacy")]
     async fn run_legacy_command(self, write_allowed: bool) -> Result<(), anyhow::Error> {
         if let Some(store) = self
             .store_provider
@@ -554,28 +559,13 @@ where
                     shutdown: self.shutdown.clone(),
                     store_provider: self.store_provider.clone(),
                     channel,
+                    #[cfg(feature = "legacy")]
                     stderr: ExtendedDataWrite::new(channel, 1, handle.clone()),
                     stdout: BufWriter::new(DataWrite::new(channel, handle.clone())),
                     stdin: BufReader::new(source),
                 };
 
-                if data == b"nix-store --serve --write" || data == b"nix-store --serve" {
-                    let mut write_allowed = data == b"nix-store --serve --write";
-                    if let Some((_, user_write_allowed)) = self.auth_user.as_ref() {
-                        write_allowed = write_allowed && *user_write_allowed;
-                    }
-                    let join = tokio::task::spawn(async move {
-                        match cmd.run_legacy_command(write_allowed).await {
-                            Ok(_) => Ok(()),
-                            Err(err) => {
-                                let err_txt = format!("Exec failed {:?}", err);
-                                send_error(err_txt, handle, channel).await;
-                                Err(err)
-                            }
-                        }
-                    });
-                    ch.serve = Some(join);
-                } else if data == b"nix-daemon --stdio" {
+                if data == b"nix-daemon --stdio" {
                     let join = tokio::task::spawn(async move {
                         match cmd.run_daemon_command().await {
                             Ok(_) => Ok(()),
@@ -587,6 +577,34 @@ where
                         }
                     });
                     ch.serve = Some(join);
+                } else if data == b"nix-store --serve --write" || data == b"nix-store --serve" {
+                    #[cfg(feature = "legacy")]
+                    {
+                        let mut write_allowed = data == b"nix-store --serve --write";
+                        if let Some((_, user_write_allowed)) = self.auth_user.as_ref() {
+                            write_allowed = write_allowed && *user_write_allowed;
+                        }
+                        let join = tokio::task::spawn(async move {
+                            match cmd.run_legacy_command(write_allowed).await {
+                                Ok(_) => Ok(()),
+                                Err(err) => {
+                                    let err_txt = format!("Exec failed {:?}", err);
+                                    send_error(err_txt, handle, channel).await;
+                                    Err(err)
+                                }
+                            }
+                        });
+                        ch.serve = Some(join);
+                    }
+                    #[cfg(not(feature = "legacy"))]
+                    {
+                        let err_txt = "invalid command".to_string();
+                        error!("{}", err_txt);
+                        session.extended_data(channel, 1, CryptoVec::from(err_txt));
+                        session.exit_status_request(channel, 1);
+                        session.close(channel);
+                        return self.finished(session);
+                    }
                 } else {
                     let err_txt = "invalid command".to_string();
                     error!("{}", err_txt);

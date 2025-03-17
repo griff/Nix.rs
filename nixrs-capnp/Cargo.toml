@@ -8,7 +8,7 @@ build = "build.rs"
 
 [dependencies]
 futures = { workspace = true }
-nixrs = { path = "../nixrs" }
+nixrs = { path = "../nixrs", features = [ "daemon" ] }
 capnp = { workspace = true }
 
 [dependencies.tokio]

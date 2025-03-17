@@ -8,8 +8,7 @@ use tokio::io::{AsyncBufRead, AsyncRead};
 use tokio::sync::mpsc;
 use tokio_util::sync::PollSender;
 
-use crate::daemon::DEFAULT_BUF_SIZE;
-use crate::io::{AsyncBytesRead, TryReadBytesLimited};
+use crate::io::{AsyncBytesRead, TryReadBytesLimited, DEFAULT_BUF_SIZE};
 
 enum State {
     Sending(usize),

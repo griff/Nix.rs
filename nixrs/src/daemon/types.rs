@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt;
-use std::future::ready;
+use std::future::{ready, Future};
 
 use bstr::ByteSlice;
 use bytes::Bytes;
@@ -20,10 +20,11 @@ use crate::{hash::NarHash, store_path::StorePath};
 use super::logger::{LocalLoggerResult, LogError, ResultLog, ResultProcess, TraceLine, Verbosity};
 use super::wire::types::Operation;
 use super::wire::types2::{
-    BasicDerivation, BuildMode, BuildResult, DerivedPath, QueryMissingResult, ValidPathInfo,
+    BasicDerivation, BuildMode, BuildResult, DerivedPath, KeyedBuildResult, QueryMissingResult,
+    ValidPathInfo,
 };
 use super::wire::{IgnoredTrue, IgnoredZero};
-use super::ProtocolVersion;
+use super::{LogMessage, ProtocolVersion};
 
 pub type Signature = String;
 
@@ -31,7 +32,9 @@ pub type Signature = String;
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(from_store_dir_str, store_dir_display))]
-pub struct ContentAddress(#[proptest(regex = "\\PC+")] String);
+pub struct ContentAddress(
+    #[cfg_attr(any(test, feature = "test"), proptest(regex = "\\PC+"))] String,
+);
 impl FromStoreDirStr for ContentAddress {
     type Error = ParseStorePathError;
 
@@ -178,6 +181,9 @@ pub struct DaemonError {
 }
 
 impl DaemonError {
+    pub fn custom<D: fmt::Display>(source: D) -> Self {
+        DaemonErrorKind::Custom(source.to_string()).into()
+    }
     pub fn fill_operation(mut self, op: Operation) -> Self {
         if self.context.operation.is_none() {
             self.context.operation = Some(op);
@@ -295,14 +301,13 @@ pub trait HandshakeDaemonStore {
     fn handshake(self) -> impl ResultLog<Self::Store, DaemonError> + Send;
 }
 
-pub trait LocalHandshakeDaemonStore {
-    type Store: LocalDaemonStore + Send;
-    fn handshake(self) -> impl LocalLoggerResult<Self::Store, DaemonError>;
-}
-
 #[allow(unused_variables)]
 pub trait DaemonStore: Send {
     fn trust_level(&self) -> TrustLevel;
+
+    /// Sets options on server.
+    /// This is usually called by the client just after the handshake to set
+    /// options for the rest of the session.
     fn set_options<'a>(
         &'a mut self,
         options: &'a ClientOptions,
@@ -317,6 +322,7 @@ pub trait DaemonStore: Send {
             ),
         }
     }
+
     fn is_valid_path<'a>(
         &'a mut self,
         path: &'a StorePath,
@@ -331,6 +337,7 @@ pub trait DaemonStore: Send {
             ),
         }
     }
+
     fn query_valid_paths<'a>(
         &'a mut self,
         paths: &'a StorePathSet,
@@ -346,6 +353,7 @@ pub trait DaemonStore: Send {
             ),
         }
     }
+
     fn query_path_info<'a>(
         &'a mut self,
         path: &'a StorePath,
@@ -360,6 +368,7 @@ pub trait DaemonStore: Send {
             ),
         }
     }
+
     fn nar_from_path<'s, 'p, 'r, W>(
         &'s mut self,
         path: &'p StorePath,
@@ -380,6 +389,26 @@ pub trait DaemonStore: Send {
             ),
         }
     }
+
+    fn nar_from_path2<'s>(
+        &'s mut self,
+        path: &'s StorePath,
+    ) -> impl Stream<Item = LogMessage>
+           + Future<Output = Result<impl AsyncBufRead + 's, DaemonError>>
+           + Send
+           + 's {
+        ResultProcess {
+            stream: empty(),
+            result: ready(
+                Err(super::DaemonErrorKind::UnimplementedOperation(
+                    super::wire::types::Operation::NarFromPath,
+                ))
+                .with_operation(super::wire::types::Operation::NarFromPath)
+                    as Result<&[u8], DaemonError>,
+            ),
+        }
+    }
+
     fn build_paths<'a>(
         &'a mut self,
         paths: &'a [DerivedPath],
@@ -395,6 +424,12 @@ pub trait DaemonStore: Send {
             ),
         }
     }
+    fn build_paths_with_results<'a>(
+        &'a mut self,
+        drvs: &'a [DerivedPath],
+        mode: BuildMode,
+    ) -> impl ResultLog<Vec<KeyedBuildResult>, DaemonError> + Send + 'a;
+
     fn build_derivation<'a>(
         &'a mut self,
         drv_path: &'a StorePath,
@@ -411,6 +446,7 @@ pub trait DaemonStore: Send {
             ),
         }
     }
+
     fn query_missing<'a>(
         &'a mut self,
         paths: &'a [DerivedPath],
@@ -425,6 +461,7 @@ pub trait DaemonStore: Send {
             ),
         }
     }
+
     fn add_to_store_nar<'s, 'r, 'i, R>(
         &'s mut self,
         info: &'i ValidPathInfo,
@@ -447,6 +484,7 @@ pub trait DaemonStore: Send {
             ),
         }
     }
+
     fn add_multiple_to_store<'s, 'i, 'r, S, R>(
         &'s mut self,
         repair: bool,
@@ -469,6 +507,8 @@ pub trait DaemonStore: Send {
             ),
         }
     }
+
+    fn query_all_valid_paths(&mut self) -> impl ResultLog<StorePathSet, DaemonError> + Send + '_;
 }
 
 impl<S> DaemonStore for &mut S
@@ -574,6 +614,23 @@ where
     {
         (**self).add_multiple_to_store(repair, dont_check_sigs, stream)
     }
+
+    fn build_paths_with_results<'a>(
+        &'a mut self,
+        drvs: &'a [DerivedPath],
+        mode: BuildMode,
+    ) -> impl ResultLog<Vec<KeyedBuildResult>, DaemonError> + Send + 'a {
+        (**self).build_paths_with_results(drvs, mode)
+    }
+
+    fn query_all_valid_paths(&mut self) -> impl ResultLog<StorePathSet, DaemonError> + Send + '_ {
+        (**self).query_all_valid_paths()
+    }
+}
+
+pub trait LocalHandshakeDaemonStore {
+    type Store: LocalDaemonStore + Send;
+    fn handshake(self) -> impl LocalLoggerResult<Self::Store, DaemonError>;
 }
 
 pub trait LocalDaemonStore {

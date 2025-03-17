@@ -22,7 +22,7 @@ num_enum = { workspace = true }
 version = "0.1.0"
 path = "../nixrs"
 default-features = false
-features = ["test"]
+features = ["test", "daemon-serde"]
 
 [dev-dependencies.nixrs-derive]
 version = "0.1.0"

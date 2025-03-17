@@ -4,6 +4,7 @@ use std::ops::RangeInclusive;
 use std::{fmt, io};
 
 use ::bytes::Bytes;
+use tracing::{trace_span, Instrument};
 
 use crate::store_path::StoreDir;
 
@@ -11,16 +12,12 @@ use super::ProtocolVersion;
 
 mod bytes;
 mod collections;
-mod framed;
 mod int;
 #[cfg(any(test, feature = "test"))]
 pub mod mock;
 mod reader;
-mod stderr_read;
 
-pub use framed::FramedReader;
 pub use reader::{NixReader, NixReaderBuilder};
-pub use stderr_read::StderrReader;
 
 pub trait Error: Sized + StdError {
     fn custom<T: fmt::Display>(msg: T) -> Self;
@@ -140,7 +137,7 @@ pub trait NixRead: Send {
     fn read_value<V: NixDeserialize>(
         &mut self,
     ) -> impl Future<Output = Result<V, Self::Error>> + Send + '_ {
-        V::deserialize(self)
+        V::deserialize(self).instrument(trace_span!("read_value"))
     }
 
     /// Read a value from the protocol.
@@ -149,7 +146,7 @@ pub trait NixRead: Send {
     fn try_read_value<V: NixDeserialize>(
         &mut self,
     ) -> impl Future<Output = Result<Option<V>, Self::Error>> + Send + '_ {
-        V::try_deserialize(self)
+        V::try_deserialize(self).instrument(trace_span!("try_read_value"))
     }
 }
 

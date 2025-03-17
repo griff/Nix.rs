@@ -220,7 +220,6 @@ impl Inner {
         loop {
             match self.state {
                 /*
-                Root
                 "nix-archive-1" "(" "type" => SelectNode
                  */
                 InnerState::Root(read) => {
@@ -228,8 +227,8 @@ impl Inner {
                     read_token!(Root, TOK_ROOT, self, read, parsed, buf);
                     self.state = InnerState::SelectNode(Default::default());
                 }
+
                 /*
-                SelectNode
                 "directory" => ReadDir
                 "regular" "executable" "" "contents" => ReadContentsLen
                 "regular" "contents" => ReadContentsLen
@@ -265,8 +264,8 @@ impl Inner {
                         }
                     }
                 }
+
                 /*
-                ReadContentsLen
                 u64 => ReadContents
                 */
                 InnerState::ReadContentsLen(mut value, read) => {
@@ -301,8 +300,8 @@ impl Inner {
                         self.state = InnerState::ReadContents(calc_aligned(len));
                     }
                 }
+
                 /*
-                ReadContents
                 bytes => FinishNode
                 */
                 InnerState::ReadContents(rem) => {
@@ -319,7 +318,6 @@ impl Inner {
                 }
 
                 /*
-                FinishNode
                 ")" => level > 0 ? FinishEntry : EOF
                 */
                 InnerState::FinishNode(read) => {
@@ -333,7 +331,6 @@ impl Inner {
                 }
 
                 /*
-                ReadDir
                 push level
                 => ReadEntries
                 */
@@ -344,7 +341,6 @@ impl Inner {
                 }
 
                 /*
-                FinishEntry
                 ")" => ReadEntries
                 */
                 InnerState::FinishEntry(read) => {
@@ -354,7 +350,6 @@ impl Inner {
                 }
 
                 /*
-                ReadEntries
                 "entry" "(" "name" => ReadEntryNameLen
                 ")" => FinishReadEntry
                 */
@@ -396,7 +391,6 @@ impl Inner {
                 }
 
                 /*
-                FinishReadEntry
                 level > 1 ? pop level & FinishEntry : EOF
                 */
                 InnerState::FinishReadEntry => {
@@ -410,7 +404,6 @@ impl Inner {
                 }
 
                 /*
-                ReadEntryNameLen
                 len => ReadEntryName
                 */
                 InnerState::ReadEntryNameLen(mut value, read) => {
@@ -430,7 +423,6 @@ impl Inner {
                 }
 
                 /*
-                ReadEntryName
                 bytes => ReadNode
                 */
                 InnerState::ReadEntryName(rem) => {
@@ -447,7 +439,6 @@ impl Inner {
                 }
 
                 /*
-                ReadNode
                 "node" "(" "type" => SelectNode
                 */
                 InnerState::ReadNode(read) => {
@@ -496,16 +487,41 @@ where
 {
     fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
         let this = self.project();
-        let buf = ready!(this.reader.poll_fill_buf(cx))?;
+        trace!(parsed = *this.parsed, "poll_fill_buf reader");
+        if *this.parsed == 0 && this.state.is_eof() {
+            return Poll::Ready(Ok(b""));
+        }
+        let buf = match ready!(this.reader.poll_fill_buf(cx)) {
+            Ok(buf) => buf,
+            Err(err) => {
+                error!(parsed = *this.parsed, ?err, "poll_fill_buf reader Error");
+                return Err(err).into();
+            }
+        };
+        trace!(
+            parsed = *this.parsed,
+            buf.len = buf.len(),
+            "poll_fill_buf len"
+        );
         if buf.len() > *this.parsed {
             *this.parsed += this.state.drive(&buf[*this.parsed..])?;
         }
         if buf.is_empty() && !this.state.is_eof() {
+            error!(
+                parsed = *this.parsed,
+                len = buf[..*this.parsed].len(),
+                "poll_fill_buf Error"
+            );
             Poll::Ready(Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 "not a complete NAR",
             )))
         } else {
+            trace!(
+                parsed = *this.parsed,
+                len = buf[..*this.parsed].len(),
+                "poll_fill_buf"
+            );
             Poll::Ready(Ok(&buf[..*this.parsed]))
         }
     }
@@ -518,6 +534,7 @@ where
             amt,
             *this.parsed
         );
+        trace!(amt, parsed = *this.parsed, "consuming");
         this.reader.consume(amt);
         *this.parsed -= amt;
     }
@@ -532,7 +549,14 @@ where
         cx: &mut Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
+        let parsed = self.parsed;
         let rem = ready!(self.as_mut().poll_fill_buf(cx))?;
+        trace!(
+            len = rem.len(),
+            buf.remaining = buf.remaining(),
+            parsed,
+            "poll_read"
+        );
         if !rem.is_empty() {
             let amt = min(rem.len(), buf.remaining());
             buf.put_slice(&rem[0..amt]);
@@ -544,6 +568,7 @@ where
 
 #[cfg(test)]
 mod test {
+    use std::io;
     use std::time::{Duration, Instant};
 
     use bytes::{BufMut as _, Bytes, BytesMut};
@@ -552,7 +577,7 @@ mod test {
     use rstest::rstest;
     use tokio::io::{AsyncReadExt, BufReader};
     use tokio_test::io::Builder;
-    use tracing::trace;
+    use tracing::{info, trace};
     use tracing_test::traced_test;
 
     use crate::archive::proptest::arb_nar_contents;
@@ -562,27 +587,24 @@ mod test {
     use super::NarReader;
 
     #[rstest]
-    #[case::text_file(text_file(), b"")]
-    #[case::exec_file(exec_file(), b"")]
-    #[case::empty_file(empty_file(), b"")]
-    #[case::empty_file_in_dir(empty_file_in_dir(), b"")]
-    #[case::empty_dir(empty_dir(), b"")]
-    #[case::empty_dir_in_dir(empty_dir_in_dir(), b"")]
-    #[case::symlink(symlink(), b"")]
-    #[case::dir_example(dir_example(), b"")]
-    #[case::text_file(text_file(), b"more")]
-    #[case::exec_file(exec_file(), b"more")]
-    #[case::empty_file(empty_file(), b"more")]
-    #[case::empty_file_in_dir(empty_file_in_dir(), b"more")]
-    #[case::empty_dir(empty_dir(), b"more")]
-    #[case::empty_dir_in_dir(empty_dir_in_dir(), b"more")]
-    #[case::symlink(symlink(), b"more")]
-    #[case::dir_example(dir_example(), b"more")]
+    #[case::text_file(text_file())]
+    #[case::exec_file(exec_file())]
+    #[case::empty_file(empty_file())]
+    #[case::empty_file_in_dir(empty_file_in_dir())]
+    #[case::empty_dir(empty_dir())]
+    #[case::empty_dir_in_dir(empty_dir_in_dir())]
+    #[case::symlink(symlink())]
+    #[case::dir_example(dir_example())]
     #[traced_test]
     #[tokio::test]
     async fn read_nar(
         #[case] events: Vec<NAREvent>,
-        #[case] postfix: &[u8],
+        #[values(
+            Ok(&b""[..]),
+            Ok(&b"more"[..]),
+            Err(io::ErrorKind::StorageFull)
+        )]
+        postfix: Result<&[u8], io::ErrorKind>,
         #[values(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 51, 64_000)] chunk_size: usize,
     ) {
         let content = write_nar(&events);
@@ -590,30 +612,53 @@ mod test {
         let mut buf = BytesMut::new();
         buf.put_slice(b"before");
         buf.put_slice(&content);
-        buf.put_slice(postfix);
+        if let Ok(postfix) = postfix {
+            buf.put_slice(postfix);
+        }
         let read_content = buf.freeze();
 
-        let mut b = Builder::new();
-        for c in read_content.chunks(chunk_size) {
-            b.read(c);
-            b.wait(Duration::from_secs(0));
-        }
-        let mock = b.build();
+        let mock = {
+            let mut b = Builder::new();
+            for c in read_content.chunks(chunk_size) {
+                b.read(c);
+                b.wait(Duration::from_secs(0));
+            }
+            if let Err(err) = postfix {
+                b.wait(Duration::from_secs(0));
+                b.read_error(io::Error::new(err, "unexpected read"));
+            }
+            b.build()
+        };
         let mut buf_read = BufReader::new(mock);
 
         let mut prefix = [0u8; 6];
         buf_read.read_exact(&mut prefix).await.unwrap();
-        trace!(contents = content.len(), "Read NAR");
-        let mut reader = NarReader::new(&mut buf_read);
-        let mut actual = Vec::new();
-        reader.read_to_end(&mut actual).await.unwrap();
-        let actual = Bytes::from(actual);
-        trace!(actual = actual.len(), "Read NAR Done");
-        assert_eq!(actual, content);
+        {
+            trace!(contents = content.len(), "Read NAR");
+            let mut reader = NarReader::new(&mut buf_read);
+            let mut actual = Vec::new();
+            reader.read_to_end(&mut actual).await.unwrap();
+            let actual = Bytes::from(actual);
+            trace!(actual = actual.len(), "Read NAR Done");
+            assert_eq!(actual, content);
+        }
 
         let mut rest = Vec::new();
-        buf_read.read_to_end(&mut rest).await.unwrap();
-        assert_eq!(rest, postfix);
+        let res = buf_read.read_to_end(&mut rest).await;
+        match (postfix, res) {
+            (Ok(value), Ok(_)) => {
+                assert_eq!(rest, value);
+            }
+            (Err(kind), Err(err)) => {
+                assert_eq!(kind, err.kind());
+            }
+            (_, Err(err)) => {
+                panic!("Unexpected read failure {:?}", err);
+            }
+            (Err(kind), _) => {
+                panic!("Read should fail with {:?} error", kind);
+            }
+        }
     }
 
     #[traced_test]
@@ -660,7 +705,7 @@ mod test {
 
                 Ok(()) as Result<_, TestCaseError>
             })?;
-            eprintln!("Completed test {}", now.elapsed().as_secs_f64());
+            info!("Completed test {}", now.elapsed().as_secs_f64());
         })
     }
 }

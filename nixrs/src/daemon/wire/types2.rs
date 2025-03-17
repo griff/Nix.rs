@@ -1,7 +1,8 @@
+use std::collections::BTreeMap;
 use std::convert::Infallible;
 #[cfg(feature = "nixrs-derive")]
 use std::str::from_utf8;
-use std::{collections::BTreeMap, str::FromStr};
+use std::str::FromStr;
 
 use bytes::Bytes;
 #[cfg(feature = "nixrs-derive")]
@@ -9,6 +10,7 @@ use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(any(test, feature = "test"))]
 use proptest_derive::Arbitrary;
+use tracing::{debug_span, Span};
 
 use crate::daemon::{
     ClientOptions, DaemonInt, DaemonPath, DaemonString, DaemonTime, UnkeyedValidPathInfo,
@@ -250,6 +252,144 @@ impl Request {
             Request::QuerySubstitutablePathInfo(_) => Operation::QuerySubstitutablePathInfo,
         }
     }
+
+    pub fn span(&self) -> Span {
+        match self {
+            Request::IsValidPath(path) => debug_span!("IsValidPath", ?path),
+            Request::QueryReferrers(path) => debug_span!("QueryReferrers", ?path),
+            Request::AddToStore(AddToStoreRequest::Protocol25(req)) => {
+                debug_span!("AddToStore", name=?req.name, cam_str=?req.cam_str, refs=req.refs.len(), repair=req.repair)
+            }
+            Request::AddToStore(AddToStoreRequest::ProtocolPre25(req)) => {
+                debug_span!("AddToStore", base_name=req.base_name, fixed=req.fixed,
+                    recursive=?req.recursive,
+                    hash_algo=?req.hash_algo)
+            }
+            Request::BuildPaths(req) => {
+                debug_span!("BuildPaths", paths=req.paths.len(), mode=?req.mode)
+            }
+            Request::EnsurePath(path) => debug_span!("EnsurePath", ?path),
+            Request::AddTempRoot(path) => debug_span!("AddTempRoot", ?path),
+            Request::AddIndirectRoot(raw_path) => {
+                let path = String::from_utf8_lossy(raw_path);
+                debug_span!("AddIndirectRoot", ?path)
+            }
+            Request::FindRoots => debug_span!("FindRoots"),
+            Request::SetOptions(_options) => debug_span!("SetOptions"),
+            Request::CollectGarbage(req) => {
+                debug_span!("CollectGarbage",
+                    action=?req.action,
+                    paths_to_delete=req.paths_to_delete.len(),
+                    ignore_liveness=req.ignore_liveness,
+                    max_freed=req.max_freed)
+            }
+            Request::QueryAllValidPaths => debug_span!("QueryAllValidPaths"),
+            Request::QueryPathInfo(path) => debug_span!("QueryPathInfo", ?path),
+            Request::QueryPathFromHashPart(hash) => debug_span!("QueryPathFromHashPart", ?hash),
+            Request::QueryValidPaths(req) => {
+                debug_span!(
+                    "QueryValidPaths",
+                    paths = req.paths.len(),
+                    substitute = req.substitute
+                )
+            }
+            Request::QuerySubstitutablePaths(paths) => {
+                debug_span!("QuerySubstitutablePaths", paths = paths.len())
+            }
+            Request::QueryValidDerivers(path) => debug_span!("QueryValidDerivers", ?path),
+            Request::OptimiseStore => debug_span!("OptimiseStore"),
+            Request::VerifyStore(req) => {
+                debug_span!(
+                    "VerifyStore",
+                    check_contents = req.check_contents,
+                    repair = req.repair
+                )
+            }
+            Request::BuildDerivation(req) => {
+                debug_span!("BuildDerivation",
+                    drv_path=?req.drv_path,
+                    build_mode=?req.build_mode)
+            }
+            Request::AddSignatures(req) => {
+                debug_span!("AddSignatures", path=?req.path, signatures=?req.signatures)
+            }
+            Request::NarFromPath(path) => debug_span!("NarFromPath", ?path),
+            Request::AddToStoreNar(req) => {
+                let path = &req.path_info.path;
+                let info = &req.path_info.info;
+                debug_span!(
+                    "AddToStoreNar",
+                    ?path,
+                    ?info,
+                    repair = req.repair,
+                    dont_check_sigs = req.dont_check_sigs
+                )
+            }
+            Request::QueryMissing(paths) => debug_span!("QueryMissing", paths = paths.len()),
+            Request::QueryDerivationOutputMap(path) => {
+                debug_span!("QueryDerivationOutputMap", ?path)
+            }
+            Request::RegisterDrvOutput(RegisterDrvOutputRequest::Post31(realisation)) => {
+                debug_span!("RegisterDrvOutput", ?realisation)
+            }
+            Request::RegisterDrvOutput(RegisterDrvOutputRequest::Pre31 {
+                output_id,
+                output_path,
+            }) => {
+                debug_span!("RegisterDrvOutput", ?output_id, ?output_path)
+            }
+            Request::QueryRealisation(drv_output) => {
+                debug_span!("QueryRealisation", ?drv_output)
+            }
+            Request::AddMultipleToStore(req) => {
+                debug_span!(
+                    "AddMultipleToStore",
+                    repair = req.repair,
+                    dont_check_sigs = req.dont_check_sigs
+                )
+            }
+            Request::AddBuildLog(path) => debug_span!("AddBuildLog", ?path),
+            Request::BuildPathsWithResults(req) => {
+                debug_span!("BuildPathsWithResults", drvs=?req.drvs.len(), mode=?req.mode)
+            }
+            Request::AddPermRoot(req) => {
+                let gc_root = String::from_utf8_lossy(&req.gc_root);
+                debug_span!("AddPermRoot", path=?req.store_path, ?gc_root)
+            }
+            Request::SyncWithGC => debug_span!("SyncWithGC"),
+            Request::AddTextToStore(req) => {
+                debug_span!(
+                    "AddTextToStore",
+                    suffix = req.suffix,
+                    text = req.text.len(),
+                    refs = req.refs.len()
+                )
+            }
+            Request::QueryDerivationOutputs(path) => debug_span!("QueryDerivationOutputs", ?path),
+            Request::QueryDerivationOutputNames(path) => {
+                debug_span!("QueryDerivationOutputNames", ?path)
+            }
+            Request::QuerySubstitutablePathInfos(
+                QuerySubstitutablePathInfosRequest::Protocol22(infos),
+            ) => {
+                debug_span!("QuerySubstitutablePathInfos", infos = infos.len())
+            }
+            Request::QuerySubstitutablePathInfos(
+                QuerySubstitutablePathInfosRequest::ProtocolPre22(paths),
+            ) => {
+                debug_span!("QuerySubstitutablePathInfos", paths = paths.len())
+            }
+            Request::ExportPath(path) => debug_span!("ExportPath", ?path),
+            Request::ImportPaths => debug_span!("ImportPaths"),
+            Request::QueryPathHash(path) => debug_span!("QueryPathHash", ?path),
+            Request::QueryReferences(path) => debug_span!("QueryReferences", ?path),
+            Request::QueryDeriver(path) => debug_span!("QueryDeriver", ?path),
+            Request::HasSubstitutes(paths) => debug_span!("HasSubstitutes", paths = paths.len()),
+            Request::QuerySubstitutablePathInfo(path) => {
+                debug_span!("QuerySubstitutablePathInfo", ?path)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -316,6 +456,7 @@ pub struct BuildResult {
     pub built_outputs: BTreeMap<DrvOutput, Realisation>,
 }
 
+pub type KeyedBuildResults = Vec<KeyedBuildResult>;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct KeyedBuildResult {

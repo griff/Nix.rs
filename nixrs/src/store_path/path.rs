@@ -16,7 +16,7 @@ use super::FromStoreDirStr;
 use super::StoreDir;
 use super::StoreDirDisplay;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(from_store_dir_str, store_dir_display))]
 pub struct StorePath {
@@ -76,6 +76,14 @@ impl StorePath {
 
     pub fn hash(&self) -> &StorePathHash {
         &self.hash
+    }
+}
+
+impl fmt::Debug for StorePath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("StorePath")
+            .field(&format_args!("{}", self))
+            .finish()
     }
 }
 

@@ -11,9 +11,11 @@ members = [
   "nixrs-capnp",
   "examples/nixrs-nix-store",
   "examples/nix-docker-build",
+  "examples/tester",
 ]
 
 [workspace.dependencies]
+async-stream = "0.3.6"
 bstr = "^1.11.1"
 bytes = "^1.10.1"
 # criterion = { version = "^0.5", features = ["html_reports"] }
@@ -40,7 +42,6 @@ tracing-test = "^0.2.5"
 
 # nixrs-io
 async-trait = "0.1.50"
-async-stream = "0.3.2"
 base64 = "0.13.0"
 byteorder = "1.4.3"
 caches = "0.3.0"

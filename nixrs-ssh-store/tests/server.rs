@@ -28,14 +28,17 @@ where
 {
     type Error = DaemonError;
 
+    #[cfg(feature = "legacy")]
     type LegacyStore = nixrs_legacy::store::FailStore;
 
+    #[cfg(feature = "legacy")]
     type LegacyFuture = Ready<Result<Option<Self::LegacyStore>, Self::Error>>;
 
     type DaemonStore = MockStore<R>;
 
     type DaemonFuture = Ready<Result<Option<Self::DaemonStore>, Self::Error>>;
 
+    #[cfg(feature = "legacy")]
     fn get_legacy_store(
         &self,
         _stderr: nixrs_ssh_store::io::ExtendedDataWrite,

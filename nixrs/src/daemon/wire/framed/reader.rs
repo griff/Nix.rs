@@ -80,11 +80,11 @@ where
         loop {
             match me.state {
                 FramedReadState::ReadLen(ref mut r) => {
-                    eprintln!("FramedReader:poll_fill_buf: ReadLen");
+                    trace!("FramedReader:poll_fill_buf: ReadLen");
                     let len = ready!(r.poll_reader(cx, me.reader.as_mut()))?.ok_or_else(|| {
                         io::Error::new(io::ErrorKind::UnexpectedEof, "EOF in framed reader")
                     })?;
-                    eprintln!("FramedReader:poll_fill_buf: read len {}", len);
+                    trace!("FramedReader:poll_fill_buf: read len {}", len);
                     if len > 0 {
                         *me.state = FramedReadState::ReadData(len);
                     } else {
@@ -92,9 +92,9 @@ where
                     }
                 }
                 FramedReadState::ReadData(remaining) => {
-                    eprintln!("FramedReader:poll_fill_buf: ReadData {}", *remaining);
+                    trace!("FramedReader:poll_fill_buf: ReadData {}", *remaining);
                     let buf = ready!(me.reader.poll_fill_buf(cx))?;
-                    eprintln!("FramedReader:poll_fill_buf: Got {}", buf.len());
+                    trace!("FramedReader:poll_fill_buf: Got {}", buf.len());
                     if buf.is_empty() {
                         return Poll::Ready(Err(io::Error::new(
                             io::ErrorKind::UnexpectedEof,
@@ -115,7 +115,7 @@ where
         let me = self.project();
         match me.state {
             FramedReadState::ReadData(remaining) => {
-                eprintln!("FramedReader:consume: Buf {} {}", remaining, amt);
+                trace!("FramedReader:consume: Buf {} {}", remaining, amt);
                 *remaining -= amt as u64;
                 if *remaining == 0 {
                     *me.state = FramedReadState::ReadLen(TryReadU64::new());

@@ -20,6 +20,7 @@ use proptest::prelude::TestCaseError;
 #[cfg(any(test, feature = "test"))]
 use proptest::{prop_assert, prop_assert_eq};
 use tokio::io::{simplex, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _};
+use tracing::trace;
 
 use super::logger::{
     Activity, ActivityResult, FutureResult, LogMessage, ResultLogExt as _, ResultProcess,
@@ -28,14 +29,14 @@ use super::types::AddToStoreItem;
 use super::wire::types::Operation;
 use super::wire::types2::{
     AddMultipleToStoreRequest, AddToStoreNarRequest, BasicDerivation, BuildDerivationRequest,
-    BuildMode, BuildPathsRequest, BuildResult, DerivedPath, QueryMissingResult,
+    BuildMode, BuildPathsRequest, BuildResult, DerivedPath, KeyedBuildResults, QueryMissingResult,
     QueryValidPathsRequest, ValidPathInfo,
 };
 use super::{
     ClientOptions, DaemonError, DaemonErrorKind, DaemonResult, DaemonResultExt, DaemonStore,
     DaemonString, HandshakeDaemonStore, ResultLog, TrustLevel, UnkeyedValidPathInfo,
-    DEFAULT_BUF_SIZE,
 };
+use crate::io::DEFAULT_BUF_SIZE;
 use crate::store_path::{StorePath, StorePathSet};
 
 #[derive(Debug, Clone)]
@@ -113,6 +114,7 @@ pub enum MockRequest {
     IsValidPath(StorePath),
     QueryValidPaths(QueryValidPathsRequest),
     QueryPathInfo(StorePath),
+    QueryAllValidPaths,
     NarFromPath(StorePath),
     BuildPaths(BuildPathsRequest),
     BuildDerivation(BuildDerivationRequest),
@@ -128,6 +130,7 @@ impl MockRequest {
             Self::IsValidPath(_) => Operation::IsValidPath,
             Self::QueryValidPaths(_) => Operation::QueryValidPaths,
             Self::QueryPathInfo(_) => Operation::QueryPathInfo,
+            Self::QueryAllValidPaths => Operation::QueryAllValidPaths,
             Self::NarFromPath(_) => Operation::NarFromPath,
             Self::BuildPaths(_) => Operation::BuildPaths,
             Self::BuildDerivation(_) => Operation::BuildDerivation,
@@ -185,7 +188,7 @@ impl MockRequest {
             Self::QueryMissing(paths) => Either::Left(Either::Right(Either::Right(Either::Right(
                 store.query_missing(paths).map_ok(From::from),
             )))),
-            Self::AddToStoreNar(request, source) => Either::Right(Either::Left(
+            Self::AddToStoreNar(request, source) => Either::Right(Either::Left(Either::Left(
                 store
                     .add_to_store_nar(
                         &request.path_info,
@@ -194,20 +197,25 @@ impl MockRequest {
                         request.dont_check_sigs,
                     )
                     .map_ok(|value| value.into()),
-            )),
-            Self::AddMultipleToStore(request, stream) => Either::Right(Either::Right(
-                store
-                    .add_multiple_to_store(
-                        request.repair,
-                        request.dont_check_sigs,
-                        iter(stream.iter().map(|(info, content)| {
-                            Ok(AddToStoreItem {
-                                info: info.clone(),
-                                reader: Cursor::new(content.clone()),
-                            })
-                        })),
-                    )
-                    .map_ok(|value| value.into()),
+            ))),
+            Self::AddMultipleToStore(request, stream) => {
+                Either::Right(Either::Left(Either::Right(
+                    store
+                        .add_multiple_to_store(
+                            request.repair,
+                            request.dont_check_sigs,
+                            iter(stream.iter().map(|(info, content)| {
+                                Ok(AddToStoreItem {
+                                    info: info.clone(),
+                                    reader: Cursor::new(content.clone()),
+                                })
+                            })),
+                        )
+                        .map_ok(|value| value.into()),
+                )))
+            }
+            Self::QueryAllValidPaths => Either::Right(Either::Right(
+                store.query_all_valid_paths().map_ok(From::from),
             )),
         }
     }
@@ -219,6 +227,7 @@ pub enum MockResponse {
     Bool(bool),
     StorePathSet(StorePathSet),
     BuildResult(BuildResult),
+    KeyedBuildResults(KeyedBuildResults),
     Bytes(Bytes),
     ValidPathInfo(Option<UnkeyedValidPathInfo>),
     QueryMissingResult(QueryMissingResult),
@@ -249,6 +258,13 @@ impl MockResponse {
     pub fn unwrap_build_result(self) -> BuildResult {
         match self {
             Self::BuildResult(val) => val,
+            _ => panic!("Unexpected response {:?}", self),
+        }
+    }
+
+    pub fn unwrap_keyed_build_results(self) -> KeyedBuildResults {
+        match self {
+            Self::KeyedBuildResults(val) => val,
             _ => panic!("Unexpected response {:?}", self),
         }
     }
@@ -313,6 +329,16 @@ impl From<BuildResult> for MockResponse {
 impl From<MockResponse> for BuildResult {
     fn from(value: MockResponse) -> Self {
         value.unwrap_build_result()
+    }
+}
+impl From<KeyedBuildResults> for MockResponse {
+    fn from(v: KeyedBuildResults) -> Self {
+        MockResponse::KeyedBuildResults(v)
+    }
+}
+impl From<MockResponse> for KeyedBuildResults {
+    fn from(value: MockResponse) -> Self {
+        value.unwrap_keyed_build_results()
     }
 }
 impl From<Bytes> for MockResponse {
@@ -1316,10 +1342,10 @@ where
         let actual = MockRequest::NarFromPath(path.clone());
         self.check_operation(actual)
             .and_then(move |bytes: Bytes| async move {
-                eprintln!("Writing NAR");
+                trace!("Writing NAR");
                 sink.write_all(&bytes).await?;
                 sink.shutdown().await?;
-                eprintln!("Writen NAR");
+                trace!("Writen NAR");
                 Ok(())
             })
     }
@@ -1331,6 +1357,18 @@ where
     ) -> impl ResultLog<(), DaemonError> + 'a {
         let actual = MockRequest::BuildPaths(BuildPathsRequest {
             paths: paths.to_vec(),
+            mode,
+        });
+        self.check_operation(actual)
+    }
+
+    fn build_paths_with_results<'a>(
+        &'a mut self,
+        drvs: &'a [DerivedPath],
+        mode: BuildMode,
+    ) -> impl ResultLog<Vec<super::wire::types2::KeyedBuildResult>, DaemonError> + Send + 'a {
+        let actual = MockRequest::BuildPaths(BuildPathsRequest {
+            paths: drvs.to_vec(),
             mode,
         });
         self.check_operation(actual)
@@ -1400,7 +1438,7 @@ where
                 repair,
                 dont_check_sigs,
             };
-            eprintln!("Size of raw stream {}", size_of_val(&stream));
+            trace!("Size of raw stream {}", size_of_val(&stream));
             let fut = stream
                 .and_then(|mut info| async move {
                     let mut nar = Vec::new();
@@ -1408,11 +1446,16 @@ where
                     Ok((info.info, nar.into()))
                 })
                 .try_collect();
-            eprintln!("Size of stream {}", size_of_val(&fut));
+            trace!("Size of stream {}", size_of_val(&fut));
             let actual_infos = fut.await?;
             let actual = MockRequest::AddMultipleToStore(actual_req.clone(), actual_infos);
             Ok(self.check_operation(actual))
         })
+    }
+
+    fn query_all_valid_paths(&mut self) -> impl ResultLog<StorePathSet, DaemonError> + Send + '_ {
+        let actual = MockRequest::QueryAllValidPaths;
+        self.check_operation(actual)
     }
 }
 /*

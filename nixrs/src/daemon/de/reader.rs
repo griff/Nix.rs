@@ -133,7 +133,7 @@ where
 
 impl<R> NixRead for NixReader<R>
 where
-    R: AsyncBytesRead + Send + Unpin + Debug,
+    R: AsyncBytesRead + Send + Unpin,
 {
     type Error = io::Error;
 

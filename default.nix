@@ -30,7 +30,14 @@
         self.packages));
       checks = pkgs.lib.listToAttrs
         (map (p: {name = p.name; value = p;})
-        self.checks);
+        self.checks) // {
+          check-all = pkgs.runCommand "check-all" {} ''
+            mkdir -p $out
+            ${pkgs.lib.concatMapStringsSep "\n"
+              (p: "ln -s ${p.outPath} $out/${p.name}")
+              self.checks}
+            '';
+        };
       apps.ci = flake-inputs.flake-utils.lib.mkApp {
         drv = pkgs.writeShellApplication {
           name = "ci";

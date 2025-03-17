@@ -1,3 +1,4 @@
+use std::cmp::min;
 use std::fmt;
 use std::future::Future;
 use std::io::Cursor;
@@ -457,9 +458,9 @@ pin_project! {
     }
 }
 
-impl<Fut, T, E> FutureResult<Fut, T, E>
+impl<Fut, R, E> FutureResult<Fut, R, E>
 where
-    Fut: Future<Output = Result<T, E>>,
+    Fut: Future<Output = Result<R, E>>,
 {
     pub fn new(fut: Fut) -> Self {
         Self::Later { fut }
@@ -468,7 +469,7 @@ where
     fn poll_resolved(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-    ) -> Poll<Result<Pin<&mut T>, ()>> {
+    ) -> Poll<Result<Pin<&mut R>, ()>> {
         match self.as_mut().project() {
             FutureResultProj::Later { fut } => match ready!(fut.poll(cx)) {
                 Ok(result) => {
@@ -673,16 +674,12 @@ where
     DaemonError: From<<W as NixWrite>::Error>,
     SR: AsyncBufRead + Unpin + Send,
 {
-    async fn process_read(&mut self, mut len: usize) -> Result<(), DaemonError> {
+    async fn process_read(&mut self, len: usize) -> Result<(), DaemonError> {
         if let Some(source) = self.source.as_mut() {
             let buf = source.fill_buf().await?;
             let writer = self.writer.as_mut().unwrap();
-            if buf.len() > len {
-                writer.write_slice(&buf[..len]).await?;
-            } else {
-                len = buf.len();
-                writer.write_slice(buf).await?;
-            }
+            let len = min(len, buf.len());
+            writer.write_slice(&buf[..len]).await?;
             source.consume(len);
             Ok(())
         } else {
@@ -736,6 +733,21 @@ pin_project! {
         pub driver: D,
         pub driving: bool,
         pub drive_err: Option<E>,
+    }
+}
+
+impl<R, D, E> DriveResult<R, D, E>
+where
+    R: Stream<Item = LogMessage>,
+    D: Future<Output = Result<(), E>>,
+{
+    pub fn new(result: R, driver: D) -> Self {
+        Self {
+            result,
+            driver,
+            driving: true,
+            drive_err: None,
+        }
     }
 }
 

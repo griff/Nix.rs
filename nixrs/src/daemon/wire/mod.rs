@@ -6,9 +6,19 @@ use proptest_derive::Arbitrary;
 pub const CLIENT_MAGIC: u64 = 0x6e697863; // 'nixc' in ASCII
 pub const SERVER_MAGIC: u64 = 0x6478696f; // 'dxio' in ASCII
 
+mod add_multiple_to_store;
+mod framed;
 pub mod logger;
+mod stderr_read;
 pub mod types;
 pub mod types2;
+
+pub use add_multiple_to_store::{
+    parse_add_multiple_to_store, write_add_multiple_to_store_stream, SizedStream,
+};
+pub use framed::reader::FramedReader;
+pub use framed::writer::FramedWriter;
+pub use stderr_read::StderrReader;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]

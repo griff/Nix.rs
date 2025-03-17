@@ -1,21 +1,20 @@
-use std::fmt::Debug;
 use std::pin::pin;
 
 use async_stream::try_stream;
 use futures::{Stream, StreamExt};
-use nixrs_archive::copy_nar;
 use pin_project_lite::pin_project;
-use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite};
-use tracing::{instrument, trace};
+use tokio::io::{copy_buf, AsyncBufRead, AsyncRead, AsyncWrite};
+use tracing::{debug, debug_span, instrument, trace, Instrument};
 
 use crate::archive::NarReader;
 use crate::daemon::wire::types2::ValidPathInfo;
+use crate::daemon::DaemonResult;
 use crate::io::{AsyncBufReadCompat, AsyncBytesRead, TakenReader};
 
-use super::de::NixRead;
-use super::ser::NixWrite;
-use super::types::AddToStoreItem;
-use super::{DaemonError, DaemonErrorKind};
+use crate::daemon::de::NixRead;
+use crate::daemon::ser::NixWrite;
+use crate::daemon::types::AddToStoreItem;
+use crate::daemon::{DaemonError, DaemonErrorKind};
 
 #[instrument(level = "trace", skip_all)]
 pub async fn write_add_multiple_to_store_stream<W, S, R>(
@@ -26,7 +25,7 @@ where
     W: NixWrite + AsyncWrite + Unpin,
     S: Stream<Item = Result<AddToStoreItem<R>, DaemonError>>,
     DaemonError: From<W::Error>,
-    R: AsyncRead,
+    R: AsyncBufRead,
 {
     let size = stream.size_hint().1.expect("Stream with size");
     trace!(size, "Write stream size");
@@ -41,10 +40,21 @@ where
             );
         }
         let item = item?;
-        writer.write_value(&item.info).await?;
-        let reader = pin!(item.reader);
-        copy_nar(reader, &mut writer).await?;
-        written += 1;
+        let span = debug_span!("write_path_to_store", idx, size, ?item.info.path, ?item.info.info.nar_hash, ?item.info.info.nar_size, ?item.info.info);
+        async {
+            debug!(idx, size, "Item CA {:?}", item.info.info.ca);
+            writer.write_value(&item.info).await?;
+            debug!(idx, size, "Written file {} info", idx);
+            let mut reader = pin!(item.reader);
+            copy_buf(&mut reader, &mut writer).await?;
+            debug!(idx, size, "Written file {} to writer", idx);
+            //writer.flush().await?;
+            //debug!(idx, size, "Flushed file {} to writer", idx);
+            written += 1;
+            Ok(()) as DaemonResult<()>
+        }
+        .instrument(span)
+        .await?;
     }
     if written != size {
         return Err(DaemonErrorKind::Custom(format!(
@@ -58,9 +68,9 @@ where
 
 pin_project! {
     pub struct SizedStream<S> {
-        count: usize,
+        pub count: usize,
         #[pin]
-        stream: S,
+        pub stream: S,
     }
 }
 
@@ -79,6 +89,7 @@ impl<S: Stream> Stream for SizedStream<S> {
     }
 }
 
+#[instrument(level = "trace", skip_all)]
 pub async fn parse_add_multiple_to_store<'s, R>(
     mut source: R,
 ) -> Result<
@@ -86,7 +97,7 @@ pub async fn parse_add_multiple_to_store<'s, R>(
     DaemonError,
 >
 where
-    R: NixRead + AsyncRead + AsyncBytesRead + Debug + Unpin + 's,
+    R: NixRead + AsyncRead + AsyncBytesRead + Unpin + 's,
     DaemonError: From<<R as NixRead>::Error>,
 {
     let count = source.read_number().await?;
@@ -94,9 +105,9 @@ where
     Ok(SizedStream {
         count: count as usize,
         stream: try_stream! {
-            for _ in 0..count {
+            for idx in 0..count {
                 let info : ValidPathInfo = source.read_value().await?;
-                trace!(%info.path, %info.info.nar_hash, %info.info.nar_size, "Reading {}", info.path);
+                trace!(idx, count, %info.path, %info.info.nar_hash, %info.info.nar_size, "Reading {}", info.path);
                 let (stealer, reader) = TakenReader::new(source);
                 let reader = AsyncBufReadCompat::new(reader);
                 let reader = NarReader::new(reader);
@@ -104,8 +115,10 @@ where
                     info, reader,
                 };
                 yield item;
+                trace!(idx, count, "Looting reader");
                 source = stealer.loot();
             }
+            trace!(count, "Stream done");
         },
     })
 }
@@ -128,8 +141,9 @@ mod test {
     use super::*;
     use crate::daemon::de::NixReader;
     use crate::daemon::ser::NixWriter;
-    use crate::daemon::{DaemonResult, UnkeyedValidPathInfo, DEFAULT_BUF_SIZE};
+    use crate::daemon::{DaemonResult, UnkeyedValidPathInfo};
     use crate::hash::NarHash;
+    use crate::io::DEFAULT_BUF_SIZE;
 
     #[tokio::test]
     async fn write_empty() {
@@ -268,7 +282,6 @@ mod test {
             reader.read_bytes().await.unwrap()
         );
     }
-    // One items
-    // Several items
+    // Partial read
     // Proptest
 }

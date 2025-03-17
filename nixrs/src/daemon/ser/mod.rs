@@ -9,13 +9,12 @@ use super::ProtocolVersion;
 mod bytes;
 mod collections;
 mod display;
-mod framed;
 mod int;
 #[cfg(any(test, feature = "test"))]
 pub mod mock;
 mod writer;
 
-pub use framed::FramedWriter;
+use tracing::{trace_span, Instrument};
 pub use writer::{NixWriter, NixWriterBuilder};
 
 pub trait Error: Sized + StdError {
@@ -81,7 +80,7 @@ pub trait NixWrite: Send {
         V: NixSerialize + Send + ?Sized,
         Self: Sized,
     {
-        value.serialize(self)
+        value.serialize(self).instrument(trace_span!("write_value"))
     }
 }
 

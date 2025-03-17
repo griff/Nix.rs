@@ -34,10 +34,10 @@ impl Stores {
                 let store_paths =
                     compute_fs_closure(self.nar_store.clone(), start_paths, false).await?;
                 let p: Vec<String> = store_paths.iter().map(|p| p.to_string()).collect();
-                eprintln!("Copying paths for {}: {}", info.path, p[..].join(", "));
+                info!("Copying paths for {}: {}", info.path, p[..].join(", "));
                 copy_paths(&mut self.nar_store, &mut self.tvix_store, &store_paths).await?;
             } else {
-                eprintln!("Copying path {}", info.path);
+                info!("Copying path {}", info.path);
                 copy_store_path(
                     &mut self.nar_store,
                     &mut self.tvix_store,
@@ -115,10 +115,10 @@ impl PathInfoService for SubstitutePathInfoService {
             .await
             .map_err(|err| Error::StorageError(format!("copy error {}", err)))?
         {
-            eprintln!("Copy done");
+            info!("Copy done");
             self.local.get(digest).await
         } else {
-            eprintln!("Not found");
+            warn!("Not found");
             Ok(None)
         }
     }

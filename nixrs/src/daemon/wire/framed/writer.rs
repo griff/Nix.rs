@@ -6,15 +6,16 @@ use std::task::{ready, Context, Poll};
 use bytes::{Buf as _, BufMut, BytesMut};
 use pin_project_lite::pin_project;
 use tokio::io::AsyncWrite;
+use tracing::{debug, trace, trace_span, Span};
 
-use crate::daemon::{DEFAULT_BUF_SIZE, RESERVED_BUF_SIZE};
+use crate::io::{DEFAULT_BUF_SIZE, RESERVED_BUF_SIZE};
 
 pin_project! {
     #[derive(Debug)]
     pub struct FramedWriter<W> {
         #[pin]
         inner: W,
-        flushing: bool,
+        flushing: Option<Span>,
         shutdown: bool,
         buf: BytesMut,
     }
@@ -29,22 +30,36 @@ where
         buf.put_u64_le(0);
         FramedWriter {
             inner: writer,
-            flushing: false,
+            flushing: None,
             shutdown: false,
             buf,
         }
     }
     fn poll_flush_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         let mut this = self.project();
-        if !*this.flushing && this.buf.len() > 8 {
-            *this.flushing = true;
+        if this.flushing.is_none() && this.buf.len() > 8 {
             let len = this.buf.len() - 8;
-            eprintln!("FramedWriter:poll_flush_buf: set length {}", len);
+            debug!(
+                len,
+                cap = this.buf.capacity(),
+                "FramedWriter:poll_flush_buf: write frame"
+            );
             BufMut::put_u64_le(&mut &mut this.buf[..8], len as u64);
+            *this.flushing = Some(trace_span!(
+                "FramedWriter::poll_flush_buf",
+                len,
+                cap = this.buf.capacity()
+            ));
         }
-        if *this.flushing {
+        if let Some(span) = this.flushing.as_ref() {
+            let _ = span.enter();
             while !this.buf.is_empty() {
-                eprintln!("FramedWriter:poll_flush_buf: write {}", this.buf.len());
+                trace!(
+                    remaning = this.buf.len(),
+                    cap = this.buf.capacity(),
+                    "FramedWriter:poll_flush_buf: write {}",
+                    this.buf.len()
+                );
                 let n = ready!(this.inner.as_mut().poll_write(cx, &this.buf[..]))?;
                 if n == 0 {
                     return Poll::Ready(Err(io::Error::new(
@@ -54,13 +69,17 @@ where
                 }
                 this.buf.advance(n);
             }
-            *this.flushing = false;
             this.buf.reserve(RESERVED_BUF_SIZE);
             this.buf.put_u64_le(0);
+            *this.flushing = None;
         } else {
             this.buf.reserve(RESERVED_BUF_SIZE);
         }
-        eprintln!("FramedWriter:poll_flush_buf: done");
+        trace!(
+            len = this.buf.len(),
+            cap = this.buf.capacity(),
+            "FramedWriter:poll_flush_buf: done"
+        );
         Poll::Ready(Ok(()))
     }
 
@@ -78,21 +97,41 @@ where
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
-        eprintln!("FramedWriter:poll_write: check buf");
-        if self.remaining_mut() == 0 {
+        trace!(
+            len = self.buf.len(),
+            cap = self.buf.capacity(),
+            "FramedWriter:poll_write: check buf"
+        );
+        if self.remaining_mut() == 0 || self.flushing.is_some() {
             ready!(self.as_mut().poll_flush_buf(cx))?;
         }
         let write = min(buf.len(), self.remaining_mut());
-        eprintln!("FramedWriter:poll_write: write slice");
-        self.project().buf.put_slice(&buf[..write]);
-        eprintln!("FramedWriter:poll_write: done");
+        trace!(
+            len = self.buf.len(),
+            cap = self.buf.capacity(),
+            "FramedWriter:poll_write: write slice"
+        );
+        self.as_mut().project().buf.put_slice(&buf[..write]);
+        trace!(
+            len = self.buf.len(),
+            cap = self.buf.capacity(),
+            "FramedWriter:poll_write: done"
+        );
         Poll::Ready(Ok(write))
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        eprintln!("FramedWriter:poll_flush: flush buf");
+        trace!(
+            len = self.buf.len(),
+            cap = self.buf.capacity(),
+            "FramedWriter:poll_flush: flush buf"
+        );
         ready!(self.as_mut().poll_flush_buf(cx))?;
-        eprintln!("FramedWriter:poll_flush: flush writer");
+        trace!(
+            len = self.buf.len(),
+            cap = self.buf.capacity(),
+            "FramedWriter:poll_flush: flush writer"
+        );
         self.project().inner.poll_flush(cx)
     }
 
@@ -100,12 +139,21 @@ where
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<(), io::Error>> {
-        eprintln!("FramedWriter:poll_shutdown: flush");
+        trace!(
+            len = self.buf.len(),
+            cap = self.buf.capacity(),
+            "FramedWriter:poll_shutdown: flush"
+        );
         ready!(self.as_mut().poll_flush_buf(cx))?;
         let mut this = self.as_mut().project();
         if !*this.shutdown {
             while !this.buf.is_empty() {
-                eprintln!("FramedWriter:poll_shutdown: write {}", this.buf.len());
+                trace!(
+                    len = this.buf.len(),
+                    cap = this.buf.capacity(),
+                    "FramedWriter:poll_shutdown: write {}",
+                    this.buf.len()
+                );
                 let n = ready!(this.inner.as_mut().poll_write(cx, &this.buf[..]))?;
                 if n == 0 {
                     return Poll::Ready(Err(io::Error::new(
@@ -118,26 +166,34 @@ where
         }
         *this.shutdown = true;
         ready!(this.inner.poll_flush(cx))?;
-        eprintln!("FramedWriter:poll_shutdown: done");
+        trace!(
+            len = self.buf.len(),
+            cap = self.buf.capacity(),
+            "FramedWriter:poll_shutdown: done"
+        );
         Poll::Ready(Ok(()))
     }
 }
 
 #[cfg(test)]
 mod test {
-    use hex_literal::hex;
+    use std::time::Duration;
+
     use tokio::io::AsyncWriteExt;
     use tokio_test::io::Builder;
+    use tracing_test::traced_test;
 
     use super::*;
 
+    #[traced_test]
     #[tokio::test]
     async fn test_write_frames() {
         let mut mock = Builder::new()
-            .write(&hex!(
-                "0100 0000 0000 0000 20 0400 0000 0000 0000 4142 4344"
-            ))
-            .write(&hex!("0100 0000 0000 0000 45 0000 0000 0000 0000 46"))
+            .write(b"\x01\0\0\0\0\0\0\0 \x04\0\0\0\0\0\0\0ABCD")
+            .wait(Duration::from_millis(1))
+            .write(b"\x01\0\0\0\0\0\0\0E\0\0\0")
+            .wait(Duration::from_millis(1))
+            .write(b"\0\0\0\0\0F")
             .build();
         let mut writer = FramedWriter::new(&mut mock);
         writer.write_all(b" ").await.unwrap();

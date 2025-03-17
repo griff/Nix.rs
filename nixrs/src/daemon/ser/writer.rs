@@ -11,7 +11,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tracing::{instrument, trace};
 
 use crate::daemon::ProtocolVersion;
-use crate::daemon::{DEFAULT_BUF_SIZE, RESERVED_BUF_SIZE};
+use crate::io::{DEFAULT_BUF_SIZE, RESERVED_BUF_SIZE};
 use crate::store_path::StoreDir;
 use crate::wire::{calc_padding, ZEROS};
 
@@ -140,13 +140,13 @@ where
 
     fn poll_flush_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         let mut this = self.project();
-        eprintln!(
+        trace!(
             "poll_flush_buf: empty {} {}",
             this.buf.len(),
             this.buf.capacity()
         );
         while !this.buf.is_empty() {
-            eprintln!(
+            trace!(
                 "poll_flush_buf: write {} {}",
                 this.buf.len(),
                 this.buf.capacity()
@@ -162,7 +162,7 @@ where
         }
         let cap = this.buf.capacity();
         if cap < *this.reserved_buf_size {
-            eprintln!(
+            trace!(
                 "poll_flush_buf: reserve {} {} {}",
                 *this.reserved_buf_size,
                 this.buf.len(),
@@ -170,7 +170,7 @@ where
             );
             this.buf.reserve(*this.reserved_buf_size - cap);
         }
-        eprintln!(
+        trace!(
             "poll_flush_buf: done {} {}",
             this.buf.len(),
             this.buf.capacity()
@@ -198,22 +198,22 @@ where
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
-        eprintln!("poll_write: 1 {} {}", self.buf.len(), self.buf.capacity());
+        trace!("poll_write: 1 {} {}", self.buf.len(), self.buf.capacity());
         // Flush when not enough space
         if self.remaining_mut() < buf.len() {
             ready!(self.as_mut().poll_flush_buf(cx))?;
         }
-        eprintln!("poll_write: 2 {} {}", self.buf.len(), self.buf.capacity());
+        trace!("poll_write: 2 {} {}", self.buf.len(), self.buf.capacity());
         let this = self.project();
         if buf.len() > this.buf.capacity() {
-            eprintln!(
+            trace!(
                 "poll_write: direct {} {}",
                 this.buf.len(),
                 this.buf.capacity()
             );
             this.inner.poll_write(cx, buf)
         } else {
-            eprintln!("poll_write: buf {} {}", this.buf.len(), this.buf.capacity());
+            trace!("poll_write: buf {} {}", this.buf.len(), this.buf.capacity());
             this.buf.put_slice(buf);
             Poll::Ready(Ok(buf.len()))
         }
@@ -374,28 +374,28 @@ where
         if self.remaining_mut() < self.display_buf_size {
             self.flush_buf().await?;
         }
-        eprintln!(
+        trace!(
             "write_display: empty len {} {}",
             self.remaining_mut(),
             self.buf.capacity()
         );
         let offset = self.buf.len();
         self.buf.put_u64_le(0);
-        eprintln!(
+        trace!(
             "write_display: fmt {} {}",
             self.remaining_mut(),
             self.buf.capacity()
         );
         if let Err(err) = write!(self.buf, "{}", msg) {
             self.buf.truncate(offset);
-            eprintln!(
+            trace!(
                 "write_display: error {} {}",
                 self.remaining_mut(),
                 self.buf.capacity()
             );
             return Err(Self::Error::unsupported_data(err));
         }
-        eprintln!(
+        trace!(
             "write_display: len {} {}",
             self.remaining_mut(),
             self.buf.capacity()
@@ -404,7 +404,7 @@ where
         BufMut::put_u64_le(&mut &mut self.buf[offset..(offset + 8)], len as u64);
         let padding = calc_padding(len as u64);
         self.write_all(&ZEROS[..padding]).await?;
-        eprintln!(
+        trace!(
             "write_display: done {} {}",
             self.remaining_mut(),
             self.buf.capacity()

@@ -16,7 +16,7 @@ pub struct StoreDirError {
 ///
 /// ```
 /// # use nixrs::store_path::{StoreDir, StorePath};
-/// let store = StoreDir::new("/nix/store").unwrap();
+/// let store = StoreDir::default();
 /// let path : StorePath = store.parse("/nix/store/55xkmqns51sw7nrgykp5vnz36w4fr3cw-nix-2.1.3").unwrap();
 /// assert_eq!("55xkmqns51sw7nrgykp5vnz36w4fr3cw-nix-2.1.3", path.to_string());
 /// ```

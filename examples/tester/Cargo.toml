@@ -1,0 +1,21 @@
+[package]
+name = "tester"
+version = "0.1.0"
+authors = ["Brian Olsen <brian@maven-group.org>"]
+edition = "2021"
+
+[dependencies]
+async-stream = { workspace = true }
+clap = { version = "^4.5.30", features = ["derive"] }
+futures = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[dependencies.nixrs]
+version = "0.1.0"
+path = "../../nixrs"
+features = ["daemon", "internal"]
+
+[dependencies.tokio]
+workspace = true
+features = ["fs", "io-util", "macros", "process", "rt-multi-thread"]

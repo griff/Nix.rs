@@ -4,8 +4,6 @@ use std::fmt;
 use nixrs_derive::{NixDeserialize, NixSerialize};
 
 #[cfg(feature = "nixrs-derive")]
-pub(crate) mod add_multiple_to_store;
-#[cfg(feature = "nixrs-derive")]
 pub mod client;
 pub mod de;
 #[cfg(feature = "nixrs-derive")]
@@ -25,19 +23,20 @@ pub mod wire;
 #[cfg(feature = "nixrs-derive")]
 pub use fail_store::FailStore;
 #[cfg(feature = "nixrs-derive")]
-pub use logger::{LocalLoggerResult, LogError, LogMessage, ResultLog, TraceLine, Verbosity};
+pub use logger::{
+    LocalLoggerResult, LogError, LogMessage, ResultLog, ResultLogExt, TraceLine, Verbosity,
+};
 #[cfg(feature = "nixrs-derive")]
 pub use types::{
-    ClientOptions, DaemonError, DaemonErrorContext, DaemonErrorKind, DaemonInt, DaemonPath,
-    DaemonResult, DaemonResultExt, DaemonStore, DaemonString, DaemonTime, HandshakeDaemonStore,
-    LocalDaemonStore, LocalHandshakeDaemonStore, RemoteError, TrustLevel, UnkeyedValidPathInfo,
+    AddToStoreItem, ClientOptions, DaemonError, DaemonErrorContext, DaemonErrorKind, DaemonInt,
+    DaemonPath, DaemonResult, DaemonResultExt, DaemonStore, DaemonString, DaemonTime,
+    HandshakeDaemonStore, LocalDaemonStore, LocalHandshakeDaemonStore, RemoteError, TrustLevel,
+    UnkeyedValidPathInfo,
 };
 
 pub const NIX_VERSION: &str = "Nix.rs 1.0";
 pub const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 35);
 pub const PROTOCOL_VERSION_MIN: ProtocolVersion = ProtocolVersion::from_parts(1, 21);
-pub const DEFAULT_BUF_SIZE: usize = 32 * 1024;
-pub const RESERVED_BUF_SIZE: usize = DEFAULT_BUF_SIZE / 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
@@ -97,7 +96,7 @@ impl fmt::Display for ProtocolVersion {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "daemon"))]
 mod test {
     use std::future::{ready, Future};
     use std::io::Cursor;
@@ -113,7 +112,7 @@ mod test {
     use rstest::rstest;
     use tokio::io::{duplex, split, DuplexStream, ReadHalf, WriteHalf};
     use tokio::try_join;
-    use tracing::trace;
+    use tracing::{info, trace};
     use tracing_test::traced_test;
 
     use super::wire::types2::{BasicDerivation, QueryMissingResult};
@@ -804,7 +803,7 @@ mod test {
                 }).await?;
                 Ok(()) as Result<_, TestCaseError>
             })?;
-            eprintln!("Completed test {}", now.elapsed().as_secs_f64());
+            info!("Completed test {}", now.elapsed().as_secs_f64());
         }
     }
 
@@ -832,7 +831,7 @@ mod test {
                 }).await?;
                 Ok(()) as Result<_, TestCaseError>
             })?;
-            eprintln!("Completed test {}", now.elapsed().as_secs_f64());
+            info!("Completed test {}", now.elapsed().as_secs_f64());
         }
     }
 
@@ -861,7 +860,7 @@ mod test {
                 }).await?;
                 Ok(()) as Result<_, TestCaseError>
             })?;
-            eprintln!("Completed test {}", now.elapsed().as_secs_f64());
+            info!("Completed test {}", now.elapsed().as_secs_f64());
         }
     }
 
@@ -889,7 +888,7 @@ mod test {
                 }).await?;
                 Ok(()) as Result<_, TestCaseError>
             })?;
-            eprintln!("Completed test {}", now.elapsed().as_secs_f64());
+            info!("Completed test {}", now.elapsed().as_secs_f64());
         }
     }
 
@@ -921,7 +920,7 @@ mod test {
                 }).await?;
                 Ok(()) as Result<_, TestCaseError>
             })?;
-            eprintln!("Completed test {}", now.elapsed().as_secs_f64());
+            info!("Completed test {}", now.elapsed().as_secs_f64());
         }
     }
 
@@ -950,7 +949,7 @@ mod test {
                 }).await?;
                 Ok(()) as Result<_, TestCaseError>
             })?;
-            eprintln!("Completed test {}", now.elapsed().as_secs_f64());
+            info!("Completed test {}", now.elapsed().as_secs_f64());
         }
     }
     // TODO: proptest all messages
@@ -985,7 +984,7 @@ mod test {
                 }).await?;
                 Ok(()) as Result<_, TestCaseError>
             })?;
-            eprintln!("Completed test {}", now.elapsed().as_secs_f64());
+            info!("Completed test {}", now.elapsed().as_secs_f64());
         }
     }
      */

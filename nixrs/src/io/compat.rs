@@ -64,6 +64,11 @@ where
     fn consume(self: std::pin::Pin<&mut Self>, amt: usize) {
         let this = self.project();
         this.buffer.advance(amt);
+        if this.buffer.is_empty() {
+            // Release the buffer when empty so that the reader can reclaim it
+            // on the next call to poll_fill_buf
+            *this.buffer = Bytes::new();
+        }
         this.reader.consume(amt);
     }
 }

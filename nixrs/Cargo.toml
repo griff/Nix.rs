@@ -13,13 +13,15 @@ license = "EUPL-1.2 OR MIT"
 test = ["proptest", "dep:proptest-derive", "nixrs-archive?/test"]
 archive = ["dep:nixrs-archive"]
 daemon = ["nixrs-derive", "archive", "tokio/rt"]
+daemon-serde = []
 nixrs-derive = ["dep:nixrs-derive", "dep:libc", "dep:num_enum", "dep:bstr", "dep:futures"]
+internal = []
 
 # Enable all features by default.
-default = ["daemon", "nixrs-derive", "test"]
+default = []
 
 [dependencies]
-async-stream = "0.3.6"
+async-stream = { workspace = true }
 bstr = { workspace = true, optional = true }
 bytes = { workspace = true }
 data-encoding = { workspace = true }
@@ -37,6 +39,7 @@ ring = { workspace = true }
 thiserror = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
+tracing-futures = { workspace = true }
 
 [dependencies.tokio]
 workspace = true
