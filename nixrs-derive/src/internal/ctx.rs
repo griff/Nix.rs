@@ -16,12 +16,7 @@ impl Context {
     }
 
     pub fn syn_error(&self, error: syn::Error) {
-        self.errors
-            .borrow_mut()
-            .as_mut()
-            .take()
-            .unwrap()
-            .push(error);
+        self.errors.borrow_mut().as_mut().unwrap().push(error);
     }
 
     pub fn error_spanned<T: ToTokens, D: fmt::Display>(&self, tokens: T, message: D) {

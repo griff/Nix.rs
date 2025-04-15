@@ -85,7 +85,7 @@ pub fn decode_mut(input: &[u8], output: &mut [u8]) -> Result<(), DecodePartial> 
             x |= u64::from(y) << (5 * j);
         }
         for (j, output) in output.iter_mut().enumerate() {
-            *output = (x >> (8 * j) & 0xff) as u8;
+            *output = ((x >> (8 * j)) & 0xff) as u8;
         }
     }
     check_trail(input)

@@ -53,7 +53,7 @@ const WORKER_MAGIC_2: u64 = 0x6478696f;
 /// | 2.8.0 - 2.14.1  | 1.34     |
 /// | 2.15.0 - 2.19.4 | 1.35     |
 /// | 2.20.0 - 2.22.0 | 1.37     |
-const PROTOCOL_VERSION: u64 = 1 << 8 | 35;
+const PROTOCOL_VERSION: u64 = (1 << 8) | 35;
 
 const STDERR_NEXT: u64 = 0x6f6c6d67;
 const STDERR_READ: u64 = 0x64617461; // data needed from source
