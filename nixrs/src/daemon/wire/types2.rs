@@ -1,8 +1,10 @@
 use std::collections::BTreeMap;
 use std::convert::Infallible;
+use std::fmt;
 #[cfg(feature = "nixrs-derive")]
 use std::str::from_utf8;
 use std::str::FromStr;
+use std::time::Duration;
 
 use bytes::Bytes;
 #[cfg(feature = "nixrs-derive")]
@@ -37,6 +39,19 @@ impl From<i64> for Microseconds {
     }
 }
 
+impl From<Microseconds> for Duration {
+    fn from(value: Microseconds) -> Self {
+        Duration::from_micros(value.0.unsigned_abs())
+    }
+}
+
+impl TryFrom<Duration> for Microseconds {
+    type Error = std::num::TryFromIntError;
+    fn try_from(value: Duration) -> Result<Self, Self::Error> {
+        Ok(Microseconds(value.as_micros().try_into()?))
+    }
+}
+
 impl From<Microseconds> for i64 {
     fn from(value: Microseconds) -> Self {
         value.0
@@ -60,8 +75,20 @@ impl FromStr for ContentAddress {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
 pub struct BaseStorePath(pub StorePath);
+impl FromStr for BaseStorePath {
+    type Err = crate::store_path::ParseStorePathError;
 
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(BaseStorePath(StorePath::from_str(s)?))
+    }
+}
+impl fmt::Display for BaseStorePath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
