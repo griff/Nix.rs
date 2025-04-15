@@ -38,12 +38,20 @@
               self.checks}
             '';
         };
-      apps.ci = flake-inputs.flake-utils.lib.mkApp {
+      apps.nom-ci = flake-inputs.flake-utils.lib.mkApp {
         drv = pkgs.writeShellApplication {
           name = "ci";
           runtimeInputs = with pkgs; [
             nix-output-monitor
           ];
+          text = ''
+            nix flake check --impure --log-format internal-json 2>&1 | nom --json
+          '';
+        };
+      };
+      apps.ci = flake-inputs.flake-utils.lib.mkApp {
+        drv = pkgs.writeShellApplication {
+          name = "ci";
           text = ''
             nix flake check --impure --log-format bar-with-logs
           '';
