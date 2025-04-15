@@ -5,10 +5,10 @@ use std::pin::pin;
 use futures::future::TryFutureExt;
 use futures::{FutureExt, Stream, StreamExt as _};
 use tokio::io::{
-    copy, simplex, AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt,
+    copy, copy_buf, simplex, AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt,
 };
 use tokio::{select, try_join};
-use tracing::{debug, error, info, info_span, instrument, trace, Instrument};
+use tracing::{debug, error, info, instrument, trace, Instrument};
 
 use crate::archive::NarReader;
 use crate::daemon::wire::logger::RawLogMessage;
@@ -528,18 +528,17 @@ where
         store.add_multiple_to_store(repair, dont_check_sigs, stream)
     }
 
-    fn store_nar_from_path<'s, 'p, 'r, NW, S>(
+    fn store_nar_from_path2<'s, S>(
         store: &'s mut S,
-        path: &'p StorePath,
-        sink: NW,
-    ) -> impl ResultLog<(), DaemonError> + 'r
+        path: &'s StorePath,
+    ) -> impl Stream<Item = LogMessage>
+           + std::future::Future<Output = Result<impl AsyncBufRead + 's, DaemonError>>
+           + Send
+           + 's
     where
         S: DaemonStore + 's,
-        NW: AsyncWrite + Unpin + Send + 'r,
-        's: 'r,
-        'p: 'r,
     {
-        store.nar_from_path(path, sink)
+        store.nar_from_path2(path)
     }
 
     async fn nar_from_path<'s, 't, S>(
@@ -550,37 +549,28 @@ where
     where
         S: DaemonStore + 't,
     {
-        // FUTUREWORK: Fix that this whole implementation allocates 2 buffers
-
-        let (mut reader, sink) = simplex(10_000);
-        let logs = Self::store_nar_from_path(store, &path, sink);
+        let logs = Self::store_nar_from_path2(store, &path);
 
         let mut logs = pin!(logs);
         while let Some(msg) = logs.next().await {
             write_log(&mut self.writer, msg).await?;
         }
 
+        let mut reader = pin!(logs.await?);
         self.writer.write_value(&RawLogMessage::Last).await?;
-        try_join!(
-            async move {
-                let _ = info_span!("copy_nar_from_path").enter();
-                let ret = copy(&mut reader, &mut self.writer)
-                    .map_err(DaemonError::from)
-                    .await;
-                match ret {
-                    Err(err) => {
-                        error!("NAR Copy failed {:?}", err);
-                        Err(err)
-                    }
-                    Ok(bytes) => {
-                        info!(bytes, "Copied {} bytes", bytes);
-                        Ok(())
-                    }
-                }
-            },
-            logs.map_err(DaemonError::from)
-        )?;
-        Ok(())
+        let ret = copy_buf(&mut reader, &mut self.writer)
+            .map_err(DaemonError::from)
+            .await;
+        match ret {
+            Err(err) => {
+                error!("NAR Copy failed {:?}", err);
+                Err(err.into())
+            }
+            Ok(bytes) => {
+                info!(bytes, "Copied {} bytes", bytes);
+                Ok(())
+            }
+        }
     }
 
     pub async fn process_request<'s, S>(
