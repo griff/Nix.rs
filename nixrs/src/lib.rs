@@ -16,6 +16,7 @@ pub mod io;
 #[cfg(not(feature = "internal"))]
 #[allow(unused_imports, dead_code)]
 pub(crate) mod io;
+pub mod signature;
 pub mod store_path;
 #[cfg(feature = "internal")]
 pub mod wire;

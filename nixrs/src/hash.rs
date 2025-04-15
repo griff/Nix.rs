@@ -16,6 +16,8 @@ use thiserror::Error;
 #[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 
+use crate::wire::base64_len;
+
 use super::base32;
 
 const MD5_SIZE: usize = 128 / 8;
@@ -72,7 +74,7 @@ impl Algorithm {
     /// Returns the length of a base-64 representation of this hash.
     #[inline]
     pub const fn base64_len(&self) -> usize {
-        ((4 * self.size() / 3) + 3) & !3
+        base64_len(self.size())
     }
 
     #[inline]

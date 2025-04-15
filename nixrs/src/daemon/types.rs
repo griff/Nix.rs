@@ -14,6 +14,7 @@ use proptest_derive::Arbitrary;
 use thiserror::Error;
 use tokio::io::{AsyncBufRead, AsyncWrite};
 
+use crate::signature::Signature;
 use crate::store_path::{FromStoreDirStr, ParseStorePathError, StoreDirDisplay, StorePathSet};
 use crate::{hash::NarHash, store_path::StorePath};
 
@@ -25,8 +26,6 @@ use super::wire::types2::{
 };
 use super::wire::{IgnoredTrue, IgnoredZero};
 use super::{LogMessage, ProtocolVersion};
-
-pub type Signature = String;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]

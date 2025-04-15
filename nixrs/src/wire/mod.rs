@@ -8,3 +8,7 @@ pub const fn calc_padding(len: u64) -> usize {
     let aligned = calc_aligned(len);
     aligned.wrapping_sub(len) as usize
 }
+
+pub const fn base64_len(len: usize) -> usize {
+    ((4 * len / 3) + 3) & !3
+}

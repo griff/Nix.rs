@@ -16,6 +16,7 @@ use crate::daemon::{
     ClientOptions, DaemonInt, DaemonPath, DaemonString, DaemonTime, UnkeyedValidPathInfo,
 };
 use crate::hash;
+use crate::signature::Signature;
 use crate::store_path::{StorePath, StorePathHash, StorePathSet};
 
 #[cfg(feature = "nixrs-derive")]
@@ -61,9 +62,6 @@ impl FromStr for ContentAddress {
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct BaseStorePath(pub StorePath);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-pub struct Signature(DaemonString);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
