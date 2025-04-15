@@ -330,8 +330,11 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::fs::create_dir_all;
+
     use futures::TryStreamExt;
     use pretty_assertions::assert_eq;
+    use tempfile::Builder;
 
     use crate::test_data;
 
@@ -339,9 +342,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_dump_dir() {
+        let dir = Builder::new().prefix("test_dump_dir").tempdir().unwrap();
+        let path = dir.path().join("nar");
+        test_data::create_dir_example(&path, true).unwrap();
+
         let s = DumpOptions::new()
             .use_case_hack(true)
-            .dump("test-data/nar")
+            .dump(path)
             .try_collect::<Vec<NAREvent>>()
             .await
             .unwrap();
@@ -350,7 +357,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_dump_text_file() {
-        let s = dump("test-data/nar/testing.txt")
+        let dir = Builder::new()
+            .prefix("test_dump_text_file")
+            .tempdir()
+            .unwrap();
+        let path = dir.path().join("nar");
+        test_data::create_dir_example(&path, true).unwrap();
+
+        let s = dump(path.join("testing.txt"))
             .try_collect::<Vec<NAREvent>>()
             .await
             .unwrap();
@@ -359,7 +373,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_dump_exec_file() {
-        let s = dump("test-data/nar/dir/more/Deep")
+        let dir = Builder::new()
+            .prefix("test_dump_exec_file")
+            .tempdir()
+            .unwrap();
+        let path = dir.path().join("nar");
+        test_data::create_dir_example(&path, true).unwrap();
+
+        let s = dump(path.join("dir/more/Deep"))
             .try_collect::<Vec<NAREvent>>()
             .await
             .unwrap();
@@ -368,19 +389,29 @@ mod tests {
 
     #[tokio::test]
     async fn test_dump_empty_file() {
-        let s = dump("test-data/nar2/deep/empty.keep")
-            .try_collect::<Vec<NAREvent>>()
-            .await
+        let dir = Builder::new()
+            .prefix("test_dump_empty_file")
+            .tempdir()
             .unwrap();
+        let path = dir.path().join("empty.keep");
+        std::fs::write(&path, b"").unwrap();
+
+        let s = dump(path).try_collect::<Vec<NAREvent>>().await.unwrap();
         assert_eq!(s, test_data::empty_file());
     }
 
     #[tokio::test]
     async fn test_dump_symlink() {
-        let s = dump("test-data/nar2/deep/loop")
-            .try_collect::<Vec<NAREvent>>()
-            .await
+        let dir = Builder::new()
+            .prefix("test_dump_symlink")
+            .tempdir()
             .unwrap();
+        let deep = dir.path().join("deep");
+        create_dir_all(&deep).unwrap();
+        let path = deep.join("loop");
+        std::os::unix::fs::symlink("../deep", &path).unwrap();
+
+        let s = dump(path).try_collect::<Vec<NAREvent>>().await.unwrap();
         assert_eq!(s, test_data::symlink());
     }
 }

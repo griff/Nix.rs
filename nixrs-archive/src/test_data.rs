@@ -1,6 +1,14 @@
-use std::sync::Arc;
+use std::{
+    fs::{create_dir_all, set_permissions, write, Permissions},
+    io,
+    os::unix::fs::PermissionsExt as _,
+    path::Path,
+    sync::Arc,
+};
 
 use bytes::Bytes;
+
+use crate::CASE_HACK_SUFFIX;
 
 use super::{NAREvent, NAR_VERSION_MAGIC_1};
 
@@ -221,4 +229,30 @@ pub fn dir_example() -> Vec<NAREvent> {
         NAREvent::EndDirectoryEntry,
         NAREvent::EndDirectory,
     ]
+}
+
+pub fn create_dir_example<P>(path: P, case_hack: bool) -> io::Result<()>
+where
+    P: AsRef<Path>,
+{
+    let path = path.as_ref();
+    create_dir_all(path)?;
+    let more = path.join("dir").join("more");
+    create_dir_all(&more)?;
+    let deep_file = more.join("Deep");
+    write(&deep_file, b"Very cool stuff")?;
+    let permissions = Permissions::from_mode(0o700);
+    set_permissions(deep_file, permissions)?;
+
+    let deep = if case_hack {
+        more.join(format!("deep{}{}", CASE_HACK_SUFFIX, 1))
+    } else {
+        more.join("deep")
+    };
+    create_dir_all(&deep)?;
+    write(deep.join("empty.keep"), b"")?;
+    std::os::unix::fs::symlink("../deep", deep.join("loop"))?;
+    std::os::unix::fs::symlink("/etc/ssh/sshd_config", deep.join("test"))?;
+    write(path.join("testing.txt"), b"Hello world!")?;
+    Ok(())
 }
