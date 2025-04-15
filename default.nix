@@ -1,19 +1,21 @@
-{system, nixpkgs, flake-inputs, ...}: let
+{ system ? builtins.currentSystem
+, sources ? import ./npins
+, nixpkgs ? sources.nixpkgs
+, config ? {}
+}: let
   pkgs = import nixpkgs {
     inherit system;
     config = {
       permittedInsecurePackages = [
         "nix-2.4" "nix-2.5.1" "nix-2.6.1" "nix-2.7.0" "nix-2.8.1"
         "nix-2.9.2" "nix-2.10.2"];
-    };
+    } // config;
   };
   readTree = import ./nix/readTree {};
   readProject = args: readTree {
     path = ./.;
     inherit args;
   };
-  eligible = node: (node ? outPath) && ((node.meta.flake.exported or null) != null) && !(node.meta.broken or false);
-  eligibleCheck = node: (node ? outPath) && !(node.meta.broken or false);
   tree = readTree.fix (self: let
     args = {
       inherit pkgs;
@@ -21,70 +23,7 @@
       lib = pkgs.lib;
     };
   in (readProject args) // {
-    packages = readTree.gather (t: eligible t) self;
-    checks = readTree.gather (t: eligibleCheck t) self;
-    flake = {
-      tree = self;
-      packages = (pkgs.lib.listToAttrs
-        (map (p: {name = p.meta.flake.exported; value = p;})
-        self.packages));
-      checks = pkgs.lib.listToAttrs
-        (map (p: {name = p.name; value = p;})
-        self.checks) // {
-          check-all = pkgs.runCommand "check-all" {} ''
-            mkdir -p $out
-            ${pkgs.lib.concatMapStringsSep "\n"
-              (p: "ln -s ${p.outPath} $out/${p.name}")
-              self.checks}
-            '';
-        };
-      apps.nom-ci = flake-inputs.flake-utils.lib.mkApp {
-        drv = pkgs.writeShellApplication {
-          name = "ci";
-          runtimeInputs = with pkgs; [
-            nix-output-monitor
-          ];
-          text = ''
-            nix flake check --impure --log-format internal-json 2>&1 | nom --json
-          '';
-        };
-      };
-      apps.ci = flake-inputs.flake-utils.lib.mkApp {
-        drv = pkgs.writeShellApplication {
-          name = "ci";
-          text = ''
-            nix flake check --impure --log-format bar-with-logs
-          '';
-        };
-      };
-      devShells.default = pkgs.mkShell {
-        name = "Nix.rs";
-        buildInputs = [ pkgs.bashInteractive ];
-        ALL_NIX = tree.nix.all-nix.all-nix;
-        packages = with pkgs; [
-          git
-          nix-diff
-          libsodium
-          pkg-config
-          fuse
-          protobuf
-          libarchive
-          jq
-          cloc
-          treefmt
-          crate2nix
-          rustc.llvmPackages.llvm
-          capnproto
-          nix-output-monitor
-          cloc
-        ] ++ lib.optionals stdenv.isDarwin [
-          darwin.apple_sdk.frameworks.CoreServices
-          darwin.apple_sdk.frameworks.Security
-          darwin.apple_sdk.frameworks.SystemConfiguration
-          iconv
-        ];
-      };
-    };
+    gather = eligible: readTree.gather (t: eligible t) self;
   } // (import ./build.nix args));
   
 in tree

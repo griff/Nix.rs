@@ -23,7 +23,11 @@
         #"nix-compat"
       ]);
   };
-  src = ./.;
+  src = pkgs.lib.cleanSourceWith {
+    name = "project";
+    src = pkgs.nix-gitignore.gitignoreSource [] ./.;
+    filter = pkgs.lib.cleanSourceFilter;
+  };
 in {
   inherit crates src cargoDeps;
 
@@ -118,4 +122,46 @@ in {
     "crate2nix-check"
     "treefmt"
   ];
+
+  packages = let
+    eligible = node: (node ? outPath) && ((node.meta.flake.exported or null) != null) && !(node.meta.broken or false);
+    in project.gather (t: eligible t);
+  checks = let
+    eligibleCheck = node: (node ? outPath) && !(node.meta.broken or false);
+    in project.gather (t: eligibleCheck t);
+  check-all = pkgs.runCommand "check-all" {} ''
+    mkdir -p $out
+    ${pkgs.lib.concatMapStringsSep "\n"
+      (p: "ln -s ${p.outPath} $out/${p.name}")
+      project.checks}
+  '';
+
+  shell = pkgs.mkShell {
+    name = "Nix.rs";
+    buildInputs = [ pkgs.bashInteractive ];
+    ALL_NIX = project.nix.all-nix.all-nix;
+    packages = with pkgs; [
+      git
+      nix-diff
+      libsodium
+      pkg-config
+      fuse
+      protobuf
+      libarchive
+      jq
+      cloc
+      treefmt
+      crate2nix
+      rustc.llvmPackages.llvm
+      capnproto
+      nix-output-monitor
+      just
+      cloc
+    ] ++ lib.optionals stdenv.isDarwin [
+      darwin.apple_sdk.frameworks.CoreServices
+      darwin.apple_sdk.frameworks.Security
+      darwin.apple_sdk.frameworks.SystemConfiguration
+      iconv
+    ];
+  };
 }

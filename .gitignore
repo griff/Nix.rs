@@ -3,3 +3,7 @@
 /examples/nix-docker-build/ssh/test-store
 /.direnv
 target
+
+# Ignore Nix result symlinks
+result
+result-*
