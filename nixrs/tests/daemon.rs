@@ -1,4 +1,4 @@
-#![cfg(feature = "test")]
+#![cfg(all(feature = "test", feature = "daemon"))]
 
 use std::future::Future;
 use std::io::Cursor;
@@ -12,7 +12,7 @@ use proptest::prelude::{any, Strategy, TestCaseError};
 use proptest::{prop_assert_eq, proptest};
 use rstest::rstest;
 use tempfile::Builder;
-use tokio::io::{split, AsyncBufReadExt, BufReader};
+use tokio::io::{copy_buf, split, AsyncBufReadExt, BufReader};
 use tokio::process::{ChildStdin, ChildStdout, Command};
 use tokio::try_join;
 
@@ -377,16 +377,15 @@ async fn nar_from_path(
     let mut mock = prepare_mock(nix);
     mock.nar_from_path(&store_path, Ok(content)).build();
     run_store_test(nix, mock, |mut client| async move {
-        let mut out = Vec::new();
-        client
-            .nar_from_path(&store_path, Cursor::new(&mut out))
-            .await
-            .unwrap();
-        println!("Parsing NAR {}", out.len());
-        let nar: Vec<NAREvent> = parse_nar(Cursor::new(&out)).try_collect().await?;
-        assert_eq!(events, nar);
-        assert_eq!(size, out.len() as u64);
-        assert_eq!(digest(Algorithm::SHA256, &out), hash);
+        {
+            let mut reader = client.nar_from_path(&store_path).await.unwrap();
+            let mut out = Vec::new();
+            copy_buf(&mut reader, &mut out).await?;
+            let nar: Vec<NAREvent> = parse_nar(Cursor::new(&out)).try_collect().await?;
+            assert_eq!(events, nar);
+            assert_eq!(size, out.len() as u64);
+            assert_eq!(digest(Algorithm::SHA256, &out), hash);
+        }
         Ok(client) as DaemonResult<_>
     })
     .await

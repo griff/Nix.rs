@@ -102,7 +102,8 @@ impl App {
                         .await
                         .map_err(DaemonError::custom)?;
                     eprintln!("Sent path {}", path);
-                    client.nar_from_path(&path, &mut writer).await?;
+                    let mut reader = client.nar_from_path(&path).await?;
+                    copy_buf(&mut reader, &mut writer).await?;
                     eprintln!("Sent nar {}", path);
                     writer.shutdown().await?;
                     eprintln!("Shutdown writer {}", path);

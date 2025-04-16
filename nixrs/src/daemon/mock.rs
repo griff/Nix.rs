@@ -19,7 +19,7 @@ use pin_project_lite::pin_project;
 use proptest::prelude::TestCaseError;
 #[cfg(any(test, feature = "test"))]
 use proptest::{prop_assert, prop_assert_eq};
-use tokio::io::{simplex, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _};
+use tokio::io::{AsyncBufRead, AsyncReadExt as _};
 use tracing::trace;
 
 use super::logger::{
@@ -36,9 +36,9 @@ use super::{
     ClientOptions, DaemonError, DaemonErrorKind, DaemonResult, DaemonResultExt, DaemonStore,
     DaemonString, HandshakeDaemonStore, ResultLog, TrustLevel, UnkeyedValidPathInfo,
 };
-use crate::io::DEFAULT_BUF_SIZE;
 use crate::store_path::{StorePath, StorePathSet};
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum MockOperation {
     SetOptions(ClientOptions, DaemonResult<()>),
@@ -108,6 +108,7 @@ impl MockOperation {
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum MockRequest {
     SetOptions(ClientOptions),
@@ -142,7 +143,7 @@ impl MockRequest {
     pub fn get_response<'s, S>(
         &'s self,
         store: &'s mut S,
-    ) -> impl ResultLog<MockResponse, DaemonError> + 's
+    ) -> impl ResultLog<Output = DaemonResult<MockResponse>> + 's
     where
         S: DaemonStore + 's,
     {
@@ -163,16 +164,14 @@ impl MockRequest {
             Self::QueryPathInfo(path) => Either::Left(Either::Left(Either::Right(Either::Right(
                 store.query_path_info(path).map_ok(From::from),
             )))),
-            Self::NarFromPath(path) => {
-                let (mut reader, sink) = simplex(DEFAULT_BUF_SIZE);
-                Either::Left(Either::Right(Either::Left(Either::Left(
-                    store.nar_from_path(path, sink).and_then(|_| async move {
-                        let mut out = Vec::new();
-                        reader.read_to_end(&mut out).await?;
-                        Ok(From::from(Bytes::from(out)))
-                    }),
-                ))))
-            }
+            Self::NarFromPath(path) => Either::Left(Either::Right(Either::Left(Either::Left(
+                store.nar_from_path(path).and_then(|reader| async move {
+                    let mut reader = pin!(reader);
+                    let mut out = Vec::new();
+                    reader.read_to_end(&mut out).await?;
+                    Ok(From::from(Bytes::from(out)))
+                }),
+            )))),
             Self::BuildPaths(request) => Either::Left(Either::Right(Either::Left(Either::Right(
                 store
                     .build_paths(&request.paths, request.mode)
@@ -377,16 +376,16 @@ pub trait MockReporter {
         &mut self,
         expected: MockOperation,
         actual: MockRequest,
-    ) -> impl ResultLog<MockResponse, DaemonError> + Send;
+    ) -> impl ResultLog<Output = DaemonResult<MockResponse>> + Send;
     fn invalid_operation(
         &mut self,
         expected: MockOperation,
         actual: MockRequest,
-    ) -> impl ResultLog<MockResponse, DaemonError> + Send;
+    ) -> impl ResultLog<Output = DaemonResult<MockResponse>> + Send;
     fn extra_operation(
         &mut self,
         actual: MockRequest,
-    ) -> impl ResultLog<MockResponse, DaemonError> + Send;
+    ) -> impl ResultLog<Output = DaemonResult<MockResponse>> + Send;
     fn unread_operation(&mut self, operation: LogOperation);
 }
 
@@ -395,7 +394,7 @@ impl MockReporter for () {
         &mut self,
         expected: MockOperation,
         actual: MockRequest,
-    ) -> impl ResultLog<MockResponse, DaemonError> {
+    ) -> impl ResultLog<Output = DaemonResult<MockResponse>> {
         ResultProcess {
             stream: empty(),
             result: ready(
@@ -413,7 +412,7 @@ impl MockReporter for () {
         &mut self,
         expected: MockOperation,
         actual: MockRequest,
-    ) -> impl ResultLog<MockResponse, DaemonError> {
+    ) -> impl ResultLog<Output = DaemonResult<MockResponse>> {
         ResultProcess {
             stream: empty(),
             result: ready(
@@ -430,7 +429,7 @@ impl MockReporter for () {
     fn extra_operation(
         &mut self,
         actual: MockRequest,
-    ) -> impl ResultLog<MockResponse, DaemonError> {
+    ) -> impl ResultLog<Output = DaemonResult<MockResponse>> {
         ResultProcess {
             stream: empty(),
             result: ready(
@@ -496,7 +495,7 @@ impl MockReporter for ChannelReporter {
         &mut self,
         expected: MockOperation,
         actual: MockRequest,
-    ) -> impl ResultLog<MockResponse, DaemonError> {
+    ) -> impl ResultLog<Output = DaemonResult<MockResponse>> {
         let op = actual.operation();
         let report = ReporterError::Unexpected(expected, actual);
         let ret = Err(DaemonErrorKind::Custom(report.to_string())).with_operation(op);
@@ -511,7 +510,7 @@ impl MockReporter for ChannelReporter {
         &mut self,
         expected: MockOperation,
         actual: MockRequest,
-    ) -> impl ResultLog<MockResponse, DaemonError> {
+    ) -> impl ResultLog<Output = DaemonResult<MockResponse>> {
         let op = actual.operation();
         let report = ReporterError::Invalid(expected, actual);
         let ret = Err(DaemonErrorKind::Custom(report.to_string())).with_operation(op);
@@ -525,7 +524,7 @@ impl MockReporter for ChannelReporter {
     fn extra_operation(
         &mut self,
         actual: MockRequest,
-    ) -> impl ResultLog<MockResponse, DaemonError> {
+    ) -> impl ResultLog<Output = DaemonResult<MockResponse>> {
         let op = actual.operation();
         let report = ReporterError::Extra(actual);
         let ret = Err(DaemonErrorKind::Custom(report.to_string())).with_operation(op);
@@ -985,7 +984,7 @@ where
     fn check_operation<O>(
         &mut self,
         actual: MockRequest,
-    ) -> impl ResultLog<O, DaemonError> + Send + '_
+    ) -> impl ResultLog<Output = DaemonResult<O>> + Send + '_
     where
         MockResponse: Into<O>,
         O: 'static,
@@ -1276,7 +1275,7 @@ where
 {
     type Store = Self;
 
-    fn handshake(mut self) -> impl ResultLog<Self::Store, DaemonError> {
+    fn handshake(mut self) -> impl ResultLog<Output = DaemonResult<Self::Store>> {
         let logs = take(&mut self.handshake_logs);
         ResultProcess {
             stream: iter(logs),
@@ -1296,7 +1295,7 @@ where
     fn set_options<'a>(
         &'a mut self,
         options: &'a super::ClientOptions,
-    ) -> impl super::ResultLog<(), DaemonError> + 'a {
+    ) -> impl super::ResultLog<Output = DaemonResult<()>> + 'a {
         let actual = MockRequest::SetOptions(options.clone());
         self.check_operation(actual)
     }
@@ -1304,7 +1303,7 @@ where
     fn is_valid_path<'a>(
         &'a mut self,
         path: &'a StorePath,
-    ) -> impl super::ResultLog<bool, DaemonError> + 'a {
+    ) -> impl super::ResultLog<Output = DaemonResult<bool>> + 'a {
         let actual = MockRequest::IsValidPath(path.clone());
         self.check_operation(actual)
     }
@@ -1313,7 +1312,7 @@ where
         &'a mut self,
         paths: &'a StorePathSet,
         substitute: bool,
-    ) -> impl super::ResultLog<StorePathSet, DaemonError> + 'a {
+    ) -> impl super::ResultLog<Output = DaemonResult<StorePathSet>> + 'a {
         let actual = MockRequest::QueryValidPaths(QueryValidPathsRequest {
             paths: paths.clone(),
             substitute,
@@ -1324,37 +1323,26 @@ where
     fn query_path_info<'a>(
         &'a mut self,
         path: &'a StorePath,
-    ) -> impl super::logger::ResultLog<Option<UnkeyedValidPathInfo>, DaemonError> + 'a {
+    ) -> impl super::logger::ResultLog<Output = DaemonResult<Option<UnkeyedValidPathInfo>>> + 'a
+    {
         let actual = MockRequest::QueryPathInfo(path.clone());
         self.check_operation(actual)
     }
 
-    fn nar_from_path<'a, 'p, 'r, W>(
+    fn nar_from_path<'a>(
         &'a mut self,
-        path: &'p StorePath,
-        mut sink: W,
-    ) -> impl super::logger::ResultLog<(), DaemonError> + 'r
-    where
-        W: AsyncWrite + Unpin + Send + 'r,
-        'a: 'r,
-        'p: 'r,
-    {
+        path: &'a StorePath,
+    ) -> impl super::logger::ResultLog<Output = DaemonResult<impl AsyncBufRead + 'a>> + 'a {
         let actual = MockRequest::NarFromPath(path.clone());
         self.check_operation(actual)
-            .and_then(move |bytes: Bytes| async move {
-                trace!("Writing NAR");
-                sink.write_all(&bytes).await?;
-                sink.shutdown().await?;
-                trace!("Writen NAR");
-                Ok(())
-            })
+            .and_then(move |bytes: Bytes| async move { Ok(Cursor::new(bytes)) })
     }
 
     fn build_paths<'a>(
         &'a mut self,
         paths: &'a [DerivedPath],
         mode: BuildMode,
-    ) -> impl ResultLog<(), DaemonError> + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
         let actual = MockRequest::BuildPaths(BuildPathsRequest {
             paths: paths.to_vec(),
             mode,
@@ -1366,7 +1354,8 @@ where
         &'a mut self,
         drvs: &'a [DerivedPath],
         mode: BuildMode,
-    ) -> impl ResultLog<Vec<super::wire::types2::KeyedBuildResult>, DaemonError> + Send + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<Vec<super::wire::types2::KeyedBuildResult>>> + Send + 'a
+    {
         let actual = MockRequest::BuildPaths(BuildPathsRequest {
             paths: drvs.to_vec(),
             mode,
@@ -1379,7 +1368,7 @@ where
         drv_path: &'a StorePath,
         drv: &'a super::wire::types2::BasicDerivation,
         build_mode: BuildMode,
-    ) -> impl ResultLog<BuildResult, DaemonError> + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<BuildResult>> + 'a {
         let actual = MockRequest::BuildDerivation(BuildDerivationRequest {
             drv_path: drv_path.clone(),
             drv: drv.clone(),
@@ -1391,7 +1380,7 @@ where
     fn query_missing<'a>(
         &'a mut self,
         paths: &'a [DerivedPath],
-    ) -> impl ResultLog<QueryMissingResult, DaemonError> + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<QueryMissingResult>> + 'a {
         let actual = MockRequest::QueryMissing(paths.to_vec());
         self.check_operation(actual)
     }
@@ -1402,7 +1391,7 @@ where
         mut source: AR,
         repair: bool,
         dont_check_sigs: bool,
-    ) -> impl ResultLog<(), DaemonError> + Send + 'r
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'r
     where
         AR: tokio::io::AsyncRead + Send + Unpin + 'r,
         's: 'r,
@@ -1426,7 +1415,7 @@ where
         repair: bool,
         dont_check_sigs: bool,
         stream: S,
-    ) -> impl ResultLog<(), DaemonError> + Send + 'r
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'r
     where
         S: Stream<Item = Result<AddToStoreItem<SR>, DaemonError>> + Send + 'i,
         SR: tokio::io::AsyncBufRead + Send + Unpin + 'i,
@@ -1453,7 +1442,9 @@ where
         })
     }
 
-    fn query_all_valid_paths(&mut self) -> impl ResultLog<StorePathSet, DaemonError> + Send + '_ {
+    fn query_all_valid_paths(
+        &mut self,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + '_ {
         let actual = MockRequest::QueryAllValidPaths;
         self.check_operation(actual)
     }

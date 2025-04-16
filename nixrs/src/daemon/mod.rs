@@ -97,22 +97,18 @@ impl fmt::Display for ProtocolVersion {
 }
 
 #[cfg(all(test, feature = "daemon"))]
-mod test {
+pub(crate) mod tests {
     use std::future::{ready, Future};
     use std::io::Cursor;
-    use std::time::Instant;
 
     use bytes::BytesMut;
     use futures::stream::iter;
     use futures::{FutureExt as _, TryFutureExt as _, TryStreamExt as _};
-    use nixrs_archive::proptest::arb_nar_contents;
     use pretty_assertions::assert_eq;
-    use proptest::prelude::{any, TestCaseError};
-    use proptest::{prop_assert, prop_assert_eq, proptest};
     use rstest::rstest;
-    use tokio::io::{duplex, split, DuplexStream, ReadHalf, WriteHalf};
+    use tokio::io::{copy_buf, duplex, split, DuplexStream, ReadHalf, WriteHalf};
     use tokio::try_join;
-    use tracing::{info, trace};
+    use tracing::trace;
     use tracing_test::traced_test;
 
     use super::wire::types2::{BasicDerivation, QueryMissingResult};
@@ -134,7 +130,7 @@ mod test {
     use crate::store_path::StorePath;
     use crate::store_path::StorePathSet;
 
-    async fn run_store_test<R, T, F, E>(mock: MockStore<R>, test: T) -> Result<(), E>
+    pub async fn run_store_test<R, T, F, E>(mock: MockStore<R>, test: T) -> Result<(), E>
     where
         R: MockReporter + Send + 'static,
         T: FnOnce(DaemonClient<ReadHalf<DuplexStream>, WriteHalf<DuplexStream>>) -> F + Send,
@@ -291,6 +287,30 @@ mod test {
         signatures: vec![],
         ca: None,
     })))]
+    #[case::proptested(
+        "00000000000000000000000000000000-=",
+        Ok(Some(UnkeyedValidPathInfo {
+                deriver: None,
+                nar_hash: NarHash::new(&[0u8; 32]),
+                references: vec![],
+                registration_time: 0,
+                nar_size: 0,
+                ultimate: false,
+                signatures: vec![],
+                ca: Some("text:sha256:09q0000000000000000000000000000000000000000000000000".parse().unwrap()),
+            },
+        )),
+        Ok(Some(UnkeyedValidPathInfo {
+            deriver: None,
+            nar_hash: NarHash::new(&[0u8; 32]),
+            references: vec![],
+            registration_time: 0,
+            nar_size: 0,
+            ultimate: false,
+            signatures: vec![],
+            ca: Some("text:sha256:09q0000000000000000000000000000000000000000000000000".parse().unwrap()),
+        }))
+    )]
     #[case("00000000000000000000000000000000-_", Ok(None), Ok(None))]
     #[case("00000000000000000000000000000000-_", Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("QueryPathInfo: remote error: QueryPathInfo: bad input path".into()))]
     async fn query_path_info(
@@ -348,17 +368,17 @@ mod test {
             .build()
             .build();
         run_store_test(mock, |mut client| async move {
-            let mut out = Vec::new();
-            client
-                .nar_from_path(&store_path, Cursor::new(&mut out))
-                .await
-                .unwrap();
-            let nar: Vec<NAREvent> = crate::archive::parse_nar(Cursor::new(&out))
-                .try_collect()
-                .await?;
-            assert_eq!(events, nar);
-            assert_eq!(size, out.len() as u64);
-            assert_eq!(digest(Algorithm::SHA256, &out), hash);
+            {
+                let mut reader = client.nar_from_path(&store_path).await.unwrap();
+                let mut out = Vec::new();
+                copy_buf(&mut reader, &mut out).await?;
+                let nar: Vec<NAREvent> = crate::archive::parse_nar(Cursor::new(&out))
+                    .try_collect()
+                    .await?;
+                assert_eq!(events, nar);
+                assert_eq!(size, out.len() as u64);
+                assert_eq!(digest(Algorithm::SHA256, &out), hash);
+            }
             Ok(client) as DaemonResult<_>
         })
         .await
@@ -777,6 +797,31 @@ mod test {
         .await
         .unwrap();
     }
+}
+
+#[cfg(all(test, feature = "daemon"))]
+mod proptests {
+    use std::io::Cursor;
+    use std::time::Instant;
+
+    use futures::TryStreamExt as _;
+    use nixrs_archive::proptest::arb_nar_contents;
+    use proptest::prelude::{any, TestCaseError};
+    use proptest::{prop_assert, prop_assert_eq, proptest};
+    use tokio::io::copy_buf;
+    use tracing::info;
+    use tracing_test::traced_test;
+
+    use super::mock::MockStore;
+    use super::tests::run_store_test;
+    use super::DaemonResult;
+    use super::{ClientOptions, UnkeyedValidPathInfo};
+    use crate::archive::NAREvent;
+    use crate::daemon::wire::types2::ValidPathInfo;
+    use crate::daemon::DaemonStore as _;
+    use crate::hash::{digest, Algorithm};
+    use crate::store_path::StorePath;
+    use crate::store_path::StorePathSet;
 
     // TODO: proptest handshake
 
@@ -910,12 +955,15 @@ mod test {
                     .nar_from_path(&path, Ok(nar_content.clone())).build()
                     .build();
                 run_store_test(mock, |mut client| async move {
-                    let mut out = Vec::new();
-                    client.nar_from_path(&path, Cursor::new(&mut out)).await?;
-                    let _ : Vec<NAREvent> = crate::archive::parse_nar(Cursor::new(&out)).try_collect().await?;
-                    prop_assert_eq!(nar_size, out.len() as u64);
-                    let hash = digest(Algorithm::SHA256, &out);
-                    prop_assert_eq!(hash.as_ref(), nar_hash.as_ref());
+                    {
+                        let mut reader = client.nar_from_path(&path).await?;
+                        let mut out = Vec::new();
+                        copy_buf(&mut reader, &mut out).await?;
+                        let _ : Vec<NAREvent> = crate::archive::parse_nar(Cursor::new(&out)).try_collect().await?;
+                        prop_assert_eq!(nar_size, out.len() as u64);
+                        let hash = digest(Algorithm::SHA256, &out);
+                        prop_assert_eq!(hash.as_ref(), nar_hash.as_ref());
+                    }
                     Ok(client)
                 }).await?;
                 Ok(()) as Result<_, TestCaseError>

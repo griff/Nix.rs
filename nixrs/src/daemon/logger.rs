@@ -246,10 +246,16 @@ pub enum Field {
     String(DaemonString),
 }
 
-pub trait ResultLog<T, E>: Stream<Item = LogMessage> + Future<Output = Result<T, E>> {}
-impl<R, T, E> ResultLog<T, E> for R where
-    R: Stream<Item = LogMessage> + Future<Output = Result<T, E>>
+pub trait ResultLog:
+    Stream<Item = LogMessage> + Future<Output = <Self as ResultLog>::Output>
 {
+    type Output;
+}
+impl<RL, O> ResultLog for RL
+where
+    RL: Stream<Item = LogMessage> + Future<Output = O>,
+{
+    type Output = O;
 }
 
 pub trait LocalLoggerResult<T, E> {
@@ -380,31 +386,36 @@ where
     }
 }
 
-pub trait ResultLogExt<T, E> {
-    fn map_ok<F, T2>(self, f: F) -> impl ResultLog<T2, E>
+pub trait ResultLogExt: ResultLog {
+    fn map_ok<F, E, T, T2>(self, f: F) -> impl ResultLog<Output = Result<T2, E>>
     where
+        Self: ResultLog<Output = Result<T, E>>,
         F: FnOnce(T) -> T2 + Send,
+        T: Send,
         T2: 'static;
-    fn map_err<F, E2>(self, f: F) -> impl ResultLog<T, E2>
+    fn map_err<F, E, T, E2>(self, f: F) -> impl ResultLog<Output = Result<T, E2>>
     where
+        Self: ResultLog<Output = Result<T, E>>,
         F: FnOnce(E) -> E2 + Send,
+        E: Send,
         E2: 'static;
-    fn and_then<F, T2, Fut>(self, f: F) -> impl ResultLog<T2, E>
+    fn and_then<F, E, T, T2, Fut>(self, f: F) -> impl ResultLog<Output = Result<T2, E>>
     where
+        Self: ResultLog<Output = Result<T, E>>,
         F: FnOnce(T) -> Fut + Send,
         Fut: Future<Output = Result<T2, E>> + Send,
         T2: 'static;
 }
 
-impl<L, T, E> ResultLogExt<T, E> for L
+impl<L> ResultLogExt for L
 where
-    L: ResultLog<T, E>,
-    T: Send + 'static,
-    E: Send + 'static,
+    L: ResultLog,
 {
-    fn map_ok<F, T2>(self, f: F) -> impl ResultLog<T2, E>
+    fn map_ok<F, E, T, T2>(self, f: F) -> impl ResultLog<Output = Result<T2, E>>
     where
+        Self: ResultLog<Output = Result<T, E>>,
         F: FnOnce(T) -> T2 + Send,
+        T: Send,
         T2: 'static,
     {
         MapOkResult {
@@ -414,9 +425,11 @@ where
         }
     }
 
-    fn map_err<F, E2>(self, f: F) -> impl ResultLog<T, E2>
+    fn map_err<F, E, T, E2>(self, f: F) -> impl ResultLog<Output = Result<T, E2>>
     where
+        Self: ResultLog<Output = Result<T, E>>,
         F: FnOnce(E) -> E2 + Send,
+        E: Send,
         E2: 'static,
     {
         MapErrResult {
@@ -425,8 +438,9 @@ where
             value: PhantomData,
         }
     }
-    fn and_then<F, T2, Fut>(self, f: F) -> impl ResultLog<T2, E>
+    fn and_then<F, E, T, T2, Fut>(self, f: F) -> impl ResultLog<Output = Result<T2, E>>
     where
+        Self: ResultLog<Output = Result<T, E>>,
         F: FnOnce(T) -> Fut + Send,
         Fut: Future<Output = Result<T2, E>> + Send,
         T2: 'static,

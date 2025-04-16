@@ -189,7 +189,7 @@ where
 
 async fn process_logs<'s, T: Send + 's, W: AsyncWrite + Send + Unpin>(
     writer: &'s mut NixWriter<W>,
-    logs: impl ResultLog<T, DaemonError> + 's,
+    logs: impl ResultLog<Output = DaemonResult<T>> + 's,
 ) -> Result<T, RecoverableError> {
     let mut logs = pin!(logs);
     while let Some(msg) = logs.next().await {
@@ -223,14 +223,14 @@ where
     fn set_options<'a>(
         &'a mut self,
         options: &'a super::ClientOptions,
-    ) -> impl ResultLog<(), DaemonError> + Send + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
         Box::pin(self.0.set_options(options))
     }
 
     fn is_valid_path<'a>(
         &'a mut self,
         path: &'a StorePath,
-    ) -> impl ResultLog<bool, DaemonError> + Send + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<bool>> + Send + 'a {
         let ret = Box::pin(self.0.is_valid_path(path));
         trace!("IsValidPath Size {}", size_of_val(&ret));
         ret
@@ -240,7 +240,7 @@ where
         &'a mut self,
         paths: &'a crate::store_path::StorePathSet,
         substitute: bool,
-    ) -> impl ResultLog<crate::store_path::StorePathSet, DaemonError> + Send + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<crate::store_path::StorePathSet>> + Send + 'a {
         let ret = Box::pin(self.0.query_valid_paths(paths, substitute));
         trace!("QueryValidPaths Size {}", size_of_val(&ret));
         ret
@@ -249,23 +249,18 @@ where
     fn query_path_info<'a>(
         &'a mut self,
         path: &'a StorePath,
-    ) -> impl ResultLog<Option<super::UnkeyedValidPathInfo>, DaemonError> + Send + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<Option<super::UnkeyedValidPathInfo>>> + Send + 'a
+    {
         let ret = Box::pin(self.0.query_path_info(path));
         trace!("QueryPathInfo Size {}", size_of_val(&ret));
         ret
     }
 
-    fn nar_from_path<'s, 'p, 'r, W>(
+    fn nar_from_path<'s>(
         &'s mut self,
-        path: &'p StorePath,
-        sink: W,
-    ) -> impl ResultLog<(), DaemonError> + Send + 'r
-    where
-        W: AsyncWrite + Unpin + Send + 'r,
-        's: 'r,
-        'p: 'r,
-    {
-        let ret = Box::pin(self.0.nar_from_path(path, sink));
+        path: &'s StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<impl AsyncBufRead + 's>> + Send + 's {
+        let ret = Box::pin(self.0.nar_from_path(path));
         trace!("NarFromPath Size {}", size_of_val(&ret));
         ret
     }
@@ -274,7 +269,7 @@ where
         &'a mut self,
         paths: &'a [super::wire::types2::DerivedPath],
         mode: super::wire::types2::BuildMode,
-    ) -> impl ResultLog<(), DaemonError> + Send + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
         let ret = Box::pin(self.0.build_paths(paths, mode));
         trace!("BuildPaths Size {}", size_of_val(&ret));
         ret
@@ -285,7 +280,7 @@ where
         drv_path: &'a StorePath,
         drv: &'a super::wire::types2::BasicDerivation,
         build_mode: super::wire::types2::BuildMode,
-    ) -> impl ResultLog<super::wire::types2::BuildResult, DaemonError> + Send + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<super::wire::types2::BuildResult>> + Send + 'a {
         let ret = Box::pin(self.0.build_derivation(drv_path, drv, build_mode));
         trace!("BuildDerivation Size {}", size_of_val(&ret));
         ret
@@ -294,7 +289,8 @@ where
     fn query_missing<'a>(
         &'a mut self,
         paths: &'a [super::wire::types2::DerivedPath],
-    ) -> impl ResultLog<super::wire::types2::QueryMissingResult, DaemonError> + Send + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<super::wire::types2::QueryMissingResult>> + Send + 'a
+    {
         let ret = Box::pin(self.0.query_missing(paths));
         trace!("QueryMissing Size {}", size_of_val(&ret));
         ret
@@ -306,7 +302,7 @@ where
         source: R,
         repair: bool,
         dont_check_sigs: bool,
-    ) -> impl ResultLog<(), DaemonError> + Send + 'r
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'r
     where
         R: AsyncBufRead + Send + Unpin + 'r,
         's: 'r,
@@ -325,7 +321,7 @@ where
         repair: bool,
         dont_check_sigs: bool,
         stream: ST,
-    ) -> impl ResultLog<(), DaemonError> + Send + 'r
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'r
     where
         ST: Stream<Item = Result<AddToStoreItem<STR>, DaemonError>> + Send + 'i,
         STR: AsyncBufRead + Send + Unpin + 'i,
@@ -344,7 +340,8 @@ where
         &'a mut self,
         drvs: &'a [super::wire::types2::DerivedPath],
         mode: super::wire::types2::BuildMode,
-    ) -> impl ResultLog<Vec<super::wire::types2::KeyedBuildResult>, DaemonError> + Send + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<Vec<super::wire::types2::KeyedBuildResult>>> + Send + 'a
+    {
         let ret = Box::pin(self.0.build_paths_with_results(drvs, mode));
         trace!("BuildPathsWithResults Size {}", size_of_val(ret.deref()));
         ret
@@ -352,7 +349,7 @@ where
 
     fn query_all_valid_paths(
         &mut self,
-    ) -> impl ResultLog<crate::store_path::StorePathSet, DaemonError> + Send + '_ {
+    ) -> impl ResultLog<Output = DaemonResult<crate::store_path::StorePathSet>> + Send + '_ {
         let ret = Box::pin(self.0.query_all_valid_paths());
         trace!("QueryAllValidPaths Size {}", size_of_val(&ret));
         ret
@@ -451,7 +448,7 @@ where
     #[instrument(level = "trace", skip_all)]
     pub async fn process_logs<'s, T: Send + 's>(
         &'s mut self,
-        logs: impl ResultLog<T, DaemonError> + Send + 's,
+        logs: impl ResultLog<Output = DaemonResult<T>> + Send + 's,
     ) -> Result<T, RecoverableError> {
         process_logs(&mut self.writer, logs).await
     }
@@ -503,7 +500,7 @@ where
         source: NW,
         repair: bool,
         dont_check_sigs: bool,
-    ) -> impl ResultLog<(), DaemonError> + Send + 'r
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'r
     where
         S: DaemonStore + 's,
         NW: AsyncBufRead + Unpin + Send + 'r,
@@ -518,7 +515,7 @@ where
         repair: bool,
         dont_check_sigs: bool,
         stream: ST,
-    ) -> impl ResultLog<(), DaemonError> + Send + 'r
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'r
     where
         S: DaemonStore + 's,
         ST: Stream<Item = Result<AddToStoreItem<STR>, DaemonError>> + Send + 'r,
@@ -528,17 +525,14 @@ where
         store.add_multiple_to_store(repair, dont_check_sigs, stream)
     }
 
-    fn store_nar_from_path2<'s, S>(
+    fn store_nar_from_path<'s, S>(
         store: &'s mut S,
         path: &'s StorePath,
-    ) -> impl Stream<Item = LogMessage>
-           + std::future::Future<Output = Result<impl AsyncBufRead + 's, DaemonError>>
-           + Send
-           + 's
+    ) -> impl ResultLog<Output = DaemonResult<impl AsyncBufRead + 's>> + Send + 's
     where
         S: DaemonStore + 's,
     {
-        store.nar_from_path2(path)
+        store.nar_from_path(path)
     }
 
     async fn nar_from_path<'s, 't, S>(
@@ -549,7 +543,7 @@ where
     where
         S: DaemonStore + 't,
     {
-        let logs = Self::store_nar_from_path2(store, &path);
+        let logs = Self::store_nar_from_path(store, &path);
 
         let mut logs = pin!(logs);
         while let Some(msg) = logs.next().await {

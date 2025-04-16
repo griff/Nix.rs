@@ -142,7 +142,7 @@ impl DaemonClientBuilder {
         self,
         reader: R,
         writer: W,
-    ) -> impl ResultLog<DaemonClient<R, W>, DaemonError>
+    ) -> impl ResultLog<Output = DaemonResult<DaemonClient<R, W>>>
     where
         R: AsyncRead + fmt::Debug + Unpin + Send + 'static,
         W: AsyncWrite + fmt::Debug + Unpin + Send + 'static,
@@ -153,7 +153,7 @@ impl DaemonClientBuilder {
     pub fn connect_unix<P>(
         self,
         path: P,
-    ) -> impl ResultLog<DaemonClient<OwnedReadHalf, OwnedWriteHalf>, DaemonError>
+    ) -> impl ResultLog<Output = DaemonResult<DaemonClient<OwnedReadHalf, OwnedWriteHalf>>>
     where
         P: AsRef<Path> + Send,
     {
@@ -162,7 +162,7 @@ impl DaemonClientBuilder {
 
     pub fn connect_daemon(
         self,
-    ) -> impl ResultLog<DaemonClient<OwnedReadHalf, OwnedWriteHalf>, DaemonError> {
+    ) -> impl ResultLog<Output = DaemonResult<DaemonClient<OwnedReadHalf, OwnedWriteHalf>>> {
         FutureResult::new(async move { Ok(self.build_daemon().await?.handshake()) })
     }
 }
@@ -183,7 +183,7 @@ where
 {
     type Store = DaemonClient<R, W>;
 
-    fn handshake(self) -> impl ResultLog<Self::Store, DaemonError> {
+    fn handshake(self) -> impl ResultLog<Output = DaemonResult<Self::Store>> {
         FutureResult::new(async move {
             let mut reader = self.reader;
             let mut writer = self.writer;
@@ -307,7 +307,7 @@ where
         host: String,
         reader: R,
         writer: W,
-    ) -> impl ResultLog<Self, DaemonError> {
+    ) -> impl ResultLog<Output = DaemonResult<Self>> {
         DaemonClient::builder()
             .set_store_dir(store_dir)
             .set_host(host)
@@ -320,7 +320,7 @@ where
         Ok(())
     }
 
-    fn process_stderr<T>(&mut self) -> impl ResultLog<T, DaemonError> + '_
+    fn process_stderr<T>(&mut self) -> impl ResultLog<Output = DaemonResult<T>> + '_
     where
         T: NixDeserialize + Send + 'static,
     {
@@ -358,7 +358,7 @@ where
     fn set_options<'a>(
         &'a mut self,
         options: &'a super::ClientOptions,
-    ) -> impl ResultLog<(), DaemonError> + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
         FutureResult::new(async {
             self.writer.write_value(&Operation::SetOptions).await?;
             self.writer.write_value(options).await?;
@@ -370,7 +370,7 @@ where
     fn is_valid_path<'a>(
         &'a mut self,
         path: &'a crate::store_path::StorePath,
-    ) -> impl ResultLog<bool, DaemonError> + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<bool>> + 'a {
         FutureResult::new(async {
             self.writer.write_value(&Operation::IsValidPath).await?;
             self.writer.write_value(path).await?;
@@ -383,7 +383,7 @@ where
         &'a mut self,
         paths: &'a StorePathSet,
         substitute: bool,
-    ) -> impl ResultLog<StorePathSet, DaemonError> + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + 'a {
         FutureResult::new(async move {
             self.writer.write_value(&Operation::QueryValidPaths).await?;
             self.writer.write_value(paths).await?;
@@ -398,7 +398,7 @@ where
     fn query_path_info<'a>(
         &'a mut self,
         path: &'a crate::store_path::StorePath,
-    ) -> impl ResultLog<Option<super::UnkeyedValidPathInfo>, DaemonError> + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<Option<super::UnkeyedValidPathInfo>>> + 'a {
         FutureResult::new(async {
             self.writer.write_value(&Operation::QueryPathInfo).await?;
             self.writer.write_value(path).await?;
@@ -407,36 +407,7 @@ where
         .map_err(|err| err.fill_operation(Operation::QueryPathInfo))
     }
 
-    fn nar_from_path<'a, 'p, 'r, NW>(
-        &'a mut self,
-        path: &'p crate::store_path::StorePath,
-        mut sink: NW,
-    ) -> impl ResultLog<(), DaemonError> + 'r
-    where
-        NW: AsyncWrite + Unpin + Send + 'r,
-        'a: 'r,
-        'p: 'r,
-    {
-        FutureResult::new(async {
-            self.writer.write_value(&Operation::NarFromPath).await?;
-            self.writer.write_value(path).await?;
-            self.writer.flush().await?;
-            Ok(ProcessStderr::new(&mut self.reader)
-                .result_fn(|result, reader, _, _, _| async move {
-                    result?;
-                    let mut reader = NarReader::new(AsyncBufReadCompat::new(reader));
-                    trace!("Copying NAR from client");
-                    copy_buf(&mut reader, &mut sink).await?;
-                    sink.shutdown().await?;
-                    trace!("Copied NAR from client");
-                    Ok(())
-                })
-                .stream())
-        })
-        .map_err(|err| err.fill_operation(Operation::NarFromPath))
-    }
-
-    fn nar_from_path2<'s>(
+    fn nar_from_path<'s>(
         &'s mut self,
         path: &'s StorePath,
     ) -> impl Stream<Item = LogMessage>
@@ -508,7 +479,7 @@ where
         &'a mut self,
         paths: &'a [DerivedPath],
         mode: BuildMode,
-    ) -> impl ResultLog<(), DaemonError> + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
         FutureResult::new(async move {
             self.writer.write_value(&Operation::BuildPaths).await?;
             self.writer.write_value(&paths).await?;
@@ -522,7 +493,8 @@ where
         &'a mut self,
         drvs: &'a [DerivedPath],
         mode: BuildMode,
-    ) -> impl ResultLog<Vec<super::wire::types2::KeyedBuildResult>, DaemonError> + Send + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<Vec<super::wire::types2::KeyedBuildResult>>> + Send + 'a
+    {
         FutureResult::new(async move {
             self.writer
                 .write_value(&Operation::BuildPathsWithResults)
@@ -539,7 +511,7 @@ where
         drv_path: &'a crate::store_path::StorePath,
         drv: &'a super::wire::types2::BasicDerivation,
         build_mode: BuildMode,
-    ) -> impl ResultLog<super::wire::types2::BuildResult, DaemonError> + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<super::wire::types2::BuildResult>> + 'a {
         FutureResult::new(async move {
             self.writer.write_value(&Operation::BuildDerivation).await?;
             self.writer.write_value(drv_path).await?;
@@ -553,7 +525,7 @@ where
     fn query_missing<'a>(
         &'a mut self,
         paths: &'a [DerivedPath],
-    ) -> impl ResultLog<super::wire::types2::QueryMissingResult, DaemonError> + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<super::wire::types2::QueryMissingResult>> + 'a {
         FutureResult::new(async move {
             self.writer.write_value(&Operation::QueryMissing).await?;
             self.writer.write_value(&paths).await?;
@@ -568,7 +540,7 @@ where
         source: AR,
         repair: bool,
         dont_check_sigs: bool,
-    ) -> impl ResultLog<(), DaemonError> + Send + 'r
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'r
     where
         AR: AsyncBufRead + Send + Unpin + 'r,
         's: 'r,
@@ -626,7 +598,7 @@ where
         repair: bool,
         dont_check_sigs: bool,
         stream: S,
-    ) -> impl ResultLog<(), DaemonError> + Send + 'r
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'r
     where
         S: Stream<Item = Result<AddToStoreItem<SR>, DaemonError>> + Send + 'i,
         SR: AsyncBufRead + Send + Unpin + 'i,
@@ -665,7 +637,9 @@ where
         .map_err(|err| err.fill_operation(Operation::AddMultipleToStore))
     }
 
-    fn query_all_valid_paths(&mut self) -> impl ResultLog<StorePathSet, DaemonError> + Send + '_ {
+    fn query_all_valid_paths(
+        &mut self,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + '_ {
         FutureResult::new(async move {
             self.writer
                 .write_value(&Operation::QueryAllValidPaths)

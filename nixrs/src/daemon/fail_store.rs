@@ -2,7 +2,9 @@ use std::future::ready;
 
 use futures::stream::empty;
 
-use super::{logger::ResultProcess, DaemonResultExt as _, DaemonStore, HandshakeDaemonStore};
+use super::{
+    logger::ResultProcess, DaemonResult, DaemonResultExt as _, DaemonStore, HandshakeDaemonStore,
+};
 
 #[derive(Debug)]
 pub struct FailStore;
@@ -10,7 +12,7 @@ pub struct FailStore;
 impl HandshakeDaemonStore for FailStore {
     type Store = Self;
 
-    fn handshake(self) -> impl super::ResultLog<Self::Store, super::DaemonError> {
+    fn handshake(self) -> impl super::ResultLog<Output = DaemonResult<Self::Store>> {
         ResultProcess {
             stream: empty(),
             result: ready(Ok(self)),
@@ -27,8 +29,9 @@ impl DaemonStore for FailStore {
         &'a mut self,
         _drvs: &'a [super::wire::types2::DerivedPath],
         _mode: super::wire::types2::BuildMode,
-    ) -> impl super::ResultLog<Vec<super::wire::types2::KeyedBuildResult>, super::DaemonError> + Send + 'a
-    {
+    ) -> impl super::ResultLog<Output = DaemonResult<Vec<super::wire::types2::KeyedBuildResult>>>
+           + Send
+           + 'a {
         ResultProcess {
             stream: empty(),
             result: ready(
@@ -42,7 +45,7 @@ impl DaemonStore for FailStore {
 
     fn query_all_valid_paths(
         &mut self,
-    ) -> impl super::ResultLog<crate::store_path::StorePathSet, super::DaemonError> + Send + '_
+    ) -> impl super::ResultLog<Output = DaemonResult<crate::store_path::StorePathSet>> + Send + '_
     {
         ResultProcess {
             stream: empty(),
