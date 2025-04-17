@@ -8,8 +8,6 @@ use crate::daemon::de::{NixDeserialize, NixRead};
 #[cfg(feature = "nixrs-derive")]
 use crate::daemon::ser::{NixSerialize, NixWrite};
 #[cfg(feature = "nixrs-derive")]
-use crate::daemon::types::ContentAddress;
-#[cfg(feature = "nixrs-derive")]
 use crate::store_path::StorePath;
 
 #[derive(
@@ -137,5 +135,3 @@ macro_rules! optional_string {
 }
 #[cfg(feature = "nixrs-derive")]
 optional_string!(StorePath);
-#[cfg(feature = "nixrs-derive")]
-optional_string!(ContentAddress);

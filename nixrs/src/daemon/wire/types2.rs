@@ -19,7 +19,9 @@ use crate::daemon::{
 };
 use crate::hash;
 use crate::signature::Signature;
-use crate::store_path::{StorePath, StorePathHash, StorePathSet};
+use crate::store_path::{
+    ContentAddress, ContentAddressMethodAlgorithm, StorePath, StorePathHash, StorePathSet,
+};
 
 #[cfg(feature = "nixrs-derive")]
 use crate::daemon::de::{Error as _, NixDeserialize, NixRead};
@@ -55,21 +57,6 @@ impl TryFrom<Duration> for Microseconds {
 impl From<Microseconds> for i64 {
     fn from(value: Microseconds) -> Self {
         value.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-pub struct ContentAddressMethodWithAlgo(String);
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-pub struct ContentAddress(String);
-impl FromStr for ContentAddress {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(ContentAddress(s.to_owned()))
     }
 }
 
@@ -445,7 +432,7 @@ pub struct SubstitutablePathInfo {
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct DerivationOutput {
     pub path: Option<StorePath>,
-    pub hash_algo: Option<String>,
+    pub hash_algo: Option<ContentAddressMethodAlgorithm>,
     pub hash: Option<String>,
 }
 
@@ -512,7 +499,7 @@ pub struct AddToStoreRequestPre25 {
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct AddToStoreRequest25 {
     pub name: String,
-    pub cam_str: ContentAddressMethodWithAlgo,
+    pub cam_str: ContentAddressMethodAlgorithm,
     pub refs: StorePathSet,
     pub repair: bool,
     // Framed NAR dump
@@ -729,6 +716,8 @@ macro_rules! optional_string {
 optional_string!(ContentAddress);
 #[cfg(feature = "nixrs-derive")]
 optional_string!(String);
+#[cfg(feature = "nixrs-derive")]
+optional_string!(ContentAddressMethodAlgorithm);
 
 #[cfg(feature = "nixrs-derive")]
 impl NixDeserialize for Option<Microseconds> {

@@ -8,13 +8,12 @@ use data_encoding::DecodeKind;
 use data_encoding::BASE64;
 use data_encoding::HEXLOWER_PERMISSIVE;
 use derive_more::Display;
+#[cfg(feature = "nixrs-derive")]
+use nixrs_derive::{NixDeserialize, NixSerialize};
 #[cfg(any(test, feature = "test"))]
 use proptest_derive::Arbitrary;
 use ring::digest;
 use thiserror::Error;
-
-#[cfg(feature = "nixrs-derive")]
-use nixrs_derive::{NixDeserialize, NixSerialize};
 
 use crate::wire::base64_len;
 
@@ -570,6 +569,78 @@ impl TryFrom<Hash> for NarHash {
             return Err(UnknownAlgorithm(value.algorithm().to_string()));
         }
         Ok(NarHash::new(value.as_ref()))
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
+pub struct Sha256([u8; Algorithm::SHA256.size()]);
+impl Sha256 {
+    pub fn new(digest: &[u8]) -> Self {
+        let mut data = [0u8; Algorithm::SHA256.size()];
+        data.copy_from_slice(digest);
+        Self(data)
+    }
+
+    pub fn from_slice(digest: &[u8]) -> Result<Self, ParseHashError> {
+        if digest.len() != Algorithm::SHA256.size() {
+            return Err(ParseHashError::WrongHashLength2(
+                Algorithm::SHA256,
+                digest.len(),
+            ));
+        }
+        Ok(Self::new(digest))
+    }
+}
+
+impl fmt::Debug for Sha256 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Sha256")
+            .field(&format_args!("{}", self))
+            .finish()
+    }
+}
+
+impl fmt::Display for Sha256 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut buf = [0u8; Algorithm::SHA256.base32_len()];
+        base32::encode_mut(self.0.as_ref(), &mut buf);
+
+        // SAFETY: Nix Base32 is a subset of ASCII, which guarantees valid UTF-8.
+        let s = unsafe { std::str::from_utf8_unchecked(&buf) };
+        f.write_str(s)
+    }
+}
+
+impl FromStr for Sha256 {
+    type Err = ParseHashError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let hash = Hash::parse_non_sri_unprefixed(s, Algorithm::SHA256)?;
+        Ok(hash.try_into()?)
+    }
+}
+
+impl AsRef<[u8]> for Sha256 {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl From<Sha256> for Hash {
+    fn from(value: Sha256) -> Self {
+        Hash::new(Algorithm::SHA256, value.as_ref())
+    }
+}
+
+impl TryFrom<Hash> for Sha256 {
+    type Error = UnknownAlgorithm;
+
+    fn try_from(value: Hash) -> Result<Self, Self::Error> {
+        if value.algorithm() != Algorithm::SHA256 {
+            return Err(UnknownAlgorithm(value.algorithm().to_string()));
+        }
+        Ok(Self::new(value.as_ref()))
     }
 }
 

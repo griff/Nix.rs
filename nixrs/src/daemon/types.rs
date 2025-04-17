@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt;
-use std::future::{ready, Future};
+use std::future::ready;
 
 use bstr::ByteSlice;
 use bytes::Bytes;
@@ -15,7 +15,7 @@ use thiserror::Error;
 use tokio::io::{AsyncBufRead, AsyncWrite};
 
 use crate::signature::Signature;
-use crate::store_path::{FromStoreDirStr, ParseStorePathError, StoreDirDisplay, StorePathSet};
+use crate::store_path::{ContentAddress, StorePathSet};
 use crate::{hash::NarHash, store_path::StorePath};
 
 use super::logger::{LocalLoggerResult, LogError, ResultLog, ResultProcess, TraceLine, Verbosity};
@@ -25,35 +25,7 @@ use super::wire::types2::{
     ValidPathInfo,
 };
 use super::wire::{IgnoredTrue, IgnoredZero};
-use super::{LogMessage, ProtocolVersion};
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(from_store_dir_str, store_dir_display))]
-pub struct ContentAddress(
-    #[cfg_attr(any(test, feature = "test"), proptest(regex = "\\PC+"))] String,
-);
-impl FromStoreDirStr for ContentAddress {
-    type Error = ParseStorePathError;
-
-    fn from_store_dir_str(
-        _store_dir: &crate::store_path::StoreDir,
-        s: &str,
-    ) -> Result<Self, Self::Error> {
-        Ok(ContentAddress(s.to_owned()))
-    }
-}
-
-impl StoreDirDisplay for ContentAddress {
-    fn fmt(
-        &self,
-        _store_dir: &crate::store_path::StoreDir,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+use super::ProtocolVersion;
 
 pub type DaemonString = Bytes;
 pub type DaemonPath = Bytes;

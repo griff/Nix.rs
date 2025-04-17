@@ -1,8 +1,10 @@
 use std::collections::BTreeSet;
 
+mod content_address;
 mod path;
 mod store_dir;
 
+pub use content_address::{ContentAddress, ContentAddressMethod, ContentAddressMethodAlgorithm};
 pub use path::{ParseStorePathError, StorePath, StorePathError, StorePathHash, StorePathName};
 pub use store_dir::{FromStoreDirStr, StoreDir, StoreDirDisplay};
 
