@@ -4593,12 +4593,14 @@ rec {
         features = {
           "archive" = [ "dep:nixrs-archive" ];
           "daemon" = [ "nixrs-derive" "archive" "tokio/rt" ];
+          "default" = [ "test" "daemon" ];
+          "full" = [ "test" "daemon" ];
           "md5" = [ "dep:md5" ];
-          "nixrs-derive" = [ "dep:nixrs-derive" "dep:libc" "dep:num_enum" "dep:bstr" "dep:futures" ];
+          "nixrs-derive" = [ "daemon-serde" "dep:nixrs-derive" "dep:libc" "dep:num_enum" "dep:bstr" "dep:futures" ];
           "proptest" = [ "dep:proptest" ];
           "test" = [ "proptest" "dep:proptest-derive" "nixrs-archive?/test" ];
         };
-        resolvedDefaultFeatures = [ "archive" "daemon" "daemon-serde" "default" "internal" "md5" "nixrs-derive" "proptest" "test" ];
+        resolvedDefaultFeatures = [ "archive" "daemon" "daemon-serde" "default" "full" "internal" "md5" "nixrs-derive" "proptest" "test" ];
       };
       "nixrs-archive" = rec {
         crateName = "nixrs-archive";

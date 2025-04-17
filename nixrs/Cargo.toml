@@ -14,11 +14,12 @@ test = ["proptest", "dep:proptest-derive", "nixrs-archive?/test"]
 archive = ["dep:nixrs-archive"]
 daemon = ["nixrs-derive", "archive", "tokio/rt"]
 daemon-serde = []
-nixrs-derive = ["dep:nixrs-derive", "dep:libc", "dep:num_enum", "dep:bstr", "dep:futures"]
+nixrs-derive = ["daemon-serde", "dep:nixrs-derive", "dep:libc", "dep:num_enum", "dep:bstr", "dep:futures"]
 internal = []
+full = ["test", "daemon"]
 
 # Enable all features by default.
-default = []
+default = ["test", "daemon"]
 
 [dependencies]
 async-stream = { workspace = true }
