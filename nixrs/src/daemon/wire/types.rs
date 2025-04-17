@@ -95,7 +95,7 @@ pub enum Operation {
 }
 
 #[cfg(feature = "nixrs-derive")]
-macro_rules! optional_string {
+macro_rules! optional_from_store_dir_str {
     ($sub:ty) => {
         impl NixDeserialize for Option<$sub> {
             async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
@@ -134,4 +134,4 @@ macro_rules! optional_string {
     };
 }
 #[cfg(feature = "nixrs-derive")]
-optional_string!(StorePath);
+optional_from_store_dir_str!(StorePath);

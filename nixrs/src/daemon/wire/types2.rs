@@ -679,7 +679,7 @@ optional_info!(UnkeyedSubstitutablePathInfo);
 optional_info!(UnkeyedValidPathInfo);
 
 #[cfg(feature = "nixrs-derive")]
-macro_rules! optional_string {
+macro_rules! optional_from_str {
     ($sub:ty) => {
         impl NixDeserialize for Option<$sub> {
             async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
@@ -713,11 +713,11 @@ macro_rules! optional_string {
     };
 }
 #[cfg(feature = "nixrs-derive")]
-optional_string!(ContentAddress);
+optional_from_str!(String);
 #[cfg(feature = "nixrs-derive")]
-optional_string!(String);
+optional_from_str!(ContentAddress);
 #[cfg(feature = "nixrs-derive")]
-optional_string!(ContentAddressMethodAlgorithm);
+optional_from_str!(ContentAddressMethodAlgorithm);
 
 #[cfg(feature = "nixrs-derive")]
 impl NixDeserialize for Option<Microseconds> {
