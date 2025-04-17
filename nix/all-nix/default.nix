@@ -326,10 +326,10 @@ let
       self_attribute_name = "nix_2_23";
     };
 
-    # 2.24.12
+    # 2.24.14
     nix_2_24 = common {
-      version = "2.24.11";
-      hash = "sha256-ZizmbJM+DbhkaizxbjKg9fNfMrxh3PfAZ6jApQrazks=";
+      version = "2.24.14";
+      hash = "sha256-SthMCsj6POjawLnJq9+lj/UzObX9skaeN1UGmMZiwTY=";
       patches = [
         ./proxy-patches/nix-2_24.patch
       ];

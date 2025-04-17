@@ -21,8 +21,7 @@ use nixrs::daemon::client::DaemonClient;
 use nixrs::daemon::mock::{self, MockReporter, MockStore, ReporterError};
 use nixrs::daemon::{server, Verbosity};
 use nixrs::daemon::{
-    ClientOptions, DaemonError, DaemonErrorKind, DaemonResult, DaemonStore as _,
-    UnkeyedValidPathInfo,
+    DaemonError, DaemonErrorKind, DaemonResult, DaemonStore as _, UnkeyedValidPathInfo,
 };
 use nixrs::hash::{digest, Algorithm, Context, NarHash};
 use nixrs::store_path::{StorePath, StorePathSet};
@@ -46,7 +45,6 @@ trait NixImpl: std::fmt::Debug {
 #[derive(Debug, Clone, Copy)]
 struct StdNixImpl {
     name: &'static str,
-    verbosity: Verbosity,
     cmd_args: &'static [&'static str],
 }
 
@@ -55,12 +53,14 @@ impl NixImpl for StdNixImpl {
         self.name
     }
 
-    fn prepare_mock(&self, mock: &mut mock::Builder<()>) {
+    fn prepare_mock(&self, _mock: &mut mock::Builder<()>) {
+        /*
         let mut options = ClientOptions::default();
         options.build_cores = 12;
         options.max_build_jobs = 12;
         options.verbosity = self.verbosity;
         mock.set_options(&options, Ok(())).build();
+         */
     }
 
     fn prepare_program<'c>(&self, cmd: &'c mut Command) -> &'c mut Command {
@@ -70,28 +70,20 @@ impl NixImpl for StdNixImpl {
 
 const NIX_2_3: StdNixImpl = StdNixImpl {
     name: "nix_2_3",
-    verbosity: Verbosity::Error,
+    //verbosity: Verbosity::Error,
     cmd_args: &[],
 };
 
 const NIX_2_24: StdNixImpl = StdNixImpl {
     name: "nix_2_24",
-    verbosity: Verbosity::Error,
-    cmd_args: &[
-        "--extra-experimental-features",
-        "daemon-trust-override",
-        "--force-untrusted",
-    ],
+    //verbosity: Verbosity::Error,
+    cmd_args: &["--extra-experimental-features", "mounted-ssh-store"],
 };
 
 const LIX_2_91: StdNixImpl = StdNixImpl {
     name: "lix_2_91",
-    verbosity: Verbosity::Vomit,
-    cmd_args: &[
-        "--extra-experimental-features",
-        "daemon-trust-override",
-        "--force-untrusted",
-    ],
+    //verbosity: Verbosity::Vomit,
+    cmd_args: &[],
 };
 
 async fn run_store_test<R, T, F, E>(
@@ -113,6 +105,11 @@ where
     let reports = reporter.collect::<Vec<ReporterError>>().map(|r| Ok(r));
 
     let dir = Builder::new().prefix("test_restore_dir").tempdir().unwrap();
+    let unix_proxy = env!("UNIX_PROXY");
+    let remote_program = dir.path().join("local");
+    tokio::fs::symlink(unix_proxy, &remote_program)
+        .await
+        .unwrap();
     let socket = dir.path().join("local.socket");
     /*
     let socket = Path::new("./daemon.socket");
@@ -121,8 +118,8 @@ where
     }
      */
     let uri = format!(
-        "proxy://{}?path-info-cache-size=0",
-        socket.to_str().unwrap()
+        "ssh-ng://localhost?remote-program={}&path-info-cache-size=0",
+        remote_program.to_str().unwrap()
     );
 
     let listener = UnixListener::bind(socket).unwrap();
@@ -142,6 +139,7 @@ where
     //let program = "../../lix/outputs/out/bin/nix-daemon";
     let mut cmd = Command::new(program);
     nix.prepare_program(&mut cmd)
+        .arg("--process-ops")
         .arg("--debug")
         .arg("-vvvvvv")
         .arg("--stdio")
@@ -197,6 +195,7 @@ fn prepare_mock(nix: &dyn NixImpl) -> mock::Builder<()> {
     nix.prepare_mock(&mut mock);
     mock
 }
+
 /*
 #[tokio::test]
 #[rstest]

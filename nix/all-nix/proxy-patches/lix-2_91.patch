@@ -1,295 +1,113 @@
-From 7d6ee2223033cf2c2f0a916c659437c571579909 Mon Sep 17 00:00:00 2001
+From 2e1e890ec5dbf4fe3a07638439ba57ebd5fefb1a Mon Sep 17 00:00:00 2001
 From: Brian Olsen <brian@maven-group.org>
-Date: Mon, 3 Feb 2025 01:15:46 +0100
-Subject: [PATCH] libstore: Add unix socket proxy store
+Date: Mon, 21 Apr 2025 22:33:17 +0200
+Subject: [PATCH] Add process-ops argument to nix daemon
 
-Change-Id: I5e02ee0fd75a0884d3250e0382e16f9efd3539de
+Change-Id: Ib9d9cc04690160c34dacbce48b66ade9408bd390
 ---
- src/libstore/daemon.cc       |  4 +-
- src/libstore/meson.build     |  2 +
- src/libstore/proxy-store.cc  | 73 ++++++++++++++++++++++++++++++++++++
- src/libstore/proxy-store.hh  | 49 ++++++++++++++++++++++++
- src/libstore/proxy-store.md  |  7 ++++
- src/libstore/remote-store.cc |  6 ++-
- src/libstore/store-api.cc    |  4 ++
- src/nix/daemon.cc            | 16 ++++++--
- 8 files changed, 156 insertions(+), 5 deletions(-)
- create mode 100644 src/libstore/proxy-store.cc
- create mode 100644 src/libstore/proxy-store.hh
- create mode 100644 src/libstore/proxy-store.md
+ src/libstore/daemon.cc |  2 +-
+ src/nix/daemon.cc      | 28 ++++++++++++++++++++++++----
+ 2 files changed, 25 insertions(+), 5 deletions(-)
 
 diff --git a/src/libstore/daemon.cc b/src/libstore/daemon.cc
-index 5ac9cd2ef..48dc91224 100644
+index 5ac9cd2ef..f2517c305 100644
 --- a/src/libstore/daemon.cc
 +++ b/src/libstore/daemon.cc
-@@ -872,7 +872,9 @@ static void performOp(TunnelLogger * logger, ref<Store> store,
+@@ -872,7 +872,7 @@ static void performOp(TunnelLogger * logger, ref<Store> store,
          auto path = store->parseStorePath(readString(from));
          logger->startWork();
          logger->stopWork();
 -        to << dumpPath(store->toRealPath(path));
-+        vomit("Dumping path");
 +        to << store->narFromPath(path);
-+        vomit("Dumped path");
          break;
      }
  
-diff --git a/src/libstore/meson.build b/src/libstore/meson.build
-index 5416bd2b5..3121b3945 100644
---- a/src/libstore/meson.build
-+++ b/src/libstore/meson.build
-@@ -68,6 +68,7 @@ libstore_sources = files(
-   'pathlocks.cc',
-   'platform.cc',
-   'profiles.cc',
-+  'proxy-store.cc',
-   'realisation.cc',
-   'remote-fs-accessor.cc',
-   'remote-store.cc',
-@@ -143,6 +144,7 @@ libstore_headers = files(
-   'path.hh',
-   'pathlocks.hh',
-   'profiles.hh',
-+  'proxy-store.hh',
-   'realisation.hh',
-   'remote-fs-accessor.hh',
-   'remote-store-connection.hh',
-diff --git a/src/libstore/proxy-store.cc b/src/libstore/proxy-store.cc
-new file mode 100644
-index 000000000..b0eb7e2df
---- /dev/null
-+++ b/src/libstore/proxy-store.cc
-@@ -0,0 +1,73 @@
-+#include "proxy-store.hh"
-+#include "unix-domain-socket.hh"
-+#include "worker-protocol.hh"
-+
-+#include <sys/types.h>
-+#include <sys/stat.h>
-+#include <sys/socket.h>
-+#include <sys/un.h>
-+#include <errno.h>
-+#include <fcntl.h>
-+#include <unistd.h>
-+
-+#include <cstring>
-+
-+
-+namespace nix {
-+
-+std::string ProxyStoreConfig::doc()
-+{
-+    return
-+        #include "proxy-store.md"
-+        ;
-+}
-+
-+
-+ProxyStore::ProxyStore(
-+    const std::string scheme,
-+    std::string socket_path,
-+    const Params & params)
-+    : StoreConfig(params)
-+    , RemoteStoreConfig(params)
-+    , ProxyStoreConfig(params)
-+    , Store(params)
-+    , RemoteStore(params)
-+    , path(socket_path)
-+{
-+}
-+
-+
-+std::string ProxyStore::getUri()
-+{
-+    return std::string("proxy://") + path;
-+}
-+
-+
-+void ProxyStore::Connection::closeWrite()
-+{
-+    shutdown(fd.get(), SHUT_WR);
-+}
-+
-+
-+ref<RemoteStore::Connection> ProxyStore::openConnection()
-+{
-+    auto conn = make_ref<Connection>();
-+
-+    /* Connect to a daemon that does the privileged work for us. */
-+    conn->fd = createUnixDomainSocket();
-+
-+    nix::connect(conn->fd.get(), path);
-+
-+    conn->from.fd = conn->fd.get();
-+    conn->to.fd = conn->fd.get();
-+
-+    conn->startTime = std::chrono::steady_clock::now();
-+
-+    return conn;
-+}
-+
-+
-+
-+static RegisterStoreImplementation<ProxyStore, ProxyStoreConfig> regProxyStore;
-+
-+}
-diff --git a/src/libstore/proxy-store.hh b/src/libstore/proxy-store.hh
-new file mode 100644
-index 000000000..53a0b0894
---- /dev/null
-+++ b/src/libstore/proxy-store.hh
-@@ -0,0 +1,49 @@
-+#pragma once
-+///@file
-+
-+#include "remote-store.hh"
-+#include "remote-store-connection.hh"
-+
-+namespace nix {
-+
-+struct ProxyStoreConfig : virtual RemoteStoreConfig
-+{
-+    ProxyStoreConfig(const Params & params)
-+        : StoreConfig(params)
-+        , RemoteStoreConfig(params)
-+    {
-+    }
-+
-+    const std::string name() override { return "Proxy Daemon Store"; }
-+
-+    std::string doc() override;
-+};
-+
-+class ProxyStore : public virtual ProxyStoreConfig, public virtual RemoteStore
-+{
-+public:
-+
-+    ProxyStore(const std::string scheme, std::string path, const Params & params);
-+
-+    std::string getUri() override;
-+
-+    static std::set<std::string> uriSchemes()
-+    { return {"proxy"}; }
-+
-+    // FIXME extend daemon protocol, move implementation to RemoteStore
-+    std::optional<std::string> getBuildLogExact(const StorePath & path) override
-+    { unsupported("getBuildLogExact"); }
-+
-+private:
-+
-+    struct Connection : RemoteStore::Connection
-+    {
-+        AutoCloseFD fd;
-+        void closeWrite() override;
-+    };
-+
-+    ref<RemoteStore::Connection> openConnection() override;
-+    std::string path;
-+};
-+
-+}
-diff --git a/src/libstore/proxy-store.md b/src/libstore/proxy-store.md
-new file mode 100644
-index 000000000..c267fff94
---- /dev/null
-+++ b/src/libstore/proxy-store.md
-@@ -0,0 +1,7 @@
-+R"(
-+
-+**Store URL format**: `proxy://`*path*
-+
-+This store type accesses a Nix store by talking to a Nix daemon
-+listening on the Unix domain socket *path*.
-+)"
-diff --git a/src/libstore/remote-store.cc b/src/libstore/remote-store.cc
-index 36223051b..a1ebb27ef 100644
---- a/src/libstore/remote-store.cc
-+++ b/src/libstore/remote-store.cc
-@@ -192,10 +192,14 @@ void RemoteStore::setOptions()
- 
- bool RemoteStore::isValidPathUncached(const StorePath & path)
- {
-+    vomit("sending isValidPath to remote");
-     auto conn(getConnection());
-     conn->to << WorkerProto::Op::IsValidPath << printStorePath(path);
-     conn.processStderr();
--    return readInt(conn->from);
-+    vomit("isValidPath processed logs");
-+    int ret = readInt(conn->from);
-+    vomit("isValidPath read result %d", ret);
-+    return ret;
- }
- 
- 
-diff --git a/src/libstore/store-api.cc b/src/libstore/store-api.cc
-index 6d9fec41b..b6c3caa25 100644
---- a/src/libstore/store-api.cc
-+++ b/src/libstore/store-api.cc
-@@ -616,11 +616,13 @@ void Store::querySubstitutablePathInfos(const StorePathCAMap & paths, Substituta
- 
- bool Store::isValidPath(const StorePath & storePath)
- {
-+    vomit("isValidPath");
-     {
-         auto state_(state.lock());
-         auto res = state_->pathInfoCache.get(std::string(storePath.to_string()));
-         if (res && res->isKnownNow()) {
-             stats.narInfoReadAverted++;
-+            vomit("isValidPath in cache");
-             return res->didExist();
-         }
-     }
-@@ -632,10 +634,12 @@ bool Store::isValidPath(const StorePath & storePath)
-             auto state_(state.lock());
-             state_->pathInfoCache.upsert(std::string(storePath.to_string()),
-                 res.first == NarInfoDiskCache::oInvalid ? PathInfoCacheValue{} : PathInfoCacheValue { .value = res.second });
-+            vomit("isValidPath in disk cache");
-             return res.first == NarInfoDiskCache::oValid;
-         }
-     }
- 
-+    vomit("isValidPath uncached");
-     bool valid = isValidPathUncached(storePath);
- 
-     if (diskCache && !valid)
 diff --git a/src/nix/daemon.cc b/src/nix/daemon.cc
-index ca65c38e6..d384eacfd 100644
+index ca65c38e6..d29a68954 100644
 --- a/src/nix/daemon.cc
 +++ b/src/nix/daemon.cc
-@@ -433,7 +433,14 @@ static void processStdioConnection(ref<Store> store, TrustedFlag trustClient)
+@@ -442,16 +442,23 @@ static void processStdioConnection(ref<Store> store, TrustedFlag trustClient)
+  *
+  * @param forceTrustClientOpt See `daemonLoop()` and the parameter with
+  * the same name over there for details.
++ *
++ * @param procesOps Whether to force processing ops even if the next
++ * store also is a remote store and could process it directly.
+  */
+-static void runDaemon(bool stdio, std::optional<TrustedFlag> forceTrustClientOpt)
++static void runDaemon(bool stdio, std::optional<TrustedFlag> forceTrustClientOpt, bool processOps)
  {
-     FdSource from(STDIN_FILENO);
-     FdSink to(STDOUT_FILENO);
--    processConnection(store, from, to, trustClient, NotRecursive);
-+    try {
-+        processConnection(store, from, to, trustClient, Recursive);
-+    } catch (Error & error) {
-+        auto ei = error.info();
-+        // FIXME: add to trace?
-+        ei.msg = HintFmt("error processing connection: %1%", ei.msg.str());
-+        logError(ei);
-+    }
- }
+     if (stdio) {
+         auto store = openUncachedStore();
  
- /**
-@@ -451,13 +458,16 @@ static void runDaemon(bool stdio, std::optional<TrustedFlag> forceTrustClientOpt
++        std::shared_ptr<RemoteStore> remoteStore;
++
          // If --force-untrusted is passed, we cannot forward the connection and
          // must process it ourselves (before delegating to the next store) to
          // force untrusting the client.
 -        if (auto remoteStore = store.dynamic_pointer_cast<RemoteStore>(); remoteStore && (!forceTrustClientOpt || *forceTrustClientOpt != NotTrusted))
-+        if (auto remoteStore = store.dynamic_pointer_cast<RemoteStore>(); remoteStore && (!forceTrustClientOpt || *forceTrustClientOpt != NotTrusted)) {
-+            vomit("Forward STDIO");
++        processOps |= forceTrustClientOpt && *forceTrustClientOpt == NotTrusted;
++
++        if (!processOps && (remoteStore = store.dynamic_pointer_cast<RemoteStore>()))
              forwardStdioConnection(*remoteStore);
--        else
-+        } else {
-+            vomit("Process connection");
+         else
              // `Trusted` is passed in the auto (no override case) because we
-             // cannot see who is on the other side of a plain pipe. Limiting
-             // access to those is explicitly not `nix-daemon`'s responsibility.
-             processStdioConnection(store, forceTrustClientOpt.value_or(Trusted));
-+        }
-     } else
-         daemonLoop(forceTrustClientOpt);
- }
+@@ -467,6 +474,7 @@ static int main_nix_daemon(int argc, char * * argv)
+     {
+         auto stdio = false;
+         std::optional<TrustedFlag> isTrustedOpt = std::nullopt;
++        bool processOps = false;
+ 
+         parseCmdLine(argc, argv, [&](Strings::iterator & arg, const Strings::iterator & end) {
+             if (*arg == "--daemon")
+@@ -486,11 +494,13 @@ static int main_nix_daemon(int argc, char * * argv)
+             } else if (*arg == "--default-trust") {
+                 experimentalFeatureSettings.require(Xp::DaemonTrustOverride);
+                 isTrustedOpt = std::nullopt;
++            } else if (*arg == "--process-ops") {
++                processOps = true;
+             } else return false;
+             return true;
+         });
+ 
+-        runDaemon(stdio, isTrustedOpt);
++        runDaemon(stdio, isTrustedOpt, processOps);
+ 
+         return 0;
+     }
+@@ -502,6 +512,7 @@ struct CmdDaemon : StoreCommand
+ {
+     bool stdio = false;
+     std::optional<TrustedFlag> isTrustedOpt = std::nullopt;
++    bool processOps = false;
+ 
+     CmdDaemon()
+     {
+@@ -537,6 +548,15 @@ struct CmdDaemon : StoreCommand
+             }},
+             .experimentalFeature = Xp::DaemonTrustOverride,
+         });
++        addFlag({
++            .longName = "process-ops",
++            .description = R"(
++              Forces the daemon to process received commands itself rather than forwarding the commands straight to the remote store.
++            )",
++            .handler = {[&]() {
++                processOps = true;
++            }},
++        });
+     }
+ 
+     std::string description() override
+@@ -555,7 +575,7 @@ struct CmdDaemon : StoreCommand
+ 
+     void run(ref<Store> store) override
+     {
+-        runDaemon(stdio, isTrustedOpt);
++        runDaemon(stdio, isTrustedOpt, processOps);
+     }
+ };
+ 
 -- 
 2.44.1
 

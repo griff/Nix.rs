@@ -3,6 +3,7 @@
     defaultCrateOverrides = pkgs.defaultCrateOverrides // {
       nixrs = prev: {
         ALL_NIX = project.nix.all-nix.all-nix;
+        UNIX_PROXY = "${project.nix.unix-proxy}/bin/unix-proxy";
       };
       nixrs-capnp = prev: {
         buildInputs = [pkgs.capnproto];
@@ -35,6 +36,7 @@ in {
     name = "nixrs-clippy";
     inherit cargoDeps src;
     ALL_NIX = project.nix.all-nix.all-nix;
+    UNIX_PROXY = "${project.nix.unix-proxy}/bin/unix-proxy";
     nativeBuildInputs = with pkgs; [
       pkg-config
       cargo
@@ -49,6 +51,7 @@ in {
     name = "nixrs-rustdoc";
     inherit cargoDeps src;
     ALL_NIX = project.nix.all-nix.all-nix;
+    UNIX_PROXY = "${project.nix.unix-proxy}/bin/unix-proxy";
     nativeBuildInputs = with pkgs; [
       pkg-config
       cargo
@@ -66,6 +69,7 @@ in {
     name = "nixrs-doc-tests";
     inherit cargoDeps src;
     ALL_NIX = project.nix.all-nix.all-nix;
+    UNIX_PROXY = "${project.nix.unix-proxy}/bin/unix-proxy";
     nativeBuildInputs = with pkgs; [
       pkg-config
       cargo
@@ -106,6 +110,7 @@ in {
     name = "nixrs-treefmt";
     inherit cargoDeps src;
     ALL_NIX = project.nix.all-nix.all-nix;
+    UNIX_PROXY = "${project.nix.unix-proxy}/bin/unix-proxy";
     nativeBuildInputs = with pkgs; [
       treefmt
       rustfmt
@@ -140,6 +145,7 @@ in {
     name = "Nix.rs";
     buildInputs = [ pkgs.bashInteractive ];
     ALL_NIX = project.nix.all-nix.all-nix;
+    UNIX_PROXY = "${project.nix.unix-proxy}/bin/unix-proxy";
     packages = with pkgs; [
       git
       nix-diff
