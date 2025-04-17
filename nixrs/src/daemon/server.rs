@@ -277,11 +277,10 @@ where
 
     fn build_derivation<'a>(
         &'a mut self,
-        drv_path: &'a StorePath,
         drv: &'a super::wire::types2::BasicDerivation,
         build_mode: super::wire::types2::BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<super::wire::types2::BuildResult>> + Send + 'a {
-        let ret = Box::pin(self.0.build_derivation(drv_path, drv, build_mode));
+        let ret = Box::pin(self.0.build_derivation(drv, build_mode));
         trace!("BuildDerivation Size {}", size_of_val(&ret));
         ret
     }
@@ -787,7 +786,7 @@ where
                 .recover()?;
             }
             BuildDerivation(req) => {
-                let logs = store.build_derivation(&req.drv_path, &req.drv, req.build_mode);
+                let logs = store.build_derivation(&req.drv, req.build_mode);
                 let value = self.process_logs(logs).await?;
                 /*
                 ### Outputs

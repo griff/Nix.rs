@@ -508,13 +508,11 @@ where
 
     fn build_derivation<'a>(
         &'a mut self,
-        drv_path: &'a crate::store_path::StorePath,
         drv: &'a super::wire::types2::BasicDerivation,
         build_mode: BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<super::wire::types2::BuildResult>> + 'a {
         FutureResult::new(async move {
             self.writer.write_value(&Operation::BuildDerivation).await?;
-            self.writer.write_value(drv_path).await?;
             self.writer.write_value(drv).await?;
             self.writer.write_value(&build_mode).await?;
             Ok(self.process_stderr())

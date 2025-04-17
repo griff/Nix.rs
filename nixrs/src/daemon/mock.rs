@@ -180,7 +180,7 @@ impl MockRequest {
             Self::BuildDerivation(request) => {
                 Either::Left(Either::Right(Either::Right(Either::Left(
                     store
-                        .build_derivation(&request.drv_path, &request.drv, request.build_mode)
+                        .build_derivation(&request.drv, request.build_mode)
                         .map_ok(From::from),
                 ))))
             }
@@ -843,14 +843,12 @@ impl<R> Builder<R> {
 
     pub fn build_derivation(
         &mut self,
-        drv_path: &StorePath,
         drv: &BasicDerivation,
         build_mode: BuildMode,
         response: DaemonResult<BuildResult>,
     ) -> LogBuilder<R> {
         self.build_operation(MockOperation::BuildDerivation(
             BuildDerivationRequest {
-                drv_path: drv_path.clone(),
                 drv: drv.clone(),
                 build_mode,
             },
@@ -1365,12 +1363,10 @@ where
 
     fn build_derivation<'a>(
         &'a mut self,
-        drv_path: &'a StorePath,
         drv: &'a super::wire::types2::BasicDerivation,
         build_mode: BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<BuildResult>> + 'a {
         let actual = MockRequest::BuildDerivation(BuildDerivationRequest {
-            drv_path: drv_path.clone(),
             drv: drv.clone(),
             build_mode,
         });

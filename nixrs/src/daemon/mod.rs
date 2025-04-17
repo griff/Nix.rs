@@ -466,7 +466,8 @@ pub(crate) mod tests {
     #[traced_test]
     #[tokio::test]
     #[rstest]
-    #[case::normal("00000000000000000000000000000000-_.drv", BasicDerivation {
+    #[case::normal(BasicDerivation {
+        drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
         outputs: btree_map!(
             "out".into() => DerivationOutput {
                 path: Some("00000000000000000000000000000000-_".parse().unwrap()),
@@ -500,7 +501,8 @@ pub(crate) mod tests {
         cpu_system: None,
         built_outputs: btree_map!(),
     }))]
-    #[case::error("00000000000000000000000000000000-_.drv", BasicDerivation {
+    #[case::error(BasicDerivation {
+        drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
         outputs: btree_map!(
             "out".into() => DerivationOutput {
                 path: Some("00000000000000000000000000000000-_".parse().unwrap()),
@@ -515,21 +517,20 @@ pub(crate) mod tests {
         env: btree_map!(),
     }, BuildMode::Normal, Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("BuildDerivation: remote error: BuildDerivation: bad input path".into()))]
     async fn build_derivation(
-        #[case] drv_path: StorePath,
         #[case] drv: BasicDerivation,
         #[case] build_mode: BuildMode,
         #[case] response: DaemonResult<BuildResult>,
         #[case] expected: Result<BuildResult, String>,
     ) {
         let mock = MockStore::builder()
-            .build_derivation(&drv_path, &drv, build_mode, response)
+            .build_derivation(&drv, build_mode, response)
             .build()
             .build();
         run_store_test(mock, |mut client| async move {
             assert_eq!(
                 expected,
                 client
-                    .build_derivation(&drv_path, &drv, build_mode)
+                    .build_derivation(&drv, build_mode)
                     .await
                     .map_err(|err| err.to_string())
             );

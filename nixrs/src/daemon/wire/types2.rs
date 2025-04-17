@@ -319,7 +319,7 @@ impl Request {
             }
             Request::BuildDerivation(req) => {
                 debug_span!("BuildDerivation",
-                    drv_path=?req.drv_path,
+                    drv_path=?req.drv.drv_path,
                     build_mode=?req.build_mode)
             }
             Request::AddSignatures(req) => {
@@ -439,6 +439,7 @@ pub struct DerivationOutput {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct BasicDerivation {
+    pub drv_path: StorePath,
     pub outputs: BTreeMap<String, DerivationOutput>,
     pub input_srcs: StorePathSet,
     pub platform: DaemonString,
@@ -567,7 +568,6 @@ pub struct VerifyStoreRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct BuildDerivationRequest {
-    pub drv_path: StorePath,
     pub drv: BasicDerivation,
     pub build_mode: BuildMode,
 }
