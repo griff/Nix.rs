@@ -28,14 +28,15 @@ use super::logger::{
 use super::types::AddToStoreItem;
 use super::wire::types::Operation;
 use super::wire::types2::{
-    AddMultipleToStoreRequest, AddToStoreNarRequest, BasicDerivation, BuildDerivationRequest,
-    BuildMode, BuildPathsRequest, BuildResult, DerivedPath, KeyedBuildResults, QueryMissingResult,
+    AddMultipleToStoreRequest, AddToStoreNarRequest, BuildDerivationRequest, BuildMode,
+    BuildPathsRequest, BuildResult, DerivedPath, KeyedBuildResults, QueryMissingResult,
     QueryValidPathsRequest, ValidPathInfo,
 };
 use super::{
     ClientOptions, DaemonError, DaemonErrorKind, DaemonResult, DaemonResultExt, DaemonStore,
     DaemonString, HandshakeDaemonStore, ResultLog, TrustLevel, UnkeyedValidPathInfo,
 };
+use crate::derivation::BasicDerivation;
 use crate::store_path::{StorePath, StorePathSet};
 
 #[allow(clippy::large_enum_variant)]
@@ -1363,7 +1364,7 @@ where
 
     fn build_derivation<'a>(
         &'a mut self,
-        drv: &'a super::wire::types2::BasicDerivation,
+        drv: &'a BasicDerivation,
         build_mode: BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<BuildResult>> + 'a {
         let actual = MockRequest::BuildDerivation(BuildDerivationRequest {

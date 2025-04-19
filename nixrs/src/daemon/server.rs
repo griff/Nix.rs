@@ -17,6 +17,7 @@ use crate::daemon::wire::types2::{AddToStoreRequest, BaseStorePath};
 use crate::daemon::wire::IgnoredOne;
 use crate::daemon::wire::{parse_add_multiple_to_store, FramedReader, StderrReader};
 use crate::daemon::{DaemonErrorKind, DaemonResultExt, PROTOCOL_VERSION};
+use crate::derivation::BasicDerivation;
 use crate::io::{AsyncBufReadCompat, BytesReader};
 use crate::store_path::StorePath;
 
@@ -277,7 +278,7 @@ where
 
     fn build_derivation<'a>(
         &'a mut self,
-        drv: &'a super::wire::types2::BasicDerivation,
+        drv: &'a BasicDerivation,
         build_mode: super::wire::types2::BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<super::wire::types2::BuildResult>> + Send + 'a {
         let ret = Box::pin(self.0.build_derivation(drv, build_mode));

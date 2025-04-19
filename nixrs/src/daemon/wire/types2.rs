@@ -17,6 +17,7 @@ use tracing::{debug_span, Span};
 use crate::daemon::{
     ClientOptions, DaemonInt, DaemonPath, DaemonString, DaemonTime, UnkeyedValidPathInfo,
 };
+use crate::derivation::BasicDerivation;
 use crate::hash;
 use crate::signature::Signature;
 use crate::store_path::{
@@ -426,26 +427,6 @@ pub struct UnkeyedSubstitutablePathInfo {
 pub struct SubstitutablePathInfo {
     pub path: StorePath,
     pub info: UnkeyedSubstitutablePathInfo,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-pub struct DerivationOutput {
-    pub path: Option<StorePath>,
-    pub hash_algo: Option<ContentAddressMethodAlgorithm>,
-    pub hash: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-pub struct BasicDerivation {
-    pub drv_path: StorePath,
-    pub outputs: BTreeMap<String, DerivationOutput>,
-    pub input_srcs: StorePathSet,
-    pub platform: DaemonString,
-    pub builder: DaemonString,
-    pub args: Vec<DaemonString>,
-    pub env: BTreeMap<DaemonString, DaemonString>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

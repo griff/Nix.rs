@@ -14,6 +14,7 @@ use proptest_derive::Arbitrary;
 use thiserror::Error;
 use tokio::io::{AsyncBufRead, AsyncWrite};
 
+use crate::derivation::BasicDerivation;
 use crate::signature::Signature;
 use crate::store_path::{ContentAddress, StorePathSet};
 use crate::{hash::NarHash, store_path::StorePath};
@@ -21,8 +22,7 @@ use crate::{hash::NarHash, store_path::StorePath};
 use super::logger::{LocalLoggerResult, LogError, ResultLog, ResultProcess, TraceLine, Verbosity};
 use super::wire::types::Operation;
 use super::wire::types2::{
-    BasicDerivation, BuildMode, BuildResult, DerivedPath, KeyedBuildResult, QueryMissingResult,
-    ValidPathInfo,
+    BuildMode, BuildResult, DerivedPath, KeyedBuildResult, QueryMissingResult, ValidPathInfo,
 };
 use super::wire::{IgnoredTrue, IgnoredZero};
 use super::ProtocolVersion;

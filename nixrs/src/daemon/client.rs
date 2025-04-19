@@ -29,6 +29,7 @@ use super::{
 };
 use crate::archive::NarReader;
 use crate::daemon::wire::{write_add_multiple_to_store_stream, FramedWriter};
+use crate::derivation::BasicDerivation;
 use crate::io::{AsyncBufReadCompat, BytesReader};
 use crate::store_path::{StoreDir, StorePath, StorePathSet};
 
@@ -508,7 +509,7 @@ where
 
     fn build_derivation<'a>(
         &'a mut self,
-        drv: &'a super::wire::types2::BasicDerivation,
+        drv: &'a BasicDerivation,
         build_mode: BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<super::wire::types2::BuildResult>> + 'a {
         FutureResult::new(async move {

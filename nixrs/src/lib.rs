@@ -10,6 +10,7 @@ pub mod archive;
 pub mod base32;
 #[cfg(any(feature = "daemon", feature = "daemon-serde"))]
 pub mod daemon;
+pub mod derivation;
 pub mod hash;
 #[cfg(feature = "internal")]
 pub mod io;
@@ -23,6 +24,8 @@ pub mod wire;
 #[cfg(not(feature = "internal"))]
 #[allow(dead_code)]
 pub(crate) mod wire;
+
+pub type ByteString = bytes::Bytes;
 
 #[doc(hidden)]
 pub mod exports {

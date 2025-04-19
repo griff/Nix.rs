@@ -111,21 +111,18 @@ pub(crate) mod tests {
     use tracing::trace;
     use tracing_test::traced_test;
 
-    use super::wire::types2::{BasicDerivation, QueryMissingResult};
-    use super::{
-        client::DaemonClient,
-        mock::{MockReporter, MockStore},
-        DaemonResult, DaemonStore,
+    use super::client::DaemonClient;
+    use super::mock::{MockReporter, MockStore};
+    use super::types::AddToStoreItem;
+    use super::wire::types2::{
+        BuildMode, BuildResult, BuildStatus, DerivedPath, QueryMissingResult, ValidPathInfo,
     };
-    use super::{ClientOptions, UnkeyedValidPathInfo};
+    use super::{ClientOptions, DaemonResult, DaemonStore, UnkeyedValidPathInfo};
     use crate::archive::test_data;
     use crate::archive::NAREvent;
-    use crate::daemon::types::AddToStoreItem;
-    use crate::daemon::wire::types2::{
-        BuildMode, BuildResult, BuildStatus, DerivationOutput, DerivedPath, ValidPathInfo,
-    };
     use crate::daemon::{server, DaemonString};
     use crate::daemon::{DaemonError, DaemonErrorKind};
+    use crate::derivation::{BasicDerivation, DerivationOutput};
     use crate::hash::{Algorithm, NarHash};
     use crate::store_path::StorePath;
     use crate::store_path::StorePathSet;
@@ -439,7 +436,7 @@ pub(crate) mod tests {
 
     macro_rules! store_path_set {
         () => { StorePathSet::new() };
-        ($p:expr $(, $pr:expr)*) => {{
+        ($p:expr $(, $pr:expr)*$(,)?) => {{
             let mut ret = StorePathSet::new();
             let p = $p.parse::<StorePath>().unwrap();
             ret.insert(p);
@@ -452,7 +449,7 @@ pub(crate) mod tests {
     macro_rules! btree_map {
         () => {std::collections::BTreeMap::new()};
         ($k:expr => $v:expr
-         $(, $kr:expr => $vr:expr )*) => {{
+         $(, $kr:expr => $vr:expr )*$(,)?) => {{
             let mut ret = std::collections::BTreeMap::new();
             ret.insert($k, $v);
             $(
@@ -469,11 +466,7 @@ pub(crate) mod tests {
     #[case::normal(BasicDerivation {
         drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
         outputs: btree_map!(
-            "out".into() => DerivationOutput {
-                path: Some("00000000000000000000000000000000-_".parse().unwrap()),
-                hash_algo: None,
-                hash: None,
-            }
+            "out".into() => DerivationOutput::InputAddressed("00000000000000000000000000000000-_".parse().unwrap()),
         ),
         input_srcs: store_path_set!(),
         platform: DaemonString::from_static(b"x86_64-linux"),
@@ -504,11 +497,7 @@ pub(crate) mod tests {
     #[case::error(BasicDerivation {
         drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
         outputs: btree_map!(
-            "out".into() => DerivationOutput {
-                path: Some("00000000000000000000000000000000-_".parse().unwrap()),
-                hash_algo: None,
-                hash: None,
-            }
+            "out".into() => DerivationOutput::InputAddressed("00000000000000000000000000000000-_".parse().unwrap()),
         ),
         input_srcs: store_path_set!(),
         platform: DaemonString::from_static(b"x86_64-linux"),
