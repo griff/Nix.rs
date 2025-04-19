@@ -90,6 +90,24 @@ impl Algorithm {
             a => panic!("Unsupported digest algorithm {:?}", a),
         }
     }
+
+    /// Returns the digest of `data` using the given digest algorithm.
+    ///
+    /// ```
+    /// # use nixrs::hash::Algorithm;
+    /// let hash = Algorithm::SHA256.digest("abc");
+    ///
+    /// assert_eq!("sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s", hash.to_string());
+    /// ```
+    pub fn digest<B: AsRef<[u8]>>(&self, data: B) -> Hash {
+        match *self {
+            #[cfg(feature = "md5")]
+            Algorithm::MD5 => Hash::new(Algorithm::MD5, md5::compute(data).as_ref()),
+            _ => digest::digest(self.digest_algorithm(), data.as_ref())
+                .try_into()
+                .unwrap(),
+        }
+    }
 }
 
 #[derive(Error, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
@@ -591,6 +609,18 @@ impl Sha256 {
         }
         Ok(Self::new(digest))
     }
+
+    /// Returns the digest of `data` using the sha256
+    ///
+    /// ```
+    /// # use nixrs::hash::Sha256;
+    /// let hash = Sha256::digest("abc");
+    ///
+    /// assert_eq!("1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s", hash.to_string());
+    /// ```
+    pub fn digest<B: AsRef<[u8]>>(data: B) -> Self {
+        Algorithm::SHA256.digest(data).try_into().unwrap()
+    }
 }
 
 impl fmt::Debug for Sha256 {
@@ -644,24 +674,6 @@ impl TryFrom<Hash> for Sha256 {
     }
 }
 
-/// Returns the digest of `data` using the given digest algorithm.
-///
-/// ```
-/// # use nixrs::hash::{digest, Algorithm};
-/// let hash = digest(Algorithm::SHA256, "abc");
-///
-/// assert_eq!("sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s", hash.to_string());
-/// ```
-pub fn digest<B: AsRef<[u8]>>(algorithm: Algorithm, data: B) -> Hash {
-    match algorithm {
-        #[cfg(feature = "md5")]
-        Algorithm::MD5 => Hash::new(Algorithm::MD5, md5::compute(data).as_ref()),
-        _ => digest::digest(algorithm.digest_algorithm(), data.as_ref())
-            .try_into()
-            .unwrap(),
-    }
-}
-
 #[derive(Clone)]
 enum InnerContext {
     #[cfg(feature = "md5")]
@@ -676,7 +688,7 @@ enum InnerContext {
 /// ```
 /// use nixrs::hash;
 ///
-/// let one_shot = hash::digest(hash::Algorithm::SHA256, "hello, world");
+/// let one_shot = hash::Algorithm::SHA256.digest("hello, world");
 ///
 /// let mut ctx = hash::Context::new(hash::Algorithm::SHA256);
 /// ctx.update("hello");
@@ -753,7 +765,7 @@ impl fmt::Debug for Context {
 /// io::copy(&mut reader, &mut sink).await?;
 /// let (size, hash) = sink.finish();
 ///
-/// let one_shot = hash::digest(hash::Algorithm::SHA256, "hello, world");
+/// let one_shot = hash::Algorithm::SHA256.digest("hello, world");
 /// assert_eq!(one_shot, hash);
 /// assert_eq!(12, size);
 /// # Ok(())
@@ -839,7 +851,7 @@ pub mod proptests {
         fn any_hash(algorithm: Algorithm)
                    (data in any::<Vec<u8>>()) -> Hash
         {
-            digest(algorithm, data)
+            algorithm.digest(data)
         }
     }
 }
@@ -934,7 +946,7 @@ mod test {
     #[case::sha512_abc(&SHA512_ABC, "abc")]
     #[case::sha512_long(&SHA512_LONG, "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu")]
     fn test_digest(#[case] expected: &Hash, #[case] input: &str) {
-        let actual = digest(expected.algorithm(), input);
+        let actual = expected.algorithm().digest(input);
         assert_eq!(actual, *expected);
     }
 

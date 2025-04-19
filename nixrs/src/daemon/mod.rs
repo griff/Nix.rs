@@ -126,7 +126,7 @@ pub(crate) mod tests {
     };
     use crate::daemon::{server, DaemonString};
     use crate::daemon::{DaemonError, DaemonErrorKind};
-    use crate::hash::{digest, Algorithm, NarHash};
+    use crate::hash::{Algorithm, NarHash};
     use crate::store_path::StorePath;
     use crate::store_path::StorePathSet;
 
@@ -377,7 +377,7 @@ pub(crate) mod tests {
                     .await?;
                 assert_eq!(events, nar);
                 assert_eq!(size, out.len() as u64);
-                assert_eq!(digest(Algorithm::SHA256, &out), hash);
+                assert_eq!(Algorithm::SHA256.digest(&out), hash);
             }
             Ok(client) as DaemonResult<_>
         })
@@ -820,7 +820,7 @@ mod proptests {
     use crate::archive::NAREvent;
     use crate::daemon::wire::types2::ValidPathInfo;
     use crate::daemon::DaemonStore as _;
-    use crate::hash::{digest, Algorithm};
+    use crate::hash::Algorithm;
     use crate::store_path::StorePath;
     use crate::store_path::StorePathSet;
 
@@ -962,7 +962,7 @@ mod proptests {
                         copy_buf(&mut reader, &mut out).await?;
                         let _ : Vec<NAREvent> = crate::archive::parse_nar(Cursor::new(&out)).try_collect().await?;
                         prop_assert_eq!(nar_size, out.len() as u64);
-                        let hash = digest(Algorithm::SHA256, &out);
+                        let hash = Algorithm::SHA256.digest(&out);
                         prop_assert_eq!(hash.as_ref(), nar_hash.as_ref());
                     }
                     Ok(client)

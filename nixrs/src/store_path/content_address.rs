@@ -179,7 +179,7 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
-    use crate::hash::{digest, Algorithm, ParseHashError};
+    use crate::hash::{Algorithm, ParseHashError};
 
     #[rstest]
     #[case::text(
@@ -203,7 +203,7 @@ mod tests {
         #[case] algo: Algorithm,
     ) {
         let s1 = "abc";
-        let hash = digest(algo, s1);
+        let hash = algo.digest(s1);
         let content_address = ContentAddress::from_hash(method, hash).unwrap();
 
         assert_eq!(content_address.to_string(), v);

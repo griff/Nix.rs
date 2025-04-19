@@ -23,7 +23,7 @@ use nixrs::daemon::{server, Verbosity};
 use nixrs::daemon::{
     DaemonError, DaemonErrorKind, DaemonResult, DaemonStore as _, UnkeyedValidPathInfo,
 };
-use nixrs::hash::{digest, Algorithm, Context, NarHash};
+use nixrs::hash::{Algorithm, Context, NarHash};
 use nixrs::store_path::{StorePath, StorePathSet};
 
 trait NixImpl: std::fmt::Debug {
@@ -383,7 +383,7 @@ async fn nar_from_path(
             let nar: Vec<NAREvent> = parse_nar(Cursor::new(&out)).try_collect().await?;
             assert_eq!(events, nar);
             assert_eq!(size, out.len() as u64);
-            assert_eq!(digest(Algorithm::SHA256, &out), hash);
+            assert_eq!(Algorithm::SHA256.digest(&out), hash);
         }
         Ok(client) as DaemonResult<_>
     })
