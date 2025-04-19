@@ -356,6 +356,10 @@ impl Hash {
         format!("{:#}", self.to_base64())
     }
 
+    pub fn bare(&self) -> impl fmt::Display + '_ {
+        Bare(self.to_base32())
+    }
+
     pub fn to_base16(&self) -> impl fmt::Display + '_ {
         Base16Hash(self)
     }
@@ -437,6 +441,16 @@ impl fmt::Debug for Hash {
 impl fmt::Display for Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.to_base32().fmt(f)
+    }
+}
+
+struct Bare<M>(M);
+impl<M> fmt::Display for Bare<M>
+where
+    M: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:#}", self.0)
     }
 }
 
@@ -639,6 +653,15 @@ impl fmt::Display for Sha256 {
         // SAFETY: Nix Base32 is a subset of ASCII, which guarantees valid UTF-8.
         let s = unsafe { std::str::from_utf8_unchecked(&buf) };
         f.write_str(s)
+    }
+}
+
+impl fmt::LowerHex for Sha256 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for val in self.as_ref() {
+            write!(f, "{:02x}", val)?;
+        }
+        Ok(())
     }
 }
 
