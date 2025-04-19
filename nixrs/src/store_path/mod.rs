@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 mod content_address;
+mod create;
 mod path;
 mod store_dir;
 

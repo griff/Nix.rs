@@ -11,6 +11,7 @@ use nixrs_derive::{NixDeserialize, NixSerialize};
 use thiserror::Error;
 
 use crate::base32;
+use crate::hash;
 
 use super::FromStoreDirStr;
 use super::StoreDir;
@@ -68,6 +69,13 @@ impl StorePath {
                 StorePathError::adjust_index(STORE_PATH_HASH_ENCODED_SIZE as u8 + 1, err)
             })?;
         Ok(StorePath { hash, name })
+    }
+
+    pub fn from_hash(hash: &hash::Sha256, name: &str) -> Result<Self, StorePathError> {
+        Ok(StorePath {
+            hash: StorePathHash::new_from_hash(hash),
+            name: name.parse()?,
+        })
     }
 
     pub fn name(&self) -> &StorePathName {
@@ -179,6 +187,15 @@ impl StorePathHash {
 
     pub fn new(value: [u8; STORE_PATH_HASH_SIZE]) -> StorePathHash {
         StorePathHash(value)
+    }
+
+    pub fn new_from_hash(hash: &hash::Sha256) -> Self {
+        let mut digest = [0u8; STORE_PATH_HASH_SIZE];
+        for (i, item) in hash.as_ref().iter().enumerate() {
+            let idx = i % STORE_PATH_HASH_SIZE;
+            digest[idx] ^= item;
+        }
+        StorePathHash(digest)
     }
 
     pub fn copy_from_slice(data: &[u8]) -> StorePathHash {

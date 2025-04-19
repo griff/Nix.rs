@@ -4,6 +4,11 @@ use std::sync::Arc;
 
 use thiserror::Error;
 
+use crate::hash;
+
+use super::create::Fingerprint;
+use super::{ContentAddress, StorePath, StorePathError};
+
 #[derive(Debug, Error, PartialEq, Eq, Hash)]
 #[error("path '{}' is not a store dir", .path.display())]
 pub struct StoreDirError {
@@ -75,6 +80,17 @@ impl StoreDir {
             store_dir: self,
             value,
         }
+    }
+
+    pub fn make_store_path_from_ca(
+        &self,
+        name: &str,
+        ca: ContentAddress,
+    ) -> Result<StorePath, StorePathError> {
+        let path_type = ca.into();
+        let fingerprint = Fingerprint { name, path_type };
+        let finger_print_s = self.display(&fingerprint).to_string();
+        StorePath::from_hash(&hash::Sha256::digest(finger_print_s), name)
     }
 }
 
