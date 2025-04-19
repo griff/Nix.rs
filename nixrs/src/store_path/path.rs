@@ -311,10 +311,11 @@ const NAME_LOOKUP: [bool; 256] = {
     }
     ret
 };
+pub(crate) const MAX_NAME_LEN: usize = 211;
 
 pub fn into_name<V: AsRef<[u8]>>(s: &V) -> Result<&str, StorePathError> {
     let s = s.as_ref();
-    if s.is_empty() || s.len() > 211 {
+    if s.is_empty() || s.len() > MAX_NAME_LEN {
         return Err(StorePathError::NameLength);
     }
 
@@ -424,8 +425,8 @@ pub mod proptest {
         "[a-zA-Z0-9+\\-_?=][a-zA-Z0-9+\\-_?=.]{0,210}".prop_map(move |mut s| {
             let mut max = max;
             let len = extension.as_ref().map(|e| e.len() + 1).unwrap_or(0) as u8;
-            if max > 211 - len {
-                max = 211 - len;
+            if max > MAX_NAME_LEN as u8 - len {
+                max = MAX_NAME_LEN as u8 - len;
             }
             max -= 1;
             if s.len() > max as usize {
@@ -444,7 +445,7 @@ pub mod proptest {
         type Strategy = BoxedStrategy<StorePathName>;
 
         fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-            arb_store_path_name(211, args).boxed()
+            arb_store_path_name(MAX_NAME_LEN as u8, args).boxed()
         }
     }
 
@@ -454,14 +455,14 @@ pub mod proptest {
     }
 
     pub fn arb_drv_store_path() -> impl Strategy<Value = StorePath> {
-        arb_store_path(211 - 4 - 15, Some("drv".into()))
+        arb_store_path(MAX_NAME_LEN as u8 - 4 - 15, Some("drv".into()))
     }
 
     impl Arbitrary for StorePath {
         type Parameters = Option<String>;
         type Strategy = BoxedStrategy<StorePath>;
         fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-            arb_store_path(211, args).boxed()
+            arb_store_path(MAX_NAME_LEN as u8, args).boxed()
         }
     }
 }
