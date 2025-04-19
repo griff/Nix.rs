@@ -123,10 +123,13 @@ pub struct ParseStorePathError {
 }
 
 impl ParseStorePathError {
-    pub fn new(path: &str, error: StorePathError) -> ParseStorePathError {
+    pub fn new<E>(path: &str, error: E) -> ParseStorePathError
+    where
+        E: Into<StorePathError>,
+    {
         ParseStorePathError {
             path: path.to_owned(),
-            error,
+            error: error.into(),
         }
     }
 }
@@ -135,10 +138,7 @@ impl FromStr for StorePath {
     type Err = ParseStorePathError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        StorePath::from_bytes(s.as_bytes()).map_err(|error| ParseStorePathError {
-            path: s.to_owned(),
-            error,
-        })
+        StorePath::from_bytes(s.as_bytes()).map_err(|error| ParseStorePathError::new(s, error))
     }
 }
 
@@ -330,15 +330,15 @@ const NAME_LOOKUP: [bool; 256] = {
 };
 pub(crate) const MAX_NAME_LEN: usize = 211;
 
-pub fn into_name<V: AsRef<[u8]>>(s: &V) -> Result<&str, StorePathError> {
+pub(crate) fn into_name<V: AsRef<[u8]>>(s: &V) -> Result<&str, StorePathNameError> {
     let s = s.as_ref();
     if s.is_empty() || s.len() > MAX_NAME_LEN {
-        return Err(StorePathError::NameLength);
+        return Err(StorePathNameError::NameLength);
     }
 
     for (idx, ch) in s.iter().enumerate() {
         if !NAME_LOOKUP[*ch as usize] {
-            return Err(StorePathError::Symbol(idx as u8, *ch));
+            return Err(StorePathNameError::Symbol(idx as u8, *ch));
         }
     }
 
@@ -357,7 +357,7 @@ impl fmt::Display for StorePathName {
 }
 
 impl TryFrom<&[u8]> for StorePathName {
-    type Error = StorePathError;
+    type Error = StorePathNameError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         let name = into_name(&value)?;
@@ -366,7 +366,7 @@ impl TryFrom<&[u8]> for StorePathName {
 }
 
 impl FromStr for StorePathName {
-    type Err = StorePathError;
+    type Err = StorePathNameError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         s.as_bytes().try_into()
@@ -407,10 +407,27 @@ pub enum StorePathError {
 }
 
 impl StorePathError {
-    fn adjust_index(prefix: u8, other: StorePathError) -> StorePathError {
+    fn adjust_index(prefix: u8, other: StorePathNameError) -> StorePathError {
         match other {
-            StorePathError::Symbol(old, ch) => StorePathError::Symbol(prefix + old, ch),
-            c => c,
+            StorePathNameError::Symbol(old, ch) => StorePathError::Symbol(prefix + old, ch),
+            StorePathNameError::NameLength => StorePathError::NameLength,
+        }
+    }
+}
+
+#[derive(Debug, Error, PartialEq, Eq, Clone)]
+pub enum StorePathNameError {
+    #[error("invalid name length")]
+    NameLength,
+    #[error("invalid name {ch} symbol at {0}", ch = char::from_u32(*.1 as u32).map(|c| c.to_string()).unwrap_or_else(|| .1.to_string()))]
+    Symbol(u8, u8),
+}
+
+impl From<StorePathNameError> for StorePathError {
+    fn from(value: StorePathNameError) -> Self {
+        match value {
+            StorePathNameError::NameLength => StorePathError::NameLength,
+            StorePathNameError::Symbol(idx, ch) => StorePathError::Symbol(idx, ch),
         }
     }
 }
@@ -613,10 +630,10 @@ mod test {
     }
 
     #[rstest]
-    #[case::empty("", StorePathError::NameLength)]
-    #[case::too_long("test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", StorePathError::NameLength)]
-    #[case::invalid_char("test|more", StorePathError::Symbol(4, b'|'))]
-    fn name_errors(#[case] name: &str, #[case] expected: StorePathError) {
+    #[case::empty("", StorePathNameError::NameLength)]
+    #[case::too_long("test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", StorePathNameError::NameLength)]
+    #[case::invalid_char("test|more", StorePathNameError::Symbol(4, b'|'))]
+    fn name_errors(#[case] name: &str, #[case] expected: StorePathNameError) {
         assert_eq!(
             name.parse::<StorePathName>().expect_err("parse succeeded"),
             expected
