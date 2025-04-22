@@ -18,6 +18,11 @@ nixrs-derive = ["daemon-serde", "dep:nixrs-derive", "dep:libc", "dep:num_enum", 
 internal = []
 full = ["test", "daemon"]
 
+# Nix Experimental Features
+xp-dynamic-derivations = []
+xp-ca-derivations = []
+xp-impure-derivations = []
+
 # Enable all features by default.
 default = ["test", "daemon"]
 

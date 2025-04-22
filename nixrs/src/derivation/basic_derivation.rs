@@ -109,7 +109,7 @@ mod daemon_serde {
             args: vec![ByteString::from_static(b"-c"), ByteString::from_static(b"echo Hello")],
             env: btree_map!(),
         })]
-        #[case::ca_fixed_text(BasicDerivation {
+        #[cfg_attr(feature = "xp-dynamic-derivations", case::ca_fixed_text(BasicDerivation {
             drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
             outputs: btree_map!(
                 "out".into() => DerivationOutput::CAFixed("text:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s".parse().unwrap()),
@@ -119,7 +119,7 @@ mod daemon_serde {
             builder: ByteString::from_static(b"/bin/sh"),
             args: vec![ByteString::from_static(b"-c"), ByteString::from_static(b"echo Hello")],
             env: btree_map!(),
-        })]
+        }))]
         #[case::ca_fixed_flat(BasicDerivation {
             drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
             outputs: btree_map!(
@@ -142,7 +142,7 @@ mod daemon_serde {
             args: vec![ByteString::from_static(b"-c"), ByteString::from_static(b"echo Hello")],
             env: btree_map!(),
         })]
-        #[case::ca_floating(BasicDerivation {
+        #[cfg_attr(feature = "xp-ca-derivations", case::ca_floating(BasicDerivation {
             drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
             outputs: btree_map!(
                 "out".into() => DerivationOutput::CAFloating("text:sha256".parse().unwrap()),
@@ -152,8 +152,8 @@ mod daemon_serde {
             builder: ByteString::from_static(b"/bin/sh"),
             args: vec![ByteString::from_static(b"-c"), ByteString::from_static(b"echo Hello")],
             env: btree_map!(),
-        })]
-        #[case::impure(BasicDerivation {
+        }))]
+        #[cfg_attr(feature = "xp-impure-derivations", case::impure(BasicDerivation {
             drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
             outputs: btree_map!(
                 "out".into() => DerivationOutput::Impure("text:sha256".parse().unwrap()),
@@ -163,7 +163,7 @@ mod daemon_serde {
             builder: ByteString::from_static(b"/bin/sh"),
             args: vec![ByteString::from_static(b"-c"), ByteString::from_static(b"echo Hello")],
             env: btree_map!(),
-        })]
+        }))]
         #[tokio::test]
         async fn serde(#[case] drv: BasicDerivation) {
             let mut buf = Vec::new();
