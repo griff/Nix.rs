@@ -694,6 +694,7 @@ where
             let writer = self.writer.as_mut().unwrap();
             let len = min(len, buf.len());
             writer.write_slice(&buf[..len]).await?;
+            writer.flush().await?;
             source.consume(len);
             Ok(())
         } else {

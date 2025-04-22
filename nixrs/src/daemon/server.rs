@@ -78,6 +78,28 @@ impl Builder {
         Default::default()
     }
 
+    pub fn set_min_version<V: Into<ProtocolVersion>>(&mut self, version: V) -> &mut Self {
+        let version = version.into();
+        assert!(
+            version >= ProtocolVersion::min(),
+            "min version must be at least {}",
+            ProtocolVersion::min()
+        );
+        self.min_version = version;
+        self
+    }
+
+    pub fn set_max_version<V: Into<ProtocolVersion>>(&mut self, version: V) -> &mut Self {
+        let version = version.into();
+        assert!(
+            version <= ProtocolVersion::max(),
+            "max version must not be after {}",
+            ProtocolVersion::max()
+        );
+        self.max_version = version;
+        self
+    }
+
     pub async fn serve_connection<'s, R, W, S>(
         &'s self,
         reader: R,

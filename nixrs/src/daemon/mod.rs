@@ -117,11 +117,11 @@ pub(crate) mod tests {
     use super::wire::types2::{
         BuildMode, BuildResult, BuildStatus, QueryMissingResult, ValidPathInfo,
     };
-    use super::{ClientOptions, DaemonResult, DaemonStore, UnkeyedValidPathInfo};
+    use super::{ClientOptions, DaemonResult, DaemonStore, ProtocolVersion, UnkeyedValidPathInfo};
     use crate::archive::test_data;
     use crate::archive::NAREvent;
-    use crate::daemon::{server, DaemonString};
-    use crate::daemon::{DaemonError, DaemonErrorKind};
+    use crate::daemon::server;
+    use crate::daemon::{DaemonError, DaemonErrorKind, DaemonString};
     use crate::derivation::{BasicDerivation, DerivationOutput};
     use crate::derived_path::DerivedPath;
     use crate::hash::{Algorithm, NarHash};
@@ -136,10 +136,27 @@ pub(crate) mod tests {
             > + Send,
         E: From<DaemonError>,
     {
+        run_store_test_version(mock, ProtocolVersion::default(), test).await
+    }
+
+    pub async fn run_store_test_version<R, T, F, E>(
+        mock: MockStore<R>,
+        version: ProtocolVersion,
+        test: T,
+    ) -> Result<(), E>
+    where
+        R: MockReporter + Send + 'static,
+        T: FnOnce(DaemonClient<ReadHalf<DuplexStream>, WriteHalf<DuplexStream>>) -> F + Send,
+        F: Future<
+                Output = Result<DaemonClient<ReadHalf<DuplexStream>, WriteHalf<DuplexStream>>, E>,
+            > + Send,
+        E: From<DaemonError>,
+    {
         let (client_s, server_s) = duplex(10_000);
         let (server_reader, server_writer) = split(server_s);
-        let b = server::Builder::new();
+        let mut b = server::Builder::new();
         let server = b
+            .set_max_version(version)
             .serve_connection(server_reader, server_writer, mock)
             .map_err(From::from)
             .boxed();
@@ -626,6 +643,7 @@ pub(crate) mod tests {
         Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("AddToStoreNar: remote error: AddToStoreNar: bad input path".into())
     )]
     async fn add_to_store_nar(
+        #[values((1, 21), (1, 23))] version: (u8, u8),
         #[case] info: ValidPathInfo,
         #[case] repair: bool,
         #[case] dont_check_sigs: bool,
@@ -633,6 +651,7 @@ pub(crate) mod tests {
         #[case] response: DaemonResult<()>,
         #[case] expected: Result<(), String>,
     ) {
+        let version = ProtocolVersion::from(version);
         let mut buf = BytesMut::new();
         for event in events.iter() {
             let encoded = event.encoded_size();
@@ -647,7 +666,7 @@ pub(crate) mod tests {
             .add_to_store_nar(&info, repair, dont_check_sigs, content.clone(), response)
             .build()
             .build();
-        run_store_test(mock, |mut client| async move {
+        run_store_test_version(mock, version, |mut client| async move {
             assert_eq!(
                 expected,
                 client

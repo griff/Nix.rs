@@ -322,6 +322,10 @@ where
         Ok(())
     }
 
+    pub fn version(&self) -> ProtocolVersion {
+        self.writer.version()
+    }
+
     fn process_stderr<T>(&mut self) -> impl ResultLog<Output = DaemonResult<T>> + '_
     where
         T: NixDeserialize + Send + 'static,
@@ -552,6 +556,7 @@ where
                 self.writer.write_value(info).await?;
                 self.writer.write_value(&repair).await?;
                 self.writer.write_value(&dont_check_sigs).await?;
+                self.writer.flush().await?;
                 if self.writer.version().minor() >= 23 {
                     Ok(Either::Left(Either::Left(Box::pin(DriveResult {
                         result: ProcessStderr::new(&mut self.reader).stream(),
