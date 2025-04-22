@@ -65,7 +65,7 @@ proptest = { workspace = true }
 proptest-derive = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
-tracing-test = { workspace = true }
+tracing-test = { workspace = true, features = ["no-env-filter"] }
 tokio-test = { workspace = true }
 
 [dev-dependencies.nixrs-archive]

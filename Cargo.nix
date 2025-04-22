@@ -4588,6 +4588,7 @@ rec {
           {
             name = "tracing-test";
             packageId = "tracing-test";
+            features = [ "no-env-filter" ];
           }
         ];
         features = {
@@ -9670,6 +9671,7 @@ rec {
         features = {
           "no-env-filter" = [ "tracing-test-macro/no-env-filter" ];
         };
+        resolvedDefaultFeatures = [ "no-env-filter" ];
       };
       "tracing-test-macro" = rec {
         crateName = "tracing-test-macro";
@@ -9694,6 +9696,7 @@ rec {
         ];
         features = {
         };
+        resolvedDefaultFeatures = [ "no-env-filter" ];
       };
       "try-lock" = rec {
         crateName = "try-lock";
