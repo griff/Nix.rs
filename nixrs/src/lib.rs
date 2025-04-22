@@ -11,6 +11,7 @@ pub mod base32;
 #[cfg(any(feature = "daemon", feature = "daemon-serde"))]
 pub mod daemon;
 pub mod derivation;
+pub mod derived_path;
 pub mod hash;
 #[cfg(feature = "internal")]
 pub mod io;

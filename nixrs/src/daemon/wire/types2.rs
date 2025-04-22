@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::convert::Infallible;
 use std::fmt;
 #[cfg(feature = "nixrs-derive")]
 use std::str::from_utf8;
@@ -18,6 +17,7 @@ use crate::daemon::{
     ClientOptions, DaemonInt, DaemonPath, DaemonString, DaemonTime, UnkeyedValidPathInfo,
 };
 use crate::derivation::BasicDerivation;
+use crate::derived_path::DerivedPath;
 use crate::hash;
 use crate::signature::Signature;
 use crate::store_path::{
@@ -75,17 +75,6 @@ impl FromStr for BaseStorePath {
 impl fmt::Display for BaseStorePath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-pub struct DerivedPath(String);
-impl FromStr for DerivedPath {
-    type Err = Infallible;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(DerivedPath(s.into()))
     }
 }
 

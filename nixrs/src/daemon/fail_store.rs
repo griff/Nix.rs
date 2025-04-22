@@ -2,6 +2,8 @@ use std::future::ready;
 
 use futures::stream::empty;
 
+use crate::derived_path::DerivedPath;
+
 use super::{
     logger::ResultProcess, DaemonResult, DaemonResultExt as _, DaemonStore, HandshakeDaemonStore,
 };
@@ -27,7 +29,7 @@ impl DaemonStore for FailStore {
 
     fn build_paths_with_results<'a>(
         &'a mut self,
-        _drvs: &'a [super::wire::types2::DerivedPath],
+        _drvs: &'a [DerivedPath],
         _mode: super::wire::types2::BuildMode,
     ) -> impl super::ResultLog<Output = DaemonResult<Vec<super::wire::types2::KeyedBuildResult>>>
            + Send

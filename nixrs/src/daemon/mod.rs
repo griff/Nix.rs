@@ -115,7 +115,7 @@ pub(crate) mod tests {
     use super::mock::{MockReporter, MockStore};
     use super::types::AddToStoreItem;
     use super::wire::types2::{
-        BuildMode, BuildResult, BuildStatus, DerivedPath, QueryMissingResult, ValidPathInfo,
+        BuildMode, BuildResult, BuildStatus, QueryMissingResult, ValidPathInfo,
     };
     use super::{ClientOptions, DaemonResult, DaemonStore, UnkeyedValidPathInfo};
     use crate::archive::test_data;
@@ -123,9 +123,9 @@ pub(crate) mod tests {
     use crate::daemon::{server, DaemonString};
     use crate::daemon::{DaemonError, DaemonErrorKind};
     use crate::derivation::{BasicDerivation, DerivationOutput};
+    use crate::derived_path::DerivedPath;
     use crate::hash::{Algorithm, NarHash};
-    use crate::store_path::StorePath;
-    use crate::store_path::StorePathSet;
+    use crate::store_path::{StoreDir, StorePath, StorePathSet};
 
     pub async fn run_store_test<R, T, F, E>(mock: MockStore<R>, test: T) -> Result<(), E>
     where
@@ -405,17 +405,18 @@ pub(crate) mod tests {
     #[traced_test]
     #[tokio::test]
     #[rstest]
-    #[case::normal(&["00000000000000000000000000000000-_"][..], BuildMode::Normal, Ok(()), Ok(()))]
-    #[case::repair(&["00000000000000000000000000000000-_"][..], BuildMode::Repair, Ok(()), Ok(()))]
+    #[case::normal(&["/nix/store/00000000000000000000000000000000-_"][..], BuildMode::Normal, Ok(()), Ok(()))]
+    #[case::repair(&["/nix/store/00000000000000000000000000000000-_"][..], BuildMode::Repair, Ok(()), Ok(()))]
     #[case::empty(&[][..], BuildMode::Check, Ok(()), Ok(()))]
-    #[case::error(&["00000000000000000000000000000000-_"][..], BuildMode::Normal, Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("BuildPaths: remote error: BuildPaths: bad input path".into()))]
+    #[case::error(&["/nix/store/00000000000000000000000000000000-_"][..], BuildMode::Normal, Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("BuildPaths: remote error: BuildPaths: bad input path".into()))]
     async fn build_paths(
         #[case] paths: &[&str],
         #[case] mode: BuildMode,
         #[case] response: DaemonResult<()>,
         #[case] expected: Result<(), String>,
     ) {
-        let paths: Vec<DerivedPath> = paths.iter().map(|p| p.parse().unwrap()).collect();
+        let store_dir = StoreDir::default();
+        let paths: Vec<DerivedPath> = paths.iter().map(|p| store_dir.parse(p).unwrap()).collect();
         let mock = MockStore::builder()
             .build_paths(&paths, mode, response)
             .build()
@@ -533,7 +534,7 @@ pub(crate) mod tests {
     #[traced_test]
     #[tokio::test]
     #[rstest]
-    #[case::substitute(&["00000000000000000000000000000000-_"][..],
+    #[case::substitute(&["/nix/store/00000000000000000000000000000000-_"][..],
         Ok(QueryMissingResult {
             will_build: store_path_set!(),
             will_substitute: store_path_set!("00000000000000000000000000000000-_"),
@@ -560,13 +561,14 @@ pub(crate) mod tests {
         download_size: 0,
         nar_size: 0,
     }))]
-    #[case::error(&["00000000000000000000000000000000-_"][..], Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("QueryMissing: remote error: QueryMissing: bad input path".into()))]
+    #[case::error(&["/nix/store/00000000000000000000000000000000-_"][..], Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("QueryMissing: remote error: QueryMissing: bad input path".into()))]
     async fn query_missing(
         #[case] paths: &[&str],
         #[case] response: DaemonResult<QueryMissingResult>,
         #[case] expected: Result<QueryMissingResult, String>,
     ) {
-        let paths: Vec<DerivedPath> = paths.iter().map(|p| p.parse().unwrap()).collect();
+        let store_dir = StoreDir::default();
+        let paths: Vec<DerivedPath> = paths.iter().map(|p| store_dir.parse(p).unwrap()).collect();
         let mock = MockStore::builder()
             .query_missing(&paths, response)
             .build()

@@ -1,0 +1,284 @@
+use std::ops::Deref as _;
+
+use crate::store_path::{FromStoreDirStr, ParseStorePathError, StoreDirDisplay, StorePath};
+
+use super::{OutputName, OutputSpec};
+
+trait StoreDirDisplaySep {
+    fn fmt(
+        &self,
+        store_dir: &crate::store_path::StoreDir,
+        sep: char,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result;
+}
+
+impl<D> StoreDirDisplaySep for &D
+where
+    D: StoreDirDisplaySep,
+{
+    fn fmt(
+        &self,
+        store_dir: &crate::store_path::StoreDir,
+        sep: char,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        (**self).fmt(store_dir, sep, f)
+    }
+}
+
+trait FromStoreDirStrSep: Sized {
+    type Error: std::error::Error;
+
+    fn from_store_dir_str_sep(
+        store_dir: &crate::store_path::StoreDir,
+        sep: char,
+        s: &str,
+    ) -> Result<Self, Self::Error>;
+}
+
+struct DisplayPath<'d, D>(char, &'d D);
+impl<D> StoreDirDisplay for DisplayPath<'_, D>
+where
+    D: StoreDirDisplaySep,
+{
+    fn fmt(
+        &self,
+        store_dir: &crate::store_path::StoreDir,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        self.1.fmt(store_dir, self.0, f)
+    }
+}
+struct ParsePath<const C: char, D>(pub D);
+impl<const C: char, D> FromStoreDirStr for ParsePath<C, D>
+where
+    D: FromStoreDirStrSep,
+    <D as FromStoreDirStrSep>::Error: std::error::Error,
+{
+    type Error = D::Error;
+
+    fn from_store_dir_str(
+        store_dir: &crate::store_path::StoreDir,
+        s: &str,
+    ) -> Result<Self, Self::Error> {
+        Ok(ParsePath(
+            <D as FromStoreDirStrSep>::from_store_dir_str_sep(store_dir, C, s)?,
+        ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SingleDerivedPath {
+    Opaque(StorePath),
+    Built {
+        drv_path: Box<SingleDerivedPath>,
+        output: OutputName,
+    },
+}
+
+impl SingleDerivedPath {
+    pub fn to_legacy_format(&self) -> impl StoreDirDisplay + '_ {
+        DisplayPath('!', self)
+    }
+}
+
+impl StoreDirDisplaySep for SingleDerivedPath {
+    fn fmt(
+        &self,
+        store_dir: &crate::store_path::StoreDir,
+        sep: char,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        match self {
+            SingleDerivedPath::Opaque(store_path) => write!(f, "{}", store_dir.display(store_path)),
+            SingleDerivedPath::Built { drv_path, output } => {
+                let path = DisplayPath(sep, drv_path.deref());
+                write!(f, "{}{}{}", store_dir.display(&path), sep, output)
+            }
+        }
+    }
+}
+
+impl StoreDirDisplay for SingleDerivedPath {
+    fn fmt(
+        &self,
+        store_dir: &crate::store_path::StoreDir,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        let path = DisplayPath('^', self);
+        write!(f, "{}", store_dir.display(&path))
+    }
+}
+
+impl FromStoreDirStrSep for SingleDerivedPath {
+    type Error = ParseStorePathError;
+
+    fn from_store_dir_str_sep(
+        store_dir: &crate::store_path::StoreDir,
+        sep: char,
+        s: &str,
+    ) -> Result<Self, Self::Error> {
+        let mut it = s.rsplitn(2, sep);
+        let path = it.next().unwrap();
+        if let Some(output) = it.next() {
+            let drv_path = SingleDerivedPath::from_store_dir_str_sep(store_dir, sep, s)?;
+            let output =
+                output
+                    .parse()
+                    .map_err(|error: crate::store_path::StorePathNameError| {
+                        ParseStorePathError::new(s, error)
+                    })?;
+            Ok(SingleDerivedPath::Built {
+                drv_path: Box::new(drv_path),
+                output,
+            })
+        } else {
+            Ok(SingleDerivedPath::Opaque(store_dir.parse(path)?))
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum DerivedPath {
+    Opaque(StorePath),
+    Built {
+        drv_path: SingleDerivedPath,
+        outputs: OutputSpec,
+    },
+}
+
+impl DerivedPath {
+    pub fn to_legacy_format(&self) -> impl StoreDirDisplay + '_ {
+        DisplayPath('!', self)
+    }
+}
+
+impl StoreDirDisplaySep for DerivedPath {
+    fn fmt(
+        &self,
+        store_dir: &crate::store_path::StoreDir,
+        sep: char,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        match self {
+            DerivedPath::Opaque(store_path) => write!(f, "{}", store_dir.display(store_path)),
+            DerivedPath::Built { drv_path, outputs } => {
+                let path = DisplayPath(sep, drv_path);
+                write!(f, "{}{}{}", store_dir.display(&path), sep, outputs)
+            }
+        }
+    }
+}
+
+impl StoreDirDisplay for DerivedPath {
+    fn fmt(
+        &self,
+        store_dir: &crate::store_path::StoreDir,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        let path = DisplayPath('^', self);
+        write!(f, "{}", store_dir.display(&path))
+    }
+}
+
+impl FromStoreDirStrSep for DerivedPath {
+    type Error = ParseStorePathError;
+
+    fn from_store_dir_str_sep(
+        store_dir: &crate::store_path::StoreDir,
+        sep: char,
+        s: &str,
+    ) -> Result<Self, Self::Error> {
+        let mut it = s.rsplitn(2, sep);
+        let path = it.next().unwrap();
+        if let Some(outputs) = it.next() {
+            let drv_path = SingleDerivedPath::from_store_dir_str_sep(store_dir, sep, s)?;
+            let outputs = outputs
+                .parse()
+                .map_err(|error| ParseStorePathError::new(s, error))?;
+            Ok(DerivedPath::Built { drv_path, outputs })
+        } else {
+            Ok(DerivedPath::Opaque(store_dir.parse(path)?))
+        }
+    }
+}
+
+impl FromStoreDirStr for DerivedPath {
+    type Error = ParseStorePathError;
+
+    fn from_store_dir_str(
+        store_dir: &crate::store_path::StoreDir,
+        s: &str,
+    ) -> Result<Self, Self::Error> {
+        DerivedPath::from_store_dir_str_sep(store_dir, '^', s)
+    }
+}
+
+pub struct LegacyDerivedPath(pub DerivedPath);
+impl FromStoreDirStr for LegacyDerivedPath {
+    type Error = ParseStorePathError;
+
+    fn from_store_dir_str(
+        store_dir: &crate::store_path::StoreDir,
+        s: &str,
+    ) -> Result<Self, Self::Error> {
+        Ok(LegacyDerivedPath(DerivedPath::from_store_dir_str_sep(
+            store_dir, '!', s,
+        )?))
+    }
+}
+
+#[cfg(feature = "daemon-serde")]
+mod daemon_serde {
+    use crate::daemon::de::NixDeserialize;
+    use crate::daemon::ser::NixSerialize;
+
+    use super::{DerivedPath, LegacyDerivedPath};
+
+    impl NixSerialize for DerivedPath {
+        async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
+        where
+            W: crate::daemon::ser::NixWrite,
+        {
+            let store_dir = writer.store_dir().clone();
+            writer
+                .write_display(store_dir.display(&self.to_legacy_format()))
+                .await
+        }
+    }
+
+    impl NixDeserialize for DerivedPath {
+        async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
+        where
+            R: ?Sized + crate::daemon::de::NixRead + Send,
+        {
+            use crate::daemon::de::Error;
+            if let Some(s) = reader.try_read_value::<String>().await? {
+                let legacy = reader
+                    .store_dir()
+                    .parse::<LegacyDerivedPath>(&s)
+                    .map_err(R::Error::invalid_data)?;
+                Ok(Some(legacy.0))
+            } else {
+                Ok(None)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod unittests {
+    use rstest::rstest;
+
+    use super::*;
+    use crate::store_path::StoreDir;
+
+    #[rstest]
+    #[case("/nix/store/00000000000000000000000000000000-test", DerivedPath::Opaque("00000000000000000000000000000000-test".parse().unwrap()))]
+    fn parse_path(#[case] input: &str, #[case] expected: DerivedPath) {
+        let store_dir = StoreDir::default();
+        let actual = store_dir.parse::<DerivedPath>(input).unwrap();
+        assert_eq!(actual, expected);
+    }
+}

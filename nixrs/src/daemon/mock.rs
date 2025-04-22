@@ -29,14 +29,15 @@ use super::types::AddToStoreItem;
 use super::wire::types::Operation;
 use super::wire::types2::{
     AddMultipleToStoreRequest, AddToStoreNarRequest, BuildDerivationRequest, BuildMode,
-    BuildPathsRequest, BuildResult, DerivedPath, KeyedBuildResults, QueryMissingResult,
-    QueryValidPathsRequest, ValidPathInfo,
+    BuildPathsRequest, BuildResult, KeyedBuildResults, QueryMissingResult, QueryValidPathsRequest,
+    ValidPathInfo,
 };
 use super::{
     ClientOptions, DaemonError, DaemonErrorKind, DaemonResult, DaemonResultExt, DaemonStore,
     DaemonString, HandshakeDaemonStore, ResultLog, TrustLevel, UnkeyedValidPathInfo,
 };
 use crate::derivation::BasicDerivation;
+use crate::derived_path::DerivedPath;
 use crate::store_path::{StorePath, StorePathSet};
 
 #[allow(clippy::large_enum_variant)]

@@ -21,7 +21,7 @@ use super::ser::{NixWrite, NixWriter, NixWriterBuilder};
 use super::types::AddToStoreItem;
 use super::wire::logger::RawLogMessage;
 use super::wire::types::Operation;
-use super::wire::types2::{BuildMode, DerivedPath};
+use super::wire::types2::BuildMode;
 use super::wire::{CLIENT_MAGIC, SERVER_MAGIC};
 use super::{
     DaemonError, DaemonErrorKind, DaemonResult, DaemonResultExt as _, DaemonStore,
@@ -30,6 +30,7 @@ use super::{
 use crate::archive::NarReader;
 use crate::daemon::wire::{write_add_multiple_to_store_stream, FramedWriter};
 use crate::derivation::BasicDerivation;
+use crate::derived_path::DerivedPath;
 use crate::io::{AsyncBufReadCompat, BytesReader};
 use crate::store_path::{StoreDir, StorePath, StorePathSet};
 

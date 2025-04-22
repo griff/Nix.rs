@@ -18,6 +18,7 @@ use crate::daemon::wire::IgnoredOne;
 use crate::daemon::wire::{parse_add_multiple_to_store, FramedReader, StderrReader};
 use crate::daemon::{DaemonErrorKind, DaemonResultExt, PROTOCOL_VERSION};
 use crate::derivation::BasicDerivation;
+use crate::derived_path::DerivedPath;
 use crate::io::{AsyncBufReadCompat, BytesReader};
 use crate::store_path::StorePath;
 
@@ -268,7 +269,7 @@ where
 
     fn build_paths<'a>(
         &'a mut self,
-        paths: &'a [super::wire::types2::DerivedPath],
+        paths: &'a [DerivedPath],
         mode: super::wire::types2::BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
         let ret = Box::pin(self.0.build_paths(paths, mode));
@@ -288,7 +289,7 @@ where
 
     fn query_missing<'a>(
         &'a mut self,
-        paths: &'a [super::wire::types2::DerivedPath],
+        paths: &'a [DerivedPath],
     ) -> impl ResultLog<Output = DaemonResult<super::wire::types2::QueryMissingResult>> + Send + 'a
     {
         let ret = Box::pin(self.0.query_missing(paths));
@@ -338,7 +339,7 @@ where
 
     fn build_paths_with_results<'a>(
         &'a mut self,
-        drvs: &'a [super::wire::types2::DerivedPath],
+        drvs: &'a [DerivedPath],
         mode: super::wire::types2::BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<Vec<super::wire::types2::KeyedBuildResult>>> + Send + 'a
     {
