@@ -91,7 +91,7 @@ mod unittests {
     #[case(",out", Err(StorePathNameError::NameLength))]
     #[case::too_long("test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Err(StorePathNameError::NameLength))]
     fn parse(#[case] value: &str, #[case] expected: Result<OutputSpec, StorePathNameError>) {
-        let actual : Result<OutputSpec, _> = value.parse();
+        let actual: Result<OutputSpec, _> = value.parse();
         assert_eq!(actual, expected);
     }
 

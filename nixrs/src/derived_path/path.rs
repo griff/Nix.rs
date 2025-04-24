@@ -123,12 +123,11 @@ impl FromStoreDirStrSep for SingleDerivedPath {
         let path = it.next().unwrap();
         if let Some(prefix) = it.next() {
             let drv_path = SingleDerivedPath::from_store_dir_str_sep(store_dir, sep, prefix)?;
-            let output =
-                path
-                    .parse()
-                    .map_err(|error: crate::store_path::StorePathNameError| {
-                        ParseStorePathError::new(s, error)
-                    })?;
+            let output = path
+                .parse()
+                .map_err(|error: crate::store_path::StorePathNameError| {
+                    ParseStorePathError::new(s, error)
+                })?;
             Ok(SingleDerivedPath::Built {
                 drv_path: Box::new(drv_path),
                 output,
@@ -330,7 +329,7 @@ mod unittests {
     }))]
     fn parse_path(#[case] input: &str, #[case] expected: Result<DerivedPath, ParseStorePathError>) {
         let store_dir = StoreDir::default();
-        let actual : Result<DerivedPath, _> = store_dir.parse(input);
+        let actual: Result<DerivedPath, _> = store_dir.parse(input);
         assert_eq!(actual, expected);
     }
 
@@ -377,9 +376,12 @@ mod unittests {
         path: "/nix/store/00000000000000000000000000000000-test.drv!out!bin^out".into(),
         error: StorePathError::Symbol(3, b'^'),
     }))]
-    fn parse_legacy_path(#[case] input: &str, #[case] expected: Result<DerivedPath, ParseStorePathError>) {
+    fn parse_legacy_path(
+        #[case] input: &str,
+        #[case] expected: Result<DerivedPath, ParseStorePathError>,
+    ) {
         let store_dir = StoreDir::default();
-        let actual : Result<LegacyDerivedPath, _> = store_dir.parse(input);
+        let actual: Result<LegacyDerivedPath, _> = store_dir.parse(input);
         assert_eq!(actual.map(|p| p.0), expected);
     }
 
@@ -418,9 +420,12 @@ mod unittests {
         path: "/nix/store/00000000000000000000000000000000-test.drv^out^bin!out".into(),
         error: StorePathError::Symbol(3, b'!'),
     }))]
-    fn parse_single_path(#[case] input: &str, #[case] expected: Result<SingleDerivedPath, ParseStorePathError>) {
+    fn parse_single_path(
+        #[case] input: &str,
+        #[case] expected: Result<SingleDerivedPath, ParseStorePathError>,
+    ) {
         let store_dir = StoreDir::default();
-        let actual : Result<SingleDerivedPath, _> = store_dir.parse(input);
+        let actual: Result<SingleDerivedPath, _> = store_dir.parse(input);
         assert_eq!(actual, expected);
     }
 
@@ -493,7 +498,10 @@ mod unittests {
     }, "/nix/store/00000000000000000000000000000000-test.drv!out!bin!lib")]
     fn display_legacy_path(#[case] value: DerivedPath, #[case] expected: &str) {
         let store_dir = StoreDir::default();
-        assert_eq!(store_dir.display(&value.to_legacy_format()).to_string(), expected);
+        assert_eq!(
+            store_dir.display(&value.to_legacy_format()).to_string(),
+            expected
+        );
     }
 
     #[rstest]
@@ -549,6 +557,9 @@ mod unittests {
     }, "/nix/store/00000000000000000000000000000000-test.drv!out!bin!lib")]
     fn display_single_legacy_path(#[case] value: SingleDerivedPath, #[case] expected: &str) {
         let store_dir = StoreDir::default();
-        assert_eq!(store_dir.display(&value.to_legacy_format()).to_string(), expected);
+        assert_eq!(
+            store_dir.display(&value.to_legacy_format()).to_string(),
+            expected
+        );
     }
 }

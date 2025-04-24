@@ -225,7 +225,13 @@ mod unittests {
         "output:out:sha256:646f2df192aa311e8b6920068dac2ab52d0ea87cedf864c034d30c19ccd17b7f:/nix/store:konsole-18.12.3",
         "g9ngnw4w5vr9y3xkb7k2awl3mp95abrb-konsole-18.12.3"
     )]
-   fn test_make_store_path_from_ca(#[case] ca: ContentAddress, #[case] name: &str, #[case] inner_print: Option<&str>, #[case] fingerprint: &str, #[case] final_path: StorePath) {
+    fn test_make_store_path_from_ca(
+        #[case] ca: ContentAddress,
+        #[case] name: &str,
+        #[case] inner_print: Option<&str>,
+        #[case] fingerprint: &str,
+        #[case] final_path: StorePath,
+    ) {
         let expected_hash = hash::Sha256::digest(fingerprint);
         let expected_path = StorePath::from_hash(&expected_hash, name).unwrap();
         let store_dir = StoreDir::default();
