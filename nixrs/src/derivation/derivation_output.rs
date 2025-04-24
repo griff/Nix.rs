@@ -5,7 +5,7 @@ use nixrs_derive::NixDeserialize;
 
 #[cfg(any(feature = "xp-ca-derivations", feature = "xp-impure-derivations"))]
 use crate::store_path::ContentAddressMethodAlgorithm;
-use crate::store_path::{ContentAddress, StoreDir, StorePath, StorePathError};
+use crate::store_path::{ContentAddress, StoreDir, StorePath, StorePathNameError};
 
 struct OutputPathName<'b> {
     drv_name: &'b str,
@@ -52,7 +52,7 @@ impl DerivationOutput {
         store_dir: &StoreDir,
         drv_name: &str,
         output_name: &str,
-    ) -> Result<Option<StorePath>, StorePathError> {
+    ) -> Result<Option<StorePath>, StorePathNameError> {
         match self {
             DerivationOutput::InputAddressed(store_path) => Ok(Some(store_path.clone())),
             DerivationOutput::CAFixed(ca) => {

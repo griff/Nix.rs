@@ -71,7 +71,7 @@ impl StorePath {
         Ok(StorePath { hash, name })
     }
 
-    pub fn from_hash(hash: &hash::Sha256, name: &str) -> Result<Self, StorePathError> {
+    pub fn from_hash(hash: &hash::Sha256, name: &str) -> Result<Self, StorePathNameError> {
         Ok(StorePath {
             hash: StorePathHash::new_from_hash(hash),
             name: name.parse()?,
