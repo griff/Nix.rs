@@ -172,8 +172,11 @@ pub mod proptest {
 
 #[cfg(test)]
 mod tests {
+    use crate::{hash, store_path::{ContentAddress, StorePath}};
+
     use super::StoreDir;
     use pretty_assertions::assert_eq;
+    use rstest::rstest;
     use std::path::Path;
 
     #[test]
@@ -190,5 +193,49 @@ mod tests {
         let store_dir = StoreDir::new("/nix/store").unwrap();
         let s: &Path = store_dir.as_ref();
         assert_eq!(s, Path::new("/nix/store"));
+    }
+
+
+    #[rstest]
+    #[case::text(
+        ContentAddress::Text("248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse().unwrap()),
+        "konsole-18.12.3",
+        None,
+        "text:sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1:/nix/store:konsole-18.12.3",
+        "aidi01pgcl6i79fkw737qzx06kjl930m-konsole-18.12.3"
+    )]
+    #[case::source(
+        ContentAddress::Recursive("sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse().unwrap()),
+        "konsole-18.12.3",
+        None,
+        "source:sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1:/nix/store:konsole-18.12.3",
+        "1w01xxn8f7s9s4n65ry6rwd7x9awf04s-konsole-18.12.3"
+    )]
+    #[case::output(
+        ContentAddress::Recursive("sha1:84983e441c3bd26ebaae4aa1f95129e5e54670f1".parse().unwrap()),
+        "konsole-18.12.3",
+        Some("fixed:out:r:sha1:84983e441c3bd26ebaae4aa1f95129e5e54670f1"),
+        "output:out:sha256:3519044ac96a4bc192ada46062b3554eada7ba1f3574a0cb90c1697c6c68f4c1:/nix/store:konsole-18.12.3",
+        "ag0y7g6rci9zsdz9nxcq5l1qllx3r99x-konsole-18.12.3"
+    )]
+    #[case::flat_output(
+        ContentAddress::Flat("sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse().unwrap()),
+        "konsole-18.12.3",
+        Some("fixed:out:sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"),
+        "output:out:sha256:646f2df192aa311e8b6920068dac2ab52d0ea87cedf864c034d30c19ccd17b7f:/nix/store:konsole-18.12.3",
+        "g9ngnw4w5vr9y3xkb7k2awl3mp95abrb-konsole-18.12.3"
+    )]
+   fn test_make_store_path_from_ca(#[case] ca: ContentAddress, #[case] name: &str, #[case] inner_print: Option<&str>, #[case] fingerprint: &str, #[case] final_path: StorePath) {
+        let expected_hash = hash::Sha256::digest(fingerprint);
+        let expected_path = StorePath::from_hash(&expected_hash, name).unwrap();
+        let store_dir = StoreDir::default();
+        if let Some(print) = inner_print {
+            let hash = hash::Sha256::digest(print);
+            let actual_fingerprint = format!("output:out:sha256:{:x}:{}:{}", hash, store_dir, name);
+            assert_eq!(actual_fingerprint, fingerprint);
+        }
+        let actual_path = store_dir.make_store_path_from_ca(name, ca).unwrap();
+        assert_eq!(expected_path, actual_path);
+        assert_eq!(final_path, actual_path);
     }
 }
