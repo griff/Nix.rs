@@ -227,7 +227,7 @@ where
 }
 
 #[cfg(test)]
-mod test {
+mod unittests {
     use rstest::rstest;
 
     use crate::archive::read_nar::{TOK_DIR, TOK_FILE, TOK_FILE_E, TOK_SYM};

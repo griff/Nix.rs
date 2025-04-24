@@ -63,7 +63,7 @@ impl NixSerialize for i64 {
 }
 
 #[cfg(test)]
-mod test {
+mod unittests {
     use hex_literal::hex;
     use rstest::rstest;
     use tokio::io::AsyncWriteExt as _;

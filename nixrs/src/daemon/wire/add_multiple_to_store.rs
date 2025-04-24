@@ -124,7 +124,7 @@ where
 }
 
 #[cfg(test)]
-mod test {
+mod unittests {
     use std::io::Cursor;
 
     use bytes::Bytes;

@@ -567,20 +567,17 @@ where
 }
 
 #[cfg(test)]
-mod test {
+mod unittests {
     use std::io;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
     use bytes::{BufMut as _, Bytes, BytesMut};
-    use proptest::prelude::{any, TestCaseError};
-    use proptest::proptest;
     use rstest::rstest;
     use tokio::io::{AsyncReadExt, BufReader};
     use tokio_test::io::Builder;
-    use tracing::{info, trace};
+    use tracing::trace;
     use tracing_test::traced_test;
 
-    use crate::archive::proptest::arb_nar_contents;
     use crate::archive::test_data::*;
     use crate::archive::{write_nar, NAREvent};
 
@@ -660,6 +657,22 @@ mod test {
             }
         }
     }
+}
+
+#[cfg(test)]
+mod proptests {
+    use std::time::{Duration, Instant};
+
+    use bytes::{BufMut as _, Bytes, BytesMut};
+    use nixrs_archive::proptest::arb_nar_contents;
+    use proptest::prelude::{any, TestCaseError};
+    use proptest::proptest;
+    use tokio::io::{AsyncReadExt as _, BufReader};
+    use tokio_test::io::Builder;
+    use tracing::{info, trace};
+    use tracing_test::traced_test;
+
+    use crate::archive::NarReader;
 
     #[traced_test]
     #[test]

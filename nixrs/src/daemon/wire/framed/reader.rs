@@ -128,7 +128,7 @@ where
 }
 
 #[cfg(test)]
-mod test {
+mod unittests {
     use hex_literal::hex;
     use tokio::io::{AsyncReadExt as _, BufReader};
     use tokio_test::io::Builder;

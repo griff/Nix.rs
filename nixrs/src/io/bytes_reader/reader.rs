@@ -232,7 +232,7 @@ where
 }
 
 #[cfg(test)]
-mod test {
+mod unittests {
     use std::time::Duration;
 
     use hex_literal::hex;

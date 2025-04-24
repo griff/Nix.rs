@@ -175,7 +175,7 @@ pub enum ParseContentAddressError {
 }
 
 #[cfg(test)]
-mod tests {
+mod unittests {
     use rstest::rstest;
 
     use super::*;

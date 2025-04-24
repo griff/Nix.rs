@@ -11,9 +11,6 @@ use std::time::Instant;
 use bytes::BytesMut;
 use futures::stream::iter;
 use futures::{FutureExt as _, StreamExt, TryFutureExt as _, TryStreamExt as _};
-use proptest::prelude::{any, Strategy, TestCaseError};
-use proptest::{prop_assert_eq, proptest};
-use rstest::rstest;
 use tempfile::Builder;
 use tokio::io::{copy_buf, split, AsyncBufReadExt, BufReader};
 use tokio::process::{ChildStdin, ChildStdout, Command};
@@ -218,255 +215,259 @@ fn prepare_mock(nix: &dyn NixImpl) -> mock::Builder<()> {
     mock
 }
 
-/*
-#[tokio::test]
-#[rstest]
-async fn handshake(#[values("nix_2_24", "lix_2_91")] nix: &str) {
-    let mock = MockStore::builder();
-    run_store_test(nix, mock, |client| ready(Ok(client) as DaemonResult<_>))
+mod unittests {
+    use super::*;
+    use rstest::rstest;
+
+    /*
+    #[tokio::test]
+    #[rstest]
+    async fn handshake(#[values("nix_2_24", "lix_2_91")] nix: &str) {
+        let mock = MockStore::builder();
+        run_store_test(nix, mock, |client| ready(Ok(client) as DaemonResult<_>))
+            .await
+            .unwrap();
+    }
+    */
+    /*
+    #[tokio::test]
+    #[rstest]
+    #[case(ClientOptions::default(), Ok(()), Ok(()))]
+    #[case(ClientOptions::default(), Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("remote error: bad input path".into()))]
+    async fn set_options(
+        #[values("nix_2_3", "nix_2_24", "lix_2_91")] nix: &str,
+        #[case] options: ClientOptions,
+        #[case] response: DaemonResult<()>,
+        #[case] expected: Result<(), String>,
+    ) {
+        let mut mock = MockStore::builder();
+        mock.set_options(&options, response).build();
+        run_store_test(nix, mock, |mut client| async move {
+            assert_eq!(
+                expected,
+                client
+                    .set_options(&options)
+                    .result()
+                    .await
+                    .map_err(|err| err.to_string())
+            );
+            Ok(client) as DaemonResult<_>
+        })
         .await
         .unwrap();
-}
-*/
-/*
-#[tokio::test]
-#[rstest]
-#[case(ClientOptions::default(), Ok(()), Ok(()))]
-#[case(ClientOptions::default(), Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("remote error: bad input path".into()))]
-async fn set_options(
-    #[values("nix_2_3", "nix_2_24", "lix_2_91")] nix: &str,
-    #[case] options: ClientOptions,
-    #[case] response: DaemonResult<()>,
-    #[case] expected: Result<(), String>,
-) {
-    let mut mock = MockStore::builder();
-    mock.set_options(&options, response).build();
-    run_store_test(nix, mock, |mut client| async move {
-        assert_eq!(
-            expected,
-            client
-                .set_options(&options)
-                .result()
-                .await
-                .map_err(|err| err.to_string())
-        );
-        Ok(client) as DaemonResult<_>
-    })
-    .await
-    .unwrap();
-}
-*/
-
-#[tokio::test]
-#[rstest]
-#[case::valid("00000000000000000000000000000000-_", Ok(true), Ok(true))]
-#[case::invalid("00000000000000000000000000000000-_", Ok(false), Ok(false))]
-#[case::error("00000000000000000000000000000000-_", Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("IsValidPath: remote error: IsValidPath: bad input path".into()))]
-async fn is_valid_path(
-    #[values(&NIX_2_3, &NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
-    #[case] store_path: StorePath,
-    #[case] response: DaemonResult<bool>,
-    #[case] expected: Result<bool, String>,
-) {
-    let mut mock = prepare_mock(nix);
-    mock.is_valid_path(&store_path, response).build();
-    run_store_test(nix, mock, |mut client| async move {
-        assert_eq!(
-            expected,
-            client
-                .is_valid_path(&store_path)
-                .await
-                .map_err(|err| err.to_string())
-        );
-        Ok(client) as DaemonResult<_>
-    })
-    .await
-    .unwrap();
-}
-
-#[tokio::test]
-#[rstest]
-//#[case::substitute_all_valid(&["00000000000000000000000000000000-_"][..], true, Ok(&["10000000000000000000000000000000-_"][..]), Ok(&["10000000000000000000000000000000-_"][..]))]
-//#[case::substilute_empty_return(&["00000000000000000000000000000000-_"][..], true, Ok(&[][..]), Ok(&[][..]))]
-#[case::all_valid(&["00000000000000000000000000000000-_"][..], false, Ok(&["10000000000000000000000000000000-_"][..]), Ok(&["10000000000000000000000000000000-_"][..]))]
-#[case::empty_return(&["00000000000000000000000000000000-_"][..], false, Ok(&[][..]), Ok(&[][..]))]
-//#[case::substitute_error(&["00000000000000000000000000000000-_"][..], true, Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("QueryValidPaths: remote error: QueryValidPaths: bad input path".into()))]
-#[case::error(&["00000000000000000000000000000000-_"][..], false, Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("QueryValidPaths: remote error: QueryValidPaths: bad input path".into()))]
-async fn query_valid_paths(
-    #[values(&NIX_2_3, &NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
-    #[case] store_paths: &[&str],
-    #[case] substitute: bool,
-    #[case] response: DaemonResult<&[&str]>,
-    #[case] expected: Result<&[&str], String>,
-) {
-    let store_paths = store_paths.iter().map(|p| p.parse().unwrap()).collect();
-    let response = response.map(|r| r.iter().map(|p| p.parse().unwrap()).collect());
-    let expected: Result<StorePathSet, String> =
-        expected.map(|r| r.iter().map(|p| p.parse().unwrap()).collect());
-    let mut mock = prepare_mock(nix);
-    mock.query_valid_paths(&store_paths, substitute, response)
-        .build();
-    run_store_test(nix, mock, |mut client| async move {
-        assert_eq!(
-            expected,
-            client
-                .query_valid_paths(&store_paths, substitute)
-                .await
-                .map_err(|err| err.to_string())
-        );
-        Ok(client) as DaemonResult<_>
-    })
-    .await
-    .unwrap();
-}
-
-#[tokio::test]
-#[rstest]
-#[case::found_info("00000000000000000000000000000000-_", Ok(Some(UnkeyedValidPathInfo {
-    deriver: Some("00000000000000000000000000000000-_.drv".parse().unwrap()),
-    nar_hash: NarHash::new(&[0u8; 32]),
-    references: vec!["00000000000000000000000000000000-_".parse().unwrap()],
-    registration_time: 0,
-    nar_size: 0,
-    ultimate: true,
-    signatures: vec![],
-    ca: None,
-})), Ok(Some(UnkeyedValidPathInfo {
-    deriver: Some("00000000000000000000000000000000-_.drv".parse().unwrap()),
-    nar_hash: NarHash::new(&[0u8; 32]),
-    references: vec!["00000000000000000000000000000000-_".parse().unwrap()],
-    registration_time: 0,
-    nar_size: 0,
-    ultimate: true,
-    signatures: vec![],
-    ca: None,
-})))]
-#[case::no_info("00000000000000000000000000000000-_", Ok(None), Ok(None))]
-#[case::error("00000000000000000000000000000000-_", Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("QueryPathInfo: remote error: QueryPathInfo: bad input path".into()))]
-async fn query_path_info(
-    #[values(&NIX_2_3, &NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
-    #[case] store_path: StorePath,
-    #[case] response: DaemonResult<Option<UnkeyedValidPathInfo>>,
-    #[case] expected: Result<Option<UnkeyedValidPathInfo>, String>,
-) {
-    let mut mock = prepare_mock(nix);
-    mock.query_path_info(&store_path, response).build();
-    run_store_test(nix, mock, |mut client| async move {
-        assert_eq!(
-            expected,
-            client
-                .query_path_info(&store_path)
-                .await
-                .map_err(|err| err.to_string())
-        );
-        Ok(client) as DaemonResult<_>
-    })
-    .await
-    .unwrap();
-}
-
-#[traced_test]
-#[tokio::test]
-#[rstest]
-#[case::text_file("00000000000000000000000000000000-_", test_data::text_file())]
-#[case::exec_file("00000000000000000000000000000000-_", test_data::exec_file())]
-#[case::empty_file("00000000000000000000000000000000-_", test_data::empty_file())]
-#[case::empty_file_in_dir("00000000000000000000000000000000-_", test_data::empty_file_in_dir())]
-#[case::empty_dir("00000000000000000000000000000000-_", test_data::empty_dir())]
-#[case::empty_dir_in_dir("00000000000000000000000000000000-_", test_data::empty_dir_in_dir())]
-#[case::symlink("00000000000000000000000000000000-_", test_data::symlink())]
-#[case::dir_example("00000000000000000000000000000000-_", test_data::dir_example())]
-async fn nar_from_path(
-    #[values(&NIX_2_3, &NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
-    #[case] store_path: StorePath,
-    #[case] events: Vec<NAREvent>,
-) {
-    let mut buf = BytesMut::new();
-    let mut ctx = Context::new(Algorithm::SHA256);
-    let mut size = 0;
-    for event in events.iter() {
-        let encoded = event.encoded_size();
-        size += encoded as u64;
-        buf.reserve(encoded);
-        let mut temp = buf.split_off(buf.len());
-        event.encode_into(&mut temp);
-        ctx.update(&temp);
-        buf.unsplit(temp);
     }
-    let hash = ctx.finish();
-    let content = buf.freeze();
+    */
 
-    let mut mock = prepare_mock(nix);
-    mock.nar_from_path(&store_path, Ok(content)).build();
-    run_store_test(nix, mock, |mut client| async move {
-        {
-            let logs = client.nar_from_path(&store_path);
-            let mut reader = process_logs(logs).await.unwrap();
-            let mut out = Vec::new();
-            copy_buf(&mut reader, &mut out).await?;
-            let nar: Vec<NAREvent> = parse_nar(Cursor::new(&out)).try_collect().await?;
-            assert_eq!(events, nar);
-            assert_eq!(size, out.len() as u64);
-            assert_eq!(Algorithm::SHA256.digest(&out), hash);
+    #[tokio::test]
+    #[rstest]
+    #[case::valid("00000000000000000000000000000000-_", Ok(true), Ok(true))]
+    #[case::invalid("00000000000000000000000000000000-_", Ok(false), Ok(false))]
+    #[case::error("00000000000000000000000000000000-_", Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("IsValidPath: remote error: IsValidPath: bad input path".into()))]
+    async fn is_valid_path(
+        #[values(&NIX_2_3, &NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
+        #[case] store_path: StorePath,
+        #[case] response: DaemonResult<bool>,
+        #[case] expected: Result<bool, String>,
+    ) {
+        let mut mock = prepare_mock(nix);
+        mock.is_valid_path(&store_path, response).build();
+        run_store_test(nix, mock, |mut client| async move {
+            assert_eq!(
+                expected,
+                client
+                    .is_valid_path(&store_path)
+                    .await
+                    .map_err(|err| err.to_string())
+            );
+            Ok(client) as DaemonResult<_>
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    #[rstest]
+    //#[case::substitute_all_valid(&["00000000000000000000000000000000-_"][..], true, Ok(&["10000000000000000000000000000000-_"][..]), Ok(&["10000000000000000000000000000000-_"][..]))]
+    //#[case::substilute_empty_return(&["00000000000000000000000000000000-_"][..], true, Ok(&[][..]), Ok(&[][..]))]
+    #[case::all_valid(&["00000000000000000000000000000000-_"][..], false, Ok(&["10000000000000000000000000000000-_"][..]), Ok(&["10000000000000000000000000000000-_"][..]))]
+    #[case::empty_return(&["00000000000000000000000000000000-_"][..], false, Ok(&[][..]), Ok(&[][..]))]
+    //#[case::substitute_error(&["00000000000000000000000000000000-_"][..], true, Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("QueryValidPaths: remote error: QueryValidPaths: bad input path".into()))]
+    #[case::error(&["00000000000000000000000000000000-_"][..], false, Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("QueryValidPaths: remote error: QueryValidPaths: bad input path".into()))]
+    async fn query_valid_paths(
+        #[values(&NIX_2_3, &NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
+        #[case] store_paths: &[&str],
+        #[case] substitute: bool,
+        #[case] response: DaemonResult<&[&str]>,
+        #[case] expected: Result<&[&str], String>,
+    ) {
+        let store_paths = store_paths.iter().map(|p| p.parse().unwrap()).collect();
+        let response = response.map(|r| r.iter().map(|p| p.parse().unwrap()).collect());
+        let expected: Result<StorePathSet, String> =
+            expected.map(|r| r.iter().map(|p| p.parse().unwrap()).collect());
+        let mut mock = prepare_mock(nix);
+        mock.query_valid_paths(&store_paths, substitute, response)
+            .build();
+        run_store_test(nix, mock, |mut client| async move {
+            assert_eq!(
+                expected,
+                client
+                    .query_valid_paths(&store_paths, substitute)
+                    .await
+                    .map_err(|err| err.to_string())
+            );
+            Ok(client) as DaemonResult<_>
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    #[rstest]
+    #[case::found_info("00000000000000000000000000000000-_", Ok(Some(UnkeyedValidPathInfo {
+        deriver: Some("00000000000000000000000000000000-_.drv".parse().unwrap()),
+        nar_hash: NarHash::new(&[0u8; 32]),
+        references: vec!["00000000000000000000000000000000-_".parse().unwrap()],
+        registration_time: 0,
+        nar_size: 0,
+        ultimate: true,
+        signatures: vec![],
+        ca: None,
+    })), Ok(Some(UnkeyedValidPathInfo {
+        deriver: Some("00000000000000000000000000000000-_.drv".parse().unwrap()),
+        nar_hash: NarHash::new(&[0u8; 32]),
+        references: vec!["00000000000000000000000000000000-_".parse().unwrap()],
+        registration_time: 0,
+        nar_size: 0,
+        ultimate: true,
+        signatures: vec![],
+        ca: None,
+    })))]
+    #[case::no_info("00000000000000000000000000000000-_", Ok(None), Ok(None))]
+    #[case::error("00000000000000000000000000000000-_", Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("QueryPathInfo: remote error: QueryPathInfo: bad input path".into()))]
+    async fn query_path_info(
+        #[values(&NIX_2_3, &NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
+        #[case] store_path: StorePath,
+        #[case] response: DaemonResult<Option<UnkeyedValidPathInfo>>,
+        #[case] expected: Result<Option<UnkeyedValidPathInfo>, String>,
+    ) {
+        let mut mock = prepare_mock(nix);
+        mock.query_path_info(&store_path, response).build();
+        run_store_test(nix, mock, |mut client| async move {
+            assert_eq!(
+                expected,
+                client
+                    .query_path_info(&store_path)
+                    .await
+                    .map_err(|err| err.to_string())
+            );
+            Ok(client) as DaemonResult<_>
+        })
+        .await
+        .unwrap();
+    }
+
+    #[traced_test]
+    #[tokio::test]
+    #[rstest]
+    #[case::text_file("00000000000000000000000000000000-_", test_data::text_file())]
+    #[case::exec_file("00000000000000000000000000000000-_", test_data::exec_file())]
+    #[case::empty_file("00000000000000000000000000000000-_", test_data::empty_file())]
+    #[case::empty_file_in_dir("00000000000000000000000000000000-_", test_data::empty_file_in_dir())]
+    #[case::empty_dir("00000000000000000000000000000000-_", test_data::empty_dir())]
+    #[case::empty_dir_in_dir("00000000000000000000000000000000-_", test_data::empty_dir_in_dir())]
+    #[case::symlink("00000000000000000000000000000000-_", test_data::symlink())]
+    #[case::dir_example("00000000000000000000000000000000-_", test_data::dir_example())]
+    async fn nar_from_path(
+        #[values(&NIX_2_3, &NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
+        #[case] store_path: StorePath,
+        #[case] events: Vec<NAREvent>,
+    ) {
+        let mut buf = BytesMut::new();
+        let mut ctx = Context::new(Algorithm::SHA256);
+        let mut size = 0;
+        for event in events.iter() {
+            let encoded = event.encoded_size();
+            size += encoded as u64;
+            buf.reserve(encoded);
+            let mut temp = buf.split_off(buf.len());
+            event.encode_into(&mut temp);
+            ctx.update(&temp);
+            buf.unsplit(temp);
         }
-        Ok(client) as DaemonResult<_>
-    })
-    .await
-    .unwrap();
-}
+        let hash = ctx.finish();
+        let content = buf.freeze();
 
-/*
-#[tokio::test]
-#[rstest]
-#[case("00000000000000000000000000000000-_", DaemonError::Custom("bad input path".into()), "remote error: bad input path".into())]
-async fn nar_from_path_err(#[case] store_path: StorePath, #[case] response: DaemonError, #[case] expected: String) {
+        let mut mock = prepare_mock(nix);
+        mock.nar_from_path(&store_path, Ok(content)).build();
+        run_store_test(nix, mock, |mut client| async move {
+            {
+                let logs = client.nar_from_path(&store_path);
+                let mut reader = process_logs(logs).await.unwrap();
+                let mut out = Vec::new();
+                copy_buf(&mut reader, &mut out).await?;
+                let nar: Vec<NAREvent> = parse_nar(Cursor::new(&out)).try_collect().await?;
+                assert_eq!(events, nar);
+                assert_eq!(size, out.len() as u64);
+                assert_eq!(Algorithm::SHA256.digest(&out), hash);
+            }
+            Ok(client) as DaemonResult<_>
+        })
+        .await
+        .unwrap();
+    }
 
-    let mock = MockStore::builder()
-        .nar_from_path(&store_path, Err(response)).build()
-        .build();
-    run_store_test(mock, |mut client| async move {
-        let mut out = Vec::new();
-        assert_eq!(expected, client.nar_from_path(&store_path, Cursor::new(&mut out)).result().await.unwrap_err().to_string());
-        assert_eq!(out.len(), 0);
-        Ok(client)
-    }).await;
-}
-*/
+    /*
+    #[tokio::test]
+    #[rstest]
+    #[case("00000000000000000000000000000000-_", DaemonError::Custom("bad input path".into()), "remote error: bad input path".into())]
+    async fn nar_from_path_err(#[case] store_path: StorePath, #[case] response: DaemonError, #[case] expected: String) {
 
-// BuildPaths
-#[traced_test]
-#[tokio::test]
-#[rstest]
-#[case::normal(&["/nix/store/00000000000000000000000000000000-_"][..], BuildMode::Normal, Ok(()), Ok(()))]
-#[case::repair(&["/nix/store/00000000000000000000000000000000-_"][..], BuildMode::Repair, Ok(()), Ok(()))]
-#[case::empty(&[][..], BuildMode::Check, Ok(()), Ok(()))]
-#[case::error(&["/nix/store/00000000000000000000000000000000-_"][..], BuildMode::Normal, Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("BuildPaths: remote error: BuildPaths: bad input path".into()))]
-async fn build_paths(
-    #[values(&NIX_2_3, &NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
-    #[case] paths: &[&str],
-    #[case] mode: BuildMode,
-    #[case] response: DaemonResult<()>,
-    #[case] expected: Result<(), String>,
-) {
-    let store_dir = StoreDir::default();
-    let paths: Vec<DerivedPath> = paths.iter().map(|p| store_dir.parse(p).unwrap()).collect();
-    let mut mock = MockStore::builder();
-    mock.build_paths(&paths, mode, response).build();
-    run_store_test(nix, mock, |mut client| async move {
-        assert_eq!(
-            expected,
-            client
-                .build_paths(&paths, mode)
-                .await
-                .map_err(|err| err.to_string())
-        );
-        Ok(client) as DaemonResult<_>
-    })
-    .await
-    .unwrap();
-}
+        let mock = MockStore::builder()
+            .nar_from_path(&store_path, Err(response)).build()
+            .build();
+        run_store_test(mock, |mut client| async move {
+            let mut out = Vec::new();
+            assert_eq!(expected, client.nar_from_path(&store_path, Cursor::new(&mut out)).result().await.unwrap_err().to_string());
+            assert_eq!(out.len(), 0);
+            Ok(client)
+        }).await;
+    }
+    */
 
-macro_rules! store_path_set {
+    // BuildPaths
+    #[traced_test]
+    #[tokio::test]
+    #[rstest]
+    #[case::normal(&["/nix/store/00000000000000000000000000000000-_"][..], BuildMode::Normal, Ok(()), Ok(()))]
+    #[case::repair(&["/nix/store/00000000000000000000000000000000-_"][..], BuildMode::Repair, Ok(()), Ok(()))]
+    #[case::empty(&[][..], BuildMode::Check, Ok(()), Ok(()))]
+    #[case::error(&["/nix/store/00000000000000000000000000000000-_"][..], BuildMode::Normal, Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("BuildPaths: remote error: BuildPaths: bad input path".into()))]
+    async fn build_paths(
+        #[values(&NIX_2_3, &NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
+        #[case] paths: &[&str],
+        #[case] mode: BuildMode,
+        #[case] response: DaemonResult<()>,
+        #[case] expected: Result<(), String>,
+    ) {
+        let store_dir = StoreDir::default();
+        let paths: Vec<DerivedPath> = paths.iter().map(|p| store_dir.parse(p).unwrap()).collect();
+        let mut mock = MockStore::builder();
+        mock.build_paths(&paths, mode, response).build();
+        run_store_test(nix, mock, |mut client| async move {
+            assert_eq!(
+                expected,
+                client
+                    .build_paths(&paths, mode)
+                    .await
+                    .map_err(|err| err.to_string())
+            );
+            Ok(client) as DaemonResult<_>
+        })
+        .await
+        .unwrap();
+    }
+
+    macro_rules! store_path_set {
         () => { StorePathSet::new() };
         ($p:expr $(, $pr:expr)*$(,)?) => {{
             let mut ret = StorePathSet::new();
@@ -478,7 +479,7 @@ macro_rules! store_path_set {
             ret
         }}
     }
-macro_rules! btree_map {
+    macro_rules! btree_map {
         () => {std::collections::BTreeMap::new()};
         ($k:expr => $v:expr
          $(, $kr:expr => $vr:expr )*$(,)?) => {{
@@ -491,11 +492,11 @@ macro_rules! btree_map {
          }}
     }
 
-// BuildDerivation
-#[traced_test]
-#[tokio::test]
-#[rstest]
-#[case::normal(BasicDerivation {
+    // BuildDerivation
+    #[traced_test]
+    #[tokio::test]
+    #[rstest]
+    #[case::normal(BasicDerivation {
         drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
         outputs: btree_map!(
             "out".into() => DerivationOutput::InputAddressed("00000000000000000000000000000000-_".parse().unwrap()),
@@ -526,7 +527,7 @@ macro_rules! btree_map {
         cpu_system: None,
         built_outputs: btree_map!(),
     }))]
-#[case::error(BasicDerivation {
+    #[case::error(BasicDerivation {
         drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
         outputs: btree_map!(
             "out".into() => DerivationOutput::InputAddressed("00000000000000000000000000000000-_".parse().unwrap()),
@@ -537,48 +538,48 @@ macro_rules! btree_map {
         args: vec![ByteString::from_static(b"-c"), ByteString::from_static(b"echo Hello")],
         env: btree_map!(),
     }, BuildMode::Normal, Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("BuildDerivation: remote error: BuildDerivation: bad input path".into()))]
-async fn build_derivation(
-    #[values(&NIX_2_3, &NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
-    #[case] drv: BasicDerivation,
-    #[case] build_mode: BuildMode,
-    #[case] response: DaemonResult<BuildResult>,
-    #[case] mut expected: Result<BuildResult, String>,
-) {
-    let mut mock = MockStore::builder();
-    mock.build_derivation(&drv, build_mode, response).build();
-    run_store_test(nix, mock, |mut client| async move {
-        let version = client.version();
-        if let Ok(expected) = expected.as_mut() {
-            if version.minor() < 28 {
-                expected.built_outputs = BTreeMap::new();
+    async fn build_derivation(
+        #[values(&NIX_2_3, &NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
+        #[case] drv: BasicDerivation,
+        #[case] build_mode: BuildMode,
+        #[case] response: DaemonResult<BuildResult>,
+        #[case] mut expected: Result<BuildResult, String>,
+    ) {
+        let mut mock = MockStore::builder();
+        mock.build_derivation(&drv, build_mode, response).build();
+        run_store_test(nix, mock, |mut client| async move {
+            let version = client.version();
+            if let Ok(expected) = expected.as_mut() {
+                if version.minor() < 28 {
+                    expected.built_outputs = BTreeMap::new();
+                }
+                if version.minor() < 29 {
+                    expected.times_built = 0;
+                    expected.is_non_deterministic = false;
+                    expected.start_time = 0;
+                    expected.stop_time = 0;
+                }
+                if version.minor() < 37 {
+                    expected.cpu_user = None;
+                    expected.cpu_system = None;
+                }
             }
-            if version.minor() < 29 {
-                expected.times_built = 0;
-                expected.is_non_deterministic = false;
-                expected.start_time = 0;
-                expected.stop_time = 0;
-            }
-            if version.minor() < 37 {
-                expected.cpu_user = None;
-                expected.cpu_system = None;
-            }
-        }
-        let actual = client
-            .build_derivation(&drv, build_mode)
-            .await
-            .map_err(|err| err.to_string());
-        assert_eq!(expected, actual,);
-        Ok(client) as DaemonResult<_>
-    })
-    .await
-    .unwrap();
-}
+            let actual = client
+                .build_derivation(&drv, build_mode)
+                .await
+                .map_err(|err| err.to_string());
+            assert_eq!(expected, actual,);
+            Ok(client) as DaemonResult<_>
+        })
+        .await
+        .unwrap();
+    }
 
-// QueryMissing
-#[traced_test]
-#[tokio::test]
-#[rstest]
-#[case::substitute(&["/nix/store/00000000000000000000000000000000-_"][..],
+    // QueryMissing
+    #[traced_test]
+    #[tokio::test]
+    #[rstest]
+    #[case::substitute(&["/nix/store/00000000000000000000000000000000-_"][..],
         Ok(QueryMissingResult {
             will_build: store_path_set!(),
             will_substitute: store_path_set!("00000000000000000000000000000000-_"),
@@ -592,7 +593,7 @@ async fn build_derivation(
             download_size: 200,
             nar_size: 500,
         }))]
-#[case::empty(&[][..], Ok(QueryMissingResult {
+    #[case::empty(&[][..], Ok(QueryMissingResult {
         will_build: store_path_set!(),
         will_substitute: store_path_set!(),
         unknown: store_path_set!(),
@@ -605,35 +606,35 @@ async fn build_derivation(
         download_size: 0,
         nar_size: 0,
     }))]
-#[case::error(&["/nix/store/00000000000000000000000000000000-_"][..], Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("QueryMissing: remote error: QueryMissing: bad input path".into()))]
-async fn query_missing(
-    #[values(&NIX_2_3, &NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
-    #[case] paths: &[&str],
-    #[case] response: DaemonResult<QueryMissingResult>,
-    #[case] expected: Result<QueryMissingResult, String>,
-) {
-    let store_dir = StoreDir::default();
-    let paths: Vec<DerivedPath> = paths.iter().map(|p| store_dir.parse(p).unwrap()).collect();
-    let mut mock = MockStore::builder();
-    mock.query_missing(&paths, response).build();
-    run_store_test(nix, mock, |mut client| async move {
-        assert_eq!(
-            expected,
-            client
-                .query_missing(&paths)
-                .await
-                .map_err(|err| err.to_string())
-        );
-        Ok(client) as DaemonResult<_>
-    })
-    .await
-    .unwrap();
-}
+    #[case::error(&["/nix/store/00000000000000000000000000000000-_"][..], Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("QueryMissing: remote error: QueryMissing: bad input path".into()))]
+    async fn query_missing(
+        #[values(&NIX_2_3, &NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
+        #[case] paths: &[&str],
+        #[case] response: DaemonResult<QueryMissingResult>,
+        #[case] expected: Result<QueryMissingResult, String>,
+    ) {
+        let store_dir = StoreDir::default();
+        let paths: Vec<DerivedPath> = paths.iter().map(|p| store_dir.parse(p).unwrap()).collect();
+        let mut mock = MockStore::builder();
+        mock.query_missing(&paths, response).build();
+        run_store_test(nix, mock, |mut client| async move {
+            assert_eq!(
+                expected,
+                client
+                    .query_missing(&paths)
+                    .await
+                    .map_err(|err| err.to_string())
+            );
+            Ok(client) as DaemonResult<_>
+        })
+        .await
+        .unwrap();
+    }
 
-#[traced_test]
-#[tokio::test]
-#[rstest]
-#[case::ok(
+    #[traced_test]
+    #[tokio::test]
+    #[rstest]
+    #[case::ok(
         ValidPathInfo {
             path: "00000000000000000000000000000000-_".parse().unwrap(),
             info: UnkeyedValidPathInfo {
@@ -653,7 +654,7 @@ async fn query_missing(
         Ok(()),
         Ok(())
     )]
-#[case::error(ValidPathInfo {
+    #[case::error(ValidPathInfo {
             path: "00000000000000000000000000000000-_".parse().unwrap(),
             info: UnkeyedValidPathInfo {
                 deriver: Some("00000000000000000000000000000000-_.drv".parse().unwrap()),
@@ -668,47 +669,47 @@ async fn query_missing(
         }, true, true, test_data::text_file(),
         Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("AddToStoreNar: remote error: AddToStoreNar: bad input path".into())
     )]
-async fn add_to_store_nar(
-    #[values(&NIX_2_3, &NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
-    #[case] info: ValidPathInfo,
-    #[case] repair: bool,
-    #[case] dont_check_sigs: bool,
-    #[case] events: Vec<NAREvent>,
-    #[case] response: DaemonResult<()>,
-    #[case] expected: Result<(), String>,
-) {
-    let mut buf = BytesMut::new();
-    for event in events.iter() {
-        let encoded = event.encoded_size();
-        buf.reserve(encoded);
-        let mut temp = buf.split_off(buf.len());
-        event.encode_into(&mut temp);
-        buf.unsplit(temp);
+    async fn add_to_store_nar(
+        #[values(&NIX_2_3, &NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
+        #[case] info: ValidPathInfo,
+        #[case] repair: bool,
+        #[case] dont_check_sigs: bool,
+        #[case] events: Vec<NAREvent>,
+        #[case] response: DaemonResult<()>,
+        #[case] expected: Result<(), String>,
+    ) {
+        let mut buf = BytesMut::new();
+        for event in events.iter() {
+            let encoded = event.encoded_size();
+            buf.reserve(encoded);
+            let mut temp = buf.split_off(buf.len());
+            event.encode_into(&mut temp);
+            buf.unsplit(temp);
+        }
+        let content = buf.freeze();
+
+        let mut mock = MockStore::builder();
+        mock.add_to_store_nar(&info, repair, dont_check_sigs, content.clone(), response)
+            .build();
+        run_store_test(nix, mock, |mut client| async move {
+            assert_eq!(
+                expected,
+                client
+                    .add_to_store_nar(&info, Cursor::new(content), repair, dont_check_sigs)
+                    .await
+                    .map_err(|err| err.to_string())
+            );
+            Ok(client) as DaemonResult<_>
+        })
+        .await
+        .unwrap();
     }
-    let content = buf.freeze();
 
-    let mut mock = MockStore::builder();
-    mock.add_to_store_nar(&info, repair, dont_check_sigs, content.clone(), response)
-        .build();
-    run_store_test(nix, mock, |mut client| async move {
-        assert_eq!(
-            expected,
-            client
-                .add_to_store_nar(&info, Cursor::new(content), repair, dont_check_sigs)
-                .await
-                .map_err(|err| err.to_string())
-        );
-        Ok(client) as DaemonResult<_>
-    })
-    .await
-    .unwrap();
-}
-
-// AddMultipleToStore
-#[traced_test]
-#[tokio::test]
-#[rstest]
-#[case(
+    // AddMultipleToStore
+    #[traced_test]
+    #[tokio::test]
+    #[rstest]
+    #[case(
         true,
         true,
         vec![
@@ -748,7 +749,7 @@ async fn add_to_store_nar(
         Ok(()),
         Ok(())
     )]
-#[case(
+    #[case(
         true,
         true,
         vec![
@@ -787,140 +788,146 @@ async fn add_to_store_nar(
         ],
         Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("AddMultipleToStore: remote error: AddMultipleToStore: bad input path".into())
     )]
-async fn add_multiple_to_store(
-    #[values(&NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
-    #[case] repair: bool,
-    #[case] dont_check_sigs: bool,
-    #[case] infos: Vec<(ValidPathInfo, Vec<NAREvent>)>,
-    #[case] response: DaemonResult<()>,
-    #[case] expected: Result<(), String>,
-) {
-    let infos_content: Vec<_> = infos
-        .iter()
-        .map(|(info, events)| {
-            let mut buf = BytesMut::new();
-            for event in events.iter() {
-                let encoded = event.encoded_size();
-                buf.reserve(encoded);
-                let mut temp = buf.split_off(buf.len());
-                event.encode_into(&mut temp);
-                buf.unsplit(temp);
-            }
-            (info.clone(), buf.freeze())
+    async fn add_multiple_to_store(
+        #[values(&NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
+        #[case] repair: bool,
+        #[case] dont_check_sigs: bool,
+        #[case] infos: Vec<(ValidPathInfo, Vec<NAREvent>)>,
+        #[case] response: DaemonResult<()>,
+        #[case] expected: Result<(), String>,
+    ) {
+        let infos_content: Vec<_> = infos
+            .iter()
+            .map(|(info, events)| {
+                let mut buf = BytesMut::new();
+                for event in events.iter() {
+                    let encoded = event.encoded_size();
+                    buf.reserve(encoded);
+                    let mut temp = buf.split_off(buf.len());
+                    event.encode_into(&mut temp);
+                    buf.unsplit(temp);
+                }
+                (info.clone(), buf.freeze())
+            })
+            .collect();
+        let infos_stream = iter(infos_content.clone().into_iter().map(|(info, content)| {
+            Ok(AddToStoreItem {
+                info: info.clone(),
+                reader: Cursor::new(content.clone()),
+            })
+        }));
+
+        let mut mock = MockStore::builder();
+        mock.add_multiple_to_store(repair, dont_check_sigs, infos_content, response)
+            .build();
+        run_store_test(nix, mock, |mut client| async move {
+            assert_eq!(
+                expected,
+                client
+                    .add_multiple_to_store(repair, dont_check_sigs, infos_stream)
+                    .await
+                    .map_err(|err| err.to_string())
+            );
+            Ok(client) as DaemonResult<_>
         })
-        .collect();
-    let infos_stream = iter(infos_content.clone().into_iter().map(|(info, content)| {
-        Ok(AddToStoreItem {
-            info: info.clone(),
-            reader: Cursor::new(content.clone()),
-        })
-    }));
-
-    let mut mock = MockStore::builder();
-    mock.add_multiple_to_store(repair, dont_check_sigs, infos_content, response)
-        .build();
-    run_store_test(nix, mock, |mut client| async move {
-        assert_eq!(
-            expected,
-            client
-                .add_multiple_to_store(repair, dont_check_sigs, infos_stream)
-                .await
-                .map_err(|err| err.to_string())
-        );
-        Ok(client) as DaemonResult<_>
-    })
-    .await
-    .unwrap();
-}
-
-// TODO: proptest handshake
-const ALL_NIX: &[&dyn NixImpl] = &[&NIX_2_3, &NIX_2_24, &LIX_2_91];
-fn arb_nix() -> impl Strategy<Value = &'static dyn NixImpl> {
-    any::<proptest::sample::Index>().prop_map(|idx| *idx.get(ALL_NIX))
-}
-
-/*
-proptest! {
-    #[test]
-    fn proptest_set_options(
-        nix in arb_nix(),
-        options in any::<ClientOptions>(),
-    )
-    {
-        let now = Instant::now();
-        let r = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        r.block_on(async {
-            let mut mock = MockStore::builder();
-            mock.set_options(&options, Ok(())).build();
-            run_store_test(nix, mock, |mut client| async move {
-                let res = client.set_options(&options).result().await;
-                prop_assert!(res.is_ok(), "invalid result {:?}", res);
-                Ok(client)
-            }).await?;
-            Ok(()) as Result<_, TestCaseError>
-        })?;
-        eprintln!("Completed test {}", now.elapsed().as_secs_f64());
-    }
-}
-*/
-proptest! {
-    #[test]
-    fn proptest_is_valid_path(
-        nix in arb_nix(),
-        path in any::<StorePath>(),
-        result in any::<bool>(),
-    )
-    {
-        let now = Instant::now();
-        let r = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        r.block_on(async {
-            let mut mock = prepare_mock(nix);
-            mock.is_valid_path(&path, Ok(result)).build();
-            run_store_test(nix, mock, |mut client| async move {
-                let res = client.is_valid_path(&path).await;
-                prop_assert_eq!(res.unwrap(), result);
-                Ok(client)
-            }).await?;
-            Ok(()) as Result<_, TestCaseError>
-        })?;
-        eprintln!("Completed test {}", now.elapsed().as_secs_f64());
+        .await
+        .unwrap();
     }
 }
 
-proptest! {
-    #[test]
-    fn proptest_query_valid_paths(
-        nix in arb_nix(),
-        paths in any::<StorePathSet>(),
-        result in any::<StorePathSet>(),
-    )
-    {
-        let now = Instant::now();
-        let r = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        r.block_on(async {
-            let mut mock = prepare_mock(nix);
-            mock.query_valid_paths(&paths, false, Ok(result.clone())).build();
-            run_store_test(nix, mock, |mut client| async move {
-                let res = client.query_valid_paths(&paths, false).await;
-                prop_assert_eq!(res.unwrap(), result);
-                Ok(client)
-            }).await?;
-            Ok(()) as Result<_, TestCaseError>
-        })?;
-        eprintln!("Completed test {}", now.elapsed().as_secs_f64());
-    }
-}
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
 
-// TODO: proptest query_valid_paths
-// TODO: proptest query_path_info
-// TODO: proptest nar_from_path
-// TODO: proptest all messages
+    // TODO: proptest handshake
+    const ALL_NIX: &[&dyn NixImpl] = &[&NIX_2_3, &NIX_2_24, &LIX_2_91];
+    fn arb_nix() -> impl Strategy<Value = &'static dyn NixImpl> {
+        any::<proptest::sample::Index>().prop_map(|idx| *idx.get(ALL_NIX))
+    }
+
+    /*
+    proptest! {
+        #[test]
+        fn proptest_set_options(
+            nix in arb_nix(),
+            options in any::<ClientOptions>(),
+        )
+        {
+            let now = Instant::now();
+            let r = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            r.block_on(async {
+                let mut mock = MockStore::builder();
+                mock.set_options(&options, Ok(())).build();
+                run_store_test(nix, mock, |mut client| async move {
+                    let res = client.set_options(&options).result().await;
+                    prop_assert!(res.is_ok(), "invalid result {:?}", res);
+                    Ok(client)
+                }).await?;
+                Ok(()) as Result<_, TestCaseError>
+            })?;
+            eprintln!("Completed test {}", now.elapsed().as_secs_f64());
+        }
+    }
+    */
+    proptest! {
+        #[test]
+        fn proptest_is_valid_path(
+            nix in arb_nix(),
+            path in any::<StorePath>(),
+            result in any::<bool>(),
+        )
+        {
+            let now = Instant::now();
+            let r = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            r.block_on(async {
+                let mut mock = prepare_mock(nix);
+                mock.is_valid_path(&path, Ok(result)).build();
+                run_store_test(nix, mock, |mut client| async move {
+                    let res = client.is_valid_path(&path).await;
+                    prop_assert_eq!(res.unwrap(), result);
+                    Ok(client)
+                }).await?;
+                Ok(()) as Result<_, TestCaseError>
+            })?;
+            eprintln!("Completed test {}", now.elapsed().as_secs_f64());
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn proptest_query_valid_paths(
+            nix in arb_nix(),
+            paths in any::<StorePathSet>(),
+            result in any::<StorePathSet>(),
+        )
+        {
+            let now = Instant::now();
+            let r = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            r.block_on(async {
+                let mut mock = prepare_mock(nix);
+                mock.query_valid_paths(&paths, false, Ok(result.clone())).build();
+                run_store_test(nix, mock, |mut client| async move {
+                    let res = client.query_valid_paths(&paths, false).await;
+                    prop_assert_eq!(res.unwrap(), result);
+                    Ok(client)
+                }).await?;
+                Ok(()) as Result<_, TestCaseError>
+            })?;
+            eprintln!("Completed test {}", now.elapsed().as_secs_f64());
+        }
+    }
+
+    // TODO: proptest query_valid_paths
+    // TODO: proptest query_path_info
+    // TODO: proptest nar_from_path
+    // TODO: proptest all messages
+}

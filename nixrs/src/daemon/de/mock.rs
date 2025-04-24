@@ -199,7 +199,7 @@ impl Drop for Mock {
 }
 
 #[cfg(test)]
-mod test {
+mod unittests {
     use bytes::Bytes;
     use hex_literal::hex;
 

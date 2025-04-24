@@ -92,10 +92,9 @@ pub fn decode_mut(input: &[u8], output: &mut [u8]) -> Result<(), DecodePartial> 
 }
 
 #[cfg(test)]
-mod test {
+mod unittests {
     use data_encoding::{BitOrder, Specification};
     use hex_literal::hex;
-    use proptest::{prop_assert_eq, proptest};
     use rstest::rstest;
 
     use super::*;
@@ -260,6 +259,13 @@ mod test {
         let mut output = vec![0u8; decode_len(data.len())];
         assert_eq!(decode_mut(data.as_bytes(), &mut output), expected);
     }
+}
+
+#[cfg(test)]
+mod proptests {
+    use proptest::{prop_assert_eq, proptest};
+
+    use super::*;
 
     proptest! {
         #[test]

@@ -493,14 +493,9 @@ mod proptest {
 }
 
 #[cfg(test)]
-mod test {
+mod unittests {
     use hex_literal::hex;
-    use proptest::prelude::any;
-    use proptest::prelude::TestCaseError;
-    use proptest::proptest;
 
-    use crate::daemon::ser::mock::proptest::arb_extra_write;
-    use crate::daemon::ser::mock::Operation;
     use crate::daemon::ser::mock::OperationType;
     use crate::daemon::ser::Error as _;
     use crate::daemon::ser::NixWrite;
@@ -647,6 +642,15 @@ mod test {
     fn operations_left() {
         let _ = Builder::new().write_number(10).build();
     }
+}
+
+#[cfg(test)]
+mod proptests {
+    use proptest::prelude::{any, TestCaseError};
+    use proptest::proptest;
+
+    use crate::daemon::ser::mock::proptest::arb_extra_write;
+    use crate::daemon::ser::mock::{Builder, Operation};
 
     #[test]
     fn proptest_mock() {

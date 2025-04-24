@@ -43,7 +43,7 @@ impl NixDeserialize for String {
 }
 
 #[cfg(test)]
-mod test {
+mod unittests {
     use std::io;
 
     use hex_literal::hex;

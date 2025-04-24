@@ -880,7 +880,7 @@ pub mod proptests {
 }
 
 #[cfg(test)]
-mod test {
+mod unittests {
     use data_encoding::DecodeError;
     use hex_literal::hex;
     use once_cell::sync::Lazy;

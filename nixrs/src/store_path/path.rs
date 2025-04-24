@@ -502,12 +502,10 @@ pub mod proptest {
 }
 
 #[cfg(test)]
-mod test {
+mod unittests {
     use std::cmp::Ordering;
     use std::collections::BTreeSet;
 
-    use ::proptest::prelude::*;
-    use ::proptest::proptest;
     use hex_literal::hex;
     use rstest::rstest;
 
@@ -838,6 +836,13 @@ mod test {
         let s = store.display(&base_path).to_string();
         assert_eq!(store_path, s);
     }
+}
+
+#[cfg(test)]
+mod proptests {
+    use proptest::prelude::*;
+
+    use crate::store_path::{StoreDir, StorePath, StorePathName};
 
     proptest! {
         #[test]

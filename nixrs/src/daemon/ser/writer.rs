@@ -414,7 +414,7 @@ where
 }
 
 #[cfg(test)]
-mod test {
+mod unittests {
     use std::{io::Cursor, time::Duration};
 
     use hex_literal::hex;

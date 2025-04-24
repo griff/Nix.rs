@@ -97,7 +97,7 @@ impl fmt::Display for ProtocolVersion {
 }
 
 #[cfg(all(test, feature = "daemon"))]
-pub(crate) mod tests {
+pub(crate) mod unittests {
     use std::future::{ready, Future};
     use std::io::Cursor;
 
@@ -824,7 +824,7 @@ mod proptests {
     use tracing_test::traced_test;
 
     use super::mock::MockStore;
-    use super::tests::run_store_test;
+    use super::unittests::run_store_test;
     use super::DaemonResult;
     use super::{ClientOptions, UnkeyedValidPathInfo};
     use crate::archive::NAREvent;

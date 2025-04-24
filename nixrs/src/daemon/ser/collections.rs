@@ -82,7 +82,7 @@ where
 }
 
 #[cfg(test)]
-mod test {
+mod unittests {
     use std::collections::BTreeMap;
     use std::fmt;
 

@@ -366,7 +366,7 @@ pub mod proptests {
 }
 
 #[cfg(test)]
-mod tests {
+mod unittests {
     use super::*;
     use pretty_assertions::assert_eq;
 

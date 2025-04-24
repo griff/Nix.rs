@@ -171,8 +171,9 @@ pub mod proptest {
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::{hash, store_path::{ContentAddress, StorePath}};
+mod unittests {
+    use crate::hash;
+    use crate::store_path::{ContentAddress, StorePath};
 
     use super::StoreDir;
     use pretty_assertions::assert_eq;
@@ -194,7 +195,6 @@ mod tests {
         let s: &Path = store_dir.as_ref();
         assert_eq!(s, Path::new("/nix/store"));
     }
-
 
     #[rstest]
     #[case::text(
