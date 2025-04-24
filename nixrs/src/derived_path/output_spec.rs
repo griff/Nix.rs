@@ -60,3 +60,46 @@ impl FromStr for OutputSpec {
         }
     }
 }
+
+#[cfg(test)]
+mod unittests {
+    use rstest::rstest;
+
+    use crate::{derived_path::OutputSpec, store_path::StorePathNameError};
+
+    #[macro_export]
+    macro_rules! set {
+        () => { BTreeSet::new() };
+        ($($x:expr),+ $(,)?) => {{
+            let mut ret = std::collections::BTreeSet::new();
+            $(
+                ret.insert($x.parse().unwrap());
+            )+
+            ret
+        }};
+    }
+
+    #[rstest]
+    #[case("*", Ok(OutputSpec::All))]
+    #[case("out", Ok(OutputSpec::Named(set!("out"))))]
+    #[case("bin,dev,out", Ok(OutputSpec::Named(set!("bin", "dev", "out"))))]
+    #[case("bin{n", Err(StorePathNameError::Symbol(3, b'{')))]
+    #[case("out,bin{n", Err(StorePathNameError::Symbol(3, b'{')))]
+    #[case(" bin{n", Err(StorePathNameError::Symbol(0, b' ')))]
+    #[case("out,", Err(StorePathNameError::NameLength))]
+    #[case("", Err(StorePathNameError::NameLength))]
+    #[case(",out", Err(StorePathNameError::NameLength))]
+    #[case::too_long("test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Err(StorePathNameError::NameLength))]
+    fn parse(#[case] value: &str, #[case] expected: Result<OutputSpec, StorePathNameError>) {
+        let actual : Result<OutputSpec, _> = value.parse();
+        assert_eq!(actual, expected);
+    }
+
+    #[rstest]
+    #[case(OutputSpec::All, "*")]
+    #[case(OutputSpec::Named(set!("out")), "out")]
+    #[case(OutputSpec::Named(set!("bin", "dev", "out")), "bin,dev,out")]
+    fn display(#[case] value: OutputSpec, #[case] expected: &str) {
+        assert_eq!(value.to_string(), expected);
+    }
+}
