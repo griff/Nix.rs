@@ -8,6 +8,7 @@ use std::str::FromStr;
 
 #[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
+use serde_with::{DeserializeFromStr, SerializeDisplay};
 use thiserror::Error;
 
 use crate::base32;
@@ -17,7 +18,7 @@ use super::FromStoreDirStr;
 use super::StoreDir;
 use super::StoreDirDisplay;
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, SerializeDisplay, DeserializeFromStr)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(from_store_dir_str, store_dir_display))]
 pub struct StorePath {

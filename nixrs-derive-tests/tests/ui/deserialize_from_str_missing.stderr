@@ -8,9 +8,9 @@ error[E0277]: the trait bound `Test: FromStr` is not satisfied
             CString
             ContentAddress
             ContentAddressMethodAlgorithm
+            DrvOutput
             IpAddr
             Ipv4Addr
             Ipv6Addr
             NarHash
-            NonZero<i128>
           and $N others

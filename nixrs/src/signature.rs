@@ -9,6 +9,7 @@ use nixrs_derive::{NixDeserialize, NixSerialize};
 use ring::error::{KeyRejected, Unspecified};
 use ring::rand;
 use ring::signature::{self, Ed25519KeyPair, KeyPair, UnparsedPublicKey};
+use serde_with::{DeserializeFromStr, SerializeDisplay};
 use thiserror::Error;
 use tracing::error;
 
@@ -35,7 +36,9 @@ pub enum ParseSignatureError {
 
 pub type SignatureSet = BTreeSet<Signature>;
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, DeserializeFromStr, SerializeDisplay,
+)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
 pub struct Signature(Arc<String>, [u8; SIGNATURE_BYTES]);

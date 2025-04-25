@@ -19,6 +19,7 @@ use crate::daemon::{
 use crate::derivation::BasicDerivation;
 use crate::derived_path::DerivedPath;
 use crate::hash;
+use crate::realisation::{DrvOutput, Realisation};
 use crate::signature::Signature;
 use crate::store_path::{
     ContentAddress, ContentAddressMethodAlgorithm, StorePath, StorePathHash, StorePathSet,
@@ -77,14 +78,6 @@ impl fmt::Display for BaseStorePath {
         self.0.fmt(f)
     }
 }
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-pub struct DrvOutput(String);
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-pub struct Realisation(String);
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,

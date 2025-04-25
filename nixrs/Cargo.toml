@@ -42,6 +42,9 @@ proptest = { workspace = true, optional = true }
 proptest-derive = { workspace = true, optional = true }
 ring = { workspace = true }
 # smallvec = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
 thiserror = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
