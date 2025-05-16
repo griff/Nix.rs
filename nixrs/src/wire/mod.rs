@@ -1,3 +1,7 @@
+mod padded_reader;
+#[cfg(feature = "archive")]
+pub use padded_reader::PaddedReader;
+
 pub const ZEROS: [u8; 8] = [0u8; 8];
 
 pub const fn calc_aligned(len: u64) -> u64 {

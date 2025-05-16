@@ -23,7 +23,10 @@ pub mod signature;
 pub mod store_path;
 #[cfg(feature = "internal")]
 pub mod wire;
-#[cfg(not(feature = "internal"))]
+#[cfg(all(
+    not(feature = "internal"),
+    any(feature = "archive", feature = "daemon", feature = "daemon-serde")
+))]
 #[allow(dead_code)]
 pub(crate) mod wire;
 

@@ -10,11 +10,11 @@ edition = "2021"
 license = "EUPL-1.2 OR MIT"
 
 [features]
-test = ["proptest", "dep:proptest-derive", "nixrs-archive?/test"]
-archive = ["dep:nixrs-archive"]
+test = ["proptest", "dep:proptest-derive"]
+archive = ["dep:walkdir"]
 daemon = ["nixrs-derive", "archive", "tokio/rt"]
 daemon-serde = []
-nixrs-derive = ["daemon-serde", "dep:nixrs-derive", "dep:libc", "dep:num_enum", "dep:bstr", "dep:futures"]
+nixrs-derive = ["daemon-serde", "dep:nixrs-derive", "dep:libc", "dep:num_enum", "dep:bstr"]
 internal = []
 full = ["test", "daemon"]
 
@@ -32,7 +32,7 @@ bstr = { workspace = true, optional = true }
 bytes = { workspace = true }
 data-encoding = { workspace = true }
 derive_more = { workspace = true }
-futures = { workspace = true, optional = true }
+futures = { workspace = true }
 libc = { workspace = true, optional = true }
 md5 = { workspace = true, optional = true }
 num_enum = { workspace = true, optional = true }
@@ -46,9 +46,10 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_with = { workspace = true }
 thiserror = { workspace = true }
-tokio-util = { workspace = true }
+tokio-util = { workspace = true, features = ["io-util"] }
 tracing = { workspace = true }
 tracing-futures = { workspace = true }
+walkdir = { workspace = true, optional = true }
 
 [dependencies.tokio]
 workspace = true
@@ -57,11 +58,6 @@ features = ["fs", "io-util", "macros", "net"]
 [dependencies.nixrs-derive]
 version = "0.1"
 path = "../nixrs-derive"
-optional = true
-
-[dependencies.nixrs-archive]
-version = "0.1"
-path = "../nixrs-archive"
 optional = true
 
 [dev-dependencies]
@@ -75,11 +71,6 @@ rstest = { workspace = true }
 tempfile = { workspace = true }
 tracing-test = { workspace = true, features = ["no-env-filter"] }
 tokio-test = { workspace = true }
-
-[dev-dependencies.nixrs-archive]
-version = "0.1"
-path = "../nixrs-archive"
-features = ["test"]
 
 [dev-dependencies.tokio]
 workspace = true

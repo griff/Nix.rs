@@ -6,10 +6,10 @@ use pin_project_lite::pin_project;
 use tokio::io::{copy_buf, AsyncBufRead, AsyncRead, AsyncWrite};
 use tracing::{debug, debug_span, instrument, trace, Instrument};
 
-use crate::archive::NarReader;
+use crate::archive::NarBytesReader;
 use crate::daemon::wire::types2::ValidPathInfo;
 use crate::daemon::DaemonResult;
-use crate::io::{AsyncBufReadCompat, AsyncBytesRead, TakenReader};
+use crate::io::{AsyncBufReadCompat, AsyncBytesRead, Lending};
 
 use crate::daemon::de::NixRead;
 use crate::daemon::ser::NixWrite;
@@ -102,21 +102,22 @@ where
 {
     let count = source.read_number().await?;
     trace!(count, "Reading {} items to add to store", count);
+    let mut source = Lending::new(source);
     Ok(SizedStream {
         count: count as usize,
         stream: try_stream! {
             for idx in 0..count {
-                let info : ValidPathInfo = source.read_value().await?;
+                let info : ValidPathInfo = source.get_reader().await?.read_value().await?;
                 trace!(idx, count, %info.path, %info.info.nar_hash, %info.info.nar_size, "Reading {}", info.path);
-                let (stealer, reader) = TakenReader::new(source);
+                let reader = source.lend(|r| {
+                    NarBytesReader::new(r)
+                });
                 let reader = AsyncBufReadCompat::new(reader);
-                let reader = NarReader::new(reader);
                 let item = AddToStoreItem {
                     info, reader,
                 };
                 yield item;
                 trace!(idx, count, "Looting reader");
-                source = stealer.loot();
             }
             trace!(count, "Stream done");
         },
@@ -130,7 +131,6 @@ mod unittests {
     use bytes::Bytes;
     use futures::stream::iter;
     use futures::{TryFutureExt as _, TryStreamExt as _};
-    use nixrs_archive::{test_data, write_nar, NAREvent};
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -139,6 +139,7 @@ mod unittests {
     use tracing_test::traced_test;
 
     use super::*;
+    use crate::archive::{test_data, write_nar};
     use crate::daemon::de::NixReader;
     use crate::daemon::ser::NixWriter;
     use crate::daemon::{DaemonResult, UnkeyedValidPathInfo};
@@ -174,7 +175,7 @@ mod unittests {
     }
 
     pub fn info_stream(
-        infos: Vec<(ValidPathInfo, Vec<NAREvent>)>,
+        infos: Vec<(ValidPathInfo, test_data::TestNarEvents)>,
     ) -> impl Stream<Item = Result<AddToStoreItem<impl AsyncBufRead>, DaemonError>> {
         let infos_content: Vec<_> = infos
             .iter()
@@ -247,10 +248,11 @@ mod unittests {
             ),
         ],
     )]
-    async fn test_read_written(#[case] infos: Vec<(ValidPathInfo, Vec<NAREvent>)>) {
+    async fn test_read_written(#[case] infos: Vec<(ValidPathInfo, test_data::TestNarEvents)>) {
         use futures::FutureExt as _;
-        use nixrs_archive::read_nar;
         use tokio::io::simplex;
+
+        use crate::{archive::read_nar, io::BytesReader};
 
         let stream = info_stream(infos.clone());
         let (reader, writer) = simplex(DEFAULT_BUF_SIZE);
@@ -266,9 +268,12 @@ mod unittests {
             let stream = parse_add_multiple_to_store(&mut reader).and_then(|stream| {
                 stream
                     .and_then(|item| async move {
-                        Ok((item.info, read_nar(item.reader).boxed().await?))
+                        Ok((
+                            item.info,
+                            read_nar(BytesReader::new(item.reader)).boxed().await?,
+                        ))
                     })
-                    .try_collect::<Vec<(ValidPathInfo, Vec<NAREvent>)>>()
+                    .try_collect::<Vec<(ValidPathInfo, test_data::TestNarEvents)>>()
             });
             let (size, actual_infos) = try_join!(w, stream).unwrap();
             assert_eq!(infos, actual_infos);

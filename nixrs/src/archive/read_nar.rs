@@ -90,11 +90,13 @@ use std::ops::Range;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
+use bytes::Bytes;
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncBufRead, AsyncRead};
 use tracing::{error, trace};
 
 use super::radix_tree::{RLookup, RMatch, RTree};
+use crate::io::{AsyncBytesRead, DrainInto};
 use crate::wire::{calc_aligned, ZEROS};
 
 // https://github.com/rust-lang/rust/issues/131415
@@ -171,27 +173,34 @@ pub const TOK_FILE: &[u8] = token!(b"regular", b"contents");
 pub const TOK_SYM: &[u8] = token!(b"symlink", b"target");
 pub const TOK_DIR: &[u8] = token!(b"directory");
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NodeType {
+    File,
+    ExecutableFile,
+    Symlink,
+}
+
 #[derive(Debug, Clone, Copy)]
-enum InnerState {
+pub(crate) enum InnerState {
     Root(u8),
     SelectNode(RLookup),
-    ReadContentsLen([u8; 8], u8),
-    ReadContents(u64),
+    ReadContentsLen(NodeType, [u8; 8], u8),
+    ReadContents(NodeType, u64, u64),
     FinishNode(u8),
     ReadDir,
     FinishEntry(u8),
     ReadEntries(RLookup),
     FinishReadEntry,
     ReadEntryNameLen([u8; 8], u8),
-    ReadEntryName(u64),
+    ReadEntryName(u64, u64),
     ReadNode(u8),
     Eof,
 }
 
 #[derive(Debug)]
-struct Inner {
-    state: InnerState,
-    level: usize,
+pub(crate) struct Inner<const P: bool> {
+    pub(crate) state: InnerState,
+    pub(crate) level: usize,
 }
 
 macro_rules! read_token {
@@ -211,11 +220,31 @@ macro_rules! read_token {
     };
 }
 
-impl Inner {
-    fn is_eof(&self) -> bool {
+impl<const P: bool> Inner<P> {
+    pub(crate) fn is_eof(&self) -> bool {
         matches!(&self.state, InnerState::Eof)
     }
-    fn drive(&mut self, mut buf: &[u8]) -> io::Result<usize> {
+    pub(crate) fn bump_next(&mut self) {
+        assert!(!P, "Can only bump when not parsing content");
+        self.bump_state();
+    }
+    fn bump_state(&mut self) {
+        match self.state {
+            InnerState::ReadContents(_, _, _) => self.state = InnerState::FinishNode(0),
+            InnerState::ReadEntryName(_, _) => self.state = InnerState::ReadNode(0),
+            InnerState::ReadDir => self.state = InnerState::ReadEntries(Default::default()),
+            InnerState::FinishReadEntry => {
+                if self.level > 1 {
+                    self.level -= 1;
+                    self.state = InnerState::FinishEntry(0);
+                } else {
+                    self.state = InnerState::Eof;
+                }
+            }
+            _ => panic!("Invalid NAR state for bump"),
+        }
+    }
+    pub(crate) fn drive(&mut self, mut buf: &[u8]) -> io::Result<usize> {
         let mut parsed = 0;
         loop {
             match self.state {
@@ -239,9 +268,18 @@ impl Inner {
                     const NODE_SELECT: RTree<7, 6, 2, InnerState> = {
                         let mut tree = RTree::new();
                         tree.insert(TOK_DIR, InnerState::ReadDir);
-                        tree.insert(TOK_SYM, InnerState::ReadContentsLen(ZEROS, 0));
-                        tree.insert(TOK_FILE, InnerState::ReadContentsLen(ZEROS, 0));
-                        tree.insert(TOK_FILE_E, InnerState::ReadContentsLen(ZEROS, 0));
+                        tree.insert(
+                            TOK_SYM,
+                            InnerState::ReadContentsLen(NodeType::Symlink, ZEROS, 0),
+                        );
+                        tree.insert(
+                            TOK_FILE,
+                            InnerState::ReadContentsLen(NodeType::File, ZEROS, 0),
+                        );
+                        tree.insert(
+                            TOK_FILE_E,
+                            InnerState::ReadContentsLen(NodeType::ExecutableFile, ZEROS, 0),
+                        );
                         tree
                     };
 
@@ -268,7 +306,7 @@ impl Inner {
                 /*
                 u64 => ReadContents
                 */
-                InnerState::ReadContentsLen(mut value, read) => {
+                InnerState::ReadContentsLen(node_type, mut value, read) => {
                     let rem = min(buf.len(), 8 - read as usize);
                     let new_read = read + rem as u8;
                     value[read as usize..new_read as usize].copy_from_slice(&buf[..rem]);
@@ -283,7 +321,7 @@ impl Inner {
                             buf_len = buf.len(),
                             "InnerState::ReadContentsLen break"
                         );
-                        self.state = InnerState::ReadContentsLen(value, new_read);
+                        self.state = InnerState::ReadContentsLen(node_type, value, new_read);
                         break;
                     } else {
                         trace!(
@@ -297,23 +335,27 @@ impl Inner {
                         );
                         buf = &buf[rem..];
                         let len = u64::from_le_bytes(value);
-                        self.state = InnerState::ReadContents(calc_aligned(len));
+                        self.state = InnerState::ReadContents(node_type, len, calc_aligned(len));
                     }
                 }
 
                 /*
                 bytes => FinishNode
                 */
-                InnerState::ReadContents(rem) => {
+                InnerState::ReadContents(node_type, size, rem) => {
                     trace!(self.level, rem, parsed, "InnerState::ReadContents");
+                    if !P {
+                        break;
+                    }
                     if (buf.len() as u64) < rem {
                         parsed += buf.len();
-                        self.state = InnerState::ReadContents(rem - buf.len() as u64);
+                        self.state =
+                            InnerState::ReadContents(node_type, size, rem - buf.len() as u64);
                         break;
                     } else {
                         parsed += rem as usize;
                         buf = &buf[rem as usize..];
-                        self.state = InnerState::FinishNode(0);
+                        self.bump_state();
                     }
                 }
 
@@ -337,7 +379,10 @@ impl Inner {
                 InnerState::ReadDir => {
                     trace!(self.level, parsed, "InnerState::ReadDir");
                     self.level += 1;
-                    self.state = InnerState::ReadEntries(Default::default());
+                    if !P {
+                        break;
+                    }
+                    self.bump_state();
                 }
 
                 /*
@@ -395,12 +440,10 @@ impl Inner {
                 */
                 InnerState::FinishReadEntry => {
                     trace!(self.level, parsed, "InnerState::FinishReadEntry");
-                    if self.level > 1 {
-                        self.level -= 1;
-                        self.state = InnerState::FinishEntry(0);
-                    } else {
-                        self.state = InnerState::Eof;
+                    if !P {
+                        break;
                     }
+                    self.bump_state();
                 }
 
                 /*
@@ -418,23 +461,26 @@ impl Inner {
                     } else {
                         buf = &buf[rem..];
                         let len = u64::from_le_bytes(value);
-                        self.state = InnerState::ReadEntryName(calc_aligned(len));
+                        self.state = InnerState::ReadEntryName(len, calc_aligned(len));
                     }
                 }
 
                 /*
                 bytes => ReadNode
                 */
-                InnerState::ReadEntryName(rem) => {
-                    trace!(self.level, rem, parsed, "InnerState::ReadEntryName");
+                InnerState::ReadEntryName(len, rem) => {
+                    trace!(self.level, len, rem, parsed, "InnerState::ReadEntryName");
+                    if !P {
+                        break;
+                    }
                     if (buf.len() as u64) < rem {
                         parsed += buf.len();
-                        self.state = InnerState::ReadEntryName(rem - buf.len() as u64);
+                        self.state = InnerState::ReadEntryName(len, rem - buf.len() as u64);
                         break;
                     } else {
                         parsed += rem as usize;
                         buf = &buf[rem as usize..];
-                        self.state = InnerState::ReadNode(0);
+                        self.bump_state();
                     }
                 }
 
@@ -457,11 +503,12 @@ impl Inner {
 }
 
 pin_project! {
+    #[derive(Debug)]
     pub struct NarReader<R> {
         #[pin]
         reader: R,
         parsed: usize,
-        state: Inner,
+        state: Inner<true>,
     }
 }
 
@@ -566,6 +613,188 @@ where
     }
 }
 
+pin_project! {
+    #[derive(Debug)]
+    pub struct NarBytesReader<R> {
+        #[pin]
+        reader: R,
+        parsed: usize,
+        state: Inner<true>,
+    }
+}
+
+impl<R> NarBytesReader<R>
+where
+    R: AsyncBytesRead,
+{
+    pub fn new(reader: R) -> NarBytesReader<R> {
+        Self {
+            reader,
+            parsed: 0,
+            state: Inner {
+                level: 0,
+                state: InnerState::Root(0),
+            },
+        }
+    }
+}
+
+impl<R> AsyncBytesRead for NarBytesReader<R>
+where
+    R: AsyncBytesRead,
+{
+    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Bytes>> {
+        let this = self.project();
+        trace!(parsed = *this.parsed, "poll_fill_buf reader");
+        if *this.parsed == 0 && this.state.is_eof() {
+            return Poll::Ready(Ok(Bytes::new()));
+        }
+        let mut buf = match ready!(this.reader.poll_fill_buf(cx)) {
+            Ok(buf) => buf,
+            Err(err) => {
+                error!(parsed = *this.parsed, ?err, "poll_fill_buf reader Error");
+                return Err(err).into();
+            }
+        };
+        trace!(
+            parsed = *this.parsed,
+            buf.len = buf.len(),
+            "poll_fill_buf len"
+        );
+        if buf.len() > *this.parsed {
+            *this.parsed += this.state.drive(&buf[*this.parsed..])?;
+        }
+        if buf.is_empty() && !this.state.is_eof() {
+            error!(
+                parsed = *this.parsed,
+                len = buf[..*this.parsed].len(),
+                "poll_fill_buf Error"
+            );
+            Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "not a complete NAR",
+            )))
+        } else {
+            trace!(
+                parsed = *this.parsed,
+                len = buf[..*this.parsed].len(),
+                "poll_fill_buf"
+            );
+            buf.truncate(*this.parsed);
+            Poll::Ready(Ok(buf))
+        }
+    }
+
+    fn poll_force_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Bytes>> {
+        let this = self.project();
+        trace!(parsed = *this.parsed, "poll_force_fill_buf reader");
+        if *this.parsed == 0 && this.state.is_eof() {
+            return Poll::Ready(Ok(Bytes::new()));
+        }
+        let mut buf = match ready!(this.reader.poll_force_fill_buf(cx)) {
+            Ok(buf) => buf,
+            Err(err) => {
+                error!(
+                    parsed = *this.parsed,
+                    ?err,
+                    "poll_force_fill_buf reader Error"
+                );
+                return Err(err).into();
+            }
+        };
+        trace!(
+            parsed = *this.parsed,
+            buf.len = buf.len(),
+            "poll_force_fill_buf len"
+        );
+        if buf.len() > *this.parsed {
+            *this.parsed += this.state.drive(&buf[*this.parsed..])?;
+        }
+        if buf.is_empty() && !this.state.is_eof() {
+            error!(
+                parsed = *this.parsed,
+                len = buf[..*this.parsed].len(),
+                "poll_force_fill_buf Error"
+            );
+            Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "not a complete NAR",
+            )))
+        } else {
+            trace!(
+                parsed = *this.parsed,
+                len = buf[..*this.parsed].len(),
+                "poll_force_fill_buf"
+            );
+            buf.truncate(*this.parsed);
+            Poll::Ready(Ok(buf))
+        }
+    }
+
+    fn consume(self: Pin<&mut Self>, amt: usize) {
+        let this = self.project();
+        assert!(
+            *this.parsed >= amt,
+            "consuming {} when parsed is {}",
+            amt,
+            *this.parsed
+        );
+        trace!(amt, parsed = *this.parsed, "consuming");
+        this.reader.consume(amt);
+        *this.parsed -= amt;
+    }
+
+    fn prepare(self: Pin<&mut Self>, additional: usize) {
+        self.project().reader.prepare(additional);
+    }
+}
+
+impl<R> AsyncRead for NarBytesReader<R>
+where
+    R: AsyncBytesRead,
+{
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        let parsed = self.parsed;
+        let rem = ready!(self.as_mut().poll_fill_buf(cx))?;
+        trace!(
+            len = rem.len(),
+            buf.remaining = buf.remaining(),
+            parsed,
+            "poll_read"
+        );
+        if !rem.is_empty() {
+            let amt = min(rem.len(), buf.remaining());
+            buf.put_slice(&rem[0..amt]);
+            self.consume(amt);
+        }
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl<R> DrainInto<R> for NarBytesReader<R>
+where
+    R: AsyncBytesRead,
+{
+    fn poll_drain(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        loop {
+            let len = ready!(self.as_mut().poll_fill_buf(cx))?.len();
+            if len == 0 {
+                break;
+            }
+            self.as_mut().consume(len);
+        }
+        Poll::Ready(Ok(()))
+    }
+
+    fn into_inner(self) -> R {
+        self.reader
+    }
+}
+
 #[cfg(test)]
 mod unittests {
     use std::io;
@@ -579,7 +808,7 @@ mod unittests {
     use tracing_test::traced_test;
 
     use crate::archive::test_data::*;
-    use crate::archive::{write_nar, NAREvent};
+    use crate::archive::write_nar;
 
     use super::NarReader;
 
@@ -595,7 +824,7 @@ mod unittests {
     #[traced_test]
     #[tokio::test]
     async fn read_nar(
-        #[case] events: Vec<NAREvent>,
+        #[case] events: TestNarEvents,
         #[values(
             Ok(&b""[..]),
             Ok(&b"more"[..]),
@@ -664,7 +893,6 @@ mod proptests {
     use std::time::{Duration, Instant};
 
     use bytes::{BufMut as _, Bytes, BytesMut};
-    use nixrs_archive::proptest::arb_nar_contents;
     use proptest::prelude::{any, TestCaseError};
     use proptest::proptest;
     use tokio::io::{AsyncReadExt as _, BufReader};
@@ -672,6 +900,7 @@ mod proptests {
     use tracing::{info, trace};
     use tracing_test::traced_test;
 
+    use crate::archive::arbitrary::arb_nar_contents;
     use crate::archive::NarReader;
 
     #[traced_test]
@@ -682,7 +911,7 @@ mod proptests {
             .build()
             .unwrap();
         proptest!(|(
-            (_nar_size, _nar_hash, content) in arb_nar_contents(20, 20, 5),
+            content in arb_nar_contents(20, 20, 5),
             chunk_size in any::<proptest::sample::Index>(),
         )| {
             let now = Instant::now();

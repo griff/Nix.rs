@@ -4647,7 +4647,6 @@ rec {
           {
             name = "futures";
             packageId = "futures";
-            optional = true;
           }
           {
             name = "libc";
@@ -4657,11 +4656,6 @@ rec {
           {
             name = "md5";
             packageId = "md5";
-            optional = true;
-          }
-          {
-            name = "nixrs-archive";
-            packageId = "nixrs-archive";
             optional = true;
           }
           {
@@ -4722,6 +4716,7 @@ rec {
           {
             name = "tokio-util";
             packageId = "tokio-util";
+            features = [ "io-util" ];
           }
           {
             name = "tracing";
@@ -4731,16 +4726,16 @@ rec {
             name = "tracing-futures";
             packageId = "tracing-futures";
           }
+          {
+            name = "walkdir";
+            packageId = "walkdir";
+            optional = true;
+          }
         ];
         devDependencies = [
           {
             name = "hex-literal";
             packageId = "hex-literal";
-          }
-          {
-            name = "nixrs-archive";
-            packageId = "nixrs-archive";
-            features = [ "test" ];
           }
           {
             name = "once_cell";
@@ -4782,14 +4777,14 @@ rec {
           }
         ];
         features = {
-          "archive" = [ "dep:nixrs-archive" ];
+          "archive" = [ "dep:walkdir" ];
           "daemon" = [ "nixrs-derive" "archive" "tokio/rt" ];
           "default" = [ "test" "daemon" ];
           "full" = [ "test" "daemon" ];
           "md5" = [ "dep:md5" ];
-          "nixrs-derive" = [ "daemon-serde" "dep:nixrs-derive" "dep:libc" "dep:num_enum" "dep:bstr" "dep:futures" ];
+          "nixrs-derive" = [ "daemon-serde" "dep:nixrs-derive" "dep:libc" "dep:num_enum" "dep:bstr" ];
           "proptest" = [ "dep:proptest" ];
-          "test" = [ "proptest" "dep:proptest-derive" "nixrs-archive?/test" ];
+          "test" = [ "proptest" "dep:proptest-derive" ];
         };
         resolvedDefaultFeatures = [ "archive" "daemon" "daemon-serde" "default" "full" "internal" "md5" "nixrs-derive" "proptest" "test" "xp-ca-derivations" "xp-dynamic-derivations" "xp-impure-derivations" ];
       };

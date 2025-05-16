@@ -101,9 +101,9 @@ pub(crate) mod unittests {
     use std::future::{ready, Future};
     use std::io::Cursor;
 
-    use bytes::BytesMut;
+    use bytes::Bytes;
     use futures::stream::iter;
-    use futures::{FutureExt as _, TryFutureExt as _, TryStreamExt as _};
+    use futures::{FutureExt as _, TryFutureExt as _};
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use tokio::io::{copy_buf, duplex, split, DuplexStream, ReadHalf, WriteHalf};
@@ -118,13 +118,12 @@ pub(crate) mod unittests {
         BuildMode, BuildResult, BuildStatus, QueryMissingResult, ValidPathInfo,
     };
     use super::{ClientOptions, DaemonResult, DaemonStore, ProtocolVersion, UnkeyedValidPathInfo};
-    use crate::archive::test_data;
-    use crate::archive::NAREvent;
+    use crate::archive::{test_data, write_nar};
     use crate::daemon::server;
     use crate::daemon::{DaemonError, DaemonErrorKind, DaemonString};
     use crate::derivation::{BasicDerivation, DerivationOutput};
     use crate::derived_path::DerivedPath;
-    use crate::hash::{Algorithm, NarHash};
+    use crate::hash::NarHash;
     use crate::store_path::{StoreDir, StorePath, StorePathSet};
 
     pub async fn run_store_test<R, T, F, E>(mock: MockStore<R>, test: T) -> Result<(), E>
@@ -353,30 +352,21 @@ pub(crate) mod unittests {
     #[traced_test]
     #[tokio::test]
     #[rstest]
-    #[case("00000000000000000000000000000000-_", test_data::text_file())]
-    #[case("00000000000000000000000000000000-_", test_data::exec_file())]
-    #[case("00000000000000000000000000000000-_", test_data::empty_file())]
-    #[case("00000000000000000000000000000000-_", test_data::empty_file_in_dir())]
-    #[case("00000000000000000000000000000000-_", test_data::empty_dir())]
-    #[case("00000000000000000000000000000000-_", test_data::empty_dir_in_dir())]
-    #[case("00000000000000000000000000000000-_", test_data::symlink())]
-    #[case("00000000000000000000000000000000-_", test_data::dir_example())]
-    async fn nar_from_path(#[case] store_path: StorePath, #[case] events: Vec<NAREvent>) {
-        let mut buf = BytesMut::new();
-        let mut ctx = crate::hash::Context::new(Algorithm::SHA256);
-        let mut size = 0;
-        for event in events.iter() {
-            let encoded = event.encoded_size();
-            size += encoded as u64;
-            buf.reserve(encoded);
-            let mut temp = buf.split_off(buf.len());
-            event.encode_into(&mut temp);
-            ctx.update(&temp);
-            buf.unsplit(temp);
-        }
-        let hash = ctx.finish();
-        let content = buf.freeze();
-
+    #[case::text_file("00000000000000000000000000000000-_", test_data::text_file())]
+    #[case::exec_file("00000000000000000000000000000000-_", test_data::exec_file())]
+    #[case::empty_file("00000000000000000000000000000000-_", test_data::empty_file())]
+    #[case::empty_file_in_dir("00000000000000000000000000000000-_", test_data::empty_file_in_dir())]
+    #[case::empty_dir("00000000000000000000000000000000-_", test_data::empty_dir())]
+    #[case::empty_dir_in_dir("00000000000000000000000000000000-_", test_data::empty_dir_in_dir())]
+    #[case::symlink("00000000000000000000000000000000-_", test_data::symlink())]
+    #[case::dir_example("00000000000000000000000000000000-_", test_data::dir_example())]
+    async fn nar_from_path(
+        #[case] store_path: StorePath,
+        #[case] events: test_data::TestNarEvents,
+    ) {
+        let content = write_nar(events.iter());
+        let hash = NarHash::digest(&content);
+        let size = content.len();
         let mock = MockStore::builder()
             .nar_from_path(&store_path, Ok(content))
             .build()
@@ -386,12 +376,11 @@ pub(crate) mod unittests {
                 let mut reader = client.nar_from_path(&store_path).await.unwrap();
                 let mut out = Vec::new();
                 copy_buf(&mut reader, &mut out).await?;
-                let nar: Vec<NAREvent> = crate::archive::parse_nar(Cursor::new(&out))
-                    .try_collect()
-                    .await?;
+                let nar: test_data::TestNarEvents =
+                    crate::archive::read_nar(Cursor::new(Bytes::copy_from_slice(&out))).await?;
                 assert_eq!(events, nar);
-                assert_eq!(size, out.len() as u64);
-                assert_eq!(Algorithm::SHA256.digest(&out), hash);
+                assert_eq!(size, out.len());
+                assert_eq!(NarHash::digest(&out), hash);
             }
             Ok(client) as DaemonResult<_>
         })
@@ -647,20 +636,12 @@ pub(crate) mod unittests {
         #[case] info: ValidPathInfo,
         #[case] repair: bool,
         #[case] dont_check_sigs: bool,
-        #[case] events: Vec<NAREvent>,
+        #[case] events: test_data::TestNarEvents,
         #[case] response: DaemonResult<()>,
         #[case] expected: Result<(), String>,
     ) {
         let version = ProtocolVersion::from(version);
-        let mut buf = BytesMut::new();
-        for event in events.iter() {
-            let encoded = event.encoded_size();
-            buf.reserve(encoded);
-            let mut temp = buf.split_off(buf.len());
-            event.encode_into(&mut temp);
-            buf.unsplit(temp);
-        }
-        let content = buf.freeze();
+        let content = write_nar(events.iter());
 
         let mock = MockStore::builder()
             .add_to_store_nar(&info, repair, dont_check_sigs, content.clone(), response)
@@ -766,22 +747,15 @@ pub(crate) mod unittests {
     async fn add_multiple_to_store(
         #[case] repair: bool,
         #[case] dont_check_sigs: bool,
-        #[case] infos: Vec<(ValidPathInfo, Vec<NAREvent>)>,
+        #[case] infos: Vec<(ValidPathInfo, test_data::TestNarEvents)>,
         #[case] response: DaemonResult<()>,
         #[case] expected: Result<(), String>,
     ) {
         let infos_content: Vec<_> = infos
             .iter()
             .map(|(info, events)| {
-                let mut buf = BytesMut::new();
-                for event in events.iter() {
-                    let encoded = event.encoded_size();
-                    buf.reserve(encoded);
-                    let mut temp = buf.split_off(buf.len());
-                    event.encode_into(&mut temp);
-                    buf.unsplit(temp);
-                }
-                (info.clone(), buf.freeze())
+                let content = write_nar(events.iter());
+                (info.clone(), content)
             })
             .collect();
         let infos_stream = iter(infos_content.clone().into_iter().map(|(info, content)| {
@@ -815,8 +789,7 @@ mod proptests {
     use std::io::Cursor;
     use std::time::Instant;
 
-    use futures::TryStreamExt as _;
-    use nixrs_archive::proptest::arb_nar_contents;
+    use bytes::Bytes;
     use proptest::prelude::{any, TestCaseError};
     use proptest::{prop_assert, prop_assert_eq, proptest};
     use tokio::io::copy_buf;
@@ -827,10 +800,11 @@ mod proptests {
     use super::unittests::run_store_test;
     use super::DaemonResult;
     use super::{ClientOptions, UnkeyedValidPathInfo};
-    use crate::archive::NAREvent;
+    use crate::archive::arbitrary::arb_nar_contents;
+    use crate::archive::{read_nar, test_data};
     use crate::daemon::wire::types2::ValidPathInfo;
     use crate::daemon::DaemonStore as _;
-    use crate::hash::Algorithm;
+    use crate::hash::NarHash;
     use crate::store_path::StorePath;
     use crate::store_path::StorePathSet;
 
@@ -953,9 +927,10 @@ mod proptests {
         #[test]
         fn proptest_nar_from_path(
             path in any::<StorePath>(),
-            (nar_size, nar_hash, nar_content) in arb_nar_contents(20, 20, 5),
+            nar_content in arb_nar_contents(20, 20, 5),
         )
         {
+            let nar_hash = NarHash::digest(&nar_content);
             let now = Instant::now();
             let r = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
@@ -970,9 +945,9 @@ mod proptests {
                         let mut reader = client.nar_from_path(&path).await?;
                         let mut out = Vec::new();
                         copy_buf(&mut reader, &mut out).await?;
-                        let _ : Vec<NAREvent> = crate::archive::parse_nar(Cursor::new(&out)).try_collect().await?;
-                        prop_assert_eq!(nar_size, out.len() as u64);
-                        let hash = Algorithm::SHA256.digest(&out);
+                        let _ : test_data::TestNarEvents = read_nar(Cursor::new(Bytes::copy_from_slice(&out))).await?;
+                        prop_assert_eq!(nar_content.len(), out.len());
+                        let hash = NarHash::digest(&out);
                         prop_assert_eq!(hash.as_ref(), nar_hash.as_ref());
                     }
                     Ok(client)
@@ -990,7 +965,7 @@ mod proptests {
             info in any::<ValidPathInfo>(),
             repair in any::<bool>(),
             dont_check_sigs in any::<bool>(),
-            (_nar_size, _nar_hash, nar_content) in arb_nar_contents(20, 20, 5),
+            nar_content in arb_nar_contents(20, 20, 5),
         )
         {
             let now = Instant::now();

@@ -4,7 +4,7 @@ use bytes::{Buf as _, Bytes};
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncBufRead, AsyncRead};
 
-use super::AsyncBytesRead;
+use super::{AsyncBytesRead, DrainInto};
 
 pin_project! {
     #[derive(Debug)]
@@ -70,5 +70,23 @@ where
             *this.buffer = Bytes::new();
         }
         this.reader.consume(amt);
+    }
+}
+
+impl<R, R2> DrainInto<R2> for AsyncBufReadCompat<R>
+where
+    R: DrainInto<R2>,
+{
+    fn poll_drain(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        let this = self.project();
+        *this.buffer = Bytes::new();
+        this.reader.poll_drain(cx)
+    }
+
+    fn into_inner(self) -> R2 {
+        self.reader.into_inner()
     }
 }

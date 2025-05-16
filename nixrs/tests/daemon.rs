@@ -8,16 +8,15 @@ use std::pin::pin;
 use std::process::Stdio;
 use std::time::Instant;
 
-use bytes::BytesMut;
 use futures::stream::iter;
-use futures::{FutureExt as _, StreamExt, TryFutureExt as _, TryStreamExt as _};
+use futures::{FutureExt as _, StreamExt, TryFutureExt as _};
 use tempfile::Builder;
 use tokio::io::{copy_buf, split, AsyncBufReadExt, BufReader};
 use tokio::process::{ChildStdin, ChildStdout, Command};
 use tokio::try_join;
 use tracing_test::traced_test;
 
-use nixrs::archive::{parse_nar, test_data, NAREvent};
+use nixrs::archive::test_data;
 use nixrs::daemon::client::DaemonClient;
 use nixrs::daemon::mock::{self, MockReporter, MockStore, ReporterError};
 use nixrs::daemon::wire::types2::{
@@ -30,7 +29,7 @@ use nixrs::daemon::{
 };
 use nixrs::derivation::{BasicDerivation, DerivationOutput};
 use nixrs::derived_path::DerivedPath;
-use nixrs::hash::{Algorithm, Context, NarHash};
+use nixrs::hash::NarHash;
 use nixrs::store_path::{StoreDir, StorePath, StorePathSet};
 use nixrs::ByteString;
 
@@ -217,6 +216,8 @@ fn prepare_mock(nix: &dyn NixImpl) -> mock::Builder<()> {
 
 mod unittests {
     use super::*;
+    use nixrs::archive::read_nar;
+    use nixrs::archive::write_nar;
     use rstest::rstest;
 
     /*
@@ -380,23 +381,13 @@ mod unittests {
     async fn nar_from_path(
         #[values(&NIX_2_3, &NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
         #[case] store_path: StorePath,
-        #[case] events: Vec<NAREvent>,
+        #[case] events: test_data::TestNarEvents,
     ) {
-        let mut buf = BytesMut::new();
-        let mut ctx = Context::new(Algorithm::SHA256);
-        let mut size = 0;
-        for event in events.iter() {
-            let encoded = event.encoded_size();
-            size += encoded as u64;
-            buf.reserve(encoded);
-            let mut temp = buf.split_off(buf.len());
-            event.encode_into(&mut temp);
-            ctx.update(&temp);
-            buf.unsplit(temp);
-        }
-        let hash = ctx.finish();
-        let content = buf.freeze();
+        use bytes::Bytes;
 
+        let content = write_nar(events.iter());
+        let size = content.len();
+        let hash = NarHash::digest(&content);
         let mut mock = prepare_mock(nix);
         mock.nar_from_path(&store_path, Ok(content)).build();
         run_store_test(nix, mock, |mut client| async move {
@@ -405,10 +396,11 @@ mod unittests {
                 let mut reader = process_logs(logs).await.unwrap();
                 let mut out = Vec::new();
                 copy_buf(&mut reader, &mut out).await?;
-                let nar: Vec<NAREvent> = parse_nar(Cursor::new(&out)).try_collect().await?;
+                let nar: test_data::TestNarEvents =
+                    read_nar(Cursor::new(Bytes::copy_from_slice(&out))).await?;
                 assert_eq!(events, nar);
-                assert_eq!(size, out.len() as u64);
-                assert_eq!(Algorithm::SHA256.digest(&out), hash);
+                assert_eq!(size, out.len());
+                assert_eq!(NarHash::digest(&out), hash);
             }
             Ok(client) as DaemonResult<_>
         })
@@ -674,20 +666,11 @@ mod unittests {
         #[case] info: ValidPathInfo,
         #[case] repair: bool,
         #[case] dont_check_sigs: bool,
-        #[case] events: Vec<NAREvent>,
+        #[case] events: test_data::TestNarEvents,
         #[case] response: DaemonResult<()>,
         #[case] expected: Result<(), String>,
     ) {
-        let mut buf = BytesMut::new();
-        for event in events.iter() {
-            let encoded = event.encoded_size();
-            buf.reserve(encoded);
-            let mut temp = buf.split_off(buf.len());
-            event.encode_into(&mut temp);
-            buf.unsplit(temp);
-        }
-        let content = buf.freeze();
-
+        let content = write_nar(events.iter());
         let mut mock = MockStore::builder();
         mock.add_to_store_nar(&info, repair, dont_check_sigs, content.clone(), response)
             .build();
@@ -792,22 +775,15 @@ mod unittests {
         #[values(&NIX_2_24, &LIX_2_91)] nix: &dyn NixImpl,
         #[case] repair: bool,
         #[case] dont_check_sigs: bool,
-        #[case] infos: Vec<(ValidPathInfo, Vec<NAREvent>)>,
+        #[case] infos: Vec<(ValidPathInfo, test_data::TestNarEvents)>,
         #[case] response: DaemonResult<()>,
         #[case] expected: Result<(), String>,
     ) {
         let infos_content: Vec<_> = infos
             .iter()
             .map(|(info, events)| {
-                let mut buf = BytesMut::new();
-                for event in events.iter() {
-                    let encoded = event.encoded_size();
-                    buf.reserve(encoded);
-                    let mut temp = buf.split_off(buf.len());
-                    event.encode_into(&mut temp);
-                    buf.unsplit(temp);
-                }
-                (info.clone(), buf.freeze())
+                let content = write_nar(events.iter());
+                (info.clone(), content)
             })
             .collect();
         let infos_stream = iter(infos_content.clone().into_iter().map(|(info, content)| {

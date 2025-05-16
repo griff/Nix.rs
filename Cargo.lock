@@ -1526,7 +1526,6 @@ dependencies = [
  "hex-literal",
  "libc",
  "md5",
- "nixrs-archive",
  "nixrs-derive",
  "num_enum",
  "once_cell",
@@ -1548,6 +1547,7 @@ dependencies = [
  "tracing",
  "tracing-futures",
  "tracing-test",
+ "walkdir",
 ]
 
 [[package]]

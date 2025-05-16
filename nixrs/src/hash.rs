@@ -529,6 +529,10 @@ impl NarHash {
         }
         Ok(NarHash::new(digest))
     }
+
+    pub fn digest<D: AsRef<[u8]>>(data: D) -> Self {
+        Self::new(&Algorithm::SHA256.digest(data))
+    }
 }
 
 impl AsRef<[u8]> for NarHash {

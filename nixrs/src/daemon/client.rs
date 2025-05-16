@@ -27,11 +27,11 @@ use super::{
     DaemonError, DaemonErrorKind, DaemonResult, DaemonResultExt as _, DaemonStore,
     HandshakeDaemonStore, LogMessage, ProtocolVersion, TrustLevel,
 };
-use crate::archive::NarReader;
+use crate::archive::{NarBytesReader, NarReader};
 use crate::daemon::wire::{write_add_multiple_to_store_stream, FramedWriter};
 use crate::derivation::BasicDerivation;
 use crate::derived_path::DerivedPath;
-use crate::io::{AsyncBufReadCompat, BytesReader};
+use crate::io::{AsyncBufReadCompat, BytesReader, Lending};
 use crate::store_path::{StoreDir, StorePath, StorePathSet};
 
 pub struct DaemonClientBuilder {
@@ -100,12 +100,13 @@ impl DaemonClientBuilder {
 
     pub fn build<R, W>(self, reader: R, writer: W) -> DaemonHandshakeClient<R, W>
     where
-        R: AsyncRead,
+        R: AsyncRead + Unpin,
     {
+        let reader = BytesReader::builder().build(reader);
         let reader = self
             .reader_builder
             .set_store_dir(&self.store_dir)
-            .build_buffered(reader);
+            .build(Lending::new(reader));
         let writer = self
             .writer_builder
             .set_store_dir(&self.store_dir)
@@ -174,7 +175,7 @@ pub struct DaemonHandshakeClient<R, W> {
     host: String,
     min_version: ProtocolVersion,
     max_version: ProtocolVersion,
-    reader: NixReader<BytesReader<R>>,
+    reader: NixReader<Lending<BytesReader<R>, NarBytesReader<BytesReader<R>>>>,
     writer: NixWriter<W>,
 }
 
@@ -277,7 +278,7 @@ static CLIENT_ID: AtomicU64 = AtomicU64::new(1);
 pub struct DaemonClient<R, W> {
     id: u64,
     host: String,
-    reader: NixReader<BytesReader<R>>,
+    reader: NixReader<Lending<BytesReader<R>, NarBytesReader<BytesReader<R>>>>,
     writer: NixWriter<W>,
     daemon_nix_version: Option<String>,
     remote_trusts_us: TrustLevel,
@@ -473,8 +474,9 @@ where
             },
             result: async {
                 let (reader, result) = receiver.await.unwrap();
+                let reader = reader.get_mut().lend(NarBytesReader::new);
                 match result {
-                    Ok(_) => Ok(NarReader::new(AsyncBufReadCompat::new(reader))),
+                    Ok(_) => Ok(AsyncBufReadCompat::new(reader)),
                     Err(err) => Err(err.fill_operation(Operation::NarFromPath)),
                 }
             },

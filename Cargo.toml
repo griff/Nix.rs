@@ -39,6 +39,7 @@ thiserror = "^1.0.49"
 tokio = "^1.42"
 tokio-test = "0.4.3"
 tracing-test = "^0.2.5"
+walkdir = "^2.5.0"
 
 # nixrs-io
 async-trait = "0.1.50"

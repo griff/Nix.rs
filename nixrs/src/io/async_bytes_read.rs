@@ -3,7 +3,7 @@ use std::ops::DerefMut;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 use tokio::io::AsyncRead;
 
 pub trait AsyncBytesRead: AsyncRead {
@@ -65,5 +65,27 @@ where
 
     fn consume(self: Pin<&mut Self>, amt: usize) {
         self.get_mut().as_mut().consume(amt);
+    }
+}
+
+impl AsyncBytesRead for io::Cursor<Bytes> {
+    fn poll_force_fill_buf(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<Bytes>> {
+        Poll::Ready(Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "bytes can't be force filled",
+        )))
+    }
+
+    fn poll_fill_buf(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<Bytes>> {
+        let pos = self.position();
+        let mut buf = self.get_ref().clone();
+        buf.advance(pos as usize);
+        Poll::Ready(Ok(buf))
+    }
+
+    fn prepare(self: Pin<&mut Self>, _additional: usize) {}
+
+    fn consume(self: Pin<&mut Self>, amt: usize) {
+        io::BufRead::consume(self.get_mut(), amt);
     }
 }
