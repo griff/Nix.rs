@@ -11,31 +11,11 @@ use crate::hash::{Algorithm, Hash, ParseHashError, Sha256, UnknownAlgorithm};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
-//#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-//#[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
 pub enum ContentAddressMethod {
-    //#[display(fmt = "text")]
     Text,
-    //#[display(fmt = "fixed")]
     Flat,
-    //#[display(fmt = "fixed:r")]
     Recursive,
 }
-
-/*
-impl FromStr for ContentAddressMethod {
-    type Err = ParseContentAddressError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "text" => Ok(Self::Text),
-            "fixed:r" => Ok(Self::Recursive),
-            "fixed" => Ok(Self::Flat),
-            _ => Err(ParseContentAddressError::InvalidMethod(s.into())),
-        }
-    }
-}
-*/
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
