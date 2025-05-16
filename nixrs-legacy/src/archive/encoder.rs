@@ -5,7 +5,7 @@ use bytes::BytesMut;
 use tokio_util::codec::Encoder;
 use tracing::debug;
 
-use nixrs_io::calc_padding;
+use crate::io::calc_padding;
 
 use super::NAREvent;
 
@@ -202,8 +202,9 @@ mod tests {
     use tokio::fs::{self, File};
     use tokio_util::{codec::FramedWrite, io::InspectWriter};
 
+    use crate::archive::proptest::arb_nar_events;
+    use crate::archive::{parse_nar, test_data};
     use crate::pretty_prop_assert_eq;
-    use crate::{parse_nar, proptest::arb_nar_events, test_data};
     use proptest::proptest;
 
     use super::*;

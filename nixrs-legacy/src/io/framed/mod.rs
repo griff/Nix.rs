@@ -9,7 +9,7 @@ mod tests {
     use proptest::prop_assert_eq;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    use crate::{FramedSink, FramedSource};
+    use crate::io::{FramedSink, FramedSource};
 
     proptest! {
         #[test]

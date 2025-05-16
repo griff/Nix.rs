@@ -1,9 +1,9 @@
 use std::fmt;
 use std::time::SystemTime;
 
+use crate::flag_enum;
 use async_trait::async_trait;
 use futures::future::try_join;
-use nixrs_io::flag_enum;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tracing::debug;

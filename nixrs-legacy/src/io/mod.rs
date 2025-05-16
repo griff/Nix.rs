@@ -38,24 +38,6 @@ pub fn calc_padding(size: u64) -> u8 {
 
 pub type StringSet = BTreeSet<String>;
 
-#[macro_export]
-macro_rules! string_set {
-    [] => { $crate::StringSet::new()};
-    [$e:expr] => {{
-        let mut ret = $crate::StringSet::new();
-        ret.insert(($e).to_string());
-        ret
-    }};
-    [$e:expr$(,$e2:expr)+$(,)?] => {{
-        let mut ret = $crate::StringSet::new();
-        ret.insert(($e).to_string());
-        $(
-            ret.insert(($e2).to_string());
-        )+
-        ret
-    }}
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;

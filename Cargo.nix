@@ -57,16 +57,6 @@ rec {
       # File a bug if you depend on any for non-debug work!
       debug = internal.debugCrate { inherit packageId; };
     };
-    "nixrs-archive" = rec {
-      packageId = "nixrs-archive";
-      build = internal.buildRustCrateWithFeatures {
-        packageId = "nixrs-archive";
-      };
-
-      # Debug support which might change between releases.
-      # File a bug if you depend on any for non-debug work!
-      debug = internal.debugCrate { inherit packageId; };
-    };
     "nixrs-capnp" = rec {
       packageId = "nixrs-capnp";
       build = internal.buildRustCrateWithFeatures {
@@ -91,16 +81,6 @@ rec {
       packageId = "nixrs-derive-tests";
       build = internal.buildRustCrateWithFeatures {
         packageId = "nixrs-derive-tests";
-      };
-
-      # Debug support which might change between releases.
-      # File a bug if you depend on any for non-debug work!
-      debug = internal.debugCrate { inherit packageId; };
-    };
-    "nixrs-io" = rec {
-      packageId = "nixrs-io";
-      build = internal.buildRustCrateWithFeatures {
-        packageId = "nixrs-io";
       };
 
       # Debug support which might change between releases.
@@ -4788,98 +4768,6 @@ rec {
         };
         resolvedDefaultFeatures = [ "archive" "daemon" "daemon-serde" "default" "full" "internal" "md5" "nixrs-derive" "proptest" "test" "xp-ca-derivations" "xp-dynamic-derivations" "xp-impure-derivations" ];
       };
-      "nixrs-archive" = rec {
-        crateName = "nixrs-archive";
-        version = "0.1.0";
-        edition = "2021";
-        src = lib.cleanSourceWith { filter = sourceFilter;  src = ./nixrs-archive; };
-        libName = "nixrs_archive";
-        authors = [
-          "Brian Olsen <brian@maven-group.org>"
-          "Eelco Dolstra <edolstra@gmail.com>"
-        ];
-        dependencies = [
-          {
-            name = "async-stream";
-            packageId = "async-stream";
-          }
-          {
-            name = "bstr";
-            packageId = "bstr";
-          }
-          {
-            name = "bytes";
-            packageId = "bytes";
-          }
-          {
-            name = "futures";
-            packageId = "futures";
-          }
-          {
-            name = "nixrs-io";
-            packageId = "nixrs-io";
-          }
-          {
-            name = "pin-project-lite";
-            packageId = "pin-project-lite";
-          }
-          {
-            name = "proptest";
-            packageId = "proptest";
-            optional = true;
-          }
-          {
-            name = "ring";
-            packageId = "ring";
-            optional = true;
-          }
-          {
-            name = "thiserror";
-            packageId = "thiserror";
-          }
-          {
-            name = "tokio";
-            packageId = "tokio";
-            features = [ "fs" "io-util" ];
-          }
-          {
-            name = "tokio-util";
-            packageId = "tokio-util";
-            features = [ "codec" "io" ];
-          }
-          {
-            name = "tracing";
-            packageId = "tracing";
-          }
-        ];
-        devDependencies = [
-          {
-            name = "pretty_assertions";
-            packageId = "pretty_assertions";
-          }
-          {
-            name = "proptest";
-            packageId = "proptest";
-          }
-          {
-            name = "ring";
-            packageId = "ring";
-          }
-          {
-            name = "tempfile";
-            packageId = "tempfile";
-          }
-          {
-            name = "tokio";
-            packageId = "tokio";
-            features = [ "macros" "rt" "rt-multi-thread" ];
-          }
-        ];
-        features = {
-          "test" = [ "dep:proptest" "dep:ring" ];
-        };
-        resolvedDefaultFeatures = [ "test" ];
-      };
       "nixrs-capnp" = rec {
         crateName = "nixrs-capnp";
         version = "0.1.0";
@@ -5040,77 +4928,6 @@ rec {
         ];
 
       };
-      "nixrs-io" = rec {
-        crateName = "nixrs-io";
-        version = "0.1.0";
-        edition = "2021";
-        src = lib.cleanSourceWith { filter = sourceFilter;  src = ./nixrs-io; };
-        libName = "nixrs_io";
-        authors = [
-          "Brian Olsen <brian@maven-group.org>"
-          "Eelco Dolstra <edolstra@gmail.com>"
-        ];
-        dependencies = [
-          {
-            name = "bytes";
-            packageId = "bytes";
-          }
-          {
-            name = "futures";
-            packageId = "futures";
-          }
-          {
-            name = "pin-project-lite";
-            packageId = "pin-project-lite";
-          }
-          {
-            name = "pretty_assertions";
-            packageId = "pretty_assertions";
-            optional = true;
-          }
-          {
-            name = "proptest";
-            packageId = "proptest";
-            optional = true;
-          }
-          {
-            name = "thiserror";
-            packageId = "thiserror";
-          }
-          {
-            name = "tokio";
-            packageId = "tokio";
-            features = [ "io-util" "sync" ];
-          }
-          {
-            name = "tracing";
-            packageId = "tracing";
-          }
-        ];
-        devDependencies = [
-          {
-            name = "pretty_assertions";
-            packageId = "pretty_assertions";
-          }
-          {
-            name = "proptest";
-            packageId = "proptest";
-          }
-          {
-            name = "ring";
-            packageId = "ring";
-          }
-          {
-            name = "tokio";
-            packageId = "tokio";
-            features = [ "macros" "process" "rt" "rt-multi-thread" ];
-          }
-        ];
-        features = {
-          "test" = [ "dep:pretty_assertions" "dep:proptest" ];
-        };
-        resolvedDefaultFeatures = [ "test" ];
-      };
       "nixrs-legacy" = rec {
         crateName = "nixrs-legacy";
         version = "0.1.0";
@@ -5122,6 +4939,10 @@ rec {
           "Nix Authors"
         ];
         dependencies = [
+          {
+            name = "async-stream";
+            packageId = "async-stream";
+          }
           {
             name = "async-trait";
             packageId = "async-trait";
@@ -5170,14 +4991,6 @@ rec {
             optional = true;
           }
           {
-            name = "nixrs-archive";
-            packageId = "nixrs-archive";
-          }
-          {
-            name = "nixrs-io";
-            packageId = "nixrs-io";
-          }
-          {
             name = "pin-project-lite";
             packageId = "pin-project-lite";
           }
@@ -5224,7 +5037,7 @@ rec {
           {
             name = "tokio-util";
             packageId = "tokio-util";
-            features = [ "io" "io-util" ];
+            features = [ "codec" "io" "io-util" ];
           }
           {
             name = "tracing";
@@ -5253,16 +5066,6 @@ rec {
             packageId = "assert_matches";
           }
           {
-            name = "nixrs-archive";
-            packageId = "nixrs-archive";
-            features = [ "test" ];
-          }
-          {
-            name = "nixrs-io";
-            packageId = "nixrs-io";
-            features = [ "test" ];
-          }
-          {
             name = "pretty_assertions";
             packageId = "pretty_assertions";
           }
@@ -5285,7 +5088,7 @@ rec {
           "default" = [ "full" ];
           "full" = [ "md5" "test" ];
           "md5" = [ "dep:md5" ];
-          "test" = [ "dep:pretty_assertions" "dep:proptest" "nixrs-io/test" "nixrs-archive/test" ];
+          "test" = [ "dep:pretty_assertions" "dep:proptest" ];
         };
         resolvedDefaultFeatures = [ "compress-tools" "default" "full" "md5" "slowtests" "test" ];
       };

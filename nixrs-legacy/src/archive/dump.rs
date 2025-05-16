@@ -336,7 +336,7 @@ mod tests {
     use pretty_assertions::assert_eq;
     use tempfile::Builder;
 
-    use crate::test_data;
+    use crate::archive::test_data;
 
     use super::*;
 

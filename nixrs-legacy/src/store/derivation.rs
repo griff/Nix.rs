@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use crate::flag_enum;
 use bstr::ByteSlice;
-use nixrs_io::flag_enum;
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncWrite};
 

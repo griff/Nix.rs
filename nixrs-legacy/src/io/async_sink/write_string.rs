@@ -6,8 +6,8 @@ use std::task::{Context, Poll};
 
 use tokio::io::AsyncWrite;
 
-use crate::calc_padding;
-use crate::STATIC_PADDING;
+use crate::io::calc_padding;
+use crate::io::STATIC_PADDING;
 
 use super::write_all::{write_all, WriteAll};
 use super::write_int::WriteU64;

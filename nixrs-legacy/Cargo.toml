@@ -8,10 +8,11 @@ license = "LGPL-2.1-or-later"
 [features]
 default = ["full"]
 full = ["md5", "test"]
-test = ["dep:pretty_assertions", "dep:proptest", "nixrs-io/test", "nixrs-archive/test"]
+test = ["dep:pretty_assertions", "dep:proptest"]
 slowtests = []
 
 [dependencies]
+async-stream = { workspace = true }
 async-trait = { workspace = true }
 base64 = { workspace = true }
 bstr = { workspace = true }
@@ -33,20 +34,12 @@ serde_json = { workspace = true }
 smallvec = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = [ "fs", "io-util", "macros", "process" ]}
-tokio-util = { workspace = true, features = [ "io", "io-util" ] }
+tokio-util = { workspace = true, features = [ "codec", "io", "io-util" ] }
 tracing = { workspace = true }
 tracing-appender = { workspace = true }
 tracing-futures = { workspace = true }
 tracing-subscriber = { workspace = true }
 url = { workspace = true }
-
-[dependencies.nixrs-archive]
-version = "0.1.0"
-path = "../nixrs-archive"
-
-[dependencies.nixrs-io]
-version = "0.1.0"
-path = "../nixrs-io"
 
 [dev-dependencies]
 assert_matches = { workspace = true }
@@ -55,12 +48,3 @@ proptest = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = [ "rt-multi-thread" ] }
 
-[dev-dependencies.nixrs-archive]
-version = "0.1.0"
-path = "../nixrs-archive"
-features = ["test"]
-
-[dev-dependencies.nixrs-io]
-version = "0.1.0"
-path = "../nixrs-io"
-features = ["test"]

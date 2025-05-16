@@ -1,16 +1,12 @@
-use std::{
-    fs::{create_dir_all, set_permissions, write, Permissions},
-    io,
-    os::unix::fs::PermissionsExt as _,
-    path::Path,
-    sync::Arc,
-};
+use std::fs::{create_dir_all, set_permissions, write, Permissions};
+use std::io;
+use std::os::unix::fs::PermissionsExt as _;
+use std::path::Path;
+use std::sync::Arc;
 
 use bytes::Bytes;
 
-use crate::CASE_HACK_SUFFIX;
-
-use super::{NAREvent, NAR_VERSION_MAGIC_1};
+use super::{NAREvent, CASE_HACK_SUFFIX, NAR_VERSION_MAGIC_1};
 
 pub fn text_file() -> Vec<NAREvent> {
     vec![

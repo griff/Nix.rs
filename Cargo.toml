@@ -4,8 +4,6 @@ members = [
   "nixrs",
   "nixrs-derive",
   "nixrs-derive-tests",
-  "nixrs-archive",
-  "nixrs-io",
   "nixrs-legacy",
   "nixrs-ssh-store",
   "nixrs-capnp",

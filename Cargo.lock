@@ -1551,26 +1551,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nixrs-archive"
-version = "0.1.0"
-dependencies = [
- "async-stream",
- "bstr",
- "bytes",
- "futures",
- "nixrs-io",
- "pin-project-lite",
- "pretty_assertions",
- "proptest",
- "ring",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
 name = "nixrs-capnp"
 version = "0.1.0"
 dependencies = [
@@ -1615,25 +1595,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "nixrs-io"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "futures",
- "pin-project-lite",
- "pretty_assertions",
- "proptest",
- "ring",
- "thiserror",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "nixrs-legacy"
 version = "0.1.0"
 dependencies = [
  "assert_matches",
+ "async-stream",
  "async-trait",
  "base64 0.13.1",
  "bstr",
@@ -1645,8 +1611,6 @@ dependencies = [
  "hex",
  "lazy_static",
  "md5",
- "nixrs-archive",
- "nixrs-io",
  "pin-project-lite",
  "pretty_assertions",
  "proptest",
