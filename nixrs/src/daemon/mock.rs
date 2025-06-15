@@ -1,11 +1,12 @@
-use std::future::ready;
+use std::collections::VecDeque;
+use std::future::{ready, Future};
 use std::io::Cursor;
 use std::mem::take;
-use std::pin::pin;
+use std::pin::{pin, Pin};
 use std::task::Poll;
-use std::{collections::VecDeque, future::Future};
 use std::{fmt, thread};
 
+use arbitrary::MockOperationParams;
 use bytes::Bytes;
 use futures::channel::mpsc;
 use futures::future::Either;
@@ -16,9 +17,11 @@ use futures::Stream;
 use futures::StreamExt as _;
 use pin_project_lite::pin_project;
 #[cfg(any(test, feature = "test"))]
-use proptest::prelude::TestCaseError;
+use proptest::prelude::*;
 #[cfg(any(test, feature = "test"))]
-use proptest::{prop_assert, prop_assert_eq};
+use proptest::prop_assert_eq;
+#[cfg(any(test, feature = "test"))]
+use test_strategy::Arbitrary;
 use tokio::io::{AsyncBufRead, AsyncReadExt as _};
 use tracing::trace;
 
@@ -33,11 +36,13 @@ use super::wire::types2::{
     ValidPathInfo,
 };
 use super::{
-    ClientOptions, DaemonError, DaemonErrorKind, DaemonResult, DaemonResultExt, DaemonStore,
-    DaemonString, HandshakeDaemonStore, ResultLog, TrustLevel, UnkeyedValidPathInfo,
+    ClientOptions, DaemonError, DaemonResult, DaemonResultExt, DaemonStore, DaemonString,
+    HandshakeDaemonStore, ResultLog, TrustLevel, UnkeyedValidPathInfo,
 };
 use crate::derivation::BasicDerivation;
 use crate::derived_path::DerivedPath;
+#[cfg(any(test, feature = "test"))]
+use crate::pretty_prop_assert_eq;
 use crate::store_path::{StorePath, StorePathSet};
 
 #[allow(clippy::large_enum_variant)]
@@ -49,6 +54,7 @@ pub enum MockOperation {
     QueryPathInfo(StorePath, DaemonResult<Option<UnkeyedValidPathInfo>>),
     NarFromPath(StorePath, DaemonResult<Bytes>),
     BuildPaths(BuildPathsRequest, DaemonResult<()>),
+    BuildPathsWithResults(BuildPathsRequest, DaemonResult<KeyedBuildResults>),
     BuildDerivation(BuildDerivationRequest, DaemonResult<BuildResult>),
     QueryMissing(Vec<DerivedPath>, DaemonResult<QueryMissingResult>),
     AddToStoreNar(AddToStoreNarRequest, Bytes, DaemonResult<()>),
@@ -68,6 +74,9 @@ impl MockOperation {
             Self::QueryPathInfo(request, _) => MockRequest::QueryPathInfo(request.clone()),
             Self::NarFromPath(request, _) => MockRequest::NarFromPath(request.clone()),
             Self::BuildPaths(request, _) => MockRequest::BuildPaths(request.clone()),
+            Self::BuildPathsWithResults(request, _) => {
+                MockRequest::BuildPathsWithResults(request.clone())
+            }
             Self::BuildDerivation(request, _) => MockRequest::BuildDerivation(request.clone()),
             Self::QueryMissing(request, _) => MockRequest::QueryMissing(request.clone()),
             Self::AddToStoreNar(request, nar, _) => {
@@ -87,6 +96,7 @@ impl MockOperation {
             Self::QueryPathInfo(_, _) => Operation::QueryPathInfo,
             Self::NarFromPath(_, _) => Operation::NarFromPath,
             Self::BuildPaths(_, _) => Operation::BuildPaths,
+            Self::BuildPathsWithResults(_, _) => Operation::BuildPathsWithResults,
             Self::BuildDerivation(_, _) => Operation::BuildDerivation,
             Self::QueryMissing(_, _) => Operation::QueryMissing,
             Self::AddToStoreNar(_, _, _) => Operation::AddToStoreNar,
@@ -102,10 +112,163 @@ impl MockOperation {
             Self::QueryPathInfo(_, result) => result.clone().map(|value| value.into()),
             Self::NarFromPath(_, result) => result.clone().map(|value| value.into()),
             Self::BuildPaths(_, result) => result.clone().map(|value| value.into()),
+            Self::BuildPathsWithResults(_, result) => result.clone().map(|value| value.into()),
             Self::BuildDerivation(_, result) => result.clone().map(|value| value.into()),
             Self::QueryMissing(_, result) => result.clone().map(|value| value.into()),
             Self::AddToStoreNar(_, _, result) => result.clone().map(|value| value.into()),
             Self::AddMultipleToStore(_, _, result) => result.clone().map(|value| value.into()),
+        }
+    }
+}
+
+enum ResponseResultLog<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12> {
+    SetOptions(F1),
+    IsValidPath(F2),
+    QueryValidPaths(F3),
+    QueryPathInfo(F4),
+    QueryAllValidPaths(F5),
+    NarFromPath(F6),
+    BuildPaths(F7),
+    BuildPathsWithResults(F8),
+    BuildDerivation(F9),
+    QueryMissing(F10),
+    AddToStoreNar(F11),
+    AddMultipleToStore(F12),
+}
+
+impl<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12>
+    ResponseResultLog<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12>
+{
+    #[allow(clippy::type_complexity)]
+    fn as_pin_mut(
+        self: Pin<&mut Self>,
+    ) -> ResponseResultLog<
+        Pin<&mut F1>,
+        Pin<&mut F2>,
+        Pin<&mut F3>,
+        Pin<&mut F4>,
+        Pin<&mut F5>,
+        Pin<&mut F6>,
+        Pin<&mut F7>,
+        Pin<&mut F8>,
+        Pin<&mut F9>,
+        Pin<&mut F10>,
+        Pin<&mut F11>,
+        Pin<&mut F12>,
+    > {
+        unsafe {
+            match self.get_unchecked_mut() {
+                ResponseResultLog::SetOptions(pointer) => {
+                    ResponseResultLog::SetOptions(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::IsValidPath(pointer) => {
+                    ResponseResultLog::IsValidPath(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::QueryValidPaths(pointer) => {
+                    ResponseResultLog::QueryValidPaths(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::QueryPathInfo(pointer) => {
+                    ResponseResultLog::QueryPathInfo(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::QueryAllValidPaths(pointer) => {
+                    ResponseResultLog::QueryAllValidPaths(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::NarFromPath(pointer) => {
+                    ResponseResultLog::NarFromPath(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::BuildPaths(pointer) => {
+                    ResponseResultLog::BuildPaths(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::BuildPathsWithResults(pointer) => {
+                    ResponseResultLog::BuildPathsWithResults(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::BuildDerivation(pointer) => {
+                    ResponseResultLog::BuildDerivation(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::QueryMissing(pointer) => {
+                    ResponseResultLog::QueryMissing(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::AddToStoreNar(pointer) => {
+                    ResponseResultLog::AddToStoreNar(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::AddMultipleToStore(pointer) => {
+                    ResponseResultLog::AddMultipleToStore(Pin::new_unchecked(pointer))
+                }
+            }
+        }
+    }
+}
+
+impl<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12> Stream
+    for ResponseResultLog<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12>
+where
+    F1: Stream<Item = LogMessage>,
+    F2: Stream<Item = LogMessage>,
+    F3: Stream<Item = LogMessage>,
+    F4: Stream<Item = LogMessage>,
+    F5: Stream<Item = LogMessage>,
+    F6: Stream<Item = LogMessage>,
+    F7: Stream<Item = LogMessage>,
+    F8: Stream<Item = LogMessage>,
+    F9: Stream<Item = LogMessage>,
+    F10: Stream<Item = LogMessage>,
+    F11: Stream<Item = LogMessage>,
+    F12: Stream<Item = LogMessage>,
+{
+    type Item = LogMessage;
+
+    fn poll_next(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        match self.as_pin_mut() {
+            ResponseResultLog::SetOptions(res) => res.poll_next(cx),
+            ResponseResultLog::IsValidPath(res) => res.poll_next(cx),
+            ResponseResultLog::QueryValidPaths(res) => res.poll_next(cx),
+            ResponseResultLog::QueryPathInfo(res) => res.poll_next(cx),
+            ResponseResultLog::QueryAllValidPaths(res) => res.poll_next(cx),
+            ResponseResultLog::NarFromPath(res) => res.poll_next(cx),
+            ResponseResultLog::BuildPaths(res) => res.poll_next(cx),
+            ResponseResultLog::BuildPathsWithResults(res) => res.poll_next(cx),
+            ResponseResultLog::BuildDerivation(res) => res.poll_next(cx),
+            ResponseResultLog::QueryMissing(res) => res.poll_next(cx),
+            ResponseResultLog::AddToStoreNar(res) => res.poll_next(cx),
+            ResponseResultLog::AddMultipleToStore(res) => res.poll_next(cx),
+        }
+    }
+}
+impl<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, R> Future
+    for ResponseResultLog<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12>
+where
+    F1: Future<Output = R>,
+    F2: Future<Output = R>,
+    F3: Future<Output = R>,
+    F4: Future<Output = R>,
+    F5: Future<Output = R>,
+    F6: Future<Output = R>,
+    F7: Future<Output = R>,
+    F8: Future<Output = R>,
+    F9: Future<Output = R>,
+    F10: Future<Output = R>,
+    F11: Future<Output = R>,
+    F12: Future<Output = R>,
+{
+    type Output = R;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+        match self.as_pin_mut() {
+            ResponseResultLog::SetOptions(res) => res.poll(cx),
+            ResponseResultLog::IsValidPath(res) => res.poll(cx),
+            ResponseResultLog::QueryValidPaths(res) => res.poll(cx),
+            ResponseResultLog::QueryPathInfo(res) => res.poll(cx),
+            ResponseResultLog::QueryAllValidPaths(res) => res.poll(cx),
+            ResponseResultLog::NarFromPath(res) => res.poll(cx),
+            ResponseResultLog::BuildPaths(res) => res.poll(cx),
+            ResponseResultLog::BuildPathsWithResults(res) => res.poll(cx),
+            ResponseResultLog::BuildDerivation(res) => res.poll(cx),
+            ResponseResultLog::QueryMissing(res) => res.poll(cx),
+            ResponseResultLog::AddToStoreNar(res) => res.poll(cx),
+            ResponseResultLog::AddMultipleToStore(res) => res.poll(cx),
         }
     }
 }
@@ -120,6 +283,7 @@ pub enum MockRequest {
     QueryAllValidPaths,
     NarFromPath(StorePath),
     BuildPaths(BuildPathsRequest),
+    BuildPathsWithResults(BuildPathsRequest),
     BuildDerivation(BuildDerivationRequest),
     QueryMissing(Vec<DerivedPath>),
     AddToStoreNar(AddToStoreNarRequest, Bytes),
@@ -136,6 +300,7 @@ impl MockRequest {
             Self::QueryAllValidPaths => Operation::QueryAllValidPaths,
             Self::NarFromPath(_) => Operation::NarFromPath,
             Self::BuildPaths(_) => Operation::BuildPaths,
+            Self::BuildPathsWithResults(_) => Operation::BuildPathsWithResults,
             Self::BuildDerivation(_) => Operation::BuildDerivation,
             Self::QueryMissing(_) => Operation::QueryMissing,
             Self::AddToStoreNar(_, _) => Operation::AddToStoreNar,
@@ -150,46 +315,47 @@ impl MockRequest {
         S: DaemonStore + 's,
     {
         match self {
-            Self::SetOptions(options) => Either::Left(Either::Left(Either::Left(Either::Left(
+            Self::SetOptions(options) => ResponseResultLog::SetOptions(
                 store.set_options(options).map_ok(|value| value.into()),
-            )))),
-            Self::IsValidPath(path) => Either::Left(Either::Left(Either::Left(Either::Right(
-                store.is_valid_path(path).map_ok(From::from),
-            )))),
-            Self::QueryValidPaths(request) => {
-                Either::Left(Either::Left(Either::Right(Either::Left(
-                    store
-                        .query_valid_paths(&request.paths, request.substitute)
-                        .map_ok(From::from),
-                ))))
+            ),
+            Self::IsValidPath(path) => {
+                ResponseResultLog::IsValidPath(store.is_valid_path(path).map_ok(From::from))
             }
-            Self::QueryPathInfo(path) => Either::Left(Either::Left(Either::Right(Either::Right(
-                store.query_path_info(path).map_ok(From::from),
-            )))),
-            Self::NarFromPath(path) => Either::Left(Either::Right(Either::Left(Either::Left(
+            Self::QueryValidPaths(request) => ResponseResultLog::QueryValidPaths(
+                store
+                    .query_valid_paths(&request.paths, request.substitute)
+                    .map_ok(From::from),
+            ),
+            Self::QueryPathInfo(path) => {
+                ResponseResultLog::QueryPathInfo(store.query_path_info(path).map_ok(From::from))
+            }
+            Self::NarFromPath(path) => ResponseResultLog::NarFromPath(
                 store.nar_from_path(path).and_then(|reader| async move {
                     let mut reader = pin!(reader);
                     let mut out = Vec::new();
                     reader.read_to_end(&mut out).await?;
                     Ok(From::from(Bytes::from(out)))
                 }),
-            )))),
-            Self::BuildPaths(request) => Either::Left(Either::Right(Either::Left(Either::Right(
+            ),
+            Self::BuildPaths(request) => ResponseResultLog::BuildPaths(
                 store
                     .build_paths(&request.paths, request.mode)
                     .map_ok(From::from),
-            )))),
-            Self::BuildDerivation(request) => {
-                Either::Left(Either::Right(Either::Right(Either::Left(
-                    store
-                        .build_derivation(&request.drv, request.build_mode)
-                        .map_ok(From::from),
-                ))))
+            ),
+            Self::BuildPathsWithResults(request) => ResponseResultLog::BuildPathsWithResults(
+                store
+                    .build_paths_with_results(&request.paths, request.mode)
+                    .map_ok(From::from),
+            ),
+            Self::BuildDerivation(request) => ResponseResultLog::BuildDerivation(
+                store
+                    .build_derivation(&request.drv, request.mode)
+                    .map_ok(From::from),
+            ),
+            Self::QueryMissing(paths) => {
+                ResponseResultLog::QueryMissing(store.query_missing(paths).map_ok(From::from))
             }
-            Self::QueryMissing(paths) => Either::Left(Either::Right(Either::Right(Either::Right(
-                store.query_missing(paths).map_ok(From::from),
-            )))),
-            Self::AddToStoreNar(request, source) => Either::Right(Either::Left(Either::Left(
+            Self::AddToStoreNar(request, source) => ResponseResultLog::AddToStoreNar(
                 store
                     .add_to_store_nar(
                         &request.path_info,
@@ -198,26 +364,24 @@ impl MockRequest {
                         request.dont_check_sigs,
                     )
                     .map_ok(|value| value.into()),
-            ))),
-            Self::AddMultipleToStore(request, stream) => {
-                Either::Right(Either::Left(Either::Right(
-                    store
-                        .add_multiple_to_store(
-                            request.repair,
-                            request.dont_check_sigs,
-                            iter(stream.iter().map(|(info, content)| {
-                                Ok(AddToStoreItem {
-                                    info: info.clone(),
-                                    reader: Cursor::new(content.clone()),
-                                })
-                            })),
-                        )
-                        .map_ok(|value| value.into()),
-                )))
-            }
-            Self::QueryAllValidPaths => Either::Right(Either::Right(
+            ),
+            Self::AddMultipleToStore(request, stream) => ResponseResultLog::AddMultipleToStore(
+                store
+                    .add_multiple_to_store(
+                        request.repair,
+                        request.dont_check_sigs,
+                        iter(stream.iter().map(|(info, content)| {
+                            Ok(AddToStoreItem {
+                                info: info.clone(),
+                                reader: Cursor::new(content.clone()),
+                            })
+                        })),
+                    )
+                    .map_ok(|value| value.into()),
+            ),
+            Self::QueryAllValidPaths => ResponseResultLog::QueryAllValidPaths(
                 store.query_all_valid_paths().map_ok(From::from),
-            )),
+            ),
         }
     }
 }
@@ -388,7 +552,7 @@ pub trait MockReporter {
         &mut self,
         actual: MockRequest,
     ) -> impl ResultLog<Output = DaemonResult<MockResponse>> + Send;
-    fn unread_operation(&mut self, operation: LogOperation);
+    fn unread_operation(&mut self, operation: LogOperation) -> DaemonResult<()>;
 }
 
 impl MockReporter for () {
@@ -400,7 +564,7 @@ impl MockReporter for () {
         ResultProcess {
             stream: empty(),
             result: ready(
-                Err(DaemonErrorKind::Custom(format!(
+                Err(DaemonError::custom(format!(
                     "Unexpected operation {} expected {}",
                     actual.operation(),
                     expected.operation()
@@ -418,7 +582,7 @@ impl MockReporter for () {
         ResultProcess {
             stream: empty(),
             result: ready(
-                Err(DaemonErrorKind::Custom(format!(
+                Err(DaemonError::custom(format!(
                     "Invalid operation {:?} expected {:?}",
                     actual,
                     expected.request()
@@ -435,17 +599,16 @@ impl MockReporter for () {
         ResultProcess {
             stream: empty(),
             result: ready(
-                Err(DaemonErrorKind::Custom(format!(
-                    "Extra operation {:?}",
-                    actual
-                )))
-                .with_operation(actual.operation()),
+                Err(DaemonError::custom(format!("Extra operation {:?}", actual)))
+                    .with_operation(actual.operation()),
             ),
         }
     }
 
-    fn unread_operation(&mut self, _operation: LogOperation) {
-        //panic!("store dropped with {operation:?} operation still unread");
+    fn unread_operation(&mut self, operation: LogOperation) -> DaemonResult<()> {
+        Err(DaemonError::custom(format!(
+            "store dropped with {operation:?} operation still unread"
+        )))
     }
 }
 
@@ -500,7 +663,7 @@ impl MockReporter for ChannelReporter {
     ) -> impl ResultLog<Output = DaemonResult<MockResponse>> {
         let op = actual.operation();
         let report = ReporterError::Unexpected(expected, actual);
-        let ret = Err(DaemonErrorKind::Custom(report.to_string())).with_operation(op);
+        let ret = Err(DaemonError::custom(&report)).with_operation(op);
         self.0.unbounded_send(report).unwrap();
         ResultProcess {
             stream: empty(),
@@ -515,7 +678,7 @@ impl MockReporter for ChannelReporter {
     ) -> impl ResultLog<Output = DaemonResult<MockResponse>> {
         let op = actual.operation();
         let report = ReporterError::Invalid(expected, actual);
-        let ret = Err(DaemonErrorKind::Custom(report.to_string())).with_operation(op);
+        let ret = Err(DaemonError::custom(&report)).with_operation(op);
         self.0.unbounded_send(report).unwrap();
         ResultProcess {
             stream: empty(),
@@ -529,7 +692,7 @@ impl MockReporter for ChannelReporter {
     ) -> impl ResultLog<Output = DaemonResult<MockResponse>> {
         let op = actual.operation();
         let report = ReporterError::Extra(actual);
-        let ret = Err(DaemonErrorKind::Custom(report.to_string())).with_operation(op);
+        let ret = Err(DaemonError::custom(&report)).with_operation(op);
         self.0.unbounded_send(report).unwrap();
         ResultProcess {
             stream: empty(),
@@ -537,17 +700,21 @@ impl MockReporter for ChannelReporter {
         }
     }
 
-    fn unread_operation(&mut self, operation: LogOperation) {
+    fn unread_operation(&mut self, operation: LogOperation) -> DaemonResult<()> {
         self.0
             .unbounded_send(ReporterError::Unread(operation))
             .unwrap();
+        Ok(())
     }
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
+#[arbitrary(args = MockOperationParams)]
 pub struct LogOperation {
-    operation: MockOperation,
-    logs: VecDeque<LogMessage>,
+    #[any(*args)]
+    pub operation: MockOperation,
+    pub logs: VecDeque<LogMessage>,
 }
 
 #[cfg(any(test, feature = "test"))]
@@ -559,9 +726,10 @@ where
     S: Stream<Item = LogMessage> + Unpin,
 {
     while let Some(entry) = actual.next().await {
-        prop_assert_eq!(Some(entry), expected.pop_front());
+        pretty_prop_assert_eq!(Some(entry), expected.pop_front());
     }
-    prop_assert!(expected.is_empty(), "expected logs {:?}", expected);
+
+    prop_assert_eq!(expected.len(), 0, "expected logs {:#?}", expected);
     Ok(())
 }
 
@@ -574,132 +742,10 @@ impl LogOperation {
         let response = expected.map_err(|err| err.to_string());
         let log = actual_log.map_err(|err| err.to_string());
         let mut log = pin!(log);
-        check_logs(self.logs, log.as_mut()).await?;
+        let logs: VecDeque<LogMessage> = log.as_mut().collect().await;
         let res = log.await;
-        prop_assert_eq!(res, response);
-        /*
-        match self.operation {
-            MockOperation::SetOptions(options, response) => {
-                let response = response.map(MockResponse::from);
-                let log = client.set_options(&options).map_ok(MockResponse::from);
-
-                let response = response.map_err(|err| err.to_string());
-                let log = log.map_err(|err| err.to_string());
-                let mut log = pin!(log);
-                check_logs(self.logs, log.as_mut()).await?;
-                let res = log.await;
-                prop_assert_eq!(res, response);
-            }
-            MockOperation::IsValidPath(path, response) => {
-                let response = response.map(MockResponse::from);
-                let log = client.is_valid_path(&path).map_ok(MockResponse::from);
-
-                let response = response.map_err(|err| err.to_string());
-                let log = log.map_err(|err| err.to_string());
-                let mut log = pin!(log);
-                check_logs(self.logs, log.as_mut()).await?;
-                let res = log.await;
-                prop_assert_eq!(res, response);
-            }
-            MockOperation::QueryValidPaths(request, response) => {
-                let response = response.map(MockResponse::from);
-                let log = client
-                    .query_valid_paths(&request.paths, request.substitute)
-                    .map_ok(MockResponse::from);
-
-                let response = response.map_err(|err| err.to_string());
-                let log = log.map_err(|err| err.to_string());
-                let mut log = pin!(log);
-                check_logs(self.logs, log.as_mut()).await?;
-                let res = log.await;
-                prop_assert_eq!(res, response);
-            }
-            MockOperation::QueryPathInfo(path, response) => {
-                let response = response.map(MockResponse::from);
-                let log = client.query_path_info(&path).map_ok(MockResponse::from);
-
-                let response = response.map_err(|err| err.to_string());
-                let log = log.map_err(|err| err.to_string());
-                let mut log = pin!(log);
-                check_logs(self.logs, log.as_mut()).await?;
-                let res = log.await;
-                prop_assert_eq!(res, response);
-            }
-            MockOperation::NarFromPath(path, response) => {
-                let response = response.map(MockResponse::from);
-                let (mut reader, writer) = simplex(DEFAULT_BUF_SIZE);
-                let log = client
-                    .nar_from_path(&path, writer)
-                    .and_then(|_| async move {
-                        let mut buf = Vec::new();
-                        reader.read_to_end(&mut buf).await?;
-                        Ok(MockResponse::from(Bytes::from(buf)))
-                    });
-
-                let response = response.map_err(|err| err.to_string());
-                let log = log.map_err(|err| err.to_string());
-                let mut log = pin!(log);
-                check_logs(self.logs, log.as_mut()).await?;
-                let res = log.await;
-                prop_assert_eq!(res, response);
-            }
-            MockOperation::BuildPaths(request, response) => {
-                let response = response.map(MockResponse::from);
-                let log = client
-                    .build_paths(&request.paths, request.mode)
-                    .map_ok(MockResponse::from);
-
-                let response = response.map_err(|err| err.to_string());
-                let log = log.map_err(|err| err.to_string());
-                let mut log = pin!(log);
-                check_logs(self.logs, log.as_mut()).await?;
-                let res = log.await;
-                prop_assert_eq!(res, response);
-            }
-            MockOperation::BuildDerivation(request, response) => {
-                let response = response.map(MockResponse::from);
-                let log = client
-                    .build_derivation(&request.drv_path, &request.drv, request.build_mode)
-                    .map_ok(MockResponse::from);
-
-                let response = response.map_err(|err| err.to_string());
-                let log = log.map_err(|err| err.to_string());
-                let mut log = pin!(log);
-                check_logs(self.logs, log.as_mut()).await?;
-                let res = log.await;
-                prop_assert_eq!(res, response);
-            }
-            MockOperation::QueryMissing(request, response) => {
-                let response = response.map(MockResponse::from);
-                let log = client.query_missing(&request).map_ok(MockResponse::from);
-
-                let response = response.map_err(|err| err.to_string());
-                let log = log.map_err(|err| err.to_string());
-                let mut log = pin!(log);
-                check_logs(self.logs, log.as_mut()).await?;
-                let res = log.await;
-                prop_assert_eq!(res, response);
-            }
-            MockOperation::AddToStoreNar(request, nar, response) => {
-                let response = response.map(MockResponse::from);
-                let log = client
-                    .add_to_store_nar(
-                        &request.path_info,
-                        Cursor::new(&nar[..]),
-                        request.repair,
-                        request.dont_check_sigs,
-                    )
-                    .map_ok(MockResponse::from);
-
-                let response = response.map_err(|err| err.to_string());
-                let log = log.map_err(|err| err.to_string());
-                let mut log = pin!(log);
-                check_logs(self.logs, log.as_mut()).await?;
-                let res = log.await;
-                prop_assert_eq!(res, response);
-            }
-        }
-        */
+        pretty_prop_assert_eq!(res, response);
+        pretty_prop_assert_eq!(logs, self.logs);
         Ok(())
     }
 }
@@ -734,42 +780,72 @@ where
     }
 }
 
-pub struct LogBuilder<'b, R> {
+pub trait LogBuild {
+    fn add_to_builder<R>(
+        self,
+        logs: VecDeque<LogMessage>,
+        builder: &mut Builder<R>,
+    ) -> &mut Builder<R>;
+}
+
+impl LogBuild for () {
+    fn add_to_builder<R>(
+        self,
+        logs: VecDeque<LogMessage>,
+        builder: &mut Builder<R>,
+    ) -> &mut Builder<R> {
+        builder.handshake_logs = logs;
+        builder
+    }
+}
+
+impl LogBuild for MockOperation {
+    fn add_to_builder<R>(
+        self,
+        logs: VecDeque<LogMessage>,
+        builder: &mut Builder<R>,
+    ) -> &mut Builder<R> {
+        builder.add_operation(LogOperation {
+            operation: self,
+            logs,
+        });
+        builder
+    }
+}
+
+pub struct LogBuilder<'b, R, O> {
     owner: &'b mut Builder<R>,
-    operation: MockOperation,
+    operation: O,
     logs: VecDeque<LogMessage>,
 }
 
-impl<R> LogBuilder<'_, R> {
-    pub fn message<M: Into<DaemonString>>(mut self, msg: M) -> Self {
+impl<R, O> LogBuilder<'_, R, O> {
+    pub fn message<M: Into<DaemonString>>(self, msg: M) -> Self {
         let msg = msg.into();
-        self.logs.push_back(LogMessage::Next(msg));
-        self
+        self.add_log(LogMessage::Next(msg))
     }
 
-    pub fn start_activity(mut self, act: Activity) -> Self {
-        self.logs.push_back(LogMessage::StartActivity(act));
-        self
+    pub fn start_activity(self, act: Activity) -> Self {
+        self.add_log(LogMessage::StartActivity(act))
     }
 
-    pub fn stop_activity(mut self, act: u64) -> Self {
-        self.logs.push_back(LogMessage::StopActivity(act));
-        self
+    pub fn stop_activity(self, act: u64) -> Self {
+        self.add_log(LogMessage::StopActivity(act))
     }
 
-    pub fn result(mut self, result: ActivityResult) -> Self {
-        self.logs.push_back(LogMessage::Result(result));
+    pub fn result(self, result: ActivityResult) -> Self {
+        self.add_log(LogMessage::Result(result))
+    }
+
+    pub fn add_log(mut self, log: LogMessage) -> Self {
+        self.logs.push_back(log);
         self
     }
 }
 
-impl<'b, R: Clone> LogBuilder<'b, R> {
+impl<'b, R: Clone, O: LogBuild> LogBuilder<'b, R, O> {
     pub fn build(self) -> &'b mut Builder<R> {
-        self.owner.add_operation(LogOperation {
-            operation: self.operation,
-            logs: self.logs,
-        });
-        self.owner
+        self.operation.add_to_builder(self.logs, self.owner)
     }
 }
 
@@ -781,11 +857,23 @@ pub struct Builder<R> {
 }
 
 impl<R> Builder<R> {
+    pub fn handshake(&mut self) -> LogBuilder<R, ()> {
+        LogBuilder {
+            owner: self,
+            operation: (),
+            logs: VecDeque::new(),
+        }
+    }
+
+    pub fn add_handshake_log(&mut self, msg: LogMessage) {
+        self.handshake_logs.push_back(msg);
+    }
+
     pub fn set_options(
         &mut self,
         options: &super::ClientOptions,
         response: DaemonResult<()>,
-    ) -> LogBuilder<R> {
+    ) -> LogBuilder<R, MockOperation> {
         self.build_operation(MockOperation::SetOptions(options.clone(), response))
     }
 
@@ -793,7 +881,7 @@ impl<R> Builder<R> {
         &mut self,
         path: &StorePath,
         response: DaemonResult<bool>,
-    ) -> LogBuilder<R> {
+    ) -> LogBuilder<R, MockOperation> {
         self.build_operation(MockOperation::IsValidPath(path.clone(), response))
     }
 
@@ -802,7 +890,7 @@ impl<R> Builder<R> {
         paths: &StorePathSet,
         substitute: bool,
         response: DaemonResult<StorePathSet>,
-    ) -> LogBuilder<R> {
+    ) -> LogBuilder<R, MockOperation> {
         self.build_operation(MockOperation::QueryValidPaths(
             QueryValidPathsRequest {
                 paths: paths.clone(),
@@ -816,7 +904,7 @@ impl<R> Builder<R> {
         &mut self,
         path: &StorePath,
         response: DaemonResult<Option<UnkeyedValidPathInfo>>,
-    ) -> LogBuilder<R> {
+    ) -> LogBuilder<R, MockOperation> {
         self.build_operation(MockOperation::QueryPathInfo(path.clone(), response))
     }
 
@@ -824,7 +912,7 @@ impl<R> Builder<R> {
         &mut self,
         path: &StorePath,
         response: DaemonResult<Bytes>,
-    ) -> LogBuilder<R> {
+    ) -> LogBuilder<R, MockOperation> {
         self.build_operation(MockOperation::NarFromPath(path.clone(), response))
     }
 
@@ -833,8 +921,23 @@ impl<R> Builder<R> {
         paths: &[DerivedPath],
         mode: BuildMode,
         response: DaemonResult<()>,
-    ) -> LogBuilder<R> {
+    ) -> LogBuilder<R, MockOperation> {
         self.build_operation(MockOperation::BuildPaths(
+            BuildPathsRequest {
+                paths: paths.to_vec(),
+                mode,
+            },
+            response,
+        ))
+    }
+
+    pub fn build_paths_with_results(
+        &mut self,
+        paths: &[DerivedPath],
+        mode: BuildMode,
+        response: DaemonResult<KeyedBuildResults>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::BuildPathsWithResults(
             BuildPathsRequest {
                 paths: paths.to_vec(),
                 mode,
@@ -846,13 +949,13 @@ impl<R> Builder<R> {
     pub fn build_derivation(
         &mut self,
         drv: &BasicDerivation,
-        build_mode: BuildMode,
+        mode: BuildMode,
         response: DaemonResult<BuildResult>,
-    ) -> LogBuilder<R> {
+    ) -> LogBuilder<R, MockOperation> {
         self.build_operation(MockOperation::BuildDerivation(
             BuildDerivationRequest {
                 drv: drv.clone(),
-                build_mode,
+                mode,
             },
             response,
         ))
@@ -862,7 +965,7 @@ impl<R> Builder<R> {
         &mut self,
         paths: &[DerivedPath],
         response: DaemonResult<QueryMissingResult>,
-    ) -> LogBuilder<R> {
+    ) -> LogBuilder<R, MockOperation> {
         self.build_operation(MockOperation::QueryMissing(paths.to_vec(), response))
     }
 
@@ -873,7 +976,7 @@ impl<R> Builder<R> {
         dont_check_sigs: bool,
         contents: Bytes,
         response: DaemonResult<()>,
-    ) -> LogBuilder<R> {
+    ) -> LogBuilder<R, MockOperation> {
         self.build_operation(MockOperation::AddToStoreNar(
             AddToStoreNarRequest {
                 path_info: info.clone(),
@@ -891,7 +994,7 @@ impl<R> Builder<R> {
         dont_check_sigs: bool,
         contents: Vec<(ValidPathInfo, Bytes)>,
         response: DaemonResult<()>,
-    ) -> LogBuilder<R> {
+    ) -> LogBuilder<R, MockOperation> {
         self.build_operation(MockOperation::AddMultipleToStore(
             AddMultipleToStoreRequest {
                 repair,
@@ -902,7 +1005,7 @@ impl<R> Builder<R> {
         ))
     }
 
-    fn build_operation(&mut self, operation: MockOperation) -> LogBuilder<R> {
+    fn build_operation(&mut self, operation: MockOperation) -> LogBuilder<R, MockOperation> {
         LogBuilder {
             owner: self,
             operation,
@@ -1043,231 +1146,10 @@ where
             return;
         }
         for op in self.ops.drain(..) {
-            self.reporter.unread_operation(op);
+            self.reporter.unread_operation(op).unwrap();
         }
     }
 }
-
-/*
-impl<R> MockStore<R> {
-    fn assert_set_options(
-        trusted_client: TrustLevel,
-        options: &super::ClientOptions,
-        response: DaemonResult<()>
-    ) -> MockStore {
-        let store_dir = Default::default();
-        let expected = MockOperation::SetOptions(options.clone(), response);
-        MockStore {
-            trusted_client: TrustLevel::Unknown,
-            store_dir,
-            expected,
-            response,
-            actual: None,
-        }
-    }
-
-    pub fn assert_is_valid_path(path: &StorePath, response: Result<bool, DaemonError>) -> MockStore {
-        let store_dir = Default::default();
-        let expected = Request::IsValidPath(path.clone());
-        let response = response.map(|e| e.into());
-        MockStore {
-            trusted_client: TrustLevel::Unknown,
-            store_dir,
-            expected,
-            response,
-            actual: None,
-        }
-    }
-
-    pub fn assert_query_valid_paths(
-        trusted_client: TrustLevel,
-        paths: &StorePathSet,
-        substitute: bool,
-        response: DaemonResult<StorePathSet>,
-    ) -> MockStore {
-        let store_dir = Default::default();
-        let expected = Request::QueryValidPaths(QueryValidPathsRequest {
-            paths: paths.clone(),
-            substitute,
-        });
-        let response = response.map(|e| e.into());
-        MockStore {
-            trusted_client,
-            store_dir,
-            expected,
-            response,
-            actual: None,
-        }
-    }
-
-    pub fn assert_query_path_info(
-        trusted_client: TrustLevel,
-        path: &StorePath,
-        response: DaemonResult<Option<UnkeyedValidPathInfo>>,
-    ) -> MockStore {
-        let store_dir = Default::default();
-        let expected = Request::QueryPathInfo(path.clone());
-        let response = response.map(|e| e.into());
-        MockStore {
-            trusted_client,
-            store_dir,
-            expected,
-            response,
-            actual: None,
-        }
-    }
-
-    pub fn assert_nar_from_path(
-        trusted_client: TrustLevel,
-        path: &StorePath,
-        response: DaemonResult<Bytes>,
-    ) -> MockStore {
-        let store_dir = Default::default();
-        let expected = Request::NarFromPath(path.clone());
-        let response = response.map(|e| e.into());
-        MockStore {
-            trusted_client,
-            store_dir,
-            expected,
-            response,
-            actual: None,
-        }
-    }
-
-    pub fn assert_build_derivation(
-        trusted_client: TrustLevel,
-        drv_path: &StorePath,
-        drv: &BasicDerivation,
-        build_mode: BuildMode,
-        response: Result<BuildResult, DaemonError>,
-    ) -> MockStore {
-        let store_dir = Default::default();
-        let expected = Request::BuildDerivation(BuildDerivationRequest {
-            drv_path: drv_path.clone(),
-            drv: drv.clone(),
-            build_mode,
-        });
-        let response = response.map(|e| e.into());
-        MockStore {
-            trusted_client,
-            store_dir,
-            expected,
-            response,
-            actual: None,
-        }
-    }
-    pub fn assert_build_paths(
-        trusted_client: TrustLevel,
-        paths: &[DerivedPath],
-        mode: BuildMode,
-        response: Result<(), DaemonError>,
-    ) -> MockStore {
-        let store_dir = Default::default();
-        let expected = Request::BuildPaths(BuildPathsRequest {
-            paths: paths.into(),
-            mode,
-        });
-        let response = response.map(|e| e.into());
-        MockStore {
-            trusted_client,
-            store_dir,
-            expected,
-            response,
-            actual: None,
-        }
-    }
-    pub fn assert_add_to_store(
-        trusted_client: TrustLevel,
-        info: &ValidPathInfo,
-        repair: bool,
-        dont_check_sigs: bool,
-        source: Bytes,
-        response: Result<(), DaemonError>,
-    ) -> MockStore {
-        let store_dir = Default::default();
-        let expected = Request::AddToStoreNar(AddToStoreNarRequest {
-            info: info.clone(),
-            repair,
-            dont_check_sigs,
-            source,
-        });
-        let response = response.map(|e| e.into());
-        MockStore {
-            trusted_client,
-            store_dir,
-            expected,
-            response,
-            actual: None,
-        }
-    }
-    pub fn assert_query_closure(
-        paths: &StorePathSet,
-        include_outputs: bool,
-        response: Result<StorePathSet, DaemonError>,
-    ) -> MockStore {
-        let store_dir = Default::default();
-        let expected = Request::QueryClosure {
-            paths: paths.clone(),
-            include_outputs,
-        };
-        let response = response.map(|e| e.into());
-        MockStore {
-            trusted_client: TrustLevel::Unknown,
-            store_dir,
-            expected,
-            response,
-            actual: None,
-        }
-    }
-
-    pub fn assert_add_multiple_to_store(
-        trusted_client: TrustLevel,
-        source: Bytes,
-        repair: bool,
-        check_sigs: bool,
-        response: Result<(), DaemonError>,
-    ) -> MockStore {
-        let store_dir = Default::default();
-        let expected = Request::AddMultipleToStore {
-            source,
-            repair,
-            check_sigs,
-        };
-        let response = response.map(|e| e.into());
-        MockStore {
-            trusted_client,
-            store_dir,
-            expected,
-            response,
-            actual: None,
-        }
-    }
-    pub fn assert_query_missing(
-        targets: &[DerivedPath],
-        response: Result<QueryMissingResult, DaemonError>,
-    ) -> MockStore {
-        let store_dir = Default::default();
-        let expected = Request::QueryMissing(targets.into());
-        let response = response.map(|e| e.into());
-        MockStore {
-            trusted_client: TrustLevel::Unknown,
-            store_dir,
-            expected,
-            response,
-            actual: None,
-        }
-    }
-
-    pub fn prop_assert_eq(self) -> Result<(), TestCaseError> {
-        ::proptest::prop_assert_eq!(self.expected, self.actual.unwrap());
-        Ok(())
-    }
-
-    pub fn assert_eq(self) {
-        ::pretty_assertions::assert_eq!(self.expected, self.actual.unwrap());
-    }
-}
- */
 
 impl<R> HandshakeDaemonStore for MockStore<R>
 where
@@ -1356,7 +1238,7 @@ where
         mode: BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<Vec<super::wire::types2::KeyedBuildResult>>> + Send + 'a
     {
-        let actual = MockRequest::BuildPaths(BuildPathsRequest {
+        let actual = MockRequest::BuildPathsWithResults(BuildPathsRequest {
             paths: drvs.to_vec(),
             mode,
         });
@@ -1366,11 +1248,11 @@ where
     fn build_derivation<'a>(
         &'a mut self,
         drv: &'a BasicDerivation,
-        build_mode: BuildMode,
+        mode: BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<BuildResult>> + 'a {
         let actual = MockRequest::BuildDerivation(BuildDerivationRequest {
             drv: drv.clone(),
-            build_mode,
+            mode,
         });
         self.check_operation(actual)
     }
@@ -1446,187 +1328,243 @@ where
         let actual = MockRequest::QueryAllValidPaths;
         self.check_operation(actual)
     }
-}
-/*
-impl DaemonStore for AssertStore {
-    fn store_dir(&self) -> StoreDir {
-        self.store_dir.clone()
-    }
 
-    fn is_trusted_client(&self) -> Option<TrustedFlag> {
-        self.trusted_client
-    }
-
-    async fn set_options(&mut self) -> Result<(), Error> {
-        Ok(())
-    }
-
-    async fn query_valid_paths(
-        &mut self,
-        paths: &StorePathSet,
-        maybe_substitute: SubstituteFlag,
-    ) -> Result<StorePathSet, Error> {
-        let actual = Message::QueryValidPaths {
-            paths: paths.clone(),
-            maybe_substitute,
-        };
-        assert_eq!(None, self.actual.take(), "existing result");
-        self.actual = Some(actual);
-        match take(&mut self.response)? {
-            MessageResponse::StorePathSet(set) => Ok(set),
-            e => panic!("Invalid response {:?} for query_valid_paths", e),
-        }
-    }
-
-    async fn query_path_info(&mut self, path: &StorePath) -> Result<Option<ValidPathInfo>, Error> {
-        let actual = Message::QueryPathInfo(path.clone());
-        assert_eq!(None, self.actual.take(), "existing result");
-        self.actual = Some(actual);
-        match take(&mut self.response)? {
-            MessageResponse::ValidPathInfo(res) => Ok(res),
-            e => panic!("Invalid response {:?} for query_path_info", e),
-        }
-    }
-
-    async fn nar_from_path<W: AsyncWrite + Send + Unpin>(
-        &mut self,
-        path: &StorePath,
-        mut sink: W,
-    ) -> Result<(), Error> {
-        let actual = Message::NarFromPath(path.clone());
-        assert_eq!(None, self.actual.take(), "existing result");
-        self.actual = Some(actual);
-        match take(&mut self.response)? {
-            MessageResponse::Bytes(set) => {
-                sink.write_all(&set).await?;
-                sink.flush().await?;
-                Ok(())
+    async fn shutdown(&mut self) -> DaemonResult<()> {
+        let mut res = Ok(());
+        for op in self.ops.drain(..) {
+            if let Err(err) = self.reporter.unread_operation(op) {
+                if res.is_ok() {
+                    res = Err(err);
+                }
             }
-            e => panic!("Invalid response {:?} for nar_from_path", e),
+        }
+        res
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+pub mod arbitrary {
+    use std::ops::RangeBounds;
+
+    use proptest::prelude::*;
+
+    use crate::daemon::wire::types2::KeyedBuildResult;
+    use crate::daemon::{ClientOptions, ProtocolVersion};
+    use crate::store_path::{StorePath, StorePathSet};
+    use crate::test::arbitrary::archive::arb_nar_contents;
+    use crate::test::arbitrary::daemon::{arb_nar_contents_items, field_after};
+    use crate::test::arbitrary::helpers::Union;
+
+    use super::*;
+
+    prop_compose! {
+        fn arb_mock_set_options()(options in any::<ClientOptions>()) -> MockOperation {
+            MockOperation::SetOptions(options, Ok(()))
+        }
+    }
+    prop_compose! {
+        fn arb_mock_is_valid_path()(
+            path in any::<StorePath>(),
+            result in proptest::bool::ANY) -> MockOperation {
+            MockOperation::IsValidPath(path, Ok(result))
         }
     }
 
-    async fn add_to_store<R: AsyncRead + Send + Unpin>(
-        &mut self,
-        info: &ValidPathInfo,
-        mut source: R,
-        repair: RepairFlag,
-        check_sigs: CheckSignaturesFlag,
-    ) -> Result<(), Error> {
-        let mut buf = Vec::new();
-        source.read_to_end(&mut buf).await?;
-        let actual = Message::AddToStore {
-            info: info.clone(),
-            source: buf.into(),
-            repair,
-            check_sigs,
-        };
-        assert_eq!(None, self.actual.take(), "existing result");
-        self.actual = Some(actual);
-        match take(&mut self.response)? {
-            MessageResponse::Empty => Ok(()),
-            e => panic!("Invalid response {:?} for add_to_store", e),
-        }
-    }
-    async fn build_derivation(
-        &mut self,
-        drv_path: &StorePath,
-        drv: &BasicDerivation,
-        build_mode: BuildMode,
-    ) -> Result<BuildResult, Error> {
-        let settings = BuildSettings::default();
-        let actual = Message::BuildDerivation {
-            drv_path: drv_path.clone(),
-            drv: drv.clone(),
-            build_mode,
-            settings,
-        };
-        assert_eq!(None, self.actual.take(), "existing result");
-        self.actual = Some(actual);
-        match take(&mut self.response)? {
-            MessageResponse::BuildResult(res) => Ok(res),
-            e => panic!("Invalid response {:?} for build_derivation", e),
-        }
-    }
-    async fn build_paths(
-        &mut self,
-        drv_paths: &[DerivedPath],
-        build_mode: BuildMode,
-    ) -> Result<(), Error> {
-        let actual = Message::BuildPaths {
-            drv_paths: drv_paths.into(),
-            build_mode,
-            settings: BuildSettings::default(),
-        };
-        assert_eq!(None, self.actual.take(), "existing result");
-        self.actual = Some(actual);
-        match take(&mut self.response)? {
-            MessageResponse::Empty => Ok(()),
-            e => panic!("Invalid response {:?} for build_paths", e),
+    prop_compose! {
+        fn arb_mock_query_valid_paths(version: ProtocolVersion)(
+            paths in any::<StorePathSet>(),
+            substitute in field_after(version, 27, proptest::bool::ANY),
+            result in any::<StorePathSet>()) -> MockOperation {
+            MockOperation::QueryValidPaths(QueryValidPathsRequest {
+                paths, substitute
+            }, Ok(result))
         }
     }
 
-    async fn query_valid_paths_locked(
-        &mut self,
-        paths: &StorePathSet,
-        lock: bool,
-        maybe_substitute: SubstituteFlag,
-    ) -> Result<StorePathSet, Error> {
-        let actual = Message::LegacyQueryValidPaths {
-            paths: paths.clone(),
-            lock,
-            maybe_substitute,
-        };
-        assert_eq!(None, self.actual.take(), "existing result");
-        self.actual = Some(actual);
-        match take(&mut self.response)? {
-            MessageResponse::StorePathSet(set) => Ok(set),
-            e => panic!("Invalid response {:?} for legacy_query_valid_paths", e),
+    prop_compose! {
+        fn arb_mock_query_path_info()(
+            path in any::<StorePath>(),
+            result in any::<Option<UnkeyedValidPathInfo>>()) -> MockOperation {
+            MockOperation::QueryPathInfo(path, Ok(result))
+        }
+    }
+    prop_compose! {
+        fn arb_mock_nar_from_path()(
+            path in any::<StorePath>(),
+            result in arb_nar_contents(20, 20, 3)) -> MockOperation {
+            MockOperation::NarFromPath(path, Ok(result))
+        }
+    }
+    prop_compose! {
+        fn arb_mock_build_paths()(
+            paths in any::<Vec<DerivedPath>>(),
+            mode in any::<BuildMode>()) -> MockOperation {
+            MockOperation::BuildPaths(BuildPathsRequest { paths, mode }, Ok(()))
+        }
+    }
+    prop_compose! {
+        fn arb_mock_build_paths_with_results(version: ProtocolVersion)(
+            results in any_with::<Vec<KeyedBuildResult>>((Default::default(), version)),
+            mode in any::<BuildMode>()) -> MockOperation {
+            let paths = results.iter().map(|r| r.path.clone()).collect();
+            MockOperation::BuildPathsWithResults(BuildPathsRequest { paths, mode }, Ok(results))
         }
     }
 
-    async fn is_valid_path(&mut self, path: &StorePath) -> Result<bool, Error> {
-        let actual = Message::IsValidPath(path.clone());
-        assert_eq!(None, self.actual.take(), "existing result");
-        self.actual = Some(actual);
-        match take(&mut self.response)? {
-            MessageResponse::Bool(res) => Ok(res),
-            e => panic!("Invalid response {:?} for is_valid_path", e),
+    prop_compose! {
+        fn arb_mock_build_derivation(version: ProtocolVersion)(
+            drv in any::<BasicDerivation>(),
+            mode in any::<BuildMode>(),
+            result in any_with::<BuildResult>(version)) -> MockOperation {
+            MockOperation::BuildDerivation(BuildDerivationRequest { drv, mode }, Ok(result))
+        }
+    }
+    prop_compose! {
+        fn arb_mock_query_missing()(
+            paths in any::<Vec<DerivedPath>>(),
+            result in any::<QueryMissingResult>()) -> MockOperation {
+            MockOperation::QueryMissing(paths, Ok(result))
+        }
+    }
+    prop_compose! {
+        fn arb_mock_add_to_store_nar()(
+            path_info in any::<ValidPathInfo>(),
+            repair in proptest::bool::ANY,
+            dont_check_sigs in proptest::bool::ANY,
+            content in arb_nar_contents(20, 20, 3)) -> MockOperation {
+            MockOperation::AddToStoreNar(AddToStoreNarRequest {
+                path_info, repair, dont_check_sigs
+            }, content, Ok(()))
+        }
+    }
+    prop_compose! {
+        fn arb_mock_add_multiple_to_store()(
+            repair in proptest::bool::ANY,
+            dont_check_sigs in proptest::bool::ANY,
+            infos in arb_nar_contents_items()) -> MockOperation {
+            MockOperation::AddMultipleToStore(AddMultipleToStoreRequest {
+                repair, dont_check_sigs
+            }, infos, Ok(()))
         }
     }
 
-    async fn add_multiple_to_store<R: AsyncRead + Send + Unpin>(
-        &mut self,
-        mut source: R,
-        repair: RepairFlag,
-        check_sigs: CheckSignaturesFlag,
-    ) -> Result<(), Error> {
-        let mut buf = Vec::new();
-        source.read_to_end(&mut buf).await?;
-        let actual = Message::AddMultipleToStore {
-            source: buf.into(),
-            repair,
-            check_sigs,
-        };
-        assert_eq!(None, self.actual.take(), "existing result");
-        self.actual = Some(actual);
-        match take(&mut self.response)? {
-            MessageResponse::Empty => Ok(()),
-            e => panic!("Invalid response {:?} for add_multiple_to_store", e),
+    #[derive(Debug, Clone, Copy)]
+    pub struct MockOperationParams {
+        pub version: ProtocolVersion,
+        pub allow_options: bool,
+    }
+
+    impl Default for MockOperationParams {
+        fn default() -> Self {
+            Self {
+                version: Default::default(),
+                allow_options: true,
+            }
         }
     }
 
-    async fn query_missing(
-        &mut self,
-        targets: &[DerivedPath],
-    ) -> Result<QueryMissingResult, Error> {
-        let actual = Message::QueryMissing(targets.into());
-        assert_eq!(None, self.actual.take(), "existing result");
-        self.actual = Some(actual);
-        match take(&mut self.response)? {
-            MessageResponse::QueryMissingResult(res) => Ok(res),
-            e => panic!("Invalid response {:?} for query_missing", e),
+    impl Arbitrary for MockOperation {
+        type Parameters = MockOperationParams;
+        type Strategy = Union<BoxedStrategy<Self>>;
+
+        fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+            let mut ret = Union::new([
+                arb_mock_is_valid_path().boxed(),
+                arb_mock_query_valid_paths(args.version).boxed(),
+                arb_mock_query_path_info().boxed(),
+                arb_mock_nar_from_path().boxed(),
+                arb_mock_build_paths().boxed(),
+                arb_mock_build_derivation(args.version).boxed(),
+                arb_mock_add_to_store_nar().boxed(),
+            ]);
+            if args.allow_options {
+                ret = ret.or(arb_mock_set_options().boxed());
+            }
+            if Operation::BuildPathsWithResults
+                .versions()
+                .contains(&args.version)
+            {
+                ret = ret.or(arb_mock_build_paths_with_results(args.version).boxed());
+            }
+            if Operation::AddMultipleToStore
+                .versions()
+                .contains(&args.version)
+            {
+                ret = ret.or(arb_mock_add_multiple_to_store().boxed());
+            }
+            ret
         }
     }
 }
- */
+
+#[cfg(test)]
+mod unittests {
+    use super::*;
+
+    #[tokio::test]
+    async fn check_reporter() {
+        let path = "00000000000000000000000000000000-_".parse().unwrap();
+        let mut mock = MockStore::builder()
+            .is_valid_path(&path, Ok(true))
+            .build()
+            .build();
+        mock.is_valid_path(&path).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "operation still unread")]
+    async fn check_unsent_reporter() {
+        let path = "00000000000000000000000000000000-_".parse().unwrap();
+        let _mock = MockStore::builder()
+            .is_valid_path(&path, Ok(true))
+            .build()
+            .build();
+    }
+
+    #[tokio::test]
+    async fn check_channel_reporter() {
+        let path = "00000000000000000000000000000000-_".parse().unwrap();
+        let (mock, mut reporter) = MockStore::builder()
+            .is_valid_path(&path, Ok(true))
+            .build()
+            .channel_reporter();
+        let _test = async move {
+            let mut mock = mock.build();
+            mock.is_valid_path(&path).await.unwrap();
+        }
+        .await;
+        if let Some(err) = reporter.next().await {
+            panic!("{}", err);
+        }
+    }
+
+    #[tokio::test]
+    async fn check_unsent_channel_reporter_no_report() {
+        let path = "00000000000000000000000000000000-_".parse().unwrap();
+        let (mock, _reporter) = MockStore::builder()
+            .is_valid_path(&path, Ok(true))
+            .build()
+            .channel_reporter();
+        let _mock = mock.build();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "channel reported: store dropped with LogOperation")]
+    async fn check_unsent_channel_reporter() {
+        let path = "00000000000000000000000000000000-_".parse().unwrap();
+        let (mock, mut reporter) = MockStore::builder()
+            .is_valid_path(&path, Ok(true))
+            .build()
+            .is_valid_path(&path, Ok(true))
+            .build()
+            .channel_reporter();
+        let _test = async move {
+            let mut mock = mock.build();
+            mock.is_valid_path(&path).await.unwrap();
+        }
+        .await;
+        if let Some(err) = reporter.next().await {
+            panic!("channel reported: {}", err);
+        }
+    }
+}

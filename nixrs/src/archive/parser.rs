@@ -169,14 +169,12 @@ mod unittests {
     use rstest::rstest;
     use tokio::fs::File;
     use tokio::io::AsyncReadExt as _;
-    use tracing_test::traced_test;
 
     use crate::archive::{test_data, write_nar};
 
     use super::*;
 
-    #[traced_test]
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     #[rstest]
     #[case::dir_example("test-data/test-dir.nar", test_data::dir_example())]
     #[case::exec_file("test-data/test-exec.nar", test_data::exec_file())]
@@ -212,8 +210,7 @@ mod unittests {
         assert_eq!(s, expected);
     }
 
-    #[traced_test]
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     #[rstest]
     #[case::text_file(test_data::text_file())]
     #[case::exec_file(test_data::exec_file())]

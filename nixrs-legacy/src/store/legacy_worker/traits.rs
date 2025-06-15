@@ -38,7 +38,6 @@ pub trait LegacyStore: Store {
 
 macro_rules! deref_legacy_store {
     () => {
-        #[must_use]
         #[allow(clippy::type_complexity, clippy::type_repetition_in_bounds)]
         fn query_valid_paths_locked<'life0, 'life1, 'async_trait>(
             &'life0 mut self,
@@ -60,7 +59,6 @@ macro_rules! deref_legacy_store {
             (**self).query_valid_paths_locked(paths, lock, maybe_substitute)
         }
 
-        #[must_use]
         #[allow(clippy::type_complexity, clippy::type_repetition_in_bounds)]
         fn export_paths<'life0, 'life1, 'async_trait, SW>(
             &'life0 mut self,
@@ -82,7 +80,6 @@ macro_rules! deref_legacy_store {
             (**self).export_paths(paths, sink)
         }
 
-        #[must_use]
         #[allow(clippy::type_complexity, clippy::type_repetition_in_bounds)]
         fn import_paths<'life0, 'async_trait, SR>(
             &'life0 mut self,
@@ -102,7 +99,6 @@ macro_rules! deref_legacy_store {
             (**self).import_paths(source)
         }
 
-        #[must_use]
         #[allow(clippy::type_complexity, clippy::type_repetition_in_bounds)]
         fn query_closure<'life0, 'life1, 'async_trait>(
             &'life0 mut self,

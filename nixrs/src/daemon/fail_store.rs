@@ -59,4 +59,8 @@ impl DaemonStore for FailStore {
             ),
         }
     }
+
+    async fn shutdown(&mut self) -> DaemonResult<()> {
+        Ok(())
+    }
 }

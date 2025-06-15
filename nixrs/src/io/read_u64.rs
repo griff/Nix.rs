@@ -7,7 +7,6 @@ use std::{
 
 use bytes::Buf;
 use tokio::io::{AsyncRead, ReadBuf};
-use tracing::trace;
 
 #[derive(Debug, Clone)]
 pub struct TryReadU64 {
@@ -41,7 +40,6 @@ impl TryReadU64 {
         R: AsyncRead,
     {
         while self.read < 8 {
-            trace!(read = self.read, "Reading u64");
             let mut buf = ReadBuf::new(&mut self.buf[(self.read as usize)..]);
             ready!(reader.as_mut().poll_read(cx, &mut buf))?;
             if buf.filled().is_empty() {

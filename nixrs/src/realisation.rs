@@ -110,10 +110,83 @@ impl NixDeserialize for Realisation {
     }
 }
 
+pub type DrvOutputs = BTreeMap<DrvOutput, Realisation>;
+
+#[cfg(any(test, feature = "test"))]
+pub mod arbitrary {
+    use crate::signature::proptests::arb_signatures;
+
+    use super::*;
+    use ::proptest::prelude::*;
+    use ::proptest::sample::SizeRange;
+
+    impl Arbitrary for DrvOutput {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<DrvOutput>;
+
+        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+            arb_drv_output().boxed()
+        }
+    }
+
+    prop_compose! {
+        pub fn arb_drv_output()
+        (
+            drv_hash in any::<hash::Hash>(),
+            output_name in any::<OutputName>(),
+        ) -> DrvOutput
+        {
+            DrvOutput { drv_hash, output_name }
+        }
+    }
+
+    pub fn arb_drv_outputs(size: impl Into<SizeRange>) -> impl Strategy<Value = DrvOutputs> {
+        let size = size.into();
+        let min_size = size.start();
+        prop::collection::vec(arb_realisation(), size)
+            .prop_map(|r| {
+                let mut ret = BTreeMap::new();
+                for value in r {
+                    ret.insert(value.id.clone(), value);
+                }
+                ret
+            })
+            .prop_filter("BTreeMap minimum size", move |m| m.len() >= min_size)
+    }
+
+    impl Arbitrary for Realisation {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<Realisation>;
+
+        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+            arb_realisation().boxed()
+        }
+    }
+
+    prop_compose! {
+        pub fn arb_realisation()
+        (
+            id in any::<DrvOutput>(),
+            out_path in any::<StorePath>(),
+            signatures in arb_signatures(),
+            dependent_realisations in  prop::collection::btree_map(
+                arb_drv_output(),
+                any::<StorePath>(),
+                0..50),
+        ) -> Realisation
+        {
+            Realisation {
+                id, out_path, signatures, dependent_realisations,
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod unittests {
     use rstest::rstest;
 
+    use crate::btree_map;
     use crate::hash;
     use crate::set;
     use crate::store_path::StorePathNameError;
@@ -158,18 +231,6 @@ mod unittests {
     }, "sha1:84983e441c3bd26ebaae4aa1f95129e5e54670f1!out_put")]
     fn display_drv_output(#[case] value: DrvOutput, #[case] expected: &str) {
         assert_eq!(value.to_string(), expected);
-    }
-
-    #[macro_export]
-    macro_rules! btree_map {
-        () => { BTreeMap::new() };
-        ($($k:expr => $v:expr),+ $(,)?) => {{
-            let mut ret = std::collections::BTreeMap::new();
-            $(
-                ret.insert($k.parse().unwrap(), $v.parse().unwrap());
-            )+
-            ret
-        }};
     }
 
     #[rstest]

@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::future::Future;
 use std::ops::Deref;
 use std::pin::pin;
 
@@ -187,22 +188,25 @@ where
     match &msg {
         LogMessage::Next(raw_msg) => {
             let msg = String::from_utf8_lossy(raw_msg);
-            debug!("log_message: {}", msg);
+            trace!("log_message: {}", msg);
         }
         LogMessage::StartActivity(activity) => {
             let text = String::from_utf8_lossy(&activity.text);
-            debug!(id=activity.act, level=?activity.level, type=?activity.activity_type,
+            trace!(id=activity.act, level=?activity.level, type=?activity.activity_type,
                 ?text,
                 parent=activity.parent,
                 "start_activity: {:?} {:?}: {}", activity.activity_type, activity.fields, text);
         }
         LogMessage::StopActivity(activity) => {
-            debug!(id = activity, "stop_activity: {}", activity);
+            trace!(id = activity, "stop_activity: {}", activity);
         }
         LogMessage::Result(result) => {
-            debug!(
+            trace!(
                 id = result.act,
-                "log_result: {} {:?} {:?}", result.act, result.result_type, result.fields,
+                "log_result: {} {:?} {:?}",
+                result.act,
+                result.result_type,
+                result.fields,
             );
         }
     }
@@ -302,9 +306,9 @@ where
     fn build_derivation<'a>(
         &'a mut self,
         drv: &'a BasicDerivation,
-        build_mode: super::wire::types2::BuildMode,
+        mode: super::wire::types2::BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<super::wire::types2::BuildResult>> + Send + 'a {
-        let ret = Box::pin(self.0.build_derivation(drv, build_mode));
+        let ret = Box::pin(self.0.build_derivation(drv, mode));
         trace!("BuildDerivation Size {}", size_of_val(&ret));
         ret
     }
@@ -377,6 +381,12 @@ where
         trace!("QueryAllValidPaths Size {}", size_of_val(&ret));
         ret
     }
+
+    fn shutdown(&mut self) -> impl Future<Output = DaemonResult<()>> + Send + '_ {
+        let ret = Box::pin(self.0.shutdown());
+        trace!("Shutdown Size {}", size_of_val(&ret));
+        ret
+    }
 }
 
 pub struct DaemonConnection<R, W> {
@@ -430,7 +440,7 @@ where
         }
         self.reader.set_version(version);
         self.writer.set_version(version);
-        info!(
+        debug!(
             ?version,
             ?client_version,
             "Server Version is {}, Client version is {}",
@@ -494,7 +504,7 @@ where
             let op = request.operation();
             let span = request.span();
             async {
-                trace!("Server got operation {}", op);
+                debug!("Server got operation {}", op);
                 let req = self.process_request(&mut store, request);
                 if let Err(mut err) = req.await {
                     error!(error = ?err.source, recover=err.can_recover, "Error processing request");
@@ -513,8 +523,8 @@ where
             }
             .instrument(span).await?;
         }
-        trace!("Server handled all requests");
-        Ok(())
+        debug!("Server handled all requests");
+        store.shutdown().await
     }
 
     fn add_to_store_nar<'s, 'p, 'r, NW, S>(
@@ -810,7 +820,7 @@ where
                 .recover()?;
             }
             BuildDerivation(req) => {
-                let logs = store.build_derivation(&req.drv, req.build_mode);
+                let logs = store.build_derivation(&req.drv, req.mode);
                 let value = self.process_logs(logs).await?;
                 /*
                 ### Outputs
@@ -1022,31 +1032,31 @@ where
                 let mut framed = FramedReader::new(buf_reader);
                 let source = builder.build_buffered(&mut framed);
                 let stream = parse_add_multiple_to_store(source).await?;
-                debug!("DaemonConnection: Add multiple to store: call store");
+                trace!("DaemonConnection: Add multiple to store: call store");
                 let logs = Self::add_multiple_to_store(
                     &mut store,
                     req.repair,
                     req.dont_check_sigs,
                     stream,
                 );
-                debug!("DaemonConnection: Add multiple to store: Logs");
+                trace!("DaemonConnection: Add multiple to store: Logs");
                 let res: Result<(), RecoverableError> = async {
                     let mut logs = pin!(logs);
-                    debug!("DaemonConnection: Add to store: get log");
+                    trace!("DaemonConnection: Add to store: get log");
                     while let Some(msg) = logs.next().await {
-                        debug!("DaemonConnection: Add multiple to store: got log {:?}", msg);
+                        trace!("DaemonConnection: Add multiple to store: got log {:?}", msg);
                         write_log(&mut self.writer, msg).await?;
                     }
-                    debug!("DaemonConnection: Add multiple to store: get result");
+                    trace!("DaemonConnection: Add multiple to store: get result");
                     logs.await.recover()?;
-                    debug!("DaemonConnection: Add multiple to store: write result");
+                    trace!("DaemonConnection: Add multiple to store: write result");
                     self.writer.write_value(&RawLogMessage::Last).await?;
                     Ok(())
                 }
                 .await;
-                debug!("DaemonConnection: Add to store: drain reader");
+                trace!("DaemonConnection: Add to store: drain reader");
                 let err = framed.drain_all().await;
-                debug!("DaemonConnection: Add multiple to store: done");
+                trace!("DaemonConnection: Add multiple to store: done");
                 res?;
                 err?;
                 /*
@@ -1069,7 +1079,7 @@ where
                 .with_operation(op)?;
             }
             BuildPathsWithResults(req) => {
-                let logs = store.build_paths_with_results(&req.drvs, req.mode);
+                let logs = store.build_paths_with_results(&req.paths, req.mode);
                 let value = self.process_logs(logs).await?;
                 /*
                 ### Outputs

@@ -22,7 +22,7 @@ use super::types::AddToStoreItem;
 use super::wire::logger::RawLogMessage;
 use super::wire::types::Operation;
 use super::wire::types2::BuildMode;
-use super::wire::{CLIENT_MAGIC, SERVER_MAGIC};
+use super::wire::{IgnoredOne, CLIENT_MAGIC, SERVER_MAGIC};
 use super::{
     DaemonError, DaemonErrorKind, DaemonResult, DaemonResultExt as _, DaemonStore,
     HandshakeDaemonStore, LogMessage, ProtocolVersion, TrustLevel,
@@ -318,11 +318,6 @@ where
             .handshake()
     }
 
-    pub async fn close(&mut self) -> Result<(), DaemonError> {
-        self.writer.shutdown().await?;
-        Ok(())
-    }
-
     pub fn version(&self) -> ProtocolVersion {
         self.writer.version()
     }
@@ -492,7 +487,7 @@ where
             self.writer.write_value(&Operation::BuildPaths).await?;
             self.writer.write_value(&paths).await?;
             self.writer.write_value(&mode).await?;
-            Ok(self.process_stderr())
+            Ok(self.process_stderr().map_ok(|_ignored: IgnoredOne| ()))
         })
         .map_err(|err| err.fill_operation(Operation::BuildPaths))
     }
@@ -517,12 +512,12 @@ where
     fn build_derivation<'a>(
         &'a mut self,
         drv: &'a BasicDerivation,
-        build_mode: BuildMode,
+        mode: BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<super::wire::types2::BuildResult>> + 'a {
         FutureResult::new(async move {
             self.writer.write_value(&Operation::BuildDerivation).await?;
             self.writer.write_value(drv).await?;
-            self.writer.write_value(&build_mode).await?;
+            self.writer.write_value(&mode).await?;
             Ok(self.process_stderr())
         })
         .map_err(|err| err.fill_operation(Operation::BuildDerivation))
@@ -654,5 +649,10 @@ where
             Ok(self.process_stderr())
         })
         .map_err(|err| err.fill_operation(Operation::QueryMissing))
+    }
+
+    async fn shutdown(&mut self) -> DaemonResult<()> {
+        self.writer.shutdown().await?;
+        Ok(())
     }
 }

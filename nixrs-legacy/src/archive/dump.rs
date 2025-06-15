@@ -264,7 +264,7 @@ where
                     let mut rd = read_dir(&parent_path).await?;
                     while let Some(entry) = rd.next_entry().await? {
                         let mut name = Vec::from_os_string(entry.file_name())
-                            .map_err(|s| io::Error::new(io::ErrorKind::Other, format!("filename {:?} not valid UTF-8", s) ))?;
+                            .map_err(|s| io::Error::other(format!("filename {:?} not valid UTF-8", s) ))?;
                         let file_type = entry.file_type().await?;
                         let path = entry.path();
                         let item = Item {
@@ -276,7 +276,7 @@ where
                                 name = name[..pos].to_owned();
                                 if unhacked.contains_key(&name) {
                                     let name_s = String::from_utf8_lossy(&name);
-                                    Err(io::Error::new(io::ErrorKind::Other,
+                                    Err(io::Error::other(
                                         format!("file name collision in between '{:?}' and '{:?}'",
                                             parent_path.join(name_s.as_ref()),
                                             entry.path())))?;
@@ -294,8 +294,7 @@ where
                     }
                     close = false;
                 } else {
-                    Err(io::Error::new(io::ErrorKind::Other,
-                        format!("unsupported file type {:?}", file_type)))?;
+                    Err(io::Error::other(format!("unsupported file type {:?}", file_type)))?;
                     return;
                 }
                 if close {

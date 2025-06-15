@@ -32,12 +32,12 @@ pub enum Message {
     BuildDerivation {
         drv_path: StorePath,
         drv: BasicDerivation,
-        build_mode: BuildMode,
+        mode: BuildMode,
         settings: BuildSettings,
     },
     BuildPaths {
         drv_paths: Vec<DerivedPath>,
-        build_mode: BuildMode,
+        mode: BuildMode,
         settings: BuildSettings,
     },
     AddToStore {
@@ -230,7 +230,7 @@ impl AssertStore {
         trusted_client: Option<TrustedFlag>,
         drv_path: &StorePath,
         drv: &BasicDerivation,
-        build_mode: BuildMode,
+        mode: BuildMode,
         settings: &BuildSettings,
         response: Result<BuildResult, Error>,
     ) -> AssertStore {
@@ -238,7 +238,7 @@ impl AssertStore {
         let expected = Message::BuildDerivation {
             drv_path: drv_path.clone(),
             drv: drv.clone(),
-            build_mode,
+            mode,
             settings: settings.clone(),
         };
         let response = response.map(|e| e.into());
@@ -253,14 +253,14 @@ impl AssertStore {
     pub fn assert_build_paths(
         trusted_client: Option<TrustedFlag>,
         drv_paths: &[DerivedPath],
-        build_mode: BuildMode,
+        mode: BuildMode,
         settings: &BuildSettings,
         response: Result<(), Error>,
     ) -> AssertStore {
         let store_dir = Default::default();
         let expected = Message::BuildPaths {
             drv_paths: drv_paths.into(),
-            build_mode,
+            mode,
             settings: settings.clone(),
         };
         let response = response.map(|e| e.into());
@@ -456,13 +456,13 @@ impl Store for AssertStore {
         &mut self,
         drv_path: &StorePath,
         drv: &BasicDerivation,
-        build_mode: BuildMode,
+        mode: BuildMode,
     ) -> Result<BuildResult, Error> {
         let settings = BuildSettings::default();
         let actual = Message::BuildDerivation {
             drv_path: drv_path.clone(),
             drv: drv.clone(),
-            build_mode,
+            mode,
             settings,
         };
         assert_eq!(None, self.actual.take(), "existing result");
@@ -475,11 +475,11 @@ impl Store for AssertStore {
     async fn build_paths(
         &mut self,
         drv_paths: &[DerivedPath],
-        build_mode: BuildMode,
+        mode: BuildMode,
     ) -> Result<(), Error> {
         let actual = Message::BuildPaths {
             drv_paths: drv_paths.into(),
-            build_mode,
+            mode,
             settings: BuildSettings::default(),
         };
         assert_eq!(None, self.actual.take(), "existing result");

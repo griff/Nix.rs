@@ -275,10 +275,10 @@ impl State {
                                 target,
                             })
                         } else {
-                            Err(io::Error::new(
-                                io::ErrorKind::Other,
-                                format!("unsupported file type {:?}", m.file_type()),
-                            ))
+                            Err(io::Error::other(format!(
+                                "unsupported file type {:?}",
+                                m.file_type()
+                            )))
                         }
                     });
                     buf.push_back(res);
@@ -348,10 +348,7 @@ impl Stream for NarDumper {
                 let name = if self.level > 0 {
                     let filename = entry.path().file_name().unwrap();
                     let n = <[u8]>::from_os_str(filename).ok_or_else(|| {
-                        io::Error::new(
-                            io::ErrorKind::Other,
-                            format!("filename {:?} not valid UTF-8", filename),
-                        )
+                        io::Error::other(format!("filename {:?} not valid UTF-8", filename))
                     })?;
                     Bytes::copy_from_slice(n)
                 } else {
@@ -379,10 +376,7 @@ impl Stream for NarDumper {
                     Entry::Symlink { path: _, target } => {
                         let target = Vec::from_os_string(target.into_os_string())
                             .map_err(|s| {
-                                io::Error::new(
-                                    io::ErrorKind::Other,
-                                    format!("target {:?} not valid UTF-8", s),
-                                )
+                                io::Error::other(format!("target {:?} not valid UTF-8", s))
                             })?
                             .into();
 

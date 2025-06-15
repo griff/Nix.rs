@@ -181,12 +181,10 @@ mod unittests {
 
     use tokio::io::AsyncWriteExt;
     use tokio_test::io::Builder;
-    use tracing_test::traced_test;
 
     use super::*;
 
-    #[traced_test]
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     async fn test_write_frames() {
         let mut mock = Builder::new()
             .write(b"\x01\0\0\0\0\0\0\0 \x04\0\0\0\0\0\0\0ABCD")

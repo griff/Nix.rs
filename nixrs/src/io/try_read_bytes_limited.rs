@@ -1,14 +1,11 @@
-use std::{
-    fmt,
-    future::poll_fn,
-    io,
-    ops::RangeInclusive,
-    pin::Pin,
-    task::{ready, Context, Poll},
-};
+use std::fmt;
+use std::future::poll_fn;
+use std::io;
+use std::ops::RangeInclusive;
+use std::pin::Pin;
+use std::task::{ready, Context, Poll};
 
 use bytes::Bytes;
-use tracing::trace;
 
 use crate::wire::ZEROS;
 
@@ -67,7 +64,6 @@ impl TryReadBytesLimited {
                         if aligned > 0 {
                             // Ensure that there is enough space in buffer for contents
                             reader.as_mut().prepare(aligned);
-                            trace!(len, aligned, "Reading bytes");
                             *self = Self::Fill(len, aligned);
                         } else {
                             *self = Self::Done;

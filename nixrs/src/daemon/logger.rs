@@ -13,7 +13,11 @@ use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{FromPrimitive, IntoPrimitive, TryFromPrimitive};
 use pin_project_lite::pin_project;
 #[cfg(any(test, feature = "test"))]
-use proptest_derive::Arbitrary;
+use proptest::prelude::*;
+#[cfg(any(test, feature = "test"))]
+use proptest::prop_oneof;
+#[cfg(any(test, feature = "test"))]
+use test_strategy::Arbitrary;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt as _, AsyncRead, AsyncWrite, AsyncWriteExt as _};
 use tokio::sync::oneshot;
 
@@ -21,9 +25,13 @@ use super::de::{NixDeserialize, NixRead};
 use super::ser::{NixWrite, NixWriter};
 use super::wire::logger::{IgnoredErrorType, RawLogMessage, RawLogMessageType};
 use super::wire::IgnoredZero;
-use super::{DaemonError, DaemonErrorKind, DaemonInt, DaemonResult, DaemonString, RemoteError};
+use super::{
+    DaemonError, DaemonErrorKind, DaemonInt, DaemonResult, DaemonString, ProtocolVersion,
+    RemoteError,
+};
 #[cfg(feature = "nixrs-derive")]
 use crate::daemon::ser::NixSerialize;
+use crate::test::arbitrary::arb_byte_string;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, FromPrimitive, IntoPrimitive, Default,
@@ -48,6 +56,7 @@ pub enum Verbosity {
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
 )]
+#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
 #[repr(u16)]
@@ -71,6 +80,7 @@ pub enum ActivityType {
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
 )]
+#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
 #[repr(u16)]
@@ -219,18 +229,42 @@ impl NixSerialize for LogMessage {
     }
 }
 
+#[cfg(any(test, feature = "test"))]
+impl proptest::arbitrary::Arbitrary for LogMessage {
+    type Parameters = ProtocolVersion;
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+        use proptest::prelude::*;
+        if args.minor() >= 20 {
+            prop_oneof![
+                arb_byte_string().prop_map(LogMessage::Next),
+                any::<Activity>().prop_map(LogMessage::StartActivity),
+                any::<ActivityResult>().prop_map(LogMessage::Result),
+                any::<u64>().prop_map(LogMessage::StopActivity)
+            ]
+            .boxed()
+        } else {
+            arb_byte_string().prop_map(LogMessage::Next).boxed()
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct Activity {
     pub act: u64,
     pub level: Verbosity,
     pub activity_type: ActivityType,
+    #[strategy(arb_byte_string())]
     pub text: DaemonString, // If logger is JSON, invalid UTF-8 is replaced with U+FFFD
     pub fields: Vec<Field>,
     pub parent: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct ActivityResult {
     pub act: u64,
@@ -239,11 +273,12 @@ pub struct ActivityResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(tag = "FieldType"))]
 pub enum Field {
     Int(u64),
-    String(DaemonString),
+    String(#[strategy(arb_byte_string())] DaemonString),
 }
 
 pub trait ResultLog:

@@ -2,7 +2,7 @@ use std::future::{ready, Future};
 
 use ::capnp::Error;
 use futures::TryFutureExt as _;
-use nixrs::daemon::{DaemonError, DaemonErrorKind, LocalLoggerResult, LogMessage};
+use nixrs::daemon::{DaemonError, LocalLoggerResult, LogMessage};
 use nixrs::store_path::{StorePath, StorePathError, StorePathHash, StorePathName, StorePathSet};
 use tokio::io::AsyncWrite;
 
@@ -37,7 +37,7 @@ where
     async fn result(self) -> Result<T, DaemonError> {
         match self.promise.await {
             Ok(v) => Ok(v),
-            Err(err) => Err(DaemonErrorKind::Custom(err.to_string()).into()),
+            Err(err) => Err(DaemonError::custom(err)),
         }
     }
 }

@@ -2,7 +2,7 @@
 
 using Cxx = import "/capnp/c++.capnp";
 $Cxx.namespace("capnp");
-$Cxx.allowCancellation;
+#$Cxx.allowCancellation;
 using Rust = import "rust.capnp";
 $Rust.parentModule("capnp");
 

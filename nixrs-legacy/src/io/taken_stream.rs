@@ -57,8 +57,7 @@ where
                     }
                     Poll::Ready(Err(_)) => {
                         *guard = Inner::Taken(rec);
-                        return Poll::Ready(Err(io::Error::new(
-                            io::ErrorKind::Other,
+                        return Poll::Ready(Err(io::Error::other(
                             "TakenStream sender was dropped",
                         )));
                     }

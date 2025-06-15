@@ -8,13 +8,12 @@ use tracing::{debug, debug_span, instrument, trace, Instrument};
 
 use crate::archive::NarBytesReader;
 use crate::daemon::wire::types2::ValidPathInfo;
-use crate::daemon::DaemonResult;
+use crate::daemon::{DaemonError, DaemonResult};
 use crate::io::{AsyncBufReadCompat, AsyncBytesRead, Lending};
 
 use crate::daemon::de::NixRead;
 use crate::daemon::ser::NixWrite;
 use crate::daemon::types::AddToStoreItem;
-use crate::daemon::{DaemonError, DaemonErrorKind};
 
 #[instrument(level = "trace", skip_all)]
 pub async fn write_add_multiple_to_store_stream<W, S, R>(
@@ -35,9 +34,10 @@ where
     while let Some((idx, item)) = stream.next().await {
         trace!(idx, size, written, "Write stream item");
         if idx >= size {
-            return Err(
-                DaemonErrorKind::Custom(format!("More than {} items in stream", size)).into(),
-            );
+            return Err(DaemonError::custom(format!(
+                "More than {} items in stream",
+                size
+            )));
         }
         let item = item?;
         let span = debug_span!("write_path_to_store", idx, size, ?item.info.path, ?item.info.info.nar_hash, ?item.info.info.nar_size, ?item.info.info);
@@ -57,11 +57,10 @@ where
         .await?;
     }
     if written != size {
-        return Err(DaemonErrorKind::Custom(format!(
+        return Err(DaemonError::custom(format!(
             "Not enough items in stream: Expected {} got {}",
             size, written
-        ))
-        .into());
+        )));
     }
     Ok(size)
 }
@@ -126,6 +125,7 @@ where
 
 #[cfg(test)]
 mod unittests {
+    use std::collections::BTreeSet;
     use std::io::Cursor;
 
     use bytes::Bytes;
@@ -136,10 +136,10 @@ mod unittests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::try_join;
     use tokio_test::io::Builder;
-    use tracing_test::traced_test;
 
     use super::*;
     use crate::archive::{test_data, write_nar};
+    use crate::btree_set;
     use crate::daemon::de::NixReader;
     use crate::daemon::ser::NixWriter;
     use crate::daemon::{DaemonResult, UnkeyedValidPathInfo};
@@ -189,8 +189,7 @@ mod unittests {
         }))
     }
 
-    #[traced_test]
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     #[rstest]
     #[case::one(
         vec![
@@ -200,11 +199,11 @@ mod unittests {
                     info: UnkeyedValidPathInfo {
                         deriver: Some("00000000000000000000000000000000-_.drv".parse().unwrap()),
                         nar_hash: NarHash::new(&[0u8; 32]),
-                        references: vec!["00000000000000000000000000000000-_".parse().unwrap()],
+                        references: btree_set!["00000000000000000000000000000000-_"],
                         registration_time: 0,
                         nar_size: 0,
                         ultimate: true,
-                        signatures: vec![],
+                        signatures: BTreeSet::new(),
                         ca: None,
                     }
                 },
@@ -220,11 +219,11 @@ mod unittests {
                     info: UnkeyedValidPathInfo {
                         deriver: Some("00000000000000000000000000000000-_.drv".parse().unwrap()),
                         nar_hash: NarHash::new(&[0u8; 32]),
-                        references: vec!["00000000000000000000000000000000-_".parse().unwrap()],
+                        references: btree_set!["00000000000000000000000000000000-_"],
                         registration_time: 0,
                         nar_size: 0,
                         ultimate: true,
-                        signatures: vec![],
+                        signatures: BTreeSet::new(),
                         ca: None,
                     }
                 },
@@ -236,11 +235,11 @@ mod unittests {
                     info: UnkeyedValidPathInfo {
                         deriver: Some("00000000000000000000000000000022-_.drv".parse().unwrap()),
                         nar_hash: NarHash::new(&[1u8; 32]),
-                        references: vec!["00000000000000000000000000000000-_".parse().unwrap()],
+                        references: btree_set!["00000000000000000000000000000000-_"],
                         registration_time: 0,
                         nar_size: 200,
                         ultimate: true,
-                        signatures: vec![],
+                        signatures: BTreeSet::new(),
                         ca: None,
                     }
                 },

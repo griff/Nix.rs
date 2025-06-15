@@ -13,7 +13,7 @@ use tokio::try_join;
 
 use nixrs::daemon::client::DaemonClient;
 use nixrs::daemon::mock::{MockReporter, MockStore};
-use nixrs::daemon::{DaemonError, DaemonErrorKind, DaemonResult, DaemonStore as _};
+use nixrs::daemon::{DaemonError, DaemonResult, DaemonStore as _};
 use nixrs::store_path::StorePath;
 
 struct Provider<R: MockReporter>(Arc<RwLock<Option<MockStore<R>>>>);
@@ -102,7 +102,7 @@ where
         let client = logs.await?;
         let mut client = (test)(client).await?;
         eprintln!("Closing client");
-        client.close().await?;
+        client.shutdown().await?;
         eprintln!("Shutting down server");
         state.shutdown();
         eprintln!("Killing child");
@@ -127,7 +127,7 @@ async fn handshake() {
 #[rstest]
 #[case("00000000000000000000000000000000-_", Ok(true), Ok(true))]
 #[case("00000000000000000000000000000000-_", Ok(false), Ok(false))]
-#[case("00000000000000000000000000000000-_", Err(DaemonErrorKind::Custom("bad input path".into()).into()), Err("IsValidPath: remote error: IsValidPath: bad input path".into()))]
+#[case("00000000000000000000000000000000-_", Err(DaemonError::custom("bad input path")), Err("IsValidPath: remote error: IsValidPath: bad input path".into()))]
 #[serial]
 #[tokio::test]
 async fn is_valid_path(

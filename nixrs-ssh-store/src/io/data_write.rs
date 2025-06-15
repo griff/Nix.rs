@@ -132,7 +132,7 @@ impl AsyncWrite for DataWrite {
             Poll::Ready(Err(_)) => {
                 self.is_eof_fut_valid = false;
                 debug!("ChannelStream AsyncWrite EOF");
-                Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, "EOF")))
+                Poll::Ready(Err(io::Error::other("EOF")))
             }
         }
     }

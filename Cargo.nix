@@ -2111,7 +2111,64 @@ rec {
         };
         resolvedDefaultFeatures = [ "alloc" "default" ];
       };
-      "env_logger" = rec {
+      "env_filter" = rec {
+        crateName = "env_filter";
+        version = "0.1.3";
+        edition = "2021";
+        sha256 = "1l4p6f845cylripc3zkxa0lklk8rn2q86fqm522p6l2cknjhavhq";
+        dependencies = [
+          {
+            name = "log";
+            packageId = "log";
+            features = [ "std" ];
+          }
+        ];
+        features = {
+          "default" = [ "regex" ];
+          "regex" = [ "dep:regex" ];
+        };
+      };
+      "env_logger 0.11.8" = rec {
+        crateName = "env_logger";
+        version = "0.11.8";
+        edition = "2021";
+        sha256 = "17q6zbjam4wq75fa3m4gvvmv3rj3ch25abwbm84b28a0j3q67j0k";
+        dependencies = [
+          {
+            name = "anstream";
+            packageId = "anstream";
+            optional = true;
+            usesDefaultFeatures = false;
+            features = [ "wincon" ];
+          }
+          {
+            name = "anstyle";
+            packageId = "anstyle";
+            optional = true;
+          }
+          {
+            name = "env_filter";
+            packageId = "env_filter";
+            usesDefaultFeatures = false;
+          }
+          {
+            name = "log";
+            packageId = "log";
+            features = [ "std" ];
+          }
+        ];
+        features = {
+          "auto-color" = [ "color" "anstream/auto" ];
+          "color" = [ "dep:anstream" "dep:anstyle" ];
+          "default" = [ "auto-color" "humantime" "regex" ];
+          "humantime" = [ "dep:jiff" ];
+          "kv" = [ "log/kv" ];
+          "regex" = [ "env_filter/regex" ];
+          "unstable-kv" = [ "kv" ];
+        };
+        resolvedDefaultFeatures = [ "auto-color" "color" ];
+      };
+      "env_logger 0.7.1" = rec {
         crateName = "env_logger";
         version = "0.7.1";
         edition = "2018";
@@ -4568,7 +4625,7 @@ rec {
           }
           {
             name = "env_logger";
-            packageId = "env_logger";
+            packageId = "env_logger 0.7.1";
           }
           {
             name = "futures";
@@ -4658,6 +4715,11 @@ rec {
             packageId = "pin-project-lite";
           }
           {
+            name = "pretty_assertions";
+            packageId = "pretty_assertions";
+            optional = true;
+          }
+          {
             name = "proptest";
             packageId = "proptest";
             optional = true;
@@ -4683,6 +4745,11 @@ rec {
           {
             name = "serde_with";
             packageId = "serde_with";
+          }
+          {
+            name = "test-strategy";
+            packageId = "test-strategy";
+            optional = true;
           }
           {
             name = "thiserror";
@@ -4722,10 +4789,6 @@ rec {
             packageId = "once_cell";
           }
           {
-            name = "pretty_assertions";
-            packageId = "pretty_assertions";
-          }
-          {
             name = "proptest";
             packageId = "proptest";
           }
@@ -4742,6 +4805,15 @@ rec {
             packageId = "tempfile";
           }
           {
+            name = "test-log";
+            packageId = "test-log";
+            features = [ "trace" ];
+          }
+          {
+            name = "test-strategy";
+            packageId = "test-strategy";
+          }
+          {
             name = "tokio";
             packageId = "tokio";
             features = [ "fs" "io-util" "macros" "process" "rt-multi-thread" ];
@@ -4749,11 +4821,6 @@ rec {
           {
             name = "tokio-test";
             packageId = "tokio-test";
-          }
-          {
-            name = "tracing-test";
-            packageId = "tracing-test";
-            features = [ "no-env-filter" ];
           }
         ];
         features = {
@@ -4764,7 +4831,7 @@ rec {
           "md5" = [ "dep:md5" ];
           "nixrs-derive" = [ "daemon-serde" "dep:nixrs-derive" "dep:libc" "dep:num_enum" "dep:bstr" ];
           "proptest" = [ "dep:proptest" ];
-          "test" = [ "proptest" "dep:proptest-derive" ];
+          "test" = [ "proptest" "dep:proptest-derive" "dep:test-strategy" "dep:pretty_assertions" ];
         };
         resolvedDefaultFeatures = [ "archive" "daemon" "daemon-serde" "default" "full" "internal" "md5" "nixrs-derive" "proptest" "test" "xp-ca-derivations" "xp-dynamic-derivations" "xp-impure-derivations" ];
       };
@@ -8098,6 +8165,74 @@ rec {
         ];
 
       };
+      "structmeta" = rec {
+        crateName = "structmeta";
+        version = "0.3.0";
+        edition = "2021";
+        sha256 = "0afk0s9paazsvyvsirxvbnqp3blhdck3fmfhdw7xf209skc7a59f";
+        authors = [
+          "frozenlib"
+        ];
+        dependencies = [
+          {
+            name = "proc-macro2";
+            packageId = "proc-macro2";
+          }
+          {
+            name = "quote";
+            packageId = "quote";
+          }
+          {
+            name = "structmeta-derive";
+            packageId = "structmeta-derive";
+          }
+          {
+            name = "syn";
+            packageId = "syn";
+          }
+        ];
+        devDependencies = [
+          {
+            name = "syn";
+            packageId = "syn";
+            features = [ "extra-traits" "full" ];
+          }
+        ];
+
+      };
+      "structmeta-derive" = rec {
+        crateName = "structmeta-derive";
+        version = "0.3.0";
+        edition = "2021";
+        sha256 = "1z12r4v2d3272hxqxclnr1kn2kp07qsy5aswm4ynrzwhlmjhnahm";
+        procMacro = true;
+        libName = "structmeta_derive";
+        authors = [
+          "frozenlib"
+        ];
+        dependencies = [
+          {
+            name = "proc-macro2";
+            packageId = "proc-macro2";
+          }
+          {
+            name = "quote";
+            packageId = "quote";
+          }
+          {
+            name = "syn";
+            packageId = "syn";
+          }
+        ];
+        devDependencies = [
+          {
+            name = "syn";
+            packageId = "syn";
+            features = [ "extra-traits" ];
+          }
+        ];
+
+      };
       "subtle" = rec {
         crateName = "subtle";
         version = "2.6.1";
@@ -8310,6 +8445,106 @@ rec {
             name = "winapi-util";
             packageId = "winapi-util";
             target = { target, features }: (target."windows" or false);
+          }
+        ];
+
+      };
+      "test-log" = rec {
+        crateName = "test-log";
+        version = "0.2.17";
+        edition = "2021";
+        sha256 = "03ydax0mamyhn5n6x0l8d2kz76fly7jv3xmnwmk12611sa1n1x77";
+        libName = "test_log";
+        authors = [
+          "Daniel Mueller <deso@posteo.net>"
+        ];
+        dependencies = [
+          {
+            name = "env_logger";
+            packageId = "env_logger 0.11.8";
+            optional = true;
+            usesDefaultFeatures = false;
+          }
+          {
+            name = "test-log-macros";
+            packageId = "test-log-macros";
+          }
+          {
+            name = "tracing-subscriber";
+            packageId = "tracing-subscriber";
+            optional = true;
+            usesDefaultFeatures = false;
+            features = [ "env-filter" "fmt" ];
+          }
+        ];
+        features = {
+          "color" = [ "env_logger?/auto-color" "tracing-subscriber?/ansi" ];
+          "default" = [ "log" "color" ];
+          "log" = [ "dep:env_logger" "test-log-macros/log" "tracing-subscriber?/tracing-log" ];
+          "trace" = [ "dep:tracing-subscriber" "test-log-macros/trace" ];
+          "unstable" = [ "test-log-macros/unstable" ];
+        };
+        resolvedDefaultFeatures = [ "color" "default" "log" "trace" ];
+      };
+      "test-log-macros" = rec {
+        crateName = "test-log-macros";
+        version = "0.2.17";
+        edition = "2021";
+        sha256 = "0gsmmdsi8aqgxbr16n78sf1m6x5s29gfvlk0n7d0yg5mdly0r3c8";
+        procMacro = true;
+        libName = "test_log_macros";
+        authors = [
+          "Daniel Mueller <deso@posteo.net>"
+        ];
+        dependencies = [
+          {
+            name = "proc-macro2";
+            packageId = "proc-macro2";
+            usesDefaultFeatures = false;
+          }
+          {
+            name = "quote";
+            packageId = "quote";
+            usesDefaultFeatures = false;
+          }
+          {
+            name = "syn";
+            packageId = "syn";
+            usesDefaultFeatures = false;
+            features = [ "full" "parsing" "printing" "proc-macro" ];
+          }
+        ];
+        features = {
+        };
+        resolvedDefaultFeatures = [ "log" "trace" ];
+      };
+      "test-strategy" = rec {
+        crateName = "test-strategy";
+        version = "0.4.1";
+        edition = "2021";
+        sha256 = "04lbqbhgxbnr8q8gpv44xnsz572wm6nz8k47sy6yrlsw7wi2vswm";
+        procMacro = true;
+        libName = "test_strategy";
+        authors = [
+          "frozenlib"
+        ];
+        dependencies = [
+          {
+            name = "proc-macro2";
+            packageId = "proc-macro2";
+          }
+          {
+            name = "quote";
+            packageId = "quote";
+          }
+          {
+            name = "structmeta";
+            packageId = "structmeta";
+          }
+          {
+            name = "syn";
+            packageId = "syn";
+            features = [ "visit" "full" "extra-traits" ];
           }
         ];
 
@@ -9770,60 +10005,6 @@ rec {
           "valuable_crate" = [ "dep:valuable_crate" ];
         };
         resolvedDefaultFeatures = [ "alloc" "ansi" "default" "env-filter" "fmt" "matchers" "nu-ansi-term" "once_cell" "regex" "registry" "sharded-slab" "smallvec" "std" "thread_local" "tracing" "tracing-log" ];
-      };
-      "tracing-test" = rec {
-        crateName = "tracing-test";
-        version = "0.2.5";
-        edition = "2018";
-        sha256 = "0s0x076wpga7k1a3cl8da76rrgvs45zzq9rl6q75w3gy6qa8jysm";
-        libName = "tracing_test";
-        authors = [
-          "Danilo Bargen <mail@dbrgn.ch>"
-        ];
-        dependencies = [
-          {
-            name = "tracing-core";
-            packageId = "tracing-core";
-          }
-          {
-            name = "tracing-subscriber";
-            packageId = "tracing-subscriber";
-            features = [ "env-filter" ];
-          }
-          {
-            name = "tracing-test-macro";
-            packageId = "tracing-test-macro";
-          }
-        ];
-        features = {
-          "no-env-filter" = [ "tracing-test-macro/no-env-filter" ];
-        };
-        resolvedDefaultFeatures = [ "no-env-filter" ];
-      };
-      "tracing-test-macro" = rec {
-        crateName = "tracing-test-macro";
-        version = "0.2.5";
-        edition = "2018";
-        sha256 = "0s3m7a3pycn8r4xyql5gv5b85sdrqp4w24k1aqy26zf80vdrsr84";
-        procMacro = true;
-        libName = "tracing_test_macro";
-        authors = [
-          "Danilo Bargen <mail@dbrgn.ch>"
-        ];
-        dependencies = [
-          {
-            name = "quote";
-            packageId = "quote";
-          }
-          {
-            name = "syn";
-            packageId = "syn";
-            features = [ "full" ];
-          }
-        ];
-        features = {
-        };
-        resolvedDefaultFeatures = [ "no-env-filter" ];
       };
       "try-lock" = rec {
         crateName = "try-lock";

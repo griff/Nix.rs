@@ -359,6 +359,10 @@ pub mod proptests {
             .prop_map(|(name, signature)| Signature(Arc::new(name), signature))
     }
 
+    pub fn arb_signatures() -> impl Strategy<Value = BTreeSet<Signature>> {
+        prop::collection::btree_set(any::<Signature>(), 0..5)
+    }
+
     impl Arbitrary for Signature {
         type Parameters = ();
         type Strategy = BoxedStrategy<Signature>;

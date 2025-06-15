@@ -10,7 +10,7 @@ edition = "2021"
 license = "EUPL-1.2 OR MIT"
 
 [features]
-test = ["proptest", "dep:proptest-derive"]
+test = ["proptest", "dep:proptest-derive", "dep:test-strategy", "dep:pretty_assertions"]
 archive = ["dep:walkdir"]
 daemon = ["nixrs-derive", "archive", "tokio/rt"]
 daemon-serde = []
@@ -38,6 +38,7 @@ md5 = { workspace = true, optional = true }
 num_enum = { workspace = true, optional = true }
 parking_lot = { version = "^0.12.3", features = ["arc_lock"] }
 pin-project-lite = { workspace = true }
+pretty_assertions = { workspace = true, optional = true }
 proptest = { workspace = true, optional = true }
 proptest-derive = { workspace = true, optional = true }
 ring = { workspace = true }
@@ -45,6 +46,7 @@ ring = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_with = { workspace = true }
+test-strategy = {version = "0.4.1", optional = true }
 thiserror = { workspace = true }
 tokio-util = { workspace = true, features = ["io-util"] }
 tracing = { workspace = true }
@@ -64,12 +66,12 @@ optional = true
 # criterion = { workspace = true, features = ["html_reports"] }
 hex-literal = { workspace = true }
 once_cell = { workspace = true }
-pretty_assertions = { workspace = true }
 proptest = { workspace = true }
 proptest-derive = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
-tracing-test = { workspace = true, features = ["no-env-filter"] }
+test-log = { workspace = true, features = ["trace"] }
+test-strategy = { workspace = true }
 tokio-test = { workspace = true }
 
 [dev-dependencies.tokio]

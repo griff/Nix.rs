@@ -14,7 +14,6 @@ mod int;
 pub mod mock;
 mod writer;
 
-use tracing::{trace_span, Instrument};
 pub use writer::{NixWriter, NixWriterBuilder};
 
 pub trait Error: Sized + StdError {
@@ -40,7 +39,7 @@ pub trait Error: Sized + StdError {
 
 impl Error for io::Error {
     fn custom<T: fmt::Display>(msg: T) -> Self {
-        io::Error::new(io::ErrorKind::Other, msg.to_string())
+        io::Error::other(msg.to_string())
     }
 
     fn io_error(err: std::io::Error) -> Self {
@@ -80,7 +79,7 @@ pub trait NixWrite: Send {
         V: NixSerialize + Send + ?Sized,
         Self: Sized,
     {
-        value.serialize(self).instrument(trace_span!("write_value"))
+        value.serialize(self)
     }
 }
 

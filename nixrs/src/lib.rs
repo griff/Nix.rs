@@ -21,6 +21,8 @@ pub(crate) mod io;
 pub mod realisation;
 pub mod signature;
 pub mod store_path;
+#[cfg(any(test, feature = "test"))]
+pub mod test;
 #[cfg(feature = "internal")]
 pub mod wire;
 #[cfg(all(

@@ -1,5 +1,11 @@
+use std::collections::BTreeSet;
+use std::fmt;
+use std::str::FromStr;
+
 use derive_more::Display;
-use std::{collections::BTreeSet, fmt, str::FromStr};
+use proptest::collection::btree_set;
+#[cfg(any(test, feature = "test"))]
+use proptest::prelude::*;
 
 use crate::store_path::{into_name, StorePathNameError};
 
@@ -8,6 +14,17 @@ pub struct OutputName(String);
 impl AsRef<str> for OutputName {
     fn as_ref(&self) -> &str {
         &self.0
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl Arbitrary for OutputName {
+    type Parameters = ();
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+        use crate::store_path::proptest::arb_output_name;
+        arb_output_name().prop_map(OutputName).boxed()
     }
 }
 
@@ -24,6 +41,20 @@ impl FromStr for OutputName {
 pub enum OutputSpec {
     All,
     Named(BTreeSet<OutputName>),
+}
+
+#[cfg(any(test, feature = "test"))]
+impl Arbitrary for OutputSpec {
+    type Parameters = ();
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+        prop_oneof![
+            Just(OutputSpec::All),
+            btree_set(any::<OutputName>(), 1..10).prop_map(OutputSpec::Named),
+        ]
+        .boxed()
+    }
 }
 
 impl fmt::Display for OutputSpec {

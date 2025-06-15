@@ -1,7 +1,5 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    future::Future,
-};
+use std::collections::{BTreeMap, BTreeSet};
+use std::future::Future;
 
 use super::{NixDeserialize, NixRead};
 

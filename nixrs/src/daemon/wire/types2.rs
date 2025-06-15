@@ -10,9 +10,11 @@ use bytes::Bytes;
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(any(test, feature = "test"))]
-use proptest_derive::Arbitrary;
+use test_strategy::Arbitrary;
 use tracing::{debug_span, Span};
 
+#[cfg(any(test, feature = "test"))]
+use crate::daemon::ProtocolVersion;
 use crate::daemon::{
     ClientOptions, DaemonInt, DaemonPath, DaemonString, DaemonTime, UnkeyedValidPathInfo,
 };
@@ -171,7 +173,7 @@ pub enum Request {
     QueryRealisation(DrvOutput),
     AddMultipleToStore(AddMultipleToStoreRequest),
     AddBuildLog(BaseStorePath),
-    BuildPathsWithResults(BuildPathsWithResultsRequest),
+    BuildPathsWithResults(BuildPathsRequest),
     AddPermRoot(AddPermRootRequest),
 
     /// Obsolete Nix 2.5.0 Protocol 1.32
@@ -303,7 +305,7 @@ impl Request {
             Request::BuildDerivation(req) => {
                 debug_span!("BuildDerivation",
                     drv_path=?req.drv.drv_path,
-                    build_mode=?req.build_mode)
+                    mode=?req.mode)
             }
             Request::AddSignatures(req) => {
                 debug_span!("AddSignatures", path=?req.path, signatures=?req.signatures)
@@ -345,7 +347,7 @@ impl Request {
             }
             Request::AddBuildLog(path) => debug_span!("AddBuildLog", ?path),
             Request::BuildPathsWithResults(req) => {
-                debug_span!("BuildPathsWithResults", drvs=?req.drvs.len(), mode=?req.mode)
+                debug_span!("BuildPathsWithResults", paths=?req.paths.len(), mode=?req.mode)
             }
             Request::AddPermRoot(req) => {
                 let gc_root = String::from_utf8_lossy(&req.gc_root);
@@ -434,9 +436,12 @@ pub struct BuildResult {
 
 pub type KeyedBuildResults = Vec<KeyedBuildResult>;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
+#[cfg_attr(any(test, feature = "test"), arbitrary(args = ProtocolVersion))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct KeyedBuildResult {
     pub path: DerivedPath,
+    #[cfg_attr(any(test, feature = "test"), any(*args))]
     pub result: BuildResult,
 }
 
@@ -532,7 +537,7 @@ pub struct VerifyStoreRequest {
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct BuildDerivationRequest {
     pub drv: BasicDerivation,
-    pub build_mode: BuildMode,
+    pub mode: BuildMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -551,6 +556,7 @@ pub struct AddToStoreNarRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct QueryMissingResult {
     pub will_build: StorePathSet,
@@ -586,13 +592,6 @@ pub enum QueryRealisationResponse {
 pub struct AddMultipleToStoreRequest {
     pub repair: bool,
     pub dont_check_sigs: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-pub struct BuildPathsWithResultsRequest {
-    pub drvs: Vec<DerivedPath>,
-    pub mode: BuildMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -690,7 +689,7 @@ impl NixDeserialize for Option<Microseconds> {
     {
         if let Some(tag) = reader.try_read_value::<u8>().await? {
             match tag {
-                0 => Ok(None),
+                0 => Ok(Some(None)),
                 1 => Ok(Some(Some(reader.read_value::<Microseconds>().await?))),
                 _ => Err(R::Error::invalid_data("invalid optional tag from remote")),
             }
@@ -711,6 +710,99 @@ impl NixSerialize for Option<Microseconds> {
             writer.write_value(value).await
         } else {
             writer.write_number(0).await
+        }
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+pub mod arbitrary {
+    use super::*;
+    use crate::daemon::ProtocolVersion;
+    use crate::realisation::arbitrary::arb_drv_outputs;
+    use crate::test::arbitrary::arb_byte_string;
+    use crate::test::arbitrary::daemon::field_after;
+    use ::proptest::prelude::*;
+
+    impl Arbitrary for BuildMode {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<BuildMode>;
+
+        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+            use BuildMode::*;
+            prop_oneof![
+                50 => Just(Normal),
+                5 => Just(Repair),
+                5 => Just(Check),
+            ]
+            .boxed()
+        }
+    }
+
+    impl Arbitrary for BuildStatus {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<BuildStatus>;
+
+        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+            use BuildStatus::*;
+            prop_oneof![
+                50 => Just(Built),
+                5 => Just(Substituted),
+                5 => Just(AlreadyValid),
+                5 => Just(PermanentFailure),
+                5 => Just(InputRejected),
+                5 => Just(OutputRejected),
+                5 => Just(TransientFailure), // possibly transient
+                5 => Just(TimedOut),
+                5 => Just(MiscFailure),
+                5 => Just(DependencyFailed),
+                5 => Just(LogLimitExceeded),
+                5 => Just(NotDeterministic)
+            ]
+            .boxed()
+        }
+    }
+
+    impl Arbitrary for Microseconds {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<Microseconds>;
+
+        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+            arb_microseconds().boxed()
+        }
+    }
+    prop_compose! {
+        fn arb_microseconds()(ms in 0i64..i64::MAX) -> Microseconds {
+            Microseconds(ms)
+        }
+    }
+
+    impl Arbitrary for BuildResult {
+        type Parameters = ProtocolVersion;
+        type Strategy = BoxedStrategy<BuildResult>;
+        fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+            arb_build_result(args).boxed()
+        }
+    }
+
+    prop_compose! {
+        pub fn arb_build_result(version: ProtocolVersion)
+        (
+            status in any::<BuildStatus>(),
+            error_msg in arb_byte_string(),
+            times_built in field_after(version, 29, 0u32..50u32),
+            is_non_deterministic in field_after(version, 29, ::proptest::bool::ANY),
+            start_time in field_after(version, 29, ::proptest::num::i64::ANY),
+            duration_secs in field_after(version, 29, 0i64..604_800i64),
+            cpu_user in field_after(version, 37, any::<Option<Microseconds>>()),
+            cpu_system in field_after(version, 37, any::<Option<Microseconds>>()),
+            built_outputs in field_after(version, 28, arb_drv_outputs(0..5)),
+        ) -> BuildResult
+        {
+            let stop_time = start_time + duration_secs;
+            BuildResult {
+                status, error_msg, times_built, is_non_deterministic,
+                start_time, stop_time, cpu_user, cpu_system, built_outputs,
+            }
         }
     }
 }

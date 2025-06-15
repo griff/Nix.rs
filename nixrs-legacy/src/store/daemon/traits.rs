@@ -67,7 +67,6 @@ macro_rules! deref_daemon_store {
             (**self).is_trusted_client()
         }
 
-        #[must_use]
         #[allow(clippy::type_complexity, clippy::type_repetition_in_bounds)]
         fn set_options<'life0, 'async_trait>(
             &'life0 mut self,
@@ -85,7 +84,6 @@ macro_rules! deref_daemon_store {
             (**self).set_options()
         }
 
-        #[must_use]
         #[allow(clippy::type_complexity, clippy::type_repetition_in_bounds)]
         fn is_valid_path<'life0, 'life1, 'async_trait>(
             &'life0 mut self,
@@ -105,7 +103,6 @@ macro_rules! deref_daemon_store {
             (**self).is_valid_path(path)
         }
 
-        #[must_use]
         #[allow(clippy::type_complexity, clippy::type_repetition_in_bounds)]
         fn add_multiple_to_store<'life0, 'async_trait, R>(
             &'life0 mut self,
@@ -127,7 +124,6 @@ macro_rules! deref_daemon_store {
             (**self).add_multiple_to_store(source, repair, check_sigs)
         }
 
-        #[must_use]
         #[allow(clippy::type_complexity, clippy::type_repetition_in_bounds)]
         fn query_missing<'life0, 'life1, 'async_trait>(
             &'life0 mut self,

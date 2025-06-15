@@ -805,13 +805,13 @@ mod unittests {
     use tokio::io::{AsyncReadExt, BufReader};
     use tokio_test::io::Builder;
     use tracing::trace;
-    use tracing_test::traced_test;
 
     use crate::archive::test_data::*;
     use crate::archive::write_nar;
 
     use super::NarReader;
 
+    #[test_log::test(tokio::test)]
     #[rstest]
     #[case::text_file(text_file())]
     #[case::exec_file(exec_file())]
@@ -821,8 +821,6 @@ mod unittests {
     #[case::empty_dir_in_dir(empty_dir_in_dir())]
     #[case::symlink(symlink())]
     #[case::dir_example(dir_example())]
-    #[traced_test]
-    #[tokio::test]
     async fn read_nar(
         #[case] events: TestNarEvents,
         #[values(
@@ -898,13 +896,11 @@ mod proptests {
     use tokio::io::{AsyncReadExt as _, BufReader};
     use tokio_test::io::Builder;
     use tracing::{info, trace};
-    use tracing_test::traced_test;
 
-    use crate::archive::arbitrary::arb_nar_contents;
     use crate::archive::NarReader;
+    use crate::test::arbitrary::archive::arb_nar_contents;
 
-    #[traced_test]
-    #[test]
+    #[test_log::test]
     fn proptest_read_nar() {
         let r = tokio::runtime::Builder::new_multi_thread()
             .enable_all()

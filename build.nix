@@ -29,6 +29,28 @@
     src = pkgs.nix-gitignore.gitignoreSource [] ./.;
     filter = pkgs.lib.cleanSourceFilter;
   };
+  onlyCargoSrc = pkgs.lib.cleanSourceWith {
+    name = "project-empty-cargo";
+    inherit src;
+    filter = path: type: let
+      base = builtins.baseNameOf path;
+      in type == "directory" || base == "Cargo.toml" || base == "Cargo.lock" || base == "build.rs";
+  };
+  emptySrc = pkgs.runCommand "empty-src" { src = onlyCargoSrc; } ''
+    cp -r $src $out
+    chmod -R +w $out
+    for dir in $(find $out -type d) ; do
+      if [[  -f $dir/Cargo.toml ]]; then
+        if [[ -d $dir/src ]]; then
+          touch $dir/src/lib.rs
+        fi
+        if [[ -d $dir/tests ]]; then
+          touch $dir/tests/test.rs
+        fi
+      fi
+    done
+    echo 'fn  main() {}' > $out/nixrs-capnp/build.rs
+  '';
 in {
   inherit crates src cargoDeps;
 
@@ -45,7 +67,9 @@ in {
       libsodium
       capnproto
     ];
-    buildPhase = "cargo clippy --tests --examples --benches -- -Dwarnings | tee $out";
+    buildPhase = ''
+      cargo clippy --tests --examples --benches --no-deps -- -Dwarnings | tee $out
+    '';
   };
   rustdoc = pkgs.stdenv.mkDerivation {
     name = "nixrs-rustdoc";
@@ -84,12 +108,11 @@ in {
   };
   crate2nix-check = let
     cargoNix = builtins.readFile ./Cargo.nix;
-    cargoHash = builtins.hashString "sha256" cargoNix;
-    time = toString builtins.currentTime;
-    outputHash = builtins.hashString "sha256" "${cargoNix}${cargoHash}${time}\n";
+    cargoHash = builtins.hashString "sha256" "${cargoNix}${emptySrc}";
+    outputHash = builtins.hashString "sha256" "${cargoNix}${cargoHash}\n";
   in pkgs.stdenv.mkDerivation {
     name = "nixrs-crate2nix-check";
-    inherit src;
+    src = emptySrc;
     inherit outputHash;
     outputHashAlgo = "sha256";
     outputHashMode = "flat";
@@ -103,7 +126,7 @@ in {
       cat $CARGO_HOME/config.toml
       ${pkgs.crate2nix}/bin/crate2nix generate
       cp Cargo.nix $out
-      echo "${cargoHash}${time}" >> $out
+      echo "${cargoHash}" >> $out
     '';
   };
   treefmt = pkgs.stdenv.mkDerivation {

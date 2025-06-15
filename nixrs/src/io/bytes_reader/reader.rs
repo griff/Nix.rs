@@ -1,14 +1,11 @@
-use std::{
-    future::poll_fn,
-    io::{self, Cursor},
-    pin::Pin,
-    task::{ready, Poll},
-};
+use std::future::poll_fn;
+use std::io::{self, Cursor};
+use std::pin::Pin;
+use std::task::{ready, Poll};
 
 use bytes::{Buf, BufMut as _, Bytes};
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncRead, ReadBuf};
-use tracing::trace;
 
 use super::buffer::BufferMut;
 use crate::io::AsyncBytesRead;
@@ -190,10 +187,8 @@ where
         cx: &mut std::task::Context<'_>,
     ) -> Poll<std::io::Result<bytes::Bytes>> {
         if self.buf.is_empty() {
-            trace!(capacity = self.buf.capacity(), "Force filling");
             ready!(self.as_mut().poll_force_fill_buf_internal(cx))?;
         }
-        trace!(capacity=self.buf.capacity(), filled=?self.filled(), "Poll filled");
         Poll::Ready(Ok(self.filled()))
     }
 
@@ -221,7 +216,6 @@ where
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
         let rem = ready!(self.as_mut().poll_fill_buf(cx))?;
-        trace!("Read {} bytes", rem.len());
         if !rem.is_empty() {
             let amt = std::cmp::min(rem.len(), buf.remaining());
             buf.put_slice(&rem[0..amt]);
@@ -238,12 +232,10 @@ mod unittests {
     use hex_literal::hex;
     use tokio::io::AsyncReadExt as _;
     use tokio_test::io::Builder;
-    use tracing_test::traced_test;
 
     use crate::io::{BytesReader, TryReadBytesLimited, TryReadU64};
 
-    #[traced_test]
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     async fn test_read_u64_partial() {
         let mock = Builder::new()
             .read(&hex!("0100 0000"))
@@ -265,8 +257,7 @@ mod unittests {
         assert_eq!(hex!("0123 4567 89AB CDEF 0100 0000"), &buf[..]);
     }
 
-    #[traced_test]
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     async fn test_read_twice() {
         let mock = Builder::new()
             .read(&hex!("0100 0000"))
@@ -293,8 +284,7 @@ mod unittests {
         assert_eq!(0, reader.read(&mut buf[..]).await.unwrap());
     }
 
-    #[traced_test]
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     async fn test_force_fill() {
         let mock = Builder::new()
             .read(&hex!("0100"))

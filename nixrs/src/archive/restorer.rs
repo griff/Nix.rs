@@ -120,7 +120,7 @@ where
                 NarWriteError::new(
                     NarWriteOperation::JoinError,
                     this.root.clone(),
-                    io::Error::new(io::ErrorKind::Other, "background task failed"),
+                    io::Error::other("background task failed"),
                 )
             })??;
         }
@@ -290,10 +290,8 @@ mod unittests {
     use futures::stream::{iter, StreamExt as _};
     use rstest::rstest;
     use tempfile::Builder;
-    use tracing_test::traced_test;
 
-    #[traced_test]
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     #[rstest]
     #[case::text_file(test_data::text_file())]
     #[case::exec_file(test_data::exec_file())]
@@ -331,9 +329,9 @@ mod proptests {
     use proptest::proptest;
     use tempfile::tempdir;
 
-    use crate::archive::arbitrary::arb_nar_events;
     use crate::archive::{dump, restore, test_data, NarEvent, NarWriteError};
     use crate::pretty_prop_assert_eq;
+    use crate::test::arbitrary::archive::arb_nar_events;
 
     #[test]
     fn proptest_restore_dump() {

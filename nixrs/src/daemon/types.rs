@@ -1,6 +1,6 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
-use std::future::ready;
+use std::future::{ready, Future};
 
 use bstr::ByteSlice;
 use bytes::Bytes;
@@ -10,12 +10,14 @@ use futures::Stream;
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(any(test, feature = "test"))]
-use proptest_derive::Arbitrary;
+use test_strategy::Arbitrary;
 use thiserror::Error;
 use tokio::io::{AsyncBufRead, AsyncWrite};
 
 use crate::derivation::BasicDerivation;
 use crate::derived_path::DerivedPath;
+#[cfg(any(test, feature = "test"))]
+use crate::signature::proptests::arb_signatures;
 use crate::signature::Signature;
 use crate::store_path::{ContentAddress, StorePathSet};
 use crate::{hash::NarHash, store_path::StorePath};
@@ -77,11 +79,12 @@ impl Default for ClientOptions {
 pub struct UnkeyedValidPathInfo {
     pub deriver: Option<StorePath>,
     pub nar_hash: NarHash,
-    pub references: Vec<StorePath>,
+    pub references: BTreeSet<StorePath>,
     pub registration_time: DaemonTime,
     pub nar_size: u64,
     pub ultimate: bool,
-    pub signatures: Vec<Signature>,
+    #[strategy(arb_signatures())]
+    pub signatures: BTreeSet<Signature>,
     pub ca: Option<ContentAddress>,
 }
 
@@ -381,7 +384,7 @@ pub trait DaemonStore: Send {
     fn build_derivation<'a>(
         &'a mut self,
         drv: &'a BasicDerivation,
-        build_mode: BuildMode,
+        mode: BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<BuildResult>> + Send + 'a {
         ResultProcess {
             stream: empty(),
@@ -458,6 +461,8 @@ pub trait DaemonStore: Send {
     fn query_all_valid_paths(
         &mut self,
     ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + '_;
+
+    fn shutdown(&mut self) -> impl Future<Output = DaemonResult<()>> + Send + '_;
 }
 
 impl<S> DaemonStore for &mut S
@@ -515,9 +520,9 @@ where
     fn build_derivation<'a>(
         &'a mut self,
         drv: &'a BasicDerivation,
-        build_mode: BuildMode,
+        mode: BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<BuildResult>> + 'a {
-        (**self).build_derivation(drv, build_mode)
+        (**self).build_derivation(drv, mode)
     }
 
     fn query_missing<'a>(
@@ -569,6 +574,9 @@ where
         &mut self,
     ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + '_ {
         (**self).query_all_valid_paths()
+    }
+    fn shutdown(&mut self) -> impl Future<Output = DaemonResult<()>> + Send + '_ {
+        (**self).shutdown()
     }
 }
 

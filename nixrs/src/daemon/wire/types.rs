@@ -7,6 +7,7 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 use crate::daemon::de::{NixDeserialize, NixRead};
 #[cfg(feature = "nixrs-derive")]
 use crate::daemon::ser::{NixSerialize, NixWrite};
+use crate::daemon::version::ProtocolRange;
 #[cfg(feature = "nixrs-derive")]
 use crate::store_path::StorePath;
 
@@ -92,6 +93,55 @@ pub enum Operation {
     // Quit = 0,
     // Removed Nix 0.12 Protocol 1.02
     // RemovedCollectGarbage = 15,
+}
+
+impl Operation {
+    pub fn versions(&self) -> ProtocolRange {
+        match self {
+            Operation::IsValidPath => (..).into(),
+            Operation::HasSubstitutes => (..12).into(),
+            Operation::QueryPathHash => (..16).into(),
+            Operation::QueryReferences => (..16).into(),
+            Operation::QueryReferrers => (..).into(),
+            Operation::AddToStore => (..).into(),
+            Operation::AddTextToStore => (..25).into(),
+            Operation::BuildPaths => (..).into(),
+            Operation::EnsurePath => (..).into(),
+            Operation::AddTempRoot => (..).into(),
+            Operation::AddIndirectRoot => (..).into(),
+            Operation::SyncWithGC => (..32).into(),
+            Operation::FindRoots => (..).into(),
+            Operation::ExportPath => (..17).into(),
+            Operation::QueryDeriver => (..16).into(),
+            Operation::SetOptions => (..).into(),
+            Operation::CollectGarbage => (2..).into(),
+            Operation::QuerySubstitutablePathInfo => (2..12).into(),
+            Operation::QueryDerivationOutputs => (5..22).into(),
+            Operation::QueryAllValidPaths => (5..).into(),
+            Operation::QueryPathInfo => (6..).into(),
+            Operation::ImportPaths => (9..17).into(),
+            Operation::QueryDerivationOutputNames => (8..21).into(),
+            Operation::QueryPathFromHashPart => (11..).into(),
+            Operation::QuerySubstitutablePathInfos => (12..19).into(),
+            Operation::QueryValidPaths => (12..).into(),
+            Operation::QuerySubstitutablePaths => (12..).into(),
+            Operation::QueryValidDerivers => (13..).into(),
+            Operation::OptimiseStore => (14..).into(),
+            Operation::VerifyStore => (14..).into(),
+            Operation::BuildDerivation => (14..).into(),
+            Operation::AddSignatures => (16..).into(),
+            Operation::NarFromPath => (17..).into(),
+            Operation::AddToStoreNar => (17..).into(),
+            Operation::QueryMissing => (19..).into(),
+            Operation::QueryDerivationOutputMap => (22..).into(),
+            Operation::RegisterDrvOutput => (27..).into(),
+            Operation::QueryRealisation => (27..).into(),
+            Operation::AddMultipleToStore => (32..).into(),
+            Operation::AddBuildLog => (32..).into(),
+            Operation::BuildPathsWithResults => (34..).into(),
+            Operation::AddPermRoot => (36..).into(),
+        }
+    }
 }
 
 #[cfg(feature = "nixrs-derive")]

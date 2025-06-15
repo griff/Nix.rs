@@ -96,7 +96,7 @@ impl AsyncWrite for ChannelWrite {
             Poll::Ready(Err(_)) => {
                 self.is_write_fut_valid = false;
                 debug!("ChannelStream AsyncWrite EOF");
-                Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, "EOF")))
+                Poll::Ready(Err(io::Error::other("EOF")))
             }
         }
     }
@@ -107,7 +107,7 @@ impl AsyncWrite for ChannelWrite {
     ) -> Poll<Result<(), io::Error>> {
         if let Err(err) = self.outgoing.send("".into()) {
             let err = format!("{err:?}");
-            return Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, err)));
+            return Poll::Ready(Err(io::Error::other(err)));
         }
         Poll::Ready(Ok(()))
     }

@@ -27,23 +27,17 @@ const LARGEST_ALGORITHM: Algorithm = Algorithm::SHA512;
 const MAX_SIZE: usize = LARGEST_ALGORITHM.size();
 
 /// A digest algorithm.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Display)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Display, Default)]
 pub enum Algorithm {
     #[display(fmt = "md5")]
     MD5,
     #[display(fmt = "sha1")]
     SHA1,
+    #[default]
     #[display(fmt = "sha256")]
     SHA256,
     #[display(fmt = "sha512")]
     SHA512,
-}
-
-/// The default algorithm is currently SHA-256
-impl Default for Algorithm {
-    fn default() -> Self {
-        Algorithm::SHA256
-    }
 }
 
 impl Algorithm {

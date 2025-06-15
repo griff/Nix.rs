@@ -1,5 +1,5 @@
-error[E0277]: the trait bound `Test: From<u64>` is not satisfied
+error[E0277]: the trait bound `Test: std::convert::From<u64>` is not satisfied
  --> tests/ui/deserialize_from_missing.rs
   |
   | #[nix(from = "u64")]
-  |              ^^^^^ the trait `From<u64>` is not implemented for `Test`
+  |              ^^^^^ the trait `std::convert::From<u64>` is not implemented for `Test`

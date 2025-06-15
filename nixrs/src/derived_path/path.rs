@@ -1,5 +1,9 @@
 use std::ops::Deref as _;
 
+use proptest::prelude::{Arbitrary, BoxedStrategy};
+#[cfg(any(test, feature = "test"))]
+use test_strategy::Arbitrary;
+
 use crate::store_path::{FromStoreDirStr, ParseStorePathError, StoreDirDisplay, StorePath};
 
 use super::{OutputName, OutputSpec};
@@ -77,6 +81,29 @@ pub enum SingleDerivedPath {
     },
 }
 
+#[cfg(any(test, feature = "test"))]
+impl Arbitrary for SingleDerivedPath {
+    type Parameters = ();
+    type Strategy = BoxedStrategy<SingleDerivedPath>;
+
+    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+        use proptest::prelude::*;
+        let opaque = any::<StorePath>().prop_map(SingleDerivedPath::Opaque);
+        let leaf = prop_oneof![
+            4 => opaque.clone(),
+            1 => opaque.prop_recursive(6, 1, 1, |inner| {
+                (any::<OutputName>(), inner).prop_map(|(output, drv_path)| {
+                    SingleDerivedPath::Built {
+                        drv_path: Box::new(drv_path),
+                        output,
+                    }
+                })
+            })
+        ];
+        leaf.boxed()
+    }
+}
+
 impl SingleDerivedPath {
     pub fn to_legacy_format(&self) -> impl StoreDirDisplay + '_ {
         DisplayPath('!', self)
@@ -150,6 +177,7 @@ impl FromStoreDirStr for SingleDerivedPath {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 pub enum DerivedPath {
     Opaque(StorePath),
     Built {

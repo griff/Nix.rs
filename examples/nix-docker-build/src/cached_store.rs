@@ -92,7 +92,7 @@ impl Store for CachedStore {
     async fn build_paths(
         &mut self,
         _drv_paths: &[DerivedPath],
-        _build_mode: BuildMode,
+        _mode: BuildMode,
     ) -> Result<(), Error> {
         Err(Error::Misc("Unsupported operation 'build_paths'".into()))
     }
@@ -101,7 +101,7 @@ impl Store for CachedStore {
         &mut self,
         drv_path: &StorePath,
         drv: &BasicDerivation,
-        build_mode: BuildMode,
+        mode: BuildMode,
     ) -> Result<BuildResult, Error> {
         //let store_dir = self.store_dir();
         let inputs = self.cache.query_closure(&drv.input_srcs, false).await?;
@@ -129,7 +129,7 @@ impl Store for CachedStore {
         let mut builder = b.connect().await?;
 
         copy_paths(&mut self.cache, &mut builder, &inputs).await?;
-        let result = builder.build_derivation(drv_path, drv, build_mode).await?;
+        let result = builder.build_derivation(drv_path, drv, mode).await?;
 
         if result.success() {
             /*

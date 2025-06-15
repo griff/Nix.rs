@@ -8,7 +8,6 @@ use std::task::{ready, Context, Poll};
 use bytes::Bytes;
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncRead, ReadBuf};
-use tracing::{instrument, trace};
 
 use crate::daemon::ProtocolVersion;
 use crate::io::{
@@ -148,14 +147,10 @@ where
         &self.store_dir
     }
 
-    #[instrument(level = "trace", skip(self))]
     async fn try_read_number(&mut self) -> Result<Option<u64>, Self::Error> {
-        let ret = TryReadU64::new().read(self).await;
-        trace!("try_read_number {:?}", ret);
-        ret
+        TryReadU64::new().read(self).await
     }
 
-    #[instrument(level = "trace", skip(self))]
     async fn try_read_bytes_limited(
         &mut self,
         limit: RangeInclusive<usize>,
@@ -165,9 +160,7 @@ where
             "The limit must be smaller than {}",
             self.max_buf_size
         );
-        let ret = TryReadBytesLimited::new(limit.clone()).read(self).await;
-        trace!(?limit, "try_read_bytes_limited {:?}", ret);
-        ret
+        TryReadBytesLimited::new(limit.clone()).read(self).await
     }
 
     async fn try_read_bytes(&mut self) -> Result<Option<Bytes>, Self::Error> {
@@ -215,7 +208,7 @@ impl<R: AsyncBytesRead> AsyncBytesRead for NixReader<R> {
 
 #[cfg(test)]
 mod unittests {
-    use std::time::Duration;
+    use std::{collections::BTreeSet, time::Duration};
 
     use hex_literal::hex;
     use rstest::rstest;
@@ -224,6 +217,7 @@ mod unittests {
 
     use super::*;
     use crate::{
+        btree_set,
         daemon::{
             de::NixRead,
             ser::{NixWrite, NixWriter},
@@ -473,11 +467,11 @@ mod unittests {
         let value = crate::daemon::UnkeyedValidPathInfo {
             deriver: Some("00000000000000000000000000000000-_.drv".parse().unwrap()),
             nar_hash: NarHash::new(&[0u8; 32]),
-            references: vec!["00000000000000000000000000000000-_".parse().unwrap()],
+            references: btree_set!["00000000000000000000000000000000-_"],
             registration_time: 0,
             nar_size: 0,
             ultimate: true,
-            signatures: vec![],
+            signatures: BTreeSet::new(),
             ca: None,
         };
         writer.write_value(&value).await.unwrap();
