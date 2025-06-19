@@ -126,6 +126,7 @@ in {
       cat $CARGO_HOME/config.toml
       ${pkgs.crate2nix}/bin/crate2nix generate
       cp Cargo.nix $out
+      ${pkgs.diffutils}/bin/diff ${./Cargo.nix} $out || true
       echo "${cargoHash}" >> $out
     '';
   };
