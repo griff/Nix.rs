@@ -44,12 +44,14 @@
         if [[ -d $dir/src ]]; then
           touch $dir/src/lib.rs
         fi
+        if [[ -f $dir/build.rs ]]; then
+          echo 'fn  main() {}' > $dir/build.rs
+        fi
         if [[ -d $dir/tests ]]; then
           touch $dir/tests/test.rs
         fi
       fi
     done
-    echo 'fn  main() {}' > $out/nixrs-capnp/build.rs
   '';
 in {
   inherit crates src cargoDeps;
@@ -112,7 +114,7 @@ in {
     outputHash = builtins.hashString "sha256" "${cargoNix}${cargoHash}\n";
   in pkgs.stdenv.mkDerivation {
     name = "nixrs-crate2nix-check";
-    src = emptySrc;
+    src = src;
     inherit outputHash;
     outputHashAlgo = "sha256";
     outputHashMode = "flat";
@@ -126,7 +128,7 @@ in {
       cat $CARGO_HOME/config.toml
       ${pkgs.crate2nix}/bin/crate2nix generate
       cp Cargo.nix $out
-      ${pkgs.diffutils}/bin/diff ${./Cargo.nix} $out || true
+      ${pkgs.diffutils}/bin/diff -u ${./Cargo.nix} $out || true
       echo "${cargoHash}" >> $out
     '';
   };
