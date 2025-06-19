@@ -12,4 +12,5 @@ error[E0277]: the trait bound `Test: FromStr` is not satisfied
             IpAddr
             Ipv4Addr
             Ipv6Addr
+            NarHash
           and $N others
