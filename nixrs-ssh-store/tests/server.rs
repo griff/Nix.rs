@@ -1,5 +1,6 @@
 use std::fmt;
 use std::future::{ready, Future, Ready};
+use std::os::unix::fs::PermissionsExt;
 use std::process::Stdio;
 use std::sync::{Arc, RwLock};
 
@@ -59,6 +60,16 @@ where
     F: Future<Output = Result<DaemonClient<ChildStdout, ChildStdin>, E>>,
     E: From<DaemonError>,
 {
+    let mut perm = tokio::fs::metadata("./tests/id_ed25519")
+        .await
+        .map_err(DaemonError::from)?
+        .permissions();
+    if perm.mode() != 0o400 {
+        perm.set_mode(0o400);
+        tokio::fs::set_permissions("./tests/id_ed25519", perm)
+            .await
+            .map_err(DaemonError::from)?;
+    }
     let mut config = ServerConfig::with_store(Provider(Arc::new(RwLock::new(Some(mock)))));
     config.load_default_keys("./tests").await;
     let server = nixrs_ssh_store::server::Server::with_config(config).map_err(DaemonError::from)?;
