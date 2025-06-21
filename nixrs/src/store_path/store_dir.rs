@@ -7,7 +7,7 @@ use thiserror::Error;
 use crate::hash;
 
 use super::create::Fingerprint;
-use super::{ContentAddress, StorePath, StorePathNameError};
+use super::{ContentAddress, StorePath, StorePathName};
 
 #[derive(Debug, Error, PartialEq, Eq, Hash)]
 #[error("path '{}' is not a store dir", .path.display())]
@@ -82,13 +82,12 @@ impl StoreDir {
         }
     }
 
-    pub fn make_store_path_from_ca(
-        &self,
-        name: &str,
-        ca: ContentAddress,
-    ) -> Result<StorePath, StorePathNameError> {
+    pub fn make_store_path_from_ca(&self, name: StorePathName, ca: ContentAddress) -> StorePath {
         let path_type = ca.into();
-        let fingerprint = Fingerprint { name, path_type };
+        let fingerprint = Fingerprint {
+            name: &name,
+            path_type,
+        };
         let finger_print_s = self.display(&fingerprint).to_string();
         StorePath::from_hash(&hash::Sha256::digest(finger_print_s), name)
     }
@@ -173,7 +172,7 @@ pub mod proptest {
 #[cfg(test)]
 mod unittests {
     use crate::hash;
-    use crate::store_path::{ContentAddress, StorePath};
+    use crate::store_path::{ContentAddress, StorePath, StorePathName};
 
     use super::StoreDir;
     use pretty_assertions::assert_eq;
@@ -227,20 +226,20 @@ mod unittests {
     )]
     fn test_make_store_path_from_ca(
         #[case] ca: ContentAddress,
-        #[case] name: &str,
+        #[case] name: StorePathName,
         #[case] inner_print: Option<&str>,
         #[case] fingerprint: &str,
         #[case] final_path: StorePath,
     ) {
         let expected_hash = hash::Sha256::digest(fingerprint);
-        let expected_path = StorePath::from_hash(&expected_hash, name).unwrap();
+        let expected_path = StorePath::from_hash(&expected_hash, name.clone());
         let store_dir = StoreDir::default();
         if let Some(print) = inner_print {
             let hash = hash::Sha256::digest(print);
             let actual_fingerprint = format!("output:out:sha256:{:x}:{}:{}", hash, store_dir, name);
             assert_eq!(actual_fingerprint, fingerprint);
         }
-        let actual_path = store_dir.make_store_path_from_ca(name, ca).unwrap();
+        let actual_path = store_dir.make_store_path_from_ca(name, ca);
         assert_eq!(expected_path, actual_path);
         assert_eq!(final_path, actual_path);
     }

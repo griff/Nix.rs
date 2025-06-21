@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::future::{ready, Future};
 use std::io::Cursor;
 use std::mem::take;
@@ -31,19 +31,21 @@ use super::logger::{
 use super::types::AddToStoreItem;
 use super::wire::types::Operation;
 use super::wire::types2::{
-    AddMultipleToStoreRequest, AddToStoreNarRequest, BuildDerivationRequest, BuildMode,
-    BuildPathsRequest, BuildResult, KeyedBuildResults, QueryMissingResult, QueryValidPathsRequest,
-    ValidPathInfo,
+    AddMultipleToStoreRequest, AddPermRootRequest, AddSignaturesRequest, AddToStoreNarRequest, AddToStoreRequest25, BuildDerivationRequest, BuildMode,
+    BuildPathsRequest, BuildResult, CollectGarbageResponse, CollectGarbageRequest, GCAction, KeyedBuildResults,
+    QueryMissingResult, QueryValidPathsRequest, VerifyStoreRequest, ValidPathInfo,
 };
 use super::{
-    ClientOptions, DaemonError, DaemonResult, DaemonResultExt, DaemonStore, DaemonString,
-    HandshakeDaemonStore, ResultLog, TrustLevel, UnkeyedValidPathInfo,
+    ClientOptions, DaemonError, DaemonPath, DaemonResult, DaemonResultExt, DaemonStore,
+    DaemonString, HandshakeDaemonStore, ResultLog, TrustLevel, UnkeyedValidPathInfo,
 };
 use crate::derivation::BasicDerivation;
-use crate::derived_path::DerivedPath;
+use crate::derived_path::{DerivedPath, OutputName};
 #[cfg(any(test, feature = "test"))]
 use crate::pretty_prop_assert_eq;
-use crate::store_path::{StorePath, StorePathSet};
+use crate::realisation::{DrvOutput, Realisation};
+use crate::signature::Signature;
+use crate::store_path::{ContentAddressMethodAlgorithm, StorePath, StorePathHash, StorePathSet};
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
@@ -63,6 +65,28 @@ pub enum MockOperation {
         Vec<(ValidPathInfo, Bytes)>,
         DaemonResult<()>,
     ),
+    QueryAllValidPaths(DaemonResult<StorePathSet>),
+    QueryReferrers(StorePath, DaemonResult<StorePathSet>),
+    AddToStore(AddToStoreRequest25, Bytes, DaemonResult<ValidPathInfo>),
+    EnsurePath(StorePath, DaemonResult<()>),
+    AddTempRoot(StorePath, DaemonResult<()>),
+    AddIndirectRoot(DaemonPath, DaemonResult<()>),
+    FindRoots(DaemonResult<BTreeMap<DaemonPath, StorePath>>),
+    CollectGarbage(CollectGarbageRequest, DaemonResult<CollectGarbageResponse>),
+    QueryPathFromHashPart(StorePathHash, DaemonResult<Option<StorePath>>),
+    QuerySubstitutablePaths(StorePathSet, DaemonResult<StorePathSet>),
+    QueryValidDerivers(StorePath, DaemonResult<StorePathSet>),
+    OptimiseStore(DaemonResult<()>),
+    VerifyStore(VerifyStoreRequest, DaemonResult<bool>),
+    AddSignatures(AddSignaturesRequest, DaemonResult<()>),
+    QueryDerivationOutputMap(StorePath, DaemonResult<BTreeMap<OutputName, Option<StorePath>>>),
+    RegisterDrvOutput(Realisation, DaemonResult<()>),
+    QueryRealisation(DrvOutput, DaemonResult<BTreeSet<Realisation>>),
+    AddBuildLog(StorePath, Bytes, DaemonResult<()>),
+    AddPermRoot(AddPermRootRequest, DaemonResult<DaemonPath>),
+    SyncWithGC(DaemonResult<()>),
+    QueryDerivationOutputs(StorePath, DaemonResult<StorePathSet>),
+    QueryDerivationOutputNames(StorePath, DaemonResult<BTreeSet<OutputName>>),
 }
 
 impl MockOperation {
@@ -85,6 +109,28 @@ impl MockOperation {
             Self::AddMultipleToStore(request, stream, _) => {
                 MockRequest::AddMultipleToStore(request.clone(), stream.clone())
             }
+            Self::QueryReferrers(request, _) => MockRequest::QueryReferrers(request.clone()),
+            Self::AddToStore(request, content, _) => MockRequest::AddToStore(request.clone(), content.clone()),
+            Self::EnsurePath(request, _) => MockRequest::EnsurePath(request.clone()),
+            Self::AddTempRoot(request, _) => MockRequest::AddTempRoot(request.clone()),
+            Self::AddIndirectRoot(request, _) => MockRequest::AddIndirectRoot(request.clone()),
+            Self::FindRoots(_) => MockRequest::FindRoots,
+            Self::CollectGarbage(request, _) => MockRequest::CollectGarbage(request.clone()),
+            Self::QueryAllValidPaths(_) => MockRequest::QueryAllValidPaths,
+            Self::QueryPathFromHashPart(request, _) => MockRequest::QueryPathFromHashPart(request.clone()),
+            Self::QuerySubstitutablePaths(request, _) => MockRequest::QuerySubstitutablePaths(request.clone()),
+            Self::QueryValidDerivers(request, _) => MockRequest::QueryValidDerivers(request.clone()),
+            Self::OptimiseStore(_) => MockRequest::OptimiseStore,
+            Self::VerifyStore(request, _) => MockRequest::VerifyStore(request.clone()),
+            Self::AddSignatures(request, _) => MockRequest::AddSignatures(request.clone()),
+            Self::QueryDerivationOutputMap(request, _) => MockRequest::QueryDerivationOutputMap(request.clone()),
+            Self::RegisterDrvOutput(request, _) => MockRequest::RegisterDrvOutput(request.clone()),
+            Self::QueryRealisation(request, _) => MockRequest::QueryRealisation(request.clone()),
+            Self::AddBuildLog(request, log, _) => MockRequest::AddBuildLog(request.clone(), log.clone()),
+            Self::AddPermRoot(request, _) => MockRequest::AddPermRoot(request.clone()),
+            Self::SyncWithGC(_) => MockRequest::SyncWithGC,
+            Self::QueryDerivationOutputs(request, _) => MockRequest::QueryDerivationOutputs(request.clone()),
+            Self::QueryDerivationOutputNames(request, _) => MockRequest::QueryDerivationOutputNames(request.clone()),
         }
     }
 
@@ -101,6 +147,28 @@ impl MockOperation {
             Self::QueryMissing(_, _) => Operation::QueryMissing,
             Self::AddToStoreNar(_, _, _) => Operation::AddToStoreNar,
             Self::AddMultipleToStore(_, _, _) => Operation::AddMultipleToStore,
+            Self::QueryReferrers(_, _) => Operation::QueryReferrers,
+            Self::AddToStore(_, _, _) => Operation::AddToStore,
+            Self::EnsurePath(_, _) => Operation::EnsurePath,
+            Self::AddTempRoot(_, _) => Operation::AddTempRoot,
+            Self::AddIndirectRoot(_, _) => Operation::AddIndirectRoot,
+            Self::FindRoots(_) => Operation::FindRoots,
+            Self::CollectGarbage(_, _) => Operation::CollectGarbage,
+            Self::QueryAllValidPaths(_) => Operation::QueryAllValidPaths,
+            Self::QueryPathFromHashPart(_, _) => Operation::QueryPathFromHashPart,
+            Self::QuerySubstitutablePaths(_, _) => Operation::QuerySubstitutablePaths,
+            Self::QueryValidDerivers(_, _) => Operation::QueryValidDerivers,
+            Self::OptimiseStore(_) => Operation::OptimiseStore,
+            Self::VerifyStore(_, _) => Operation::VerifyStore,
+            Self::AddSignatures(_, _) => Operation::AddSignatures,
+            Self::QueryDerivationOutputMap(_, _) => Operation::QueryDerivationOutputMap,
+            Self::RegisterDrvOutput(_, _) => Operation::RegisterDrvOutput,
+            Self::QueryRealisation(_, _) => Operation::QueryRealisation,
+            Self::AddBuildLog(_, _, _) => Operation::AddBuildLog,
+            Self::AddPermRoot(_, _) => Operation::AddPermRoot,
+            Self::SyncWithGC(_) => Operation::SyncWithGC,
+            Self::QueryDerivationOutputs(_, _) => Operation::QueryDerivationOutputs,
+            Self::QueryDerivationOutputNames(_, _) => Operation::QueryDerivationOutputNames,
         }
     }
 
@@ -117,11 +185,33 @@ impl MockOperation {
             Self::QueryMissing(_, result) => result.clone().map(|value| value.into()),
             Self::AddToStoreNar(_, _, result) => result.clone().map(|value| value.into()),
             Self::AddMultipleToStore(_, _, result) => result.clone().map(|value| value.into()),
+            Self::QueryReferrers(_, result) => result.clone().map(|value| value.into()),
+            Self::AddToStore(_, _, result) => result.clone().map(|value| value.into()),
+            Self::EnsurePath(_, result) => result.clone().map(|value| value.into()),
+            Self::AddTempRoot(_, result) => result.clone().map(|value| value.into()),
+            Self::AddIndirectRoot(_, result) => result.clone().map(|value| value.into()),
+            Self::FindRoots(result) => result.clone().map(|value| value.into()),
+            Self::CollectGarbage(_, result) => result.clone().map(|value| value.into()),
+            Self::QueryAllValidPaths(result) => result.clone().map(|value| value.into()),
+            Self::QueryPathFromHashPart(_, result) => result.clone().map(|value| value.into()),
+            Self::QuerySubstitutablePaths(_, result) => result.clone().map(|value| value.into()),
+            Self::QueryValidDerivers(_, result) => result.clone().map(|value| value.into()),
+            Self::OptimiseStore(result) => result.clone().map(|value| value.into()),
+            Self::VerifyStore(_, result) => result.clone().map(|value| value.into()),
+            Self::AddSignatures(_, result) => result.clone().map(|value| value.into()),
+            Self::QueryDerivationOutputMap(_, result) => result.clone().map(|value| value.into()),
+            Self::RegisterDrvOutput(_, result) => result.clone().map(|value| value.into()),
+            Self::QueryRealisation(_, result) => result.clone().map(|value| value.into()),
+            Self::AddBuildLog(_, _, result) => result.clone().map(|value| value.into()),
+            Self::AddPermRoot(_, result) => result.clone().map(|value| value.into()),
+            Self::SyncWithGC(result) => result.clone().map(|value| value.into()),
+            Self::QueryDerivationOutputs(_, result) => result.clone().map(|value| value.into()),
+            Self::QueryDerivationOutputNames(_, result) => result.clone().map(|value| value.into()),
         }
     }
 }
 
-enum ResponseResultLog<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12> {
+enum ResponseResultLog<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F15, F16, F17, F18, F19, F20, F21, F22, F23, F24, F25, F26, F27, F28, F29, F30, F31, F32, F33> {
     SetOptions(F1),
     IsValidPath(F2),
     QueryValidPaths(F3),
@@ -134,10 +224,31 @@ enum ResponseResultLog<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12> {
     QueryMissing(F10),
     AddToStoreNar(F11),
     AddMultipleToStore(F12),
+    QueryReferrers(F13),
+    AddToStore(F14),
+    EnsurePath(F15),
+    AddTempRoot(F16),
+    AddIndirectRoot(F17),
+    FindRoots(F18),
+    CollectGarbage(F19),
+    QueryPathFromHashPart(F20),
+    QuerySubstitutablePaths(F21),
+    QueryValidDerivers(F22),
+    OptimiseStore(F23),
+    VerifyStore(F24),
+    AddSignatures(F25),
+    QueryDerivationOutputMap(F26),
+    RegisterDrvOutput(F27),
+    QueryRealisation(F28),
+    AddBuildLog(F29),
+    AddPermRoot(F30),
+    SyncWithGC(F31),
+    QueryDerivationOutputs(F32),
+    QueryDerivationOutputNames(F33),
 }
 
-impl<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12>
-    ResponseResultLog<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12>
+impl<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F15, F16, F17, F18, F19, F20, F21, F22, F23, F24, F25, F26, F27, F28, F29, F30, F31, F32, F33>
+    ResponseResultLog<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F15, F16, F17, F18, F19, F20, F21, F22, F23, F24, F25, F26, F27, F28, F29, F30, F31, F32, F33>
 {
     #[allow(clippy::type_complexity)]
     fn as_pin_mut(
@@ -155,6 +266,27 @@ impl<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12>
         Pin<&mut F10>,
         Pin<&mut F11>,
         Pin<&mut F12>,
+        Pin<&mut F13>,
+        Pin<&mut F14>,
+        Pin<&mut F15>,
+        Pin<&mut F16>,
+        Pin<&mut F17>,
+        Pin<&mut F18>,
+        Pin<&mut F19>,
+        Pin<&mut F20>,
+        Pin<&mut F21>,
+        Pin<&mut F22>,
+        Pin<&mut F23>,
+        Pin<&mut F24>,
+        Pin<&mut F25>,
+        Pin<&mut F26>,
+        Pin<&mut F27>,
+        Pin<&mut F28>,
+        Pin<&mut F29>,
+        Pin<&mut F30>,
+        Pin<&mut F31>,
+        Pin<&mut F32>,
+        Pin<&mut F33>,
     > {
         unsafe {
             match self.get_unchecked_mut() {
@@ -194,13 +326,76 @@ impl<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12>
                 ResponseResultLog::AddMultipleToStore(pointer) => {
                     ResponseResultLog::AddMultipleToStore(Pin::new_unchecked(pointer))
                 }
+                ResponseResultLog::QueryReferrers(pointer) => {
+                    ResponseResultLog::QueryReferrers(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::AddToStore(pointer) => {
+                    ResponseResultLog::AddToStore(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::EnsurePath(pointer) => {
+                    ResponseResultLog::EnsurePath(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::AddTempRoot(pointer) => {
+                    ResponseResultLog::AddTempRoot(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::AddIndirectRoot(pointer) => {
+                    ResponseResultLog::AddIndirectRoot(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::FindRoots(pointer) => {
+                    ResponseResultLog::FindRoots(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::CollectGarbage(pointer) => {
+                    ResponseResultLog::CollectGarbage(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::QueryPathFromHashPart(pointer) => {
+                    ResponseResultLog::QueryPathFromHashPart(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::QuerySubstitutablePaths(pointer) => {
+                    ResponseResultLog::QuerySubstitutablePaths(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::QueryValidDerivers(pointer) => {
+                    ResponseResultLog::QueryValidDerivers(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::OptimiseStore(pointer) => {
+                    ResponseResultLog::OptimiseStore(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::VerifyStore(pointer) => {
+                    ResponseResultLog::VerifyStore(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::AddSignatures(pointer) => {
+                    ResponseResultLog::AddSignatures(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::QueryDerivationOutputMap(pointer) => {
+                    ResponseResultLog::QueryDerivationOutputMap(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::RegisterDrvOutput(pointer) => {
+                    ResponseResultLog::RegisterDrvOutput(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::QueryRealisation(pointer) => {
+                    ResponseResultLog::QueryRealisation(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::AddBuildLog(pointer) => {
+                    ResponseResultLog::AddBuildLog(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::AddPermRoot(pointer) => {
+                    ResponseResultLog::AddPermRoot(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::SyncWithGC(pointer) => {
+                    ResponseResultLog::SyncWithGC(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::QueryDerivationOutputs(pointer) => {
+                    ResponseResultLog::QueryDerivationOutputs(Pin::new_unchecked(pointer))
+                }
+                ResponseResultLog::QueryDerivationOutputNames(pointer) => {
+                    ResponseResultLog::QueryDerivationOutputNames(Pin::new_unchecked(pointer))
+                }
             }
         }
     }
 }
 
-impl<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12> Stream
-    for ResponseResultLog<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12>
+impl<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F15, F16, F17, F18, F19, F20, F21, F22, F23, F24, F25, F26, F27, F28, F29, F30, F31, F32, F33> Stream
+    for ResponseResultLog<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F15, F16, F17, F18, F19, F20, F21, F22, F23, F24, F25, F26, F27, F28, F29, F30, F31, F32, F33>
 where
     F1: Stream<Item = LogMessage>,
     F2: Stream<Item = LogMessage>,
@@ -214,6 +409,27 @@ where
     F10: Stream<Item = LogMessage>,
     F11: Stream<Item = LogMessage>,
     F12: Stream<Item = LogMessage>,
+    F13: Stream<Item = LogMessage>,
+    F14: Stream<Item = LogMessage>,
+    F15: Stream<Item = LogMessage>,
+    F16: Stream<Item = LogMessage>,
+    F17: Stream<Item = LogMessage>,
+    F18: Stream<Item = LogMessage>,
+    F19: Stream<Item = LogMessage>,
+    F20: Stream<Item = LogMessage>,
+    F21: Stream<Item = LogMessage>,
+    F22: Stream<Item = LogMessage>,
+    F23: Stream<Item = LogMessage>,
+    F24: Stream<Item = LogMessage>,
+    F25: Stream<Item = LogMessage>,
+    F26: Stream<Item = LogMessage>,
+    F27: Stream<Item = LogMessage>,
+    F28: Stream<Item = LogMessage>,
+    F29: Stream<Item = LogMessage>,
+    F30: Stream<Item = LogMessage>,
+    F31: Stream<Item = LogMessage>,
+    F32: Stream<Item = LogMessage>,
+    F33: Stream<Item = LogMessage>,
 {
     type Item = LogMessage;
 
@@ -234,11 +450,32 @@ where
             ResponseResultLog::QueryMissing(res) => res.poll_next(cx),
             ResponseResultLog::AddToStoreNar(res) => res.poll_next(cx),
             ResponseResultLog::AddMultipleToStore(res) => res.poll_next(cx),
+            ResponseResultLog::QueryReferrers(res) => res.poll_next(cx),
+            ResponseResultLog::AddToStore(res) => res.poll_next(cx),
+            ResponseResultLog::EnsurePath(res) => res.poll_next(cx),
+            ResponseResultLog::AddTempRoot(res) => res.poll_next(cx),
+            ResponseResultLog::AddIndirectRoot(res) => res.poll_next(cx),
+            ResponseResultLog::FindRoots(res) => res.poll_next(cx),
+            ResponseResultLog::CollectGarbage(res) => res.poll_next(cx),
+            ResponseResultLog::QueryPathFromHashPart(res) => res.poll_next(cx),
+            ResponseResultLog::QuerySubstitutablePaths(res) => res.poll_next(cx),
+            ResponseResultLog::QueryValidDerivers(res) => res.poll_next(cx),
+            ResponseResultLog::OptimiseStore(res) => res.poll_next(cx),
+            ResponseResultLog::VerifyStore(res) => res.poll_next(cx),
+            ResponseResultLog::AddSignatures(res) => res.poll_next(cx),
+            ResponseResultLog::QueryDerivationOutputMap(res) => res.poll_next(cx),
+            ResponseResultLog::RegisterDrvOutput(res) => res.poll_next(cx),
+            ResponseResultLog::QueryRealisation(res) => res.poll_next(cx),
+            ResponseResultLog::AddBuildLog(res) => res.poll_next(cx),
+            ResponseResultLog::AddPermRoot(res) => res.poll_next(cx),
+            ResponseResultLog::SyncWithGC(res) => res.poll_next(cx),
+            ResponseResultLog::QueryDerivationOutputs(res) => res.poll_next(cx),
+            ResponseResultLog::QueryDerivationOutputNames(res) => res.poll_next(cx),
         }
     }
 }
-impl<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, R> Future
-    for ResponseResultLog<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12>
+impl<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F15, F16, F17, F18, F19, F20, F21, F22, F23, F24, F25, F26, F27, F28, F29, F30, F31, F32, F33, R> Future
+    for ResponseResultLog<F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F15, F16, F17, F18, F19, F20, F21, F22, F23, F24, F25, F26, F27, F28, F29, F30, F31, F32, F33>
 where
     F1: Future<Output = R>,
     F2: Future<Output = R>,
@@ -252,6 +489,27 @@ where
     F10: Future<Output = R>,
     F11: Future<Output = R>,
     F12: Future<Output = R>,
+    F13: Future<Output = R>,
+    F14: Future<Output = R>,
+    F15: Future<Output = R>,
+    F16: Future<Output = R>,
+    F17: Future<Output = R>,
+    F18: Future<Output = R>,
+    F19: Future<Output = R>,
+    F20: Future<Output = R>,
+    F21: Future<Output = R>,
+    F22: Future<Output = R>,
+    F23: Future<Output = R>,
+    F24: Future<Output = R>,
+    F25: Future<Output = R>,
+    F26: Future<Output = R>,
+    F27: Future<Output = R>,
+    F28: Future<Output = R>,
+    F29: Future<Output = R>,
+    F30: Future<Output = R>,
+    F31: Future<Output = R>,
+    F32: Future<Output = R>,
+    F33: Future<Output = R>,
 {
     type Output = R;
 
@@ -269,6 +527,27 @@ where
             ResponseResultLog::QueryMissing(res) => res.poll(cx),
             ResponseResultLog::AddToStoreNar(res) => res.poll(cx),
             ResponseResultLog::AddMultipleToStore(res) => res.poll(cx),
+            ResponseResultLog::QueryReferrers(res) => res.poll(cx),
+            ResponseResultLog::AddToStore(res) => res.poll(cx),
+            ResponseResultLog::EnsurePath(res) => res.poll(cx),
+            ResponseResultLog::AddTempRoot(res) => res.poll(cx),
+            ResponseResultLog::AddIndirectRoot(res) => res.poll(cx),
+            ResponseResultLog::FindRoots(res) => res.poll(cx),
+            ResponseResultLog::CollectGarbage(res) => res.poll(cx),
+            ResponseResultLog::QueryPathFromHashPart(res) => res.poll(cx),
+            ResponseResultLog::QuerySubstitutablePaths(res) => res.poll(cx),
+            ResponseResultLog::QueryValidDerivers(res) => res.poll(cx),
+            ResponseResultLog::OptimiseStore(res) => res.poll(cx),
+            ResponseResultLog::VerifyStore(res) => res.poll(cx),
+            ResponseResultLog::AddSignatures(res) => res.poll(cx),
+            ResponseResultLog::QueryDerivationOutputMap(res) => res.poll(cx),
+            ResponseResultLog::RegisterDrvOutput(res) => res.poll(cx),
+            ResponseResultLog::QueryRealisation(res) => res.poll(cx),
+            ResponseResultLog::AddBuildLog(res) => res.poll(cx),
+            ResponseResultLog::AddPermRoot(res) => res.poll(cx),
+            ResponseResultLog::SyncWithGC(res) => res.poll(cx),
+            ResponseResultLog::QueryDerivationOutputs(res) => res.poll(cx),
+            ResponseResultLog::QueryDerivationOutputNames(res) => res.poll(cx),
         }
     }
 }
@@ -288,6 +567,27 @@ pub enum MockRequest {
     QueryMissing(Vec<DerivedPath>),
     AddToStoreNar(AddToStoreNarRequest, Bytes),
     AddMultipleToStore(AddMultipleToStoreRequest, Vec<(ValidPathInfo, Bytes)>),
+    QueryReferrers(StorePath),
+    AddToStore(AddToStoreRequest25, Bytes),
+    EnsurePath(StorePath),
+    AddTempRoot(StorePath),
+    AddIndirectRoot(DaemonPath),
+    FindRoots,
+    CollectGarbage(CollectGarbageRequest),
+    QueryPathFromHashPart(StorePathHash),
+    QuerySubstitutablePaths(StorePathSet),
+    QueryValidDerivers(StorePath),
+    OptimiseStore,
+    VerifyStore(VerifyStoreRequest),
+    AddSignatures(AddSignaturesRequest),
+    QueryDerivationOutputMap(StorePath),
+    RegisterDrvOutput(Realisation),
+    QueryRealisation(DrvOutput),
+    AddBuildLog(StorePath, Bytes),
+    AddPermRoot(AddPermRootRequest),
+    SyncWithGC,
+    QueryDerivationOutputs(StorePath),
+    QueryDerivationOutputNames(StorePath),
 }
 
 impl MockRequest {
@@ -305,6 +605,27 @@ impl MockRequest {
             Self::QueryMissing(_) => Operation::QueryMissing,
             Self::AddToStoreNar(_, _) => Operation::AddToStoreNar,
             Self::AddMultipleToStore(_, _) => Operation::AddMultipleToStore,
+            Self::QueryReferrers(_) => Operation::QueryReferrers,
+            Self::AddToStore(_, _) => Operation::AddToStore,
+            Self::EnsurePath(_) => Operation::EnsurePath,
+            Self::AddTempRoot(_) => Operation::AddTempRoot,
+            Self::AddIndirectRoot(_) => Operation::AddIndirectRoot,
+            Self::FindRoots => Operation::FindRoots,
+            Self::CollectGarbage(_) => Operation::CollectGarbage,
+            Self::QueryPathFromHashPart(_) => Operation::QueryPathFromHashPart,
+            Self::QuerySubstitutablePaths(_) => Operation::QuerySubstitutablePaths,
+            Self::QueryValidDerivers(_) => Operation::QueryValidDerivers,
+            Self::OptimiseStore => Operation::OptimiseStore,
+            Self::VerifyStore(_) => Operation::VerifyStore,
+            Self::AddSignatures(_) => Operation::AddSignatures,
+            Self::QueryDerivationOutputMap(_) => Operation::QueryDerivationOutputMap,
+            Self::RegisterDrvOutput(_) => Operation::RegisterDrvOutput,
+            Self::QueryRealisation(_) => Operation::QueryRealisation,
+            Self::AddBuildLog(_, _) => Operation::AddBuildLog,
+            Self::AddPermRoot(_) => Operation::AddPermRoot,
+            Self::SyncWithGC => Operation::SyncWithGC,
+            Self::QueryDerivationOutputs(_) => Operation::QueryDerivationOutputs,
+            Self::QueryDerivationOutputNames(_) => Operation::QueryDerivationOutputNames,
         }
     }
     pub fn get_response<'s, S>(
@@ -382,6 +703,77 @@ impl MockRequest {
             Self::QueryAllValidPaths => ResponseResultLog::QueryAllValidPaths(
                 store.query_all_valid_paths().map_ok(From::from),
             ),
+            Self::QueryReferrers(path) => ResponseResultLog::QueryReferrers(
+                store.query_referrers(path).map_ok(From::from),
+            ),
+            Self::AddToStore(request, source) => ResponseResultLog::AddToStore(
+                store
+                    .add_ca_to_store(
+                        &request.name,
+                        request.cam,
+                        &request.refs,
+                        request.repair,
+                        Cursor::new(source),
+                    )
+                    .map_ok(|value| value.into()),
+            ),
+            Self::EnsurePath(path) => ResponseResultLog::EnsurePath(
+                store.ensure_path(path).map_ok(From::from),
+            ),
+            Self::AddTempRoot(path) => ResponseResultLog::AddTempRoot(
+                store.add_temp_root(path).map_ok(From::from),
+            ),
+            Self::AddIndirectRoot(path) => ResponseResultLog::AddIndirectRoot(
+                store.add_indirect_root(path).map_ok(From::from),
+            ),
+            Self::FindRoots => ResponseResultLog::FindRoots(
+                store.find_roots().map_ok(From::from),
+            ),
+            Self::CollectGarbage(request) => ResponseResultLog::CollectGarbage(
+                store.collect_garbage(request.action, &request.paths_to_delete, request.ignore_liveness, request.max_freed).map_ok(From::from),
+            ),
+            Self::QueryPathFromHashPart(hash) => ResponseResultLog::QueryPathFromHashPart(
+                store.query_path_from_hash_part(hash).map_ok(From::from),
+            ),
+            Self::QuerySubstitutablePaths(paths) => ResponseResultLog::QuerySubstitutablePaths(
+                store.query_substitutable_paths(paths).map_ok(From::from),
+            ),
+            Self::QueryValidDerivers(path) => ResponseResultLog::QueryValidDerivers(
+                store.query_valid_derivers(path).map_ok(From::from),
+            ),
+            Self::OptimiseStore => ResponseResultLog::OptimiseStore(
+                store.optimise_store().map_ok(From::from),
+            ),
+            Self::VerifyStore(request) => ResponseResultLog::VerifyStore(
+                store.verify_store(request.check_contents, request.repair).map_ok(From::from),
+            ),
+            Self::AddSignatures(request) => ResponseResultLog::AddSignatures(
+                store.add_signatures(&request.path, &request.signatures).map_ok(From::from),
+            ),
+            Self::QueryDerivationOutputMap(path) => ResponseResultLog::QueryDerivationOutputMap(
+                store.query_derivation_output_map(path).map_ok(From::from),
+            ),
+            Self::RegisterDrvOutput(realisation) => ResponseResultLog::RegisterDrvOutput(
+                store.register_drv_output(realisation).map_ok(From::from),
+            ),
+            Self::QueryRealisation(output_id) => ResponseResultLog::QueryRealisation(
+                store.query_realisation(output_id).map_ok(From::from),
+            ),
+            Self::AddBuildLog(path, log) => ResponseResultLog::AddBuildLog(
+                store.add_build_log(path, Cursor::new(log)).map_ok(From::from),
+            ),
+            Self::AddPermRoot(request) => ResponseResultLog::AddPermRoot(
+                store.add_perm_root(&request.store_path, &request.gc_root).map_ok(From::from),
+            ),
+            Self::SyncWithGC => ResponseResultLog::SyncWithGC(
+                store.sync_with_gc().map_ok(From::from),
+            ),
+            Self::QueryDerivationOutputs(path) => ResponseResultLog::QueryDerivationOutputs(
+                store.query_derivation_outputs(path).map_ok(From::from),
+            ),
+            Self::QueryDerivationOutputNames(path) => ResponseResultLog::QueryDerivationOutputNames(
+                store.query_derivation_output_names(path).map_ok(From::from),
+            ),
         }
     }
 }
@@ -394,8 +786,15 @@ pub enum MockResponse {
     BuildResult(BuildResult),
     KeyedBuildResults(KeyedBuildResults),
     Bytes(Bytes),
-    ValidPathInfo(Option<UnkeyedValidPathInfo>),
+    UnkeyedValidPathInfo(Option<UnkeyedValidPathInfo>),
+    ValidPathInfo(ValidPathInfo),
     QueryMissingResult(QueryMissingResult),
+    GCRoots(BTreeMap<DaemonPath, StorePath>),
+    CollectGarbageResponse(CollectGarbageResponse),
+    OptStorePath(Option<StorePath>),
+    OutputMap(BTreeMap<OutputName, Option<StorePath>>),
+    Realisations(BTreeSet<Realisation>),
+    OutputNames(BTreeSet<OutputName>),
 }
 
 impl MockResponse {
@@ -441,7 +840,14 @@ impl MockResponse {
         }
     }
 
-    pub fn unwrap_valid_path_info(self) -> Option<UnkeyedValidPathInfo> {
+    pub fn unwrap_unkeyed_valid_path_info(self) -> Option<UnkeyedValidPathInfo> {
+        match self {
+            Self::UnkeyedValidPathInfo(val) => val,
+            _ => panic!("Unexpected response {:?}", self),
+        }
+    }
+
+    pub fn unwrap_valid_path_info(self) -> ValidPathInfo {
         match self {
             Self::ValidPathInfo(val) => val,
             _ => panic!("Unexpected response {:?}", self),
@@ -451,6 +857,45 @@ impl MockResponse {
     pub fn unwrap_query_missing_result(self) -> QueryMissingResult {
         match self {
             Self::QueryMissingResult(val) => val,
+            _ => panic!("Unexpected response {:?}", self),
+        }
+    }
+
+    pub fn unwrap_gc_roots(self) -> BTreeMap<DaemonPath, StorePath> {
+        match self {
+            Self::GCRoots(val) => val,
+            _ => panic!("Unexpected response {:?}", self),
+        }
+    }
+
+    pub fn unwrap_collect_garbage_response(self) -> CollectGarbageResponse {
+        match self {
+            Self::CollectGarbageResponse(val) => val,
+            _ => panic!("Unexpected response {:?}", self),
+        }
+    }
+
+    pub fn unwrap_optional_store_path(self) -> Option<StorePath> {
+        match self {
+            Self::OptStorePath(val) => val,
+            _ => panic!("Unexpected response {:?}", self),
+        }
+    }
+    pub fn unwrap_output_map(self) -> BTreeMap<OutputName, Option<StorePath>> {
+        match self {
+            Self::OutputMap(val) => val,
+            _ => panic!("Unexpected response {:?}", self),
+        }
+    }
+    pub fn unwrap_realisations(self) -> BTreeSet<Realisation> {
+        match self {
+            Self::Realisations(val) => val,
+            _ => panic!("Unexpected response {:?}", self),
+        }
+    }
+    pub fn unwrap_output_names(self) -> BTreeSet<OutputName> {
+        match self {
+            Self::OutputNames(val) => val,
             _ => panic!("Unexpected response {:?}", self),
         }
     }
@@ -518,10 +963,20 @@ impl From<MockResponse> for Bytes {
 }
 impl From<Option<UnkeyedValidPathInfo>> for MockResponse {
     fn from(v: Option<UnkeyedValidPathInfo>) -> Self {
-        MockResponse::ValidPathInfo(v)
+        MockResponse::UnkeyedValidPathInfo(v)
     }
 }
 impl From<MockResponse> for Option<UnkeyedValidPathInfo> {
+    fn from(value: MockResponse) -> Self {
+        value.unwrap_unkeyed_valid_path_info()
+    }
+}
+impl From<ValidPathInfo> for MockResponse {
+    fn from(v: ValidPathInfo) -> Self {
+        MockResponse::ValidPathInfo(v)
+    }
+}
+impl From<MockResponse> for ValidPathInfo {
     fn from(value: MockResponse) -> Self {
         value.unwrap_valid_path_info()
     }
@@ -534,6 +989,72 @@ impl From<QueryMissingResult> for MockResponse {
 impl From<MockResponse> for QueryMissingResult {
     fn from(value: MockResponse) -> Self {
         value.unwrap_query_missing_result()
+    }
+}
+
+impl From<BTreeMap<DaemonPath, StorePath>> for MockResponse {
+    fn from(v: BTreeMap<DaemonPath, StorePath>) -> Self {
+        MockResponse::GCRoots(v)
+    }
+}
+impl From<MockResponse> for BTreeMap<DaemonPath, StorePath> {
+    fn from(value: MockResponse) -> Self {
+        value.unwrap_gc_roots()
+    }
+}
+
+impl From<CollectGarbageResponse> for MockResponse {
+    fn from(v: CollectGarbageResponse) -> Self {
+        MockResponse::CollectGarbageResponse(v)
+    }
+}
+impl From<MockResponse> for CollectGarbageResponse {
+    fn from(value: MockResponse) -> Self {
+        value.unwrap_collect_garbage_response()
+    }
+}
+
+impl From<Option<StorePath>> for MockResponse {
+    fn from(v: Option<StorePath>) -> Self {
+        MockResponse::OptStorePath(v)
+    }
+}
+impl From<MockResponse> for Option<StorePath> {
+    fn from(value: MockResponse) -> Self {
+        value.unwrap_optional_store_path()
+    }
+}
+
+impl From<BTreeMap<OutputName, Option<StorePath>>> for MockResponse {
+    fn from(v: BTreeMap<OutputName, Option<StorePath>>) -> Self {
+        MockResponse::OutputMap(v)
+    }
+}
+impl From<MockResponse> for BTreeMap<OutputName, Option<StorePath>> {
+    fn from(value: MockResponse) -> Self {
+        value.unwrap_output_map()
+    }
+}
+
+impl From<BTreeSet<Realisation>> for MockResponse {
+    fn from(v: BTreeSet<Realisation>) -> Self {
+        MockResponse::Realisations(v)
+    }
+}
+impl From<MockResponse> for BTreeSet<Realisation> {
+    fn from(value: MockResponse) -> Self {
+        value.unwrap_realisations()
+    }
+}
+
+impl From<BTreeSet<OutputName>> for MockResponse {
+    fn from(v: BTreeSet<OutputName>) -> Self {
+        MockResponse::OutputNames(v)
+    }
+}
+impl From<MockResponse> for BTreeSet<OutputName> {
+    fn from(value: MockResponse) -> Self {
+        value.unwrap_output_names()
     }
 }
 
@@ -1005,6 +1526,269 @@ impl<R> Builder<R> {
         ))
     }
 
+    pub fn query_all_valid_paths(
+        &mut self,
+        response: DaemonResult<StorePathSet>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::QueryAllValidPaths(
+            response,
+        ))
+    }
+
+    pub fn query_referrers(
+        &mut self,
+        path: &StorePath,
+        response: DaemonResult<StorePathSet>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::QueryReferrers(
+            path.clone(),
+            response,
+        ))
+    }
+
+    pub fn ensure_path(
+        &mut self,
+        path: &StorePath,
+        response: DaemonResult<()>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::EnsurePath(
+            path.clone(),
+            response,
+        ))
+    }
+
+    pub fn add_temp_root(
+        &mut self,
+        path: &StorePath,
+        response: DaemonResult<()>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::AddTempRoot(
+            path.clone(),
+            response,
+        ))
+    }
+
+    pub fn add_indirect_root(
+        &mut self,
+        path: &DaemonPath,
+        response: DaemonResult<()>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::AddIndirectRoot(
+            path.clone(),
+            response,
+        ))
+    }
+
+    pub fn find_roots(
+        &mut self,
+        response: DaemonResult<BTreeMap<DaemonPath, StorePath>>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::FindRoots(
+            response,
+        ))
+    }
+
+    pub fn collect_garbage(
+        &mut self,
+        action: GCAction,
+        paths_to_delete: &StorePathSet,
+        ignore_liveness: bool,
+        max_freed: u64,
+        response: DaemonResult<CollectGarbageResponse>,
+    ) -> LogBuilder<R, MockOperation> {
+        let mut actual_req = CollectGarbageRequest::default();
+        actual_req.action = action;
+        actual_req.paths_to_delete = paths_to_delete.clone();
+        actual_req.ignore_liveness = ignore_liveness;
+        actual_req.max_freed = max_freed;
+        self.build_operation(MockOperation::CollectGarbage(
+            actual_req,
+            response,
+        ))
+    }
+
+    pub fn query_path_from_hash_part(
+        &mut self,
+        hash: &StorePathHash,
+        response: DaemonResult<Option<StorePath>>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::QueryPathFromHashPart(
+            hash.clone(),
+            response,
+        ))
+    }
+
+    pub fn query_substitutable_paths(
+        &mut self,
+        paths: &StorePathSet,
+        response: DaemonResult<StorePathSet>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::QuerySubstitutablePaths(
+            paths.clone(),
+            response,
+        ))
+    }
+
+    pub fn query_valid_derivers(
+        &mut self,
+        path: &StorePath,
+        response: DaemonResult<StorePathSet>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::QueryValidDerivers(
+            path.clone(),
+            response,
+        ))
+    }
+
+    pub fn optimise_store(
+        &mut self,
+        response: DaemonResult<()>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::OptimiseStore(
+            response,
+        ))
+    }
+
+    pub fn verify_store(
+        &mut self,
+        check_contents: bool,
+        repair: bool,
+        response: DaemonResult<bool>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::VerifyStore(VerifyStoreRequest {
+                check_contents,
+                repair,
+            },
+            response,
+        ))
+    }
+
+    pub fn add_signatures(
+        &mut self,
+        path: &StorePath,
+        signatures: &[Signature],
+        response: DaemonResult<()>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::AddSignatures(AddSignaturesRequest {
+                path: path.clone(),
+                signatures: signatures.to_vec(),
+            },
+            response,
+        ))
+    }
+
+    pub fn query_derivation_output_map(
+        &mut self,
+        path: &StorePath,
+        response: DaemonResult<BTreeMap<OutputName, Option<StorePath>>>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::QueryDerivationOutputMap(
+            path.clone(),
+            response,
+        ))
+    }
+
+    pub fn register_drv_output(
+        &mut self,
+        realisation: &Realisation,
+        response: DaemonResult<()>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::RegisterDrvOutput(
+            realisation.clone(),
+            response,
+        ))
+    }
+
+    pub fn query_realisation(
+        &mut self,
+        output_id: &DrvOutput,
+        response: DaemonResult<BTreeSet<Realisation>>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::QueryRealisation(
+            output_id.clone(),
+            response,
+        ))
+    }
+
+    pub fn add_build_log(
+        &mut self,
+        path: &StorePath,
+        log: Bytes,
+        response: DaemonResult<()>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::AddBuildLog(
+            path.clone(),
+            log,
+            response,
+        ))
+    }
+
+    pub fn add_perm_root(
+        &mut self,
+        path: &StorePath,
+        gc_root: &DaemonPath,
+        response: DaemonResult<DaemonPath>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::AddPermRoot(AddPermRootRequest {
+                store_path: path.clone(),
+                gc_root: gc_root.clone(),
+            },
+            response,
+        ))
+    }
+
+    pub fn sync_with_gc(
+        &mut self,
+        response: DaemonResult<()>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::SyncWithGC(
+            response,
+        ))
+    }
+
+    pub fn query_derivation_outputs(
+        &mut self,
+        path: &StorePath,
+        response: DaemonResult<StorePathSet>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::QueryDerivationOutputs(
+            path.clone(),
+            response,
+        ))
+    }
+
+    pub fn query_derivation_output_names(
+        &mut self,
+        path: &StorePath,
+        response: DaemonResult<BTreeSet<OutputName>>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::QueryDerivationOutputNames(
+            path.clone(),
+            response,
+        ))
+    }
+
+    pub fn add_ca_to_store(
+        &mut self,
+        name: &str,
+        cam: ContentAddressMethodAlgorithm,
+        refs: &StorePathSet,
+        repair: bool,
+        content: Bytes,
+        response: DaemonResult<ValidPathInfo>,
+    ) -> LogBuilder<R, MockOperation> {
+        self.build_operation(MockOperation::AddToStore(
+            AddToStoreRequest25 {
+                name: name.to_string(),
+                cam,
+                refs: refs.clone(),
+                repair,
+            },
+            content,
+            response,
+        ))
+    }
+
     fn build_operation(&mut self, operation: MockOperation) -> LogBuilder<R, MockOperation> {
         LogBuilder {
             owner: self,
@@ -1327,6 +2111,216 @@ where
     ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + '_ {
         let actual = MockRequest::QueryAllValidPaths;
         self.check_operation(actual)
+    }
+
+    fn query_referrers<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a {
+        let actual = MockRequest::QueryReferrers(path.clone());
+        self.check_operation(actual)
+    }
+
+    fn ensure_path<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
+        let actual = MockRequest::EnsurePath(path.clone());
+        self.check_operation(actual)
+    }
+
+    fn add_temp_root<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
+        let actual = MockRequest::AddTempRoot(path.clone());
+        self.check_operation(actual)
+    }
+
+    fn add_indirect_root<'a>(
+        &'a mut self,
+        path: &'a DaemonPath,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
+        let actual = MockRequest::AddIndirectRoot(path.clone());
+        self.check_operation(actual)
+    }
+
+    fn find_roots(
+        &mut self,
+    ) -> impl ResultLog<Output = DaemonResult<BTreeMap<DaemonPath, StorePath>>> + Send + '_ {
+        let actual = MockRequest::FindRoots;
+        self.check_operation(actual)
+    }
+
+    fn collect_garbage<'a>(
+        &'a mut self,
+        action: GCAction,
+        paths_to_delete: &'a StorePathSet,
+        ignore_liveness: bool,
+        max_freed: u64,
+    ) -> impl ResultLog<Output = DaemonResult<CollectGarbageResponse>> + Send + 'a {
+        let mut actual_req = CollectGarbageRequest::default();
+        actual_req.action = action;
+        actual_req.paths_to_delete = paths_to_delete.clone();
+        actual_req.ignore_liveness = ignore_liveness;
+        actual_req.max_freed = max_freed;
+        let actual = MockRequest::CollectGarbage(actual_req);
+        self.check_operation(actual)
+    }
+
+    fn query_path_from_hash_part<'a>(
+        &'a mut self,
+        hash: &'a StorePathHash,
+    ) -> impl ResultLog<Output = DaemonResult<Option<StorePath>>> + Send + 'a {
+        let actual = MockRequest::QueryPathFromHashPart(hash.clone());
+        self.check_operation(actual)
+    }
+
+    fn query_substitutable_paths<'a>(
+        &'a mut self,
+        paths: &'a StorePathSet,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a {
+        let actual = MockRequest::QuerySubstitutablePaths(paths.clone());
+        self.check_operation(actual)
+    }
+
+    fn query_valid_derivers<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a {
+        let actual = MockRequest::QueryValidDerivers(path.clone());
+        self.check_operation(actual)
+    }
+
+    fn optimise_store(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + Send + '_ {
+        let actual = MockRequest::OptimiseStore;
+        self.check_operation(actual)
+    }
+
+    fn verify_store(
+        &mut self,
+        check_contents: bool,
+        repair: bool,
+    ) -> impl ResultLog<Output = DaemonResult<bool>> + Send + '_ {
+        let actual = MockRequest::VerifyStore(VerifyStoreRequest {
+            check_contents,
+            repair,
+        });
+        self.check_operation(actual)
+    }
+
+    fn add_signatures<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+        signatures: &'a [Signature],
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
+        let actual = MockRequest::AddSignatures(AddSignaturesRequest {
+            path: path.clone(),
+            signatures: signatures.to_vec(),
+        });
+        self.check_operation(actual)
+    }
+
+    fn query_derivation_output_map<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<BTreeMap<OutputName, Option<StorePath>>>> + Send + 'a
+    {
+        let actual = MockRequest::QueryDerivationOutputMap(path.clone());
+        self.check_operation(actual)
+    }
+
+    fn register_drv_output<'a>(
+        &'a mut self,
+        realisation: &'a Realisation,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
+        let actual = MockRequest::RegisterDrvOutput(realisation.clone());
+        self.check_operation(actual)
+    }
+
+    fn query_realisation<'a>(
+        &'a mut self,
+        output_id: &'a DrvOutput,
+    ) -> impl ResultLog<Output = DaemonResult<BTreeSet<Realisation>>> + Send + 'a {
+        let actual = MockRequest::QueryRealisation(output_id.clone());
+        self.check_operation(actual)
+    }
+
+    fn add_build_log<'s, 'r, 'p, S>(
+        &'s mut self,
+        path: &'p StorePath,
+        mut source: S,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'r
+    where
+        S: AsyncBufRead + Send + Unpin + 'r,
+        's: 'r,
+        'p: 'r,
+    {
+        Box::pin(FutureResult::new(async move {
+            let mut actual_log = Vec::new();
+            source.read_to_end(&mut actual_log).await?;
+            let actual = MockRequest::AddBuildLog(path.clone(), actual_log.clone().into());
+            Ok(self.check_operation(actual))
+        }))
+    }
+
+    fn add_perm_root<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+        gc_root: &'a DaemonPath,
+    ) -> impl ResultLog<Output = DaemonResult<DaemonPath>> + Send + 'a {
+        let actual = MockRequest::AddPermRoot(AddPermRootRequest {
+            store_path: path.clone(),
+            gc_root: gc_root.clone(),
+        });
+        self.check_operation(actual)
+    }
+
+    fn sync_with_gc(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + Send + '_ {
+        let actual = MockRequest::SyncWithGC;
+        self.check_operation(actual)
+    }
+
+    fn query_derivation_outputs<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a {
+        let actual = MockRequest::QueryDerivationOutputs(path.clone());
+        self.check_operation(actual)
+    }
+
+    fn query_derivation_output_names<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<BTreeSet<OutputName>>> + Send + 'a {
+        let actual = MockRequest::QueryDerivationOutputNames(path.clone());
+        self.check_operation(actual)
+    }
+
+    fn add_ca_to_store<'a, 'r, S>(
+        &'a mut self,
+        name: &'a str,
+        cam: ContentAddressMethodAlgorithm,
+        refs: &'a StorePathSet,
+        repair: bool,
+        mut source: S,
+    ) -> impl ResultLog<Output = DaemonResult<ValidPathInfo>> + Send + 'r
+    where
+        S: AsyncBufRead + Send + Unpin + 'r,
+        'a: 'r,
+    {
+        Box::pin(FutureResult::new(async move {
+            let actual_req = AddToStoreRequest25 {
+                name: name.to_string(),
+                cam,
+                refs: refs.clone(),
+                repair,
+            };
+            let mut actual_content = Vec::new();
+            source.read_to_end(&mut actual_content).await?;
+            let actual = MockRequest::AddToStore(actual_req, actual_content.clone().into());
+            Ok(self.check_operation(actual))
+        }))
     }
 
     async fn shutdown(&mut self) -> DaemonResult<()> {

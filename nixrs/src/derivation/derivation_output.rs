@@ -3,26 +3,27 @@ use std::{collections::BTreeMap, fmt};
 #[cfg(feature = "nixrs-derive")]
 use nixrs_derive::NixDeserialize;
 
+use crate::derived_path::OutputName;
 #[cfg(any(feature = "xp-ca-derivations", feature = "xp-impure-derivations"))]
 use crate::store_path::ContentAddressMethodAlgorithm;
-use crate::store_path::{ContentAddress, StoreDir, StorePath, StorePathNameError};
+use crate::store_path::{ContentAddress, StoreDir, StorePath, StorePathName, StorePathNameError};
 
 struct OutputPathName<'b> {
-    drv_name: &'b str,
-    output_name: &'b str,
+    drv_name: &'b StorePathName,
+    output_name: &'b OutputName,
 }
 impl fmt::Display for OutputPathName<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.output_name != "out" {
-            write!(f, "{}-{}", self.drv_name, self.output_name)
-        } else {
+        if self.output_name.is_default() {
             write!(f, "{}", self.drv_name)
+        } else {
+            write!(f, "{}-{}", self.drv_name, self.output_name)
         }
     }
 }
 pub(crate) fn output_path_name<'s>(
-    drv_name: &'s str,
-    output_name: &'s str,
+    drv_name: &'s StorePathName,
+    output_name: &'s OutputName,
 ) -> impl fmt::Display + 's {
     OutputPathName {
         drv_name,
@@ -50,27 +51,28 @@ impl DerivationOutput {
     pub fn path(
         &self,
         store_dir: &StoreDir,
-        drv_name: &str,
-        output_name: &str,
+        drv_name: &StorePathName,
+        output_name: &OutputName,
     ) -> Result<Option<StorePath>, StorePathNameError> {
         match self {
             DerivationOutput::InputAddressed(store_path) => Ok(Some(store_path.clone())),
             DerivationOutput::CAFixed(ca) => {
-                let name = output_path_name(drv_name, output_name).to_string();
-                Ok(Some(store_dir.make_store_path_from_ca(&name, *ca)?))
+                let name = output_path_name(drv_name, output_name)
+                    .to_string()
+                    .parse()?;
+                Ok(Some(store_dir.make_store_path_from_ca(name, *ca)))
             }
             _ => Ok(None),
         }
     }
 }
 
-pub type DerivationOutputs = BTreeMap<String, DerivationOutput>;
+pub type DerivationOutputs = BTreeMap<OutputName, DerivationOutput>;
 
 #[cfg(any(test, feature = "test"))]
 pub mod arbitrary {
     use super::*;
     use crate::hash;
-    use crate::store_path::proptest::arb_output_name;
     use crate::test::arbitrary::helpers::Union;
     use ::proptest::prelude::*;
     use ::proptest::sample::SizeRange;
@@ -84,7 +86,7 @@ pub mod arbitrary {
         let size2 = size.clone();
         //InputAddressed
         let input = prop::collection::btree_map(
-            arb_output_name(),
+            any::<OutputName>(),
             arb_derivation_output_input_addressed(),
             size.clone(),
         )
@@ -93,13 +95,14 @@ pub mod arbitrary {
         let fixed = arb_derivation_output_fixed()
             .prop_map(|ca| {
                 let mut ret = BTreeMap::new();
-                ret.insert("out".to_string(), ca);
+                let name = OutputName::default();
+                ret.insert(name, ca);
                 ret
             })
             .boxed();
         // Deferred
         let deferred =
-            prop::collection::btree_map(arb_output_name(), Just(Deferred), size.clone()).boxed();
+            prop::collection::btree_map(any::<OutputName>(), Just(Deferred), size.clone()).boxed();
 
         #[cfg_attr(
             not(any(feature = "xp-ca-derivations", feature = "xp-impure-derivations")),
@@ -112,7 +115,7 @@ pub mod arbitrary {
             ret = ret.or(any::<hash::Algorithm>()
                 .prop_flat_map(move |hash_type| {
                     prop::collection::btree_map(
-                        arb_output_name(),
+                        any::<OutputName>(),
                         arb_derivation_output_floating(Just(hash_type)),
                         size2.clone(),
                     )
@@ -123,7 +126,7 @@ pub mod arbitrary {
         {
             // Impure
             ret = ret.or(prop::collection::btree_map(
-                arb_output_name(),
+                any::<OutputName>(),
                 arb_derivation_output_impure(),
                 size.clone(),
             ));
@@ -221,12 +224,12 @@ mod daemon_serde {
     use nixrs_derive::{NixDeserialize, NixSerialize};
     use thiserror::Error;
 
-    use crate::{
-        daemon::ser::{Error, NixWrite},
-        hash,
-        store_path::{
-            ContentAddress, ContentAddressMethod, ContentAddressMethodAlgorithm, StorePath,
-        },
+    use crate::daemon::ser::{Error, NixWrite};
+    use crate::derived_path::OutputName;
+    use crate::hash;
+    use crate::store_path::{
+        ContentAddress, ContentAddressMethod, ContentAddressMethodAlgorithm, StorePath,
+        StorePathName,
     };
 
     use super::{output_path_name, DerivationOutput};
@@ -324,8 +327,8 @@ mod daemon_serde {
     impl DerivationOutput {
         pub(crate) async fn write_output<W>(
             &self,
-            drv_name: &str,
-            output_name: &str,
+            drv_name: &StorePathName,
+            output_name: &OutputName,
             mut writer: W,
         ) -> Result<(), W::Error>
         where
@@ -338,11 +341,11 @@ mod daemon_serde {
                     writer.write_value("").await?;
                 }
                 DerivationOutput::CAFixed(ca) => {
-                    let name = output_path_name(drv_name, output_name).to_string();
-                    let path = writer
-                        .store_dir()
-                        .make_store_path_from_ca(&name, *ca)
+                    let name = output_path_name(drv_name, output_name)
+                        .to_string()
+                        .parse()
                         .map_err(Error::unsupported_data)?;
+                    let path = writer.store_dir().make_store_path_from_ca(name, *ca);
                     writer.write_value(&path).await?;
                     writer.write_value(&ca.method_algorithm()).await?;
                     writer.write_display(ca.hash().bare()).await?;
@@ -374,9 +377,9 @@ mod daemon_serde {
 mod unittests {
     use rstest::rstest;
 
-    use crate::store_path::{StorePath, StorePathNameError};
-
     use super::DerivationOutput;
+    use crate::derived_path::OutputName;
+    use crate::store_path::{StorePath, StorePathName, StorePathNameError};
 
     #[rstest]
     #[case::deffered(DerivationOutput::Deferred, "a", "a", Ok(None))]
@@ -386,11 +389,11 @@ mod unittests {
     #[case::fixed_source(DerivationOutput::CAFixed("fixed:r:sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse().unwrap()), "konsole-18.12.3", "out", Ok(Some("1w01xxn8f7s9s4n65ry6rwd7x9awf04s-konsole-18.12.3".parse().unwrap())))]
     fn test_path(
         #[case] output: DerivationOutput,
-        #[case] drv_name: &str,
-        #[case] output_name: &str,
+        #[case] drv_name: StorePathName,
+        #[case] output_name: OutputName,
         #[case] path: Result<Option<StorePath>, StorePathNameError>,
     ) {
         let store_dir = Default::default();
-        assert_eq!(path, output.path(&store_dir, drv_name, output_name))
+        assert_eq!(path, output.path(&store_dir, &drv_name, &output_name))
     }
 }

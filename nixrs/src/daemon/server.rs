@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
 use std::future::Future;
 use std::ops::Deref;
@@ -14,20 +15,26 @@ use tracing::{debug, error, info, instrument, trace, Instrument};
 use crate::archive::NarReader;
 use crate::daemon::wire::logger::RawLogMessage;
 use crate::daemon::wire::types::Operation;
-use crate::daemon::wire::types2::{AddToStoreRequest, BaseStorePath};
+use crate::daemon::wire::types2::{
+    AddToStoreRequest, BaseStorePath, CollectGarbageResponse, GCAction,
+};
 use crate::daemon::wire::IgnoredOne;
 use crate::daemon::wire::{parse_add_multiple_to_store, FramedReader, StderrReader};
-use crate::daemon::{DaemonErrorKind, DaemonResultExt, PROTOCOL_VERSION};
+use crate::daemon::{
+    DaemonErrorKind, DaemonPath, DaemonResultExt, PROTOCOL_VERSION,
+};
 use crate::derivation::BasicDerivation;
-use crate::derived_path::DerivedPath;
+use crate::derived_path::{DerivedPath, OutputName};
 use crate::io::{AsyncBufReadCompat, BytesReader};
-use crate::store_path::StorePath;
+use crate::realisation::{DrvOutput, Realisation};
+use crate::signature::Signature;
+use crate::store_path::{ContentAddressMethodAlgorithm, StorePath, StorePathHash, StorePathSet};
 
 use super::de::{NixRead, NixReader};
 use super::logger::LocalLoggerResult;
 use super::ser::{NixWrite, NixWriter};
 use super::types::{AddToStoreItem, LocalDaemonStore, LocalHandshakeDaemonStore};
-use super::wire::types2::{Request, ValidPathInfo};
+use super::wire::types2::{RegisterDrvOutputRequest, Request, ValidPathInfo};
 use super::wire::{CLIENT_MAGIC, SERVER_MAGIC};
 use super::{
     DaemonError, DaemonResult, DaemonStore, HandshakeDaemonStore, LogMessage, ProtocolVersion,
@@ -215,10 +222,14 @@ where
     Ok(())
 }
 
-async fn process_logs<'s, T: Send + 's, W: AsyncWrite + Send + Unpin>(
+async fn process_logs<'s, T, W>(
     writer: &'s mut NixWriter<W>,
     logs: impl ResultLog<Output = DaemonResult<T>> + 's,
-) -> Result<T, RecoverableError> {
+) -> Result<T, RecoverableError>
+where
+    T: Send + 's,
+    W: AsyncWrite + Send + Unpin,
+{
     let mut logs = pin!(logs);
     while let Some(msg) = logs.next().await {
         write_log(writer, msg).await?;
@@ -231,11 +242,7 @@ async fn process_logs<'s, T: Send + 's, W: AsyncWrite + Send + Unpin>(
                 source,
             })
         }
-        Ok(value) => {
-            writer.write_value(&RawLogMessage::Last).await?;
-            writer.flush().await?;
-            Ok(value)
-        }
+        Ok(value) => Ok(value),
     }
 }
 
@@ -382,6 +389,209 @@ where
         ret
     }
 
+    fn query_referrers<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<BTreeSet<StorePath>>> + Send + 'a {
+        let ret = Box::pin(self.0.query_referrers(path));
+        trace!("QueryReferrers Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn ensure_path<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
+        let ret = Box::pin(self.0.ensure_path(path));
+        trace!("EnsurePath Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn add_temp_root<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
+        let ret = Box::pin(self.0.add_temp_root(path));
+        trace!("AddTempRoot Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn add_indirect_root<'a>(
+        &'a mut self,
+        path: &'a DaemonPath,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
+        let ret = Box::pin(self.0.add_indirect_root(path));
+        trace!("AddIndirectRoot Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn find_roots(
+        &mut self,
+    ) -> impl ResultLog<Output = DaemonResult<BTreeMap<DaemonPath, StorePath>>> + Send + '_ {
+        let ret = Box::pin(self.0.find_roots());
+        trace!("FindRoots Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn collect_garbage<'a>(
+        &'a mut self,
+        action: GCAction,
+        paths_to_delete: &'a StorePathSet,
+        ignore_liveness: bool,
+        max_freed: u64,
+    ) -> impl ResultLog<Output = DaemonResult<CollectGarbageResponse>> + Send + 'a {
+        let ret = Box::pin(self.0.collect_garbage(action, paths_to_delete, ignore_liveness, max_freed));
+        trace!("CollectGarbage Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn query_path_from_hash_part<'a>(
+        &'a mut self,
+        hash: &'a StorePathHash,
+    ) -> impl ResultLog<Output = DaemonResult<Option<StorePath>>> + Send + 'a {
+        let ret = Box::pin(self.0.query_path_from_hash_part(hash));
+        trace!("QueryPathFromHashPart Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn query_substitutable_paths<'a>(
+        &'a mut self,
+        paths: &'a StorePathSet,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a {
+        let ret = Box::pin(self.0.query_substitutable_paths(paths));
+        trace!("QuerySubstitutablePaths Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn query_valid_derivers<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a {
+        let ret = Box::pin(self.0.query_valid_derivers(path));
+        trace!("QueryValidDerivers Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn optimise_store(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + Send + '_ {
+        let ret = Box::pin(self.0.optimise_store());
+        trace!("OptimiseStore Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn verify_store(
+        &mut self,
+        check_contents: bool,
+        repair: bool,
+    ) -> impl ResultLog<Output = DaemonResult<bool>> + Send + '_ {
+        let ret = Box::pin(self.0.verify_store(check_contents, repair));
+        trace!("VerifyStore Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn add_signatures<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+        signatures: &'a [Signature],
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
+        let ret = Box::pin(self.0.add_signatures(path, signatures));
+        trace!("AddSignatures Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn query_derivation_output_map<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<BTreeMap<OutputName, Option<StorePath>>>> + Send + 'a
+    {
+        let ret = Box::pin(self.0.query_derivation_output_map(path));
+        trace!("QueryDerivationOutputMap Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn register_drv_output<'a>(
+        &'a mut self,
+        realisation: &'a Realisation,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
+        let ret = Box::pin(self.0.register_drv_output(realisation));
+        trace!("RegisterDrvOutput Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn query_realisation<'a>(
+        &'a mut self,
+        output_id: &'a DrvOutput,
+    ) -> impl ResultLog<Output = DaemonResult<BTreeSet<Realisation>>> + Send + 'a {
+        let ret = Box::pin(self.0.query_realisation(output_id));
+        trace!("QueryRealisation Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn add_build_log<'s, 'r, 'p, R>(
+        &'s mut self,
+        path: &'p StorePath,
+        source: R,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'r
+    where
+        R: AsyncBufRead + Send + Unpin + 'r,
+        's: 'r,
+        'p: 'r,
+    {
+        let ret = Box::pin(self.0.add_build_log(path, source));
+        trace!("AddBuildLog Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn add_perm_root<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+        gc_root: &'a DaemonPath,
+    ) -> impl ResultLog<Output = DaemonResult<DaemonPath>> + Send + 'a {
+        let ret = Box::pin(self.0.add_perm_root(path, gc_root));
+        trace!("AddPermRoot Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn sync_with_gc(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + Send + '_ {
+        let ret = Box::pin(self.0.sync_with_gc());
+        trace!("SyncWithGC Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn query_derivation_outputs<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a {
+        let ret = Box::pin(self.0.query_derivation_outputs(path));
+        trace!("QueryDerivationOutputs Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn query_derivation_output_names<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<BTreeSet<OutputName>>> + Send + 'a {
+        let ret = Box::pin(self.0.query_derivation_output_names(path));
+        trace!("QueryDerivationOutputNames Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
+    fn add_ca_to_store<'a, 'r, R>(
+        &'a mut self,
+        name: &'a str,
+        cam: ContentAddressMethodAlgorithm,
+        refs: &'a StorePathSet,
+        repair: bool,
+        source: R,
+    ) -> impl ResultLog<Output = DaemonResult<ValidPathInfo>> + Send + 'r
+    where
+        R: AsyncBufRead + Send + Unpin + 'r,
+        'a: 'r,
+    {
+        let ret = Box::pin(self.0.add_ca_to_store(name, cam, refs, repair, source));
+        trace!("AddToStore Size {}", size_of_val(ret.deref()));
+        ret
+    }
+
     fn shutdown(&mut self) -> impl Future<Output = DaemonResult<()>> + Send + '_ {
         let ret = Box::pin(self.0.shutdown());
         trace!("Shutdown Size {}", size_of_val(&ret));
@@ -483,7 +693,9 @@ where
         &'s mut self,
         logs: impl ResultLog<Output = DaemonResult<T>> + Send + 's,
     ) -> Result<T, RecoverableError> {
-        process_logs(&mut self.writer, logs).await
+        let value = process_logs(&mut self.writer, logs).await?;
+        self.writer.write_value(&RawLogMessage::Last).await?;
+        Ok(value)
     }
 
     #[instrument(level = "debug", skip_all)]
@@ -525,6 +737,23 @@ where
         }
         debug!("Server handled all requests");
         store.shutdown().await
+    }
+
+    fn add_ca_to_store<'s, 'p, 'r, NW, S>(
+        store: &'s mut S,
+        name: &'p str,
+        cam: ContentAddressMethodAlgorithm,
+        refs: &'p StorePathSet,
+        repair: bool,
+        source: NW,
+    ) -> impl ResultLog<Output = DaemonResult<ValidPathInfo>> + Send + 'r
+    where
+        S: DaemonStore + 's,
+        NW: AsyncBufRead + Unpin + Send + 'r,
+        's: 'r,
+        'p: 'r,
+    {
+        store.add_ca_to_store(name, cam, refs, repair, source)
     }
 
     fn add_to_store_nar<'s, 'p, 'r, NW, S>(
@@ -600,6 +829,20 @@ where
         }
     }
 
+    fn add_build_log<'s, 'p, 'r, NW, S>(
+        store: &'s mut S,
+        path: &'p StorePath,
+        source: NW,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'r
+    where
+        S: DaemonStore + 's,
+        NW: AsyncBufRead + Unpin + Send + 'r,
+        's: 'r,
+        'p: 'r,
+    {
+        store.add_build_log(path, source)
+    }
+
     pub async fn process_request<'s, S>(
         &'s mut self,
         mut store: S,
@@ -633,53 +876,63 @@ where
             NarFromPath(path) => {
                 self.nar_from_path(&mut store, path).await?;
             }
-            QueryReferrers(_path) => {
+            QueryReferrers(path) => {
+                let logs = store.query_referrers(&path);
+                let value = self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 referrers :: [Set][se-Set] of [StorePath][se-StorePath]
                  */
-
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryReferrers,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&value).await?;
             }
-            AddToStore(req) => {
-                match req {
-                    AddToStoreRequest::Protocol25(_post25_req) => {
-                        /*
-                        #### Inputs
-                        - name :: [StorePathName][se-StorePathName]
-                        - camStr :: [ContentAddressMethodWithAlgo][se-ContentAddressMethodWithAlgo]
-                        - refs :: [Set][se-Set] of [StorePath][se-StorePath]
-                        - repairBool :: [Bool64][se-Bool64]
-                        - [Framed][se-Framed] NAR dump
+            AddToStore(AddToStoreRequest::Protocol25(req)) => {
+                /*
+                #### Inputs
+                - name :: [StorePathName][se-StorePathName]
+                - camStr :: [ContentAddressMethodWithAlgo][se-ContentAddressMethodWithAlgo]
+                - refs :: [Set][se-Set] of [StorePath][se-StorePath]
+                - repairBool :: [Bool64][se-Bool64]
+                - [Framed][se-Framed] NAR dump
+                */
+                let buf_reader = AsyncBufReadCompat::new(&mut self.reader);
+                let mut framed = FramedReader::new(buf_reader);
+                let logs = Self::add_ca_to_store(
+                    &mut store,
+                    &req.name,
+                    req.cam,
+                    &req.refs,
+                    req.repair,
+                    &mut framed,
+                );
+                let res = process_logs(&mut self.writer, logs).await;
+                let err = framed.drain_all().await;
+                let value = res?;
+                err?;
+                self.writer.write_value(&RawLogMessage::Last).await?;
+                /*
+                #### Outputs
+                info :: [ValidPathInfo][se-ValidPathInfo]
+                */
+                self.writer.write_value(&value).await?;
+            }
+            AddToStore(AddToStoreRequest::ProtocolPre25(_req)) => {
+                /*
+                #### Inputs
+                - baseName :: [StorePathName][se-StorePathName]
+                - fixed :: [Bool64][se-Bool64]
+                - recursive :: [FileIngestionMethod][se-FileIngestionMethod]
+                - hashAlgo :: [HashAlgorithm][se-HashAlgorithm]
+                - NAR dump
 
-                        #### Outputs
-                        info :: [ValidPathInfo][se-ValidPathInfo]
-                         */
-                    }
-                    AddToStoreRequest::ProtocolPre25(_pre25_req) => {
-                        /*
-                        #### Inputs
-                        - baseName :: [StorePathName][se-StorePathName]
-                        - fixed :: [Bool64][se-Bool64]
-                        - recursive :: [FileIngestionMethod][se-FileIngestionMethod]
-                        - hashAlgo :: [HashAlgorithm][se-HashAlgorithm]
-                        - NAR dump
+                If fixed is `true`, hashAlgo is forced to `sha256` and recursive is forced to
+                `NixArchive`.
 
-                        If fixed is `true`, hashAlgo is forced to `sha256` and recursive is forced to
-                        `NixArchive`.
+                Only `Flat` and `NixArchive` values are supported for the recursive input
+                parameter.
 
-                        Only `Flat` and `NixArchive` values are supported for the recursive input
-                        parameter.
-
-                        #### Outputs
-                        path :: [StorePath][se-StorePath]
-                         */
-                    }
-                }
+                #### Outputs
+                path :: [StorePath][se-StorePath]
+                */
                 Err(DaemonErrorKind::UnimplementedOperation(
                     Operation::AddToStore,
                 ))
@@ -694,130 +947,111 @@ where
                  */
                 self.writer.write_value(&IgnoredOne).await?;
             }
-            EnsurePath(_path) => {
+            EnsurePath(path) => {
+                let logs = store.ensure_path(&path);
+                self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 1 :: [Int][se-Int] (hardcoded and ignored by client)
                  */
-
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::EnsurePath,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&IgnoredOne).await?;
             }
-            AddTempRoot(_path) => {
+            AddTempRoot(path) => {
+                let logs = store.add_temp_root(&path);
+                self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 1 :: [Int][se-Int] (hardcoded and ignored by client)
                  */
-
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::AddTempRoot,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&IgnoredOne).await?;
             }
-            AddIndirectRoot(_path) => {
+            AddIndirectRoot(path) => {
+                let logs = store.add_indirect_root(&path);
+                self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 1 :: [Int][se-Int] (hardcoded and ignored by client)
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::AddIndirectRoot,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&IgnoredOne).await?;
             }
             FindRoots => {
+                let logs = store.find_roots();
+                let value = self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 roots :: [Map][se-Map] of [Path][se-Path] to [StorePath][se-StorePath]
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::FindRoots,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&value).await?;
             }
-            CollectGarbage(_req) => {
+            CollectGarbage(req) => {
+                let logs = store.collect_garbage(
+                    req.action,
+                    &req.paths_to_delete,
+                    req.ignore_liveness,
+                    req.max_freed,
+                );
+                let value = self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 - pathsDeleted :: [Set][se-Set] of [Path][se-Path]
                 - bytesFreed :: [UInt64][se-UInt64]
                 - 0 :: [UInt64][se-UInt64] (hardcoded, obsolete and ignored by client)
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::CollectGarbage,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&value).await?;
             }
             QueryAllValidPaths => {
+                let logs = store.query_all_valid_paths();
+                let value = self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 paths :: [Set][se-Set] of [StorePath][se-StorePath]
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryAllValidPaths,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&value).await?;
             }
-            QueryPathFromHashPart(_hash) => {
+            QueryPathFromHashPart(hash) => {
+                let logs = store.query_path_from_hash_part(&hash);
+                let value = self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 path :: [OptStorePath][se-OptStorePath]
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryPathFromHashPart,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&value).await?;
             }
-            QuerySubstitutablePaths(_paths) => {
+            QuerySubstitutablePaths(paths) => {
+                let logs = store.query_substitutable_paths(&paths);
+                let value = self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 paths :: [Set][se-Set] of [StorePath][se-StorePath]
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QuerySubstitutablePaths,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&value).await?;
             }
-            QueryValidDerivers(_path) => {
+            QueryValidDerivers(path) => {
+                let logs = store.query_valid_derivers(&path);
+                let value = self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 derivers :: [Set][se-Set] of [StorePath][se-StorePath]
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryValidDerivers,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&value).await?;
             }
             OptimiseStore => {
+                let logs = store.optimise_store();
+                self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 1 :: [Int][se-Int] (hardcoded and ignored by client)
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::OptimiseStore,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&IgnoredOne).await?;
             }
-            VerifyStore(_req) => {
+            VerifyStore(req) => {
+                let logs = store.verify_store(req.check_contents, req.repair);
+                let value = self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 errors :: [Bool][se-Bool]
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::VerifyStore,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&value).await?;
             }
             BuildDerivation(req) => {
                 let logs = store.build_derivation(&req.drv, req.mode);
@@ -828,16 +1062,14 @@ where
                  */
                 self.writer.write_value(&value).await?;
             }
-            AddSignatures(_req) => {
+            AddSignatures(req) => {
+                let logs = store.add_signatures(&req.path, &req.signatures);
+                self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 1 :: [Int][se-Int] (hardcoded and ignored by client)
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::AddSignatures,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&IgnoredOne).await?;
             }
             AddToStoreNar(req) => {
                 /*
@@ -869,7 +1101,6 @@ where
                         }
                         trace!("DaemonConnection: Add to store: get result");
                         logs.await.recover()?;
-                        self.writer.write_value(&RawLogMessage::Last).await?;
                         Ok(())
                     }
                     .await;
@@ -878,6 +1109,7 @@ where
                     trace!("DaemonConnection: Add to store: done");
                     res?;
                     err?;
+                    self.writer.write_value(&RawLogMessage::Last).await?;
                 } else if self.reader.version().minor() >= 21 {
                     /*
                     #### If protocol version is between 1.21 and 1.23
@@ -985,42 +1217,61 @@ where
                  */
                 self.writer.write_value(&value).await?;
             }
-            QueryDerivationOutputMap(_path) => {
+            QueryDerivationOutputMap(path) => {
+                let logs = store.query_derivation_output_map(&path);
+                let value = self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 outputs :: [Map][se-Map] of [OutputName][se-OutputName] to [OptStorePath][se-OptStorePath]
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryDerivationOutputMap,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&value).await?;
             }
-            RegisterDrvOutput(_req) => {
+            RegisterDrvOutput(RegisterDrvOutputRequest::Post31(realisation)) => {
+                let logs = store.register_drv_output(&realisation);
+                self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 Nothing
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::RegisterDrvOutput,
-                ))
-                .with_operation(op)
-                .recover()?;
             }
-            QueryRealisation(_output_id) => {
+            RegisterDrvOutput(RegisterDrvOutputRequest::Pre31 {
+                output_id,
+                output_path,
+            }) => {
+                let realisation = Realisation {
+                    id: output_id,
+                    out_path: output_path,
+                    signatures: BTreeSet::new(),
+                    dependent_realisations: BTreeMap::new(),
+                };
+                let logs = store.register_drv_output(&realisation);
+                self.process_logs(logs).await?;
                 /*
                 ### Outputs
-                #### If protocol is 1.31 or newer
-                realisations :: [Set][se-Set] of [Realisation][se-Realisation]
-
-                #### If protocol is older than 1.31
-                outPaths :: [Set][se-Set] of [StorePath][se-StorePath]
+                Nothing
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryRealisation,
-                ))
-                .with_operation(op)
-                .recover()?;
+            }
+            QueryRealisation(output_id) => {
+                let logs = store.query_realisation(&output_id);
+                let value = self.process_logs(logs).await?;
+                /*
+                  ### Outputs
+                */
+                if self.reader.version().minor() >= 31 {
+                    /*
+                    #### If protocol is 1.31 or newer
+                    realisations :: [Set][se-Set] of [Realisation][se-Realisation]
+                    */
+                    self.writer.write_value(&value).await?;
+                } else {
+                    /*
+                    #### If protocol is older than 1.31
+                    outPaths :: [Set][se-Set] of [StorePath][se-StorePath]
+                     */
+                    let out_paths: BTreeSet<StorePath> =
+                        value.into_iter().map(|r| r.out_path).collect();
+                    self.writer.write_value(&out_paths).await?;
+                }
             }
             AddMultipleToStore(req) => {
                 /*
@@ -1064,19 +1315,26 @@ where
                 Nothing
                  */
             }
-            AddBuildLog(BaseStorePath(_path)) => {
+            AddBuildLog(BaseStorePath(path)) => {
                 /*
                 ### Inputs
                 - path :: [BaseStorePath][se-BaseStorePath]
                 - [Framed][se-Framed] stream of log lines
+                */
+                let buf_reader = AsyncBufReadCompat::new(&mut self.reader);
+                let mut framed = FramedReader::new(buf_reader);
+                let logs = Self::add_build_log(&mut store, &path, &mut framed);
+                let res = process_logs(&mut self.writer, logs).await;
+                let err = framed.drain_all().await;
+                res?;
+                err?;
+                self.writer.write_value(&RawLogMessage::Last).await?;
 
+                /*
                 ### Outputs
                 1 :: [Int][se-Int] (hardcoded and ignored by client)
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::AddBuildLog,
-                ))
-                .with_operation(op)?;
+                self.writer.write_value(&IgnoredOne).await?;
             }
             BuildPathsWithResults(req) => {
                 let logs = store.build_paths_with_results(&req.paths, req.mode);
@@ -1087,34 +1345,31 @@ where
                  */
                 self.writer.write_value(&value).await?;
             }
-            AddPermRoot(_req) => {
+            AddPermRoot(req) => {
+                let logs = store.add_perm_root(&req.store_path, &req.gc_root);
+                let value = self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 gcRoot :: [Path][se-Path]
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::AddPermRoot,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&value).await?;
             }
 
             // Obsolete Nix 2.5.0 Protocol 1.32
             SyncWithGC => {
+                let logs = store.sync_with_gc();
+                self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 Nothing
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::SyncWithGC,
-                ))
-                .with_operation(op)
-                .recover()?;
             }
             // Obsolete Nix 2.4 Protocol 1.25
             AddTextToStore(_req) => {
+                //let logs = store.add_ca_to_store(&req.path, req.gc_root);
+                //let value = self.process_logs(logs).await?;
                 /*
-                ### Outpus
+                ### Outputs
                 path :: [StorePath][se-StorePath]
                  */
                 Err(DaemonErrorKind::UnimplementedOperation(
@@ -1124,28 +1379,24 @@ where
                 .recover()?;
             }
             // Obsolete Nix 2.4 Protocol 1.22*
-            QueryDerivationOutputs(_path) => {
+            QueryDerivationOutputs(path) => {
+                let logs = store.query_derivation_outputs(&path);
+                let value = self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 derivationOutputs :: [Set][se-Set] of [StorePath][se-StorePath]
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryDerivationOutputs,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&value).await?;
             }
             // Obsolete Nix 2.4 Protocol 1.21
-            QueryDerivationOutputNames(_path) => {
+            QueryDerivationOutputNames(path) => {
+                let logs = store.query_derivation_output_names(&path);
+                let value = self.process_logs(logs).await?;
                 /*
                 ### Outputs
                 names :: [Set][se-Set] of [OutputName][se-OutputName]
                  */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryDerivationOutputNames,
-                ))
-                .with_operation(op)
-                .recover()?;
+                self.writer.write_value(&value).await?;
             }
             // Obsolete Nix 2.0, Protocol 1.19*
             QuerySubstitutablePathInfos(_req) => {

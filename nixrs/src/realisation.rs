@@ -187,6 +187,7 @@ mod unittests {
     use rstest::rstest;
 
     use crate::btree_map;
+    use crate::derived_path::OutputName;
     use crate::hash;
     use crate::set;
     use crate::store_path::StorePathNameError;
@@ -196,7 +197,7 @@ mod unittests {
     #[rstest]
     #[case("sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1!out", Ok(DrvOutput {
         drv_hash: "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse().unwrap(),
-        output_name: "out".parse().unwrap(),
+        output_name: OutputName::default(),
     }))]
     #[case("sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394!out_put", Ok(DrvOutput {
         drv_hash: "sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394".parse().unwrap(),
@@ -219,11 +220,11 @@ mod unittests {
     #[rstest]
     #[case(DrvOutput {
         drv_hash: "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse().unwrap(),
-        output_name: "out".parse().unwrap(),
+        output_name: OutputName::default(),
     }, "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1!out")]
     #[case(DrvOutput {
         drv_hash: "sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394".parse().unwrap(),
-        output_name: "out".parse().unwrap(),
+        output_name: OutputName::default(),
     }, "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1!out")]
     #[case(DrvOutput {
         drv_hash: "sha1:y5q4drg5558zk8aamsx6xliv3i23x644".parse().unwrap(),

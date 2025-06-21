@@ -30,7 +30,7 @@ use nixrs::daemon::{
     AddToStoreItem, DaemonError, DaemonResult, DaemonStore as _, DaemonString, UnkeyedValidPathInfo,
 };
 use nixrs::derivation::{BasicDerivation, DerivationOutput};
-use nixrs::derived_path::DerivedPath;
+use nixrs::derived_path::{DerivedPath, OutputName};
 use nixrs::hash::NarHash;
 use nixrs::store_path::{StoreDir, StorePath, StorePathSet};
 use nixrs::ByteString;
@@ -642,7 +642,7 @@ mod unittests {
     #[case::normal(BasicDerivation {
         drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
         outputs: btree_map!(
-            "out".into() => DerivationOutput::InputAddressed("00000000000000000000000000000000-_".parse().unwrap()),
+            OutputName::default() => DerivationOutput::InputAddressed("00000000000000000000000000000000-_".parse().unwrap()),
         ),
         input_srcs: store_path_set!(),
         platform: ByteString::from_static(b"x86_64-linux"),
@@ -673,7 +673,7 @@ mod unittests {
     #[case::error(BasicDerivation {
         drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
         outputs: btree_map!(
-            "out".into() => DerivationOutput::InputAddressed("00000000000000000000000000000000-_".parse().unwrap()),
+            OutputName::default() => DerivationOutput::InputAddressed("00000000000000000000000000000000-_".parse().unwrap()),
         ),
         input_srcs: store_path_set!(),
         platform: ByteString::from_static(b"x86_64-linux"),

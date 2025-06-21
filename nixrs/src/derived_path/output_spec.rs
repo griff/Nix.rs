@@ -7,13 +7,31 @@ use proptest::collection::btree_set;
 #[cfg(any(test, feature = "test"))]
 use proptest::prelude::*;
 
+#[cfg(feature = "nixrs-derive")]
+use nixrs_derive::{NixDeserialize, NixSerialize};
+
 use crate::store_path::{into_name, StorePathNameError};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
+#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
 pub struct OutputName(String);
+
+impl OutputName {
+    pub fn is_default(&self) -> bool {
+        self.0 == "out"
+    }
+}
+
 impl AsRef<str> for OutputName {
     fn as_ref(&self) -> &str {
         &self.0
+    }
+}
+
+impl Default for OutputName {
+    fn default() -> Self {
+        OutputName("out".into())
     }
 }
 

@@ -15,17 +15,21 @@ use thiserror::Error;
 use tokio::io::{AsyncBufRead, AsyncWrite};
 
 use crate::derivation::BasicDerivation;
-use crate::derived_path::DerivedPath;
+use crate::derived_path::{DerivedPath, OutputName};
+use crate::hash::NarHash;
+use crate::realisation::{DrvOutput, Realisation};
 #[cfg(any(test, feature = "test"))]
 use crate::signature::proptests::arb_signatures;
 use crate::signature::Signature;
-use crate::store_path::{ContentAddress, StorePathSet};
-use crate::{hash::NarHash, store_path::StorePath};
+use crate::store_path::{
+    ContentAddress, ContentAddressMethodAlgorithm, StorePath, StorePathHash, StorePathSet,
+};
 
 use super::logger::{LocalLoggerResult, LogError, ResultLog, ResultProcess, TraceLine, Verbosity};
 use super::wire::types::Operation;
 use super::wire::types2::{
-    BuildMode, BuildResult, KeyedBuildResult, QueryMissingResult, ValidPathInfo,
+    BuildMode, BuildResult, CollectGarbageResponse, GCAction, KeyedBuildResult, QueryMissingResult,
+    ValidPathInfo,
 };
 use super::wire::{IgnoredTrue, IgnoredZero};
 use super::ProtocolVersion;
@@ -462,6 +466,122 @@ pub trait DaemonStore: Send {
         &mut self,
     ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + '_;
 
+    fn query_referrers<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a;
+
+    fn ensure_path<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a;
+
+    fn add_temp_root<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a;
+
+    fn add_indirect_root<'a>(
+        &'a mut self,
+        path: &'a DaemonPath,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a;
+
+    fn find_roots(
+        &mut self,
+    ) -> impl ResultLog<Output = DaemonResult<BTreeMap<DaemonPath, StorePath>>> + Send + '_;
+
+    fn collect_garbage<'a>(
+        &'a mut self,
+        action: GCAction,
+        paths_to_delete: &'a StorePathSet,
+        ignore_liveness: bool,
+        max_freed: u64,
+    ) -> impl ResultLog<Output = DaemonResult<CollectGarbageResponse>> + Send + 'a;
+
+    fn query_path_from_hash_part<'a>(
+        &'a mut self,
+        hash: &'a StorePathHash,
+    ) -> impl ResultLog<Output = DaemonResult<Option<StorePath>>> + Send + 'a;
+
+    fn query_substitutable_paths<'a>(
+        &'a mut self,
+        paths: &'a StorePathSet,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a;
+
+    fn query_valid_derivers<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a;
+
+    fn optimise_store(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + Send + '_;
+
+    fn verify_store(
+        &mut self,
+        check_contents: bool,
+        repair: bool,
+    ) -> impl ResultLog<Output = DaemonResult<bool>> + Send + '_;
+
+    fn add_signatures<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+        signatures: &'a [Signature],
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a;
+
+    fn query_derivation_output_map<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<BTreeMap<OutputName, Option<StorePath>>>> + Send + 'a;
+
+    fn register_drv_output<'a>(
+        &'a mut self,
+        realisation: &'a Realisation,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a;
+
+    fn query_realisation<'a>(
+        &'a mut self,
+        output_id: &'a DrvOutput,
+    ) -> impl ResultLog<Output = DaemonResult<BTreeSet<Realisation>>> + Send + 'a;
+
+    fn add_build_log<'s, 'r, 'p, R>(
+        &'s mut self,
+        path: &'p StorePath,
+        source: R,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'r
+    where
+        R: AsyncBufRead + Send + Unpin + 'r,
+        's: 'r,
+        'p: 'r;
+
+    fn add_perm_root<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+        gc_root: &'a DaemonPath,
+    ) -> impl ResultLog<Output = DaemonResult<DaemonPath>> + Send + 'a;
+
+    fn sync_with_gc(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + Send + '_;
+
+    fn query_derivation_outputs<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a;
+
+    fn query_derivation_output_names<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<BTreeSet<OutputName>>> + Send + 'a;
+
+    fn add_ca_to_store<'a, 'r, R>(
+        &'a mut self,
+        name: &'a str,
+        cam: ContentAddressMethodAlgorithm,
+        refs: &'a StorePathSet,
+        repair: bool,
+        source: R,
+    ) -> impl ResultLog<Output = DaemonResult<ValidPathInfo>> + Send + 'r
+    where
+        R: AsyncBufRead + Send + Unpin + 'r,
+        'a: 'r;
+
     fn shutdown(&mut self) -> impl Future<Output = DaemonResult<()>> + Send + '_;
 }
 
@@ -575,6 +695,168 @@ where
     ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + '_ {
         (**self).query_all_valid_paths()
     }
+
+    fn query_referrers<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a {
+        (**self).query_referrers(path)
+    }
+
+    fn ensure_path<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
+        (**self).ensure_path(path)
+    }
+
+    fn add_temp_root<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
+        (**self).add_temp_root(path)
+    }
+
+    fn add_indirect_root<'a>(
+        &'a mut self,
+        path: &'a DaemonPath,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
+        (**self).add_indirect_root(path)
+    }
+
+    fn find_roots(
+        &mut self,
+    ) -> impl ResultLog<Output = DaemonResult<BTreeMap<DaemonPath, StorePath>>> + Send + '_ {
+        (**self).find_roots()
+    }
+
+    fn collect_garbage<'a>(
+        &'a mut self,
+        action: GCAction,
+        paths_to_delete: &'a StorePathSet,
+        ignore_liveness: bool,
+        max_freed: u64,
+    ) -> impl ResultLog<Output = DaemonResult<CollectGarbageResponse>> + Send + 'a {
+        (**self).collect_garbage(action, paths_to_delete, ignore_liveness, max_freed)
+    }
+
+    fn query_path_from_hash_part<'a>(
+        &'a mut self,
+        hash: &'a StorePathHash,
+    ) -> impl ResultLog<Output = DaemonResult<Option<StorePath>>> + Send + 'a {
+        (**self).query_path_from_hash_part(hash)
+    }
+
+    fn query_substitutable_paths<'a>(
+        &'a mut self,
+        paths: &'a StorePathSet,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a {
+        (**self).query_substitutable_paths(paths)
+    }
+
+    fn query_valid_derivers<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a {
+        (**self).query_valid_derivers(path)
+    }
+
+    fn optimise_store(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + Send + '_ {
+        (**self).optimise_store()
+    }
+
+    fn verify_store(
+        &mut self,
+        check_contents: bool,
+        repair: bool,
+    ) -> impl ResultLog<Output = DaemonResult<bool>> + Send + '_ {
+        (**self).verify_store(check_contents, repair)
+    }
+
+    fn add_signatures<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+        signatures: &'a [Signature],
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
+        (**self).add_signatures(path, signatures)
+    }
+
+    fn query_derivation_output_map<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<BTreeMap<OutputName, Option<StorePath>>>> + Send + 'a
+    {
+        (**self).query_derivation_output_map(path)
+    }
+
+    fn register_drv_output<'a>(
+        &'a mut self,
+        realisation: &'a Realisation,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
+        (**self).register_drv_output(realisation)
+    }
+
+    fn query_realisation<'a>(
+        &'a mut self,
+        output_id: &'a DrvOutput,
+    ) -> impl ResultLog<Output = DaemonResult<BTreeSet<Realisation>>> + Send + 'a {
+        (**self).query_realisation(output_id)
+    }
+
+    fn add_build_log<'s, 'r, 'p, R>(
+        &'s mut self,
+        path: &'p StorePath,
+        source: R,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'r
+    where
+        R: AsyncBufRead + Send + Unpin + 'r,
+        's: 'r,
+        'p: 'r,
+    {
+        (**self).add_build_log(path, source)
+    }
+
+    fn add_perm_root<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+        gc_root: &'a DaemonPath,
+    ) -> impl ResultLog<Output = DaemonResult<DaemonPath>> + Send + 'a {
+        (**self).add_perm_root(path, gc_root)
+    }
+
+    fn sync_with_gc(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + Send + '_ {
+        (**self).sync_with_gc()
+    }
+
+    fn query_derivation_outputs<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a {
+        (**self).query_derivation_outputs(path)
+    }
+
+    fn query_derivation_output_names<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<BTreeSet<OutputName>>> + Send + 'a {
+        (**self).query_derivation_output_names(path)
+    }
+
+    fn add_ca_to_store<'a, 'r, R>(
+        &'a mut self,
+        name: &'a str,
+        cam: ContentAddressMethodAlgorithm,
+        refs: &'a StorePathSet,
+        repair: bool,
+        source: R,
+    ) -> impl ResultLog<Output = DaemonResult<ValidPathInfo>> + Send + 'r
+    where
+        R: AsyncBufRead + Send + Unpin + 'r,
+        'a: 'r,
+    {
+        (**self).add_ca_to_store(name, cam, refs, repair, source)
+    }
+
     fn shutdown(&mut self) -> impl Future<Output = DaemonResult<()>> + Send + '_ {
         (**self).shutdown()
     }

@@ -97,6 +97,7 @@ mod daemon_serde {
         use crate::daemon::de::{NixRead as _, NixReader};
         use crate::daemon::ser::{NixWrite as _, NixWriter};
         use crate::derivation::{BasicDerivation, DerivationOutput};
+        use crate::derived_path::OutputName;
         use crate::store_path::StorePathSet;
         use crate::ByteString;
 
@@ -129,7 +130,7 @@ mod daemon_serde {
         #[case::input_addressed(BasicDerivation {
             drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
             outputs: btree_map!(
-                "out".into() => DerivationOutput::InputAddressed("00000000000000000000000000000000-_".parse().unwrap()),
+                OutputName::default() => DerivationOutput::InputAddressed("00000000000000000000000000000000-_".parse().unwrap()),
             ),
             input_srcs: store_path_set!(),
             platform: ByteString::from_static(b"x86_64-linux"),
@@ -140,7 +141,7 @@ mod daemon_serde {
         #[case::defered(BasicDerivation {
             drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
             outputs: btree_map!(
-                "out".into() => DerivationOutput::Deferred,
+                OutputName::default() => DerivationOutput::Deferred,
             ),
             input_srcs: store_path_set!(),
             platform: ByteString::from_static(b"x86_64-linux"),
@@ -151,7 +152,7 @@ mod daemon_serde {
         #[cfg_attr(feature = "xp-dynamic-derivations", case::ca_fixed_text(BasicDerivation {
             drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
             outputs: btree_map!(
-                "out".into() => DerivationOutput::CAFixed("text:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s".parse().unwrap()),
+                OutputName::default() => DerivationOutput::CAFixed("text:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s".parse().unwrap()),
             ),
             input_srcs: store_path_set!(),
             platform: ByteString::from_static(b"x86_64-linux"),
@@ -162,7 +163,7 @@ mod daemon_serde {
         #[case::ca_fixed_flat(BasicDerivation {
             drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
             outputs: btree_map!(
-                "out".into() => DerivationOutput::CAFixed("fixed:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s".parse().unwrap()),
+                OutputName::default() => DerivationOutput::CAFixed("fixed:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s".parse().unwrap()),
             ),
             input_srcs: store_path_set!(),
             platform: ByteString::from_static(b"x86_64-linux"),
@@ -173,7 +174,7 @@ mod daemon_serde {
         #[case::ca_fixed_recursive(BasicDerivation {
             drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
             outputs: btree_map!(
-                "out".into() => DerivationOutput::CAFixed("fixed:r:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s".parse().unwrap()),
+                OutputName::default() => DerivationOutput::CAFixed("fixed:r:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s".parse().unwrap()),
             ),
             input_srcs: store_path_set!(),
             platform: ByteString::from_static(b"x86_64-linux"),
@@ -184,7 +185,7 @@ mod daemon_serde {
         #[cfg_attr(feature = "xp-ca-derivations", case::ca_floating(BasicDerivation {
             drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
             outputs: btree_map!(
-                "out".into() => DerivationOutput::CAFloating("text:sha256".parse().unwrap()),
+                OutputName::default() => DerivationOutput::CAFloating("text:sha256".parse().unwrap()),
             ),
             input_srcs: store_path_set!(),
             platform: ByteString::from_static(b"x86_64-linux"),
@@ -195,7 +196,7 @@ mod daemon_serde {
         #[cfg_attr(feature = "xp-impure-derivations", case::impure(BasicDerivation {
             drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
             outputs: btree_map!(
-                "out".into() => DerivationOutput::Impure("text:sha256".parse().unwrap()),
+                OutputName::default() => DerivationOutput::Impure("text:sha256".parse().unwrap()),
             ),
             input_srcs: store_path_set!(),
             platform: ByteString::from_static(b"x86_64-linux"),

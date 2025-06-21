@@ -67,7 +67,7 @@ pub(crate) mod unittests {
     use crate::btree_set;
     use crate::daemon::server;
     use crate::derivation::{BasicDerivation, DerivationOutput};
-    use crate::derived_path::DerivedPath;
+    use crate::derived_path::{DerivedPath, OutputName};
     use crate::hash::NarHash;
     use crate::store_path::{StoreDir, StorePath, StorePathSet};
     use crate::test::derived_path::parse_path;
@@ -522,7 +522,7 @@ pub(crate) mod unittests {
     #[case::normal(BasicDerivation {
         drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
         outputs: btree_map!(
-            "out".into() => DerivationOutput::InputAddressed("00000000000000000000000000000000-_".parse().unwrap()),
+            OutputName::default() => DerivationOutput::InputAddressed("00000000000000000000000000000000-_".parse().unwrap()),
         ),
         input_srcs: store_path_set!(),
         platform: DaemonString::from_static(b"x86_64-linux"),
@@ -553,7 +553,7 @@ pub(crate) mod unittests {
     #[case::error(BasicDerivation {
         drv_path: "00000000000000000000000000000000-_.drv".parse().unwrap(),
         outputs: btree_map!(
-            "out".into() => DerivationOutput::InputAddressed("00000000000000000000000000000000-_".parse().unwrap()),
+            OutputName::default() => DerivationOutput::InputAddressed("00000000000000000000000000000000-_".parse().unwrap()),
         ),
         input_srcs: store_path_set!(),
         platform: DaemonString::from_static(b"x86_64-linux"),

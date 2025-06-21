@@ -106,11 +106,13 @@ pub enum BuildMode {
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
+    Default,
 )]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
 #[repr(u16)]
 pub enum GCAction {
+    #[default]
     ReturnLive = 0,
     ReturnDead = 1,
     DeleteDead = 2,
@@ -255,7 +257,7 @@ impl Request {
             Request::IsValidPath(path) => debug_span!("IsValidPath", ?path),
             Request::QueryReferrers(path) => debug_span!("QueryReferrers", ?path),
             Request::AddToStore(AddToStoreRequest::Protocol25(req)) => {
-                debug_span!("AddToStore", name=?req.name, cam_str=?req.cam_str, refs=req.refs.len(), repair=req.repair)
+                debug_span!("AddToStore", name=?req.name, cam=?req.cam, refs=req.refs.len(), repair=req.repair)
             }
             Request::AddToStore(AddToStoreRequest::ProtocolPre25(req)) => {
                 debug_span!("AddToStore", base_name=req.base_name, fixed=req.fixed,
@@ -468,7 +470,7 @@ pub struct AddToStoreRequestPre25 {
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct AddToStoreRequest25 {
     pub name: String,
-    pub cam_str: ContentAddressMethodAlgorithm,
+    pub cam: ContentAddressMethodAlgorithm,
     pub refs: StorePathSet,
     pub repair: bool,
     // Framed NAR dump
@@ -489,7 +491,7 @@ pub struct BuildPathsRequest {
     pub mode: BuildMode,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct CollectGarbageRequest {
     pub action: GCAction,
@@ -501,7 +503,7 @@ pub struct CollectGarbageRequest {
     _removed3: IgnoredZero,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct CollectGarbageResponse {
     pub paths_deleted: Vec<DaemonString>,
@@ -598,7 +600,7 @@ pub struct AddMultipleToStoreRequest {
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct AddPermRootRequest {
     pub store_path: StorePath,
-    pub gc_root: DaemonString,
+    pub gc_root: DaemonPath,
 }
 
 #[cfg(feature = "nixrs-derive")]
