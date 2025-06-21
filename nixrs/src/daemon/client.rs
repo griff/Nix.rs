@@ -662,9 +662,7 @@ where
         path: &'a StorePath,
     ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a {
         FutureResult::new(async move {
-            self.writer
-                .write_value(&Operation::QueryReferrers)
-                .await?;
+            self.writer.write_value(&Operation::QueryReferrers).await?;
             self.writer.write_value(path).await?;
             Ok(self.process_stderr())
         })
@@ -676,9 +674,7 @@ where
         path: &'a StorePath,
     ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
         FutureResult::new(async move {
-            self.writer
-                .write_value(&Operation::EnsurePath)
-                .await?;
+            self.writer.write_value(&Operation::EnsurePath).await?;
             self.writer.write_value(path).await?;
             Ok(self.process_stderr())
         })
@@ -690,9 +686,7 @@ where
         path: &'a StorePath,
     ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
         FutureResult::new(async move {
-            self.writer
-                .write_value(&Operation::AddTempRoot)
-                .await?;
+            self.writer.write_value(&Operation::AddTempRoot).await?;
             self.writer.write_value(path).await?;
             Ok(self.process_stderr())
         })
@@ -704,9 +698,7 @@ where
         path: &'a DaemonPath,
     ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
         FutureResult::new(async move {
-            self.writer
-                .write_value(&Operation::AddIndirectRoot)
-                .await?;
+            self.writer.write_value(&Operation::AddIndirectRoot).await?;
             self.writer.write_value(path).await?;
             Ok(self.process_stderr())
         })
@@ -731,9 +723,7 @@ where
         max_freed: u64,
     ) -> impl ResultLog<Output = DaemonResult<CollectGarbageResponse>> + Send + 'a {
         FutureResult::new(async move {
-            self.writer
-                .write_value(&Operation::CollectGarbage)
-                .await?;
+            self.writer.write_value(&Operation::CollectGarbage).await?;
             self.writer.write_value(&action).await?;
             self.writer.write_value(paths_to_delete).await?;
             self.writer.write_value(&ignore_liveness).await?;
@@ -787,9 +777,7 @@ where
 
     fn optimise_store(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + Send + '_ {
         FutureResult::new(async move {
-            self.writer
-                .write_value(&Operation::OptimiseStore)
-                .await?;
+            self.writer.write_value(&Operation::OptimiseStore).await?;
             Ok(self.process_stderr())
         })
         .map_err(|err| err.fill_operation(Operation::OptimiseStore))
@@ -801,9 +789,7 @@ where
         repair: bool,
     ) -> impl ResultLog<Output = DaemonResult<bool>> + Send + '_ {
         FutureResult::new(async move {
-            self.writer
-                .write_value(&Operation::VerifyStore)
-                .await?;
+            self.writer.write_value(&Operation::VerifyStore).await?;
             self.writer.write_value(&check_contents).await?;
             self.writer.write_value(&repair).await?;
             Ok(self.process_stderr())
@@ -817,9 +803,7 @@ where
         signatures: &'a [Signature],
     ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
         FutureResult::new(async move {
-            self.writer
-                .write_value(&Operation::AddSignatures)
-                .await?;
+            self.writer.write_value(&Operation::AddSignatures).await?;
             self.writer.write_value(path).await?;
             self.writer.write_value(&signatures).await?;
             Ok(self.process_stderr())
@@ -881,9 +865,7 @@ where
         'p: 'r,
     {
         FutureResult::new(async move {
-            self.writer
-                .write_value(&Operation::AddBuildLog)
-                .await?;
+            self.writer.write_value(&Operation::AddBuildLog).await?;
             self.writer.write_value(path).await?;
             self.writer.flush().await?;
             Ok(DriveResult {
@@ -909,9 +891,7 @@ where
         gc_root: &'a DaemonPath,
     ) -> impl ResultLog<Output = DaemonResult<DaemonPath>> + Send + 'a {
         FutureResult::new(async move {
-            self.writer
-                .write_value(&Operation::AddPermRoot)
-                .await?;
+            self.writer.write_value(&Operation::AddPermRoot).await?;
             self.writer.write_value(path).await?;
             self.writer.write_value(gc_root).await?;
             Ok(self.process_stderr())
@@ -921,9 +901,7 @@ where
 
     fn sync_with_gc(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + Send + '_ {
         FutureResult::new(async move {
-            self.writer
-                .write_value(&Operation::SyncWithGC)
-                .await?;
+            self.writer.write_value(&Operation::SyncWithGC).await?;
             Ok(self.process_stderr())
         })
         .map_err(|err| err.fill_operation(Operation::SyncWithGC))
@@ -970,9 +948,7 @@ where
         'a: 'r,
     {
         FutureResult::new(async move {
-            self.writer
-                .write_value(&Operation::AddToStore)
-                .await?;
+            self.writer.write_value(&Operation::AddToStore).await?;
             self.writer.write_value(name).await?;
             self.writer.write_value(&cam).await?;
             self.writer.write_value(refs).await?;

@@ -20,9 +20,7 @@ use crate::daemon::wire::types2::{
 };
 use crate::daemon::wire::IgnoredOne;
 use crate::daemon::wire::{parse_add_multiple_to_store, FramedReader, StderrReader};
-use crate::daemon::{
-    DaemonErrorKind, DaemonPath, DaemonResultExt, PROTOCOL_VERSION,
-};
+use crate::daemon::{DaemonErrorKind, DaemonPath, DaemonResultExt, PROTOCOL_VERSION};
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
 use crate::io::{AsyncBufReadCompat, BytesReader};
@@ -440,7 +438,11 @@ where
         ignore_liveness: bool,
         max_freed: u64,
     ) -> impl ResultLog<Output = DaemonResult<CollectGarbageResponse>> + Send + 'a {
-        let ret = Box::pin(self.0.collect_garbage(action, paths_to_delete, ignore_liveness, max_freed));
+        let ret =
+            Box::pin(
+                self.0
+                    .collect_garbage(action, paths_to_delete, ignore_liveness, max_freed),
+            );
         trace!("CollectGarbage Size {}", size_of_val(ret.deref()));
         ret
     }
@@ -571,7 +573,10 @@ where
         path: &'a StorePath,
     ) -> impl ResultLog<Output = DaemonResult<BTreeSet<OutputName>>> + Send + 'a {
         let ret = Box::pin(self.0.query_derivation_output_names(path));
-        trace!("QueryDerivationOutputNames Size {}", size_of_val(ret.deref()));
+        trace!(
+            "QueryDerivationOutputNames Size {}",
+            size_of_val(ret.deref())
+        );
         ret
     }
 

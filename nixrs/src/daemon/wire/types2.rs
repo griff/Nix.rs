@@ -105,7 +105,16 @@ pub enum BuildMode {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    TryFromPrimitive,
+    IntoPrimitive,
     Default,
 )]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
