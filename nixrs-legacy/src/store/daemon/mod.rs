@@ -118,7 +118,7 @@ impl fmt::Display for WorkerProtoOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use WorkerProtoOp::*;
         match self {
-            Unknown(cmd) => write!(f, "unknown command {}", cmd),
+            Unknown(cmd) => write!(f, "unknown command {cmd}"),
             IsValidPath => write!(f, "is valid path"),
             HasSubstitutes => write!(f, "has substitutes"),
             QueryPathHash => write!(f, "query paths hash"),

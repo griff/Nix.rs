@@ -272,6 +272,10 @@ interface Logger {
     end @1 ();
 }
 
+interface LoggedNixDaemon {
+    captureLogs @0 (logger :Logger) -> (daemon :NixDaemon);
+}
+
 struct Matcher {
     capType @0 :UInt64;
     params @1 :AnyPointer;

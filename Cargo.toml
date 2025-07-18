@@ -7,9 +7,12 @@ members = [
   "nixrs-legacy",
   "nixrs-ssh-store",
   "nixrs-capnp",
+  "nixrs-test-utils",
+  "nixrs-test-utils-macros",
   "examples/nixrs-nix-store",
   "examples/nix-docker-build",
   "examples/tester",
+  "nixrs-daemon-tests",
 ]
 
 [workspace.dependencies]
@@ -30,7 +33,7 @@ pretty_assertions = "^1.4.0"
 proptest = "^1.6.0"
 proptest-derive = "^0.5.1"
 ring = "^0.17.8"
-rstest = "^0.19.0"
+rstest = "^0.25.0"
 smallvec = "^1.13.2"
 tempfile = "^3.10.1"
 test-log = "0.2.17"
@@ -62,9 +65,12 @@ compress-tools = "^0.14.3"
 assert_matches = "1.5.0"
 
 # nixrs-capnp
-capnp = "^0.20.3"
-
-capnpc = "^0.20.1"
+capnp = { git = "https://github.com/griff/capnproto-rust.git", branch = "feat/setter-input-everywhere" }
+capnp-rpc = { git = "https://github.com/griff/capnproto-rust.git", branch = "feat/setter-input-everywhere" }
+capnpc = { git = "https://github.com/griff/capnproto-rust.git", branch = "feat/setter-input-everywhere" }
+#capnp = "^0.21.0"
+#capnp-rpc = "^0.21.0"
+#capnpc = "^0.21.0"
 which = "^4.4.0"
 
 # nixrs-derive

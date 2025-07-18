@@ -64,12 +64,29 @@ interface Nar {
     content @1 () -> (node :NodeAccess);
 }
 
-interface PathInfo {
-    getPath @0 () -> (path :NixDaemon.StorePath);
-    getSize @1 () -> (size :UInt64);
-    getNarSize @2 () -> (size :UInt64);
-    getNarHash @3 () -> (hash :NixDaemon.NarHash);
-    isValid @4 () -> (valid :Bool);
-    info @5 () -> (info :NixDaemon.UnkeyedValidPathInfo);
-    nar @6 () -> (nar :Nar);
+struct PathInfo {
+    storePath @0 :NixDaemon.StorePath;
+    deriver @1 :PathAccess;
+    narHash @2 :NixDaemon.NarHash;
+    references @3 :List(PathAccess);
+    registrationTime @4 :NixDaemon.DaemonTime;
+    narSize @5 :UInt64;
+    ultimate @6 :Bool;
+    signatures @7 :List(NixDaemon.Signature);
+    ca @8 :NixDaemon.ContentAddress;
+}
+
+interface PathAccess {
+    getStorePath @0 () -> (path :NixDaemon.StorePath);
+    getDeriver @1 () -> (deriver :PathAccess);
+    getNarHash @2 () -> (hash :NixDaemon.NarHash);
+    getReferences @3 () -> (references :List(PathAccess));
+    getRegistrationTime @4 () -> (time :NixDaemon.DaemonTime);
+    getSize @5 () -> (size :UInt64);
+    getNarSize @6 () -> (size :UInt64);
+    isUltimate @7 () -> (trusted :Bool);
+    getSignature @8 () -> (signatures :List(NixDaemon.Signature));
+    info @9 () -> (info :PathInfo);
+    isValid @10 () -> (valid :Bool);
+    nar @11 () -> (nar :Nar);
 }

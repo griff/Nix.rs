@@ -4,9 +4,13 @@ pub mod de;
 #[cfg(feature = "nixrs-derive")]
 mod fail_store;
 #[cfg(feature = "nixrs-derive")]
+pub mod local;
+#[cfg(feature = "nixrs-derive")]
 mod logger;
 #[cfg(all(feature = "nixrs-derive", any(test, feature = "test")))]
 pub mod mock;
+#[cfg(feature = "nixrs-derive")]
+mod mutex;
 pub mod ser;
 #[cfg(feature = "nixrs-derive")]
 pub mod server;
@@ -19,16 +23,19 @@ pub mod wire;
 #[cfg(feature = "nixrs-derive")]
 pub use fail_store::FailStore;
 #[cfg(feature = "nixrs-derive")]
+pub use local::{LocalDaemonStore, LocalHandshakeDaemonStore};
+#[cfg(feature = "nixrs-derive")]
 pub use logger::{
-    LocalLoggerResult, LogError, LogMessage, ResultLog, ResultLogExt, ResultProcess, TraceLine,
-    Verbosity,
+    Activity, ActivityResult, ActivityType, DriveResult, Field, FutureResultExt, LogError,
+    LogMessage, ResultLog, ResultLogExt, ResultProcess, ResultType, TraceLine, Verbosity,
 };
+#[cfg(feature = "nixrs-derive")]
+pub use mutex::MutexStore;
 #[cfg(feature = "nixrs-derive")]
 pub use types::{
     AddToStoreItem, ClientOptions, DaemonError, DaemonErrorContext, DaemonErrorKind, DaemonInt,
     DaemonPath, DaemonResult, DaemonResultExt, DaemonStore, DaemonString, DaemonTime,
-    HandshakeDaemonStore, LocalDaemonStore, LocalHandshakeDaemonStore, RemoteError, TrustLevel,
-    UnkeyedValidPathInfo,
+    HandshakeDaemonStore, RemoteError, TrustLevel, UnkeyedValidPathInfo,
 };
 pub use version::{
     ProtocolRange, ProtocolVersion, NIX_VERSION, PROTOCOL_VERSION, PROTOCOL_VERSION_MIN,

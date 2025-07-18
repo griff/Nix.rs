@@ -7,6 +7,7 @@ use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
 use async_stream::stream;
+use futures::stream::{empty, Empty};
 use futures::Stream;
 #[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
@@ -18,7 +19,7 @@ use proptest::prelude::*;
 use proptest::prop_oneof;
 #[cfg(any(test, feature = "test"))]
 use test_strategy::Arbitrary;
-use tokio::io::{AsyncBufRead, AsyncBufReadExt as _, AsyncRead, AsyncWrite, AsyncWriteExt as _};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt as _};
 use tokio::sync::oneshot;
 
 use super::de::{NixDeserialize, NixRead};
@@ -31,6 +32,7 @@ use super::{
 };
 #[cfg(feature = "nixrs-derive")]
 use crate::daemon::ser::NixSerialize;
+use crate::daemon::wire::types::Operation;
 use crate::test::arbitrary::arb_byte_string;
 
 #[derive(
@@ -281,22 +283,8 @@ pub enum Field {
     String(#[strategy(arb_byte_string())] DaemonString),
 }
 
-pub trait ResultLog:
-    Stream<Item = LogMessage> + Future<Output = <Self as ResultLog>::Output>
-{
-    type Output;
-}
-impl<RL, O> ResultLog for RL
-where
-    RL: Stream<Item = LogMessage> + Future<Output = O>,
-{
-    type Output = O;
-}
-
-pub trait LocalLoggerResult<T, E> {
-    fn next(&mut self) -> impl Future<Output = Option<Result<LogMessage, E>>> + '_;
-    fn result(self) -> impl Future<Output = Result<T, E>>;
-}
+pub trait ResultLog: Stream<Item = LogMessage> + Future {}
+impl<RL, O> ResultLog for RL where RL: Stream<Item = LogMessage> + Future<Output = O> {}
 
 pin_project! {
     struct MapOkResult<L, F, T> {
@@ -440,6 +428,19 @@ pub trait ResultLogExt: ResultLog {
         F: FnOnce(T) -> Fut + Send,
         Fut: Future<Output = Result<T2, E>> + Send,
         T2: 'static;
+    fn fill_operation<T>(self, op: Operation) -> impl ResultLog<Output = Result<T, DaemonError>>
+    where
+        Self: ResultLog<Output = Result<T, DaemonError>>;
+    fn drive_result<D, T, E>(self, driver: D) -> DriveResult<Self, D, E>
+    where
+        Self: ResultLog<Output = Result<T, E>> + Sized,
+        D: Future<Output = Result<(), E>>;
+    fn boxed_result<'a>(self) -> Pin<Box<dyn ResultLog<Output = Self::Output> + Send + 'a>>
+    where
+        Self: Send + 'a;
+    fn boxed_local_result<'a>(self) -> Pin<Box<dyn ResultLog<Output = Self::Output> + 'a>>
+    where
+        Self: 'a;
 }
 
 impl<L> ResultLogExt for L
@@ -484,6 +485,37 @@ where
             stream: self,
             result: AndThenLogResult::First { mapper: Some(f) },
         }
+    }
+    fn drive_result<D, T, E>(self, driver: D) -> DriveResult<Self, D, E>
+    where
+        Self: ResultLog<Output = Result<T, E>> + Sized,
+        D: Future<Output = Result<(), E>>,
+    {
+        DriveResult {
+            result: self,
+            driver,
+            driving: true,
+            drive_err: None,
+        }
+    }
+
+    fn fill_operation<T>(self, op: Operation) -> impl ResultLog<Output = Result<T, DaemonError>>
+    where
+        Self: ResultLog<Output = Result<T, DaemonError>>,
+    {
+        self.map_err(move |err| err.fill_operation(op))
+    }
+    fn boxed_result<'a>(self) -> Pin<Box<dyn ResultLog<Output = Self::Output> + Send + 'a>>
+    where
+        Self: Send + 'a,
+    {
+        Box::pin(self)
+    }
+    fn boxed_local_result<'a>(self) -> Pin<Box<dyn ResultLog<Output = Self::Output> + 'a>>
+    where
+        Self: 'a,
+    {
+        Box::pin(self)
     }
 }
 
@@ -543,9 +575,8 @@ where
 
 impl<Fut, R, E> Stream for FutureResult<Fut, R, E>
 where
-    Fut: Future<Output = Result<R, E>> + Send,
+    Fut: Future<Output = Result<R, E>>,
     R: Stream<Item = LogMessage>,
-    E: Send,
 {
     type Item = LogMessage;
 
@@ -560,9 +591,8 @@ where
 
 impl<Fut, R, T, E> Future for FutureResult<Fut, R, E>
 where
-    Fut: Future<Output = Result<R, E>> + Send,
+    Fut: Future<Output = Result<R, E>>,
     R: Future<Output = Result<T, E>>,
-    E: Send,
 {
     type Output = Result<T, E>;
 
@@ -579,6 +609,44 @@ where
                 _ => panic!("Polling invalid FutureRessult"),
             }
         }
+    }
+}
+
+pub trait FutureResultExt: Future {
+    fn empty_logs(self) -> impl ResultLog<Output = Self::Output>;
+    fn with_logs<S>(self, logs: S) -> impl ResultLog<Output = Self::Output>
+    where
+        S: Stream<Item = LogMessage>;
+    fn future_result<R, T, E>(self) -> impl ResultLog<Output = Result<T, E>>
+    where
+        Self: Future<Output = Result<R, E>>,
+        R: ResultLog<Output = Result<T, E>>;
+}
+
+impl<F> FutureResultExt for F
+where
+    F: Future,
+{
+    fn empty_logs(self) -> impl ResultLog<Output = Self::Output> {
+        ResultProcess::empty(self)
+    }
+
+    fn with_logs<S>(self, logs: S) -> impl ResultLog<Output = Self::Output>
+    where
+        S: Stream<Item = LogMessage>,
+    {
+        ResultProcess {
+            stream: logs,
+            result: self,
+        }
+    }
+
+    fn future_result<R, T, E>(self) -> impl ResultLog<Output = Result<T, E>>
+    where
+        Self: Future<Output = Result<R, E>>,
+        R: ResultLog<Output = Result<T, E>>,
+    {
+        FutureResult::new(self)
     }
 }
 
@@ -746,6 +814,14 @@ pin_project! {
         pub result: R,
     }
 }
+impl<R> ResultProcess<Empty<LogMessage>, R> {
+    pub fn empty(result: R) -> Self {
+        Self {
+            stream: empty(),
+            result,
+        }
+    }
+}
 
 impl<S, R> Stream for ResultProcess<S, R>
 where
@@ -761,12 +837,12 @@ where
     }
 }
 
-impl<S, R, T, E> Future for ResultProcess<S, R>
+impl<S, R> Future for ResultProcess<S, R>
 where
     S: Stream<Item = LogMessage>,
-    R: Future<Output = Result<T, E>>,
+    R: Future,
 {
-    type Output = Result<T, E>;
+    type Output = R::Output;
 
     fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
         let mut me = self.project();
@@ -788,7 +864,6 @@ pin_project! {
 
 impl<R, D, E> DriveResult<R, D, E>
 where
-    R: Stream<Item = LogMessage>,
     D: Future<Output = Result<(), E>>,
 {
     pub fn new(result: R, driver: D) -> Self {
@@ -797,6 +872,25 @@ where
             driver,
             driving: true,
             drive_err: None,
+        }
+    }
+
+    fn drive(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) {
+        let me = self.project();
+        if *me.driving {
+            if let Poll::Ready(res) = me.driver.poll(cx) {
+                *me.driving = false;
+                *me.drive_err = res.err();
+            }
+        }
+    }
+    fn take_drive(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Result<(), E> {
+        self.as_mut().drive(cx);
+        let me = self.project();
+        if let Some(err) = me.drive_err.take() {
+            Err(err)
+        } else {
+            Ok(())
         }
     }
 }
@@ -809,16 +903,11 @@ where
     type Item = LogMessage;
 
     fn poll_next(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<Option<Self::Item>> {
+        self.as_mut().drive(cx);
         let me = self.project();
-        if *me.driving {
-            if let Poll::Ready(res) = me.driver.poll(cx) {
-                *me.driving = false;
-                *me.drive_err = res.err();
-            }
-        }
         if me.drive_err.is_some() {
             return Poll::Ready(None);
         }
@@ -833,18 +922,42 @@ where
 {
     type Output = Result<T, E>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
-        let me = self.project();
-        if *me.driving {
-            if let Poll::Ready(res) = me.driver.poll(cx) {
-                *me.driving = false;
-                *me.drive_err = res.err();
-            }
-        }
-        if let Some(err) = me.drive_err.take() {
-            return Poll::Ready(Err(err));
-        }
-        me.result.poll(cx)
+    fn poll(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+        self.as_mut().take_drive(cx)?;
+        self.project().result.poll(cx)
+    }
+}
+
+impl<R, D> AsyncRead for DriveResult<R, D, std::io::Error>
+where
+    R: AsyncRead,
+    D: Future<Output = Result<(), std::io::Error>>,
+{
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        self.as_mut().take_drive(cx)?;
+        self.project().result.poll_read(cx, buf)
+    }
+}
+
+impl<R, D> AsyncBufRead for DriveResult<R, D, std::io::Error>
+where
+    R: AsyncBufRead,
+    D: Future<Output = Result<(), std::io::Error>>,
+{
+    fn poll_fill_buf(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<std::io::Result<&[u8]>> {
+        self.as_mut().take_drive(cx)?;
+        self.project().result.poll_fill_buf(cx)
+    }
+
+    fn consume(self: Pin<&mut Self>, amt: usize) {
+        self.project().result.consume(amt);
     }
 }
 

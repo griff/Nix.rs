@@ -101,12 +101,12 @@ impl App {
                         .send(Ok(AddToStoreItem { info, reader }))
                         .await
                         .map_err(DaemonError::custom)?;
-                    eprintln!("Sent path {}", path);
+                    eprintln!("Sent path {path}");
                     let mut reader = client.nar_from_path(&path).await?;
                     copy_buf(&mut reader, &mut writer).await?;
-                    eprintln!("Sent nar {}", path);
+                    eprintln!("Sent nar {path}");
                     writer.shutdown().await?;
-                    eprintln!("Shutdown writer {}", path);
+                    eprintln!("Shutdown writer {path}");
                 }
             }
             sender.close_channel();

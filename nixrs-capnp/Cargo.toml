@@ -6,14 +6,30 @@ edition = "2021"
 license = "EUPL-1.2 OR MIT"
 build = "build.rs"
 
+[[bin]]
+name = "run-tests"
+
+[features]
+# Nix Experimental Features
+xp-dynamic-derivations = ["nixrs/xp-dynamic-derivations"]
+xp-ca-derivations = ["nixrs/xp-ca-derivations"]
+xp-impure-derivations = ["nixrs/xp-impure-derivations"]
+
 [dependencies]
+bytes = { workspace = true }
+capnp = { workspace = true }
+capnp-rpc = { workspace = true }
 futures = { workspace = true }
 nixrs = { path = "../nixrs", features = [ "daemon" ] }
-capnp = { workspace = true }
+pin-project-lite = { workspace = true }
+
+[dependencies.tokio-util]
+workspace = true
+features = ["compat"]
 
 [dependencies.tokio]
 workspace = true
-features = ["io-util", "macros", "fs"]
+features = ["io-util", "io-std", "macros", "fs"]
 
 [build-dependencies]
 capnpc = { workspace = true }

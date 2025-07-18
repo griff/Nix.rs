@@ -122,7 +122,7 @@ where
                 }
                 me.reader.consume(amt);
             }
-            _ => panic!("Consume called in invalid state {}", amt),
+            _ => panic!("Consume called in invalid state {amt}"),
         }
     }
 }

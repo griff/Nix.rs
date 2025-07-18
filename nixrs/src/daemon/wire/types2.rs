@@ -10,6 +10,8 @@ use bytes::Bytes;
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(any(test, feature = "test"))]
+use proptest::arbitrary::any_with;
+#[cfg(any(test, feature = "test"))]
 use test_strategy::Arbitrary;
 use tracing::{debug_span, Span};
 
@@ -35,7 +37,7 @@ use crate::daemon::ser::{NixSerialize, NixWrite};
 use super::types::Operation;
 use super::IgnoredZero;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct Microseconds(i64);
 
@@ -452,7 +454,7 @@ pub type KeyedBuildResults = Vec<KeyedBuildResult>;
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct KeyedBuildResult {
     pub path: DerivedPath,
-    #[cfg_attr(any(test, feature = "test"), any(*args))]
+    #[cfg_attr(any(test, feature = "test"), strategy(any_with::<BuildResult>(*args)))]
     pub result: BuildResult,
 }
 

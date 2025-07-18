@@ -80,7 +80,7 @@ impl<const N: usize> fmt::Display for Base64Display<'_, N> {
 
         // SAFETY: Base64 is a subset of ASCII, which guarantees valid UTF-8.
         let s = unsafe { std::str::from_utf8_unchecked(&buf) };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 

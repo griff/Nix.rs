@@ -1,0 +1,22 @@
+[package]
+name = "nixrs-daemon-tests"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bstr = { workspace = true }
+bytes = { workspace = true }
+futures = { workspace = true }
+nixrs = { path = "../nixrs", features = [ "daemon", "test" ] }
+pretty_assertions = { workspace = true }
+proptest = { workspace = true }
+rstest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+test-log = { workspace = true, features = ["trace"] }
+tracing = { workspace = true }
+
+[dependencies.tokio]
+workspace = true
+features = ["fs", "io-util", "macros", "process", "rt-multi-thread"]

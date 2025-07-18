@@ -236,7 +236,7 @@ mod unittests {
         let store_dir = StoreDir::default();
         if let Some(print) = inner_print {
             let hash = hash::Sha256::digest(print);
-            let actual_fingerprint = format!("output:out:sha256:{:x}:{}:{}", hash, store_dir, name);
+            let actual_fingerprint = format!("output:out:sha256:{hash:x}:{store_dir}:{name}");
             assert_eq!(actual_fingerprint, fingerprint);
         }
         let actual_path = store_dir.make_store_path_from_ca(name, ca);

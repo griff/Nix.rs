@@ -62,7 +62,7 @@ where
                     if len > limit {
                         return Poll::Ready(Err(io::Error::new(
                             io::ErrorKind::InvalidData,
-                            format!("string is to long: {}", len),
+                            format!("string is to long: {len}"),
                         )));
                     }
                     let src = reader.inner();

@@ -24,9 +24,9 @@ pub enum ContentAddressMethod {
 pub enum ContentAddressMethodAlgorithm {
     #[display(fmt = "text:sha256")]
     Text,
-    #[display(fmt = "{}", _0)]
+    #[display(fmt = "{_0}")]
     Flat(Algorithm),
-    #[display(fmt = "r:{}", _0)]
+    #[display(fmt = "r:{_0}")]
     Recursive(Algorithm),
 }
 
@@ -67,11 +67,11 @@ impl FromStr for ContentAddressMethodAlgorithm {
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
 pub enum ContentAddress {
-    #[display(fmt = "text:sha256:{}", _0)]
+    #[display(fmt = "text:sha256:{_0}")]
     Text(Sha256),
-    #[display(fmt = "fixed:{}", _0)]
+    #[display(fmt = "fixed:{_0}")]
     Flat(Hash),
-    #[display(fmt = "fixed:r:{}", _0)]
+    #[display(fmt = "fixed:r:{_0}")]
     Recursive(Hash),
 }
 

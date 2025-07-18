@@ -3,10 +3,13 @@ use std::{
     ops::{
         Bound, Range, RangeBounds, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive,
     },
+    str::FromStr,
 };
 
 #[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
+use serde_with::{DeserializeFromStr, SerializeDisplay};
+use thiserror::Error;
 
 pub const NIX_VERSION: &str = "Nix.rs 1.0";
 const PROTOCOL_VERSION_MAJOR: u8 = 1;
@@ -15,7 +18,9 @@ pub const PROTOCOL_VERSION: ProtocolVersion =
 pub const PROTOCOL_VERSION_MIN: ProtocolVersion =
     ProtocolVersion::from_parts(PROTOCOL_VERSION_MAJOR, 21);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, DeserializeFromStr, SerializeDisplay,
+)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(from = "u16", into = "u16"))]
 pub struct ProtocolVersion(u8, u8);
@@ -81,7 +86,41 @@ impl fmt::Display for ProtocolVersion {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Error)]
+#[error("{msg}: {value}")]
+pub struct ParseProtocolVersionError {
+    msg: String,
+    value: String,
+}
+
+impl ParseProtocolVersionError {
+    pub fn new<M: ToString>(msg: M, value: &str) -> Self {
+        Self {
+            msg: msg.to_string(),
+            value: value.into(),
+        }
+    }
+}
+
+impl FromStr for ProtocolVersion {
+    type Err = ParseProtocolVersionError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        if let Some((major, minor)) = value.split_once('.') {
+            let major = major
+                .parse()
+                .map_err(|err| ParseProtocolVersionError::new(err, value))?;
+            let minor = minor
+                .parse()
+                .map_err(|err| ParseProtocolVersionError::new(err, value))?;
+            Ok(ProtocolVersion::from_parts(major, minor))
+        } else {
+            Err(ParseProtocolVersionError::new("invalid format", value))
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, DeserializeFromStr, SerializeDisplay)]
 pub enum ProtocolRange {
     Full,
     To(ProtocolVersion),
@@ -133,15 +172,11 @@ impl ProtocolRange {
         };
 
         match (start, end) {
-            (Included(from), Excluded(to)) => Some(Self::Between(*from, *to)),
+            (Included(from), Excluded(to)) if from < to => Some(Self::Between(*from, *to)),
             (Included(from), Unbounded) => Some(Self::From(*from)),
             (Unbounded, Excluded(to)) => Some(Self::To(*to)),
             (Unbounded, Unbounded) => Some(Self::Full),
-            (Included(_), Included(_)) => None,
-            (Unbounded, Included(_)) => None,
-            (Excluded(_), Included(_)) => None,
-            (Excluded(_), Excluded(_)) => None,
-            (Excluded(_), Unbounded) => None,
+            _ => None,
         }
     }
 
@@ -253,6 +288,37 @@ impl From<RangeInclusive<u8>> for ProtocolRange {
 impl Default for ProtocolRange {
     fn default() -> Self {
         ProtocolRange::Between(ProtocolVersion::min(), ProtocolVersion::max().next())
+    }
+}
+
+impl fmt::Display for ProtocolRange {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ProtocolRange::Full => f.write_str(".."),
+            ProtocolRange::To(to) => write!(f, "..{to}"),
+            ProtocolRange::From(from) => write!(f, "{from}.."),
+            ProtocolRange::Between(from, to) => write!(f, "{from}..{to}"),
+        }
+    }
+}
+
+impl FromStr for ProtocolRange {
+    type Err = ParseProtocolVersionError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s == ".." {
+            return Ok(ProtocolRange::Full);
+        }
+        if let Some(from) = s.strip_suffix("..") {
+            return Ok(ProtocolRange::From(from.parse()?));
+        }
+        if let Some(to) = s.strip_prefix("..") {
+            return Ok(ProtocolRange::To(to.parse()?));
+        }
+        if let Some((from, to)) = s.split_once("..") {
+            return Ok(ProtocolRange::Between(from.parse()?, to.parse()?));
+        }
+        Err(ParseProtocolVersionError::new("invalid format", s))
     }
 }
 

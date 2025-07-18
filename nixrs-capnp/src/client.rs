@@ -1,0 +1,330 @@
+use std::fmt;
+use std::future::ready;
+use std::pin::pin;
+
+use ::capnp::Error;
+use capnp_rpc::new_client;
+use futures::stream::TryStreamExt;
+use futures::TryFutureExt as _;
+use nixrs::daemon::wire::types2::BuildMode;
+use nixrs::daemon::{
+    DaemonError, DaemonResult, DriveResult, FutureResultExt as _, LocalDaemonStore,
+    LocalHandshakeDaemonStore, ResultLog, UnkeyedValidPathInfo,
+};
+use nixrs::derived_path::DerivedPath;
+use nixrs::hash::NarHash;
+use nixrs::store_path::{StorePath, StorePathSet};
+use tokio::io::{copy_buf, simplex, AsyncWriteExt, BufReader};
+
+use crate::capnp::nix_daemon_capnp;
+use crate::convert::{BuildFrom, ReadInto};
+use crate::stream::from_cap_error;
+use crate::{ByteStreamWrap, ByteStreamWriter, DEFAULT_BUF_SIZE};
+
+pub struct CapnpStore {
+    store: nix_daemon_capnp::nix_daemon::Client,
+}
+
+impl CapnpStore {
+    pub fn new(client: nix_daemon_capnp::nix_daemon::Client) -> Self {
+        Self { store: client }
+    }
+}
+
+impl fmt::Debug for CapnpStore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CapnpStore").finish()
+    }
+}
+
+impl LocalHandshakeDaemonStore for CapnpStore {
+    type Store = Self;
+
+    fn handshake(self) -> impl ResultLog<Output = DaemonResult<Self::Store>> {
+        ready(Ok(self)).empty_logs()
+    }
+}
+
+impl LocalDaemonStore for CapnpStore {
+    fn trust_level(&self) -> nixrs::daemon::TrustLevel {
+        nixrs::daemon::TrustLevel::Trusted
+    }
+
+    fn set_options<'a>(
+        &'a mut self,
+        options: &'a nixrs::daemon::ClientOptions,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
+        (async move {
+            let mut req = self.store.set_options_request();
+            req.get().init_options().build_from(options)?;
+            req.send().promise.await.map(|_| ())
+        })
+        .map_err(DaemonError::custom)
+        .empty_logs()
+    }
+
+    fn is_valid_path<'a>(
+        &'a mut self,
+        path: &'a nixrs::store_path::StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<bool>> + 'a {
+        (async move {
+            let mut req = self.store.is_valid_path_request();
+            let mut params = req.get();
+            params.set_path(path)?;
+            let resp = req.send().promise.await?;
+            resp.get().map(|r| r.get_valid())
+        })
+        .map_err(DaemonError::custom)
+        .empty_logs()
+    }
+
+    fn query_valid_paths<'a>(
+        &'a mut self,
+        paths: &'a StorePathSet,
+        substitute: bool,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + 'a {
+        (async move {
+            let mut req = self.store.query_valid_paths_request();
+            let mut params = req.get();
+            let mut c_paths = params.reborrow().init_paths(paths.len() as u32);
+            c_paths.build_from(paths)?;
+            params.set_substitute(substitute);
+            let resp = req.send().promise.await?;
+            let r = resp.get()?;
+            r.get_valid_set()?.read_into()
+        })
+        .map_err(DaemonError::custom)
+        .empty_logs()
+    }
+
+    fn query_path_info<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<Option<UnkeyedValidPathInfo>>> + 'a {
+        (async move {
+            let mut req = self.store.query_path_info_request();
+            let mut params = req.get();
+            params.set_path(path)?;
+
+            let resp = req.send().promise.await?;
+            let r = resp.get()?;
+            if r.has_info() {
+                let info = r.get_info()?;
+                let deriver = if info.has_deriver() {
+                    let c_path = info.get_deriver()?;
+                    Some(c_path.read_into()?)
+                } else {
+                    None
+                };
+                let nar_hash = NarHash::from_slice(info.get_nar_hash()?)
+                    .map_err(|err| Error::failed(err.to_string()))?;
+                let nar_size = info.get_nar_size();
+                let registration_time = info.get_registration_time();
+                let ultimate = info.get_ultimate();
+                let references = info.get_references()?.read_into()?;
+                let signatures = info.get_signatures()?.read_into()?;
+                let ca = if info.has_ca() {
+                    let ca = info.get_ca()?.read_into()?;
+                    Some(ca)
+                } else {
+                    None
+                };
+                Ok(Some(UnkeyedValidPathInfo {
+                    deriver,
+                    nar_hash,
+                    nar_size,
+                    registration_time,
+                    ultimate,
+                    references,
+                    signatures,
+                    ca,
+                }))
+            } else {
+                Ok(None) as Result<_, Error>
+            }
+        })
+        .map_err(DaemonError::custom)
+        .empty_logs()
+    }
+
+    async fn shutdown(&mut self) -> DaemonResult<()> {
+        let req = self.store.end_request();
+        req.send()
+            .promise
+            .await
+            .map(|_| ())
+            .map_err(DaemonError::custom)
+    }
+
+    fn nar_from_path<'s>(
+        &'s mut self,
+        path: &'s StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<impl tokio::io::AsyncBufRead + 's>> + 's {
+        (async move {
+            let (reader, writer) = simplex(DEFAULT_BUF_SIZE);
+            let reader = BufReader::new(reader);
+            let bs_write = ByteStreamWrap::new(writer);
+
+            let mut req = self.store.nar_from_path_request();
+            let mut params = req.get();
+            params.reborrow().set_path(path)?;
+            params.set_stream(new_client(bs_write));
+
+            let driver = req.send().promise.map_ok(|_| ()).map_err(from_cap_error);
+            let stream = DriveResult::new(reader, driver);
+            Ok(stream) as Result<_, Error>
+        })
+        .map_err(DaemonError::custom)
+        .empty_logs()
+    }
+
+    fn build_paths<'a>(
+        &'a mut self,
+        drvs: &'a [DerivedPath],
+        mode: BuildMode,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
+        (async move {
+            let mut req = self.store.build_paths_request();
+            let mut params = req.get();
+            let mut c_paths = params.reborrow().init_drvs(drvs.len() as u32);
+            c_paths.build_from(&drvs)?;
+            params.set_mode(mode.into());
+            let resp = req.send().promise.await?;
+            resp.get()?;
+            Ok(()) as Result<_, Error>
+        })
+        .map_err(DaemonError::custom)
+        .empty_logs()
+    }
+
+    fn build_paths_with_results<'a>(
+        &'a mut self,
+        drvs: &'a [DerivedPath],
+        mode: BuildMode,
+    ) -> impl ResultLog<Output = DaemonResult<Vec<nixrs::daemon::wire::types2::KeyedBuildResult>>> + 'a
+    {
+        (async move {
+            let mut req = self.store.build_paths_with_results_request();
+            let mut params = req.get();
+            let mut c_paths = params.reborrow().init_drvs(drvs.len() as u32);
+            c_paths.build_from(&drvs)?;
+            params.set_mode(mode.into());
+            let resp = req.send().promise.await?;
+            resp.get()?.get_results()?.read_into()
+        })
+        .map_err(DaemonError::custom)
+        .empty_logs()
+    }
+
+    fn build_derivation<'a>(
+        &'a mut self,
+        drv: &'a nixrs::derivation::BasicDerivation,
+        mode: BuildMode,
+    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::wire::types2::BuildResult>> + 'a {
+        (async move {
+            let mut req = self.store.build_derivation_request();
+            let mut params = req.get();
+            let mut drv_b = params.reborrow().init_drv();
+            drv_b.build_from(drv)?;
+            params.set_mode(mode.into());
+            let resp = req.send().promise.await?;
+            resp.get()?.get_result()?.read_into()
+        })
+        .map_err(DaemonError::custom)
+        .empty_logs()
+    }
+
+    fn query_missing<'a>(
+        &'a mut self,
+        paths: &'a [DerivedPath],
+    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::wire::types2::QueryMissingResult>> + 'a
+    {
+        (async move {
+            let mut req = self.store.query_missing_request();
+            let mut params = req.get();
+            let mut paths_b = params.reborrow().init_paths(paths.len() as u32);
+            paths_b.build_from(&paths)?;
+            let resp = req.send().promise.await?;
+            resp.get()?.get_missing()?.read_into()
+        })
+        .map_err(DaemonError::custom)
+        .empty_logs()
+    }
+
+    fn add_to_store_nar<'s, 'r, 'i, R>(
+        &'s mut self,
+        info: &'i nixrs::daemon::wire::types2::ValidPathInfo,
+        mut source: R,
+        repair: bool,
+        dont_check_sigs: bool,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'r
+    where
+        R: tokio::io::AsyncBufRead + Unpin + 'r,
+        's: 'r,
+        'i: 'r,
+    {
+        (async move {
+            let mut req = self.store.add_to_store_nar_request();
+            let mut params = req.get();
+            params.reborrow().init_info().build_from(info)?;
+            params.set_repair(repair);
+            params.set_dont_check_sigs(dont_check_sigs);
+            let res = req.send();
+            let stream = res.pipeline.get_stream();
+            let mut writer = ByteStreamWriter::new(stream);
+            let written = copy_buf(&mut source, &mut writer).await?;
+            eprintln!("add_to_store_nar Done writing {written}");
+            writer.shutdown().await?;
+            eprintln!("add_to_store_nar Shutdown");
+            res.promise.await?;
+            Ok(()) as Result<(), Error>
+        })
+        .map_err(DaemonError::custom)
+        .empty_logs()
+    }
+
+    fn add_multiple_to_store<'s, 'i, 'r, S, R>(
+        &'s mut self,
+        repair: bool,
+        dont_check_sigs: bool,
+        stream: S,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'r
+    where
+        S: futures::Stream<Item = Result<nixrs::daemon::AddToStoreItem<R>, DaemonError>> + 'i,
+        R: tokio::io::AsyncBufRead + Unpin + 'i,
+        's: 'r,
+        'i: 'r,
+    {
+        let size = stream.size_hint().1.expect("Stream with size");
+        (async move {
+            let mut req = self.store.add_multiple_to_store_request();
+            let mut params = req.get();
+            params.set_repair(repair);
+            params.set_dont_check_sigs(dont_check_sigs);
+            params.set_count(size.try_into().map_err(DaemonError::custom)?);
+            let res = req.send();
+            let add_multiple = res.pipeline.get_stream();
+            let mut stream = pin!(stream);
+            while let Some(mut item) = stream.try_next().await? {
+                let mut add_req = add_multiple.add_request();
+                let params = add_req.get();
+                params
+                    .init_info()
+                    .build_from(&item.info)
+                    .map_err(DaemonError::custom)?;
+                let res = add_req.send();
+                let stream = res.pipeline.get_stream();
+                let mut writer = ByteStreamWriter::new(stream);
+                copy_buf(&mut item.reader, &mut writer).await?;
+                writer.shutdown().await?;
+                eprintln!("add_multiple_to_store waiting for add result");
+                res.promise.await.map_err(DaemonError::custom)?;
+            }
+            eprintln!("add_multiple_to_store waiting for result");
+            res.promise.await.map_err(DaemonError::custom)?;
+            eprintln!("add_multiple_to_store request done");
+            Ok(())
+        })
+        .empty_logs()
+    }
+}

@@ -35,8 +35,7 @@ where
         trace!(idx, size, written, "Write stream item");
         if idx >= size {
             return Err(DaemonError::custom(format!(
-                "More than {} items in stream",
-                size
+                "More than {size} items in stream"
             )));
         }
         let item = item?;
@@ -44,10 +43,10 @@ where
         async {
             debug!(idx, size, "Item CA {:?}", item.info.info.ca);
             writer.write_value(&item.info).await?;
-            debug!(idx, size, "Written file {} info", idx);
+            debug!(idx, size, "Written file {idx} info");
             let mut reader = pin!(item.reader);
             copy_buf(&mut reader, &mut writer).await?;
-            debug!(idx, size, "Written file {} to writer", idx);
+            debug!(idx, size, "Written file {idx} to writer");
             //writer.flush().await?;
             //debug!(idx, size, "Flushed file {} to writer", idx);
             written += 1;
@@ -58,8 +57,7 @@ where
     }
     if written != size {
         return Err(DaemonError::custom(format!(
-            "Not enough items in stream: Expected {} got {}",
-            size, written
+            "Not enough items in stream: Expected {size} got {written}"
         )));
     }
     Ok(size)

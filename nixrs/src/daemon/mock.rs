@@ -40,6 +40,7 @@ use super::{
     ClientOptions, DaemonError, DaemonPath, DaemonResult, DaemonResultExt, DaemonStore,
     DaemonString, HandshakeDaemonStore, ResultLog, TrustLevel, UnkeyedValidPathInfo,
 };
+use crate::daemon::FutureResultExt;
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
 #[cfg(any(test, feature = "test"))]
@@ -1073,102 +1074,102 @@ impl MockResponse {
     pub fn unwrap_empty(self) {
         match self {
             Self::Empty => (),
-            _ => panic!("Unexpected response {:?}", self),
+            _ => panic!("Unexpected response {self:?}"),
         }
     }
 
     pub fn unwrap_bool(self) -> bool {
         match self {
             Self::Bool(val) => val,
-            _ => panic!("Unexpected response {:?}", self),
+            _ => panic!("Unexpected response {self:?}"),
         }
     }
 
     pub fn unwrap_store_path_set(self) -> StorePathSet {
         match self {
             Self::StorePathSet(val) => val,
-            _ => panic!("Unexpected response {:?}", self),
+            _ => panic!("Unexpected response {self:?}"),
         }
     }
 
     pub fn unwrap_build_result(self) -> BuildResult {
         match self {
             Self::BuildResult(val) => val,
-            _ => panic!("Unexpected response {:?}", self),
+            _ => panic!("Unexpected response {self:?}"),
         }
     }
 
     pub fn unwrap_keyed_build_results(self) -> KeyedBuildResults {
         match self {
             Self::KeyedBuildResults(val) => val,
-            _ => panic!("Unexpected response {:?}", self),
+            _ => panic!("Unexpected response {self:?}"),
         }
     }
 
     pub fn unwrap_bytes(self) -> Bytes {
         match self {
             Self::Bytes(val) => val,
-            _ => panic!("Unexpected response {:?}", self),
+            _ => panic!("Unexpected response {self:?}"),
         }
     }
 
     pub fn unwrap_unkeyed_valid_path_info(self) -> Option<UnkeyedValidPathInfo> {
         match self {
             Self::UnkeyedValidPathInfo(val) => val,
-            _ => panic!("Unexpected response {:?}", self),
+            _ => panic!("Unexpected response {self:?}"),
         }
     }
 
     pub fn unwrap_valid_path_info(self) -> ValidPathInfo {
         match self {
             Self::ValidPathInfo(val) => val,
-            _ => panic!("Unexpected response {:?}", self),
+            _ => panic!("Unexpected response {self:?}"),
         }
     }
 
     pub fn unwrap_query_missing_result(self) -> QueryMissingResult {
         match self {
             Self::QueryMissingResult(val) => val,
-            _ => panic!("Unexpected response {:?}", self),
+            _ => panic!("Unexpected response {self:?}"),
         }
     }
 
     pub fn unwrap_gc_roots(self) -> BTreeMap<DaemonPath, StorePath> {
         match self {
             Self::GCRoots(val) => val,
-            _ => panic!("Unexpected response {:?}", self),
+            _ => panic!("Unexpected response {self:?}"),
         }
     }
 
     pub fn unwrap_collect_garbage_response(self) -> CollectGarbageResponse {
         match self {
             Self::CollectGarbageResponse(val) => val,
-            _ => panic!("Unexpected response {:?}", self),
+            _ => panic!("Unexpected response {self:?}"),
         }
     }
 
     pub fn unwrap_optional_store_path(self) -> Option<StorePath> {
         match self {
             Self::OptStorePath(val) => val,
-            _ => panic!("Unexpected response {:?}", self),
+            _ => panic!("Unexpected response {self:?}"),
         }
     }
     pub fn unwrap_output_map(self) -> BTreeMap<OutputName, Option<StorePath>> {
         match self {
             Self::OutputMap(val) => val,
-            _ => panic!("Unexpected response {:?}", self),
+            _ => panic!("Unexpected response {self:?}"),
         }
     }
     pub fn unwrap_realisations(self) -> BTreeSet<Realisation> {
         match self {
             Self::Realisations(val) => val,
-            _ => panic!("Unexpected response {:?}", self),
+            _ => panic!("Unexpected response {self:?}"),
         }
     }
     pub fn unwrap_output_names(self) -> BTreeSet<OutputName> {
         match self {
             Self::OutputNames(val) => val,
-            _ => panic!("Unexpected response {:?}", self),
+            _ => panic!("Unexpected response {self:?}"),
         }
     }
 }
@@ -1392,7 +1393,7 @@ impl MockReporter for () {
         ResultProcess {
             stream: empty(),
             result: ready(
-                Err(DaemonError::custom(format!("Extra operation {:?}", actual)))
+                Err(DaemonError::custom(format!("Extra operation {actual:?}")))
                     .with_operation(actual.operation()),
             ),
         }
@@ -1432,7 +1433,7 @@ impl fmt::Display for ReporterError {
                 )
             }
             ReporterError::Extra(actual) => {
-                write!(f, "Extra operation {:?}", actual)
+                write!(f, "Extra operation {actual:?}")
             }
             ReporterError::Unread(operation) => {
                 write!(f, "store dropped with {operation:?} operation still unread")
@@ -1503,9 +1504,9 @@ impl MockReporter for ChannelReporter {
 
 #[derive(Debug, Clone)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
-#[arbitrary(args = MockOperationParams)]
+#[cfg_attr(any(test, feature = "test"), arbitrary(args = MockOperationParams))]
 pub struct LogOperation {
-    #[any(*args)]
+    #[cfg_attr(any(test, feature = "test"), strategy(any_with::<MockOperation>(*args)))]
     pub operation: MockOperation,
     pub logs: VecDeque<LogMessage>,
 }
@@ -2231,7 +2232,7 @@ where
     fn nar_from_path<'a>(
         &'a mut self,
         path: &'a StorePath,
-    ) -> impl super::logger::ResultLog<Output = DaemonResult<impl AsyncBufRead + 'a>> + 'a {
+    ) -> impl super::logger::ResultLog<Output = DaemonResult<impl AsyncBufRead + use<R>>> + 'a {
         let actual = MockRequest::NarFromPath(path.clone());
         self.check_operation(actual)
             .and_then(move |bytes: Bytes| async move { Ok(Cursor::new(bytes)) })
@@ -2288,9 +2289,9 @@ where
         mut source: AR,
         repair: bool,
         dont_check_sigs: bool,
-    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'r
+    ) -> Pin<Box<dyn ResultLog<Output = DaemonResult<()>> + Send + 'r>>
     where
-        AR: tokio::io::AsyncRead + Send + Unpin + 'r,
+        AR: AsyncBufRead + Send + Unpin + 'r,
         's: 'r,
         'i: 'r,
     {
@@ -2312,14 +2313,14 @@ where
         repair: bool,
         dont_check_sigs: bool,
         stream: S,
-    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'r
+    ) -> Pin<Box<dyn ResultLog<Output = DaemonResult<()>> + Send + 'r>>
     where
         S: Stream<Item = Result<AddToStoreItem<SR>, DaemonError>> + Send + 'i,
         SR: tokio::io::AsyncBufRead + Send + Unpin + 'i,
         's: 'r,
         'i: 'r,
     {
-        FutureResult::new(async move {
+        async move {
             let actual_req = AddMultipleToStoreRequest {
                 repair,
                 dont_check_sigs,
@@ -2336,7 +2337,9 @@ where
             let actual_infos = fut.await?;
             let actual = MockRequest::AddMultipleToStore(actual_req.clone(), actual_infos);
             Ok(self.check_operation(actual))
-        })
+        }
+        .future_result()
+        .boxed_result()
     }
 
     fn query_all_valid_paths(
@@ -2483,18 +2486,20 @@ where
         &'s mut self,
         path: &'p StorePath,
         mut source: S,
-    ) -> impl ResultLog<Output = DaemonResult<()>> + 'r
+    ) -> Pin<Box<dyn ResultLog<Output = DaemonResult<()>> + Send + 'r>>
     where
         S: AsyncBufRead + Send + Unpin + 'r,
         's: 'r,
         'p: 'r,
     {
-        Box::pin(FutureResult::new(async move {
+        async move {
             let mut actual_log = Vec::new();
             source.read_to_end(&mut actual_log).await?;
             let actual = MockRequest::AddBuildLog(path.clone(), actual_log.clone().into());
             Ok(self.check_operation(actual))
-        }))
+        }
+        .future_result()
+        .boxed_result()
     }
 
     fn add_perm_root<'a>(
@@ -2537,12 +2542,12 @@ where
         refs: &'a StorePathSet,
         repair: bool,
         mut source: S,
-    ) -> impl ResultLog<Output = DaemonResult<ValidPathInfo>> + Send + 'r
+    ) -> Pin<Box<dyn ResultLog<Output = DaemonResult<ValidPathInfo>> + Send + 'r>>
     where
         S: AsyncBufRead + Send + Unpin + 'r,
         'a: 'r,
     {
-        Box::pin(FutureResult::new(async move {
+        async move {
             let actual_req = AddToStoreRequest25 {
                 name: name.to_string(),
                 cam,
@@ -2553,7 +2558,9 @@ where
             source.read_to_end(&mut actual_content).await?;
             let actual = MockRequest::AddToStore(actual_req, actual_content.clone().into());
             Ok(self.check_operation(actual))
-        }))
+        }
+        .future_result()
+        .boxed_result()
     }
 
     async fn shutdown(&mut self) -> DaemonResult<()> {
@@ -2791,7 +2798,7 @@ mod unittests {
         }
         .await;
         if let Some(err) = reporter.next().await {
-            panic!("channel reported: {}", err);
+            panic!("channel reported: {err}");
         }
     }
 }

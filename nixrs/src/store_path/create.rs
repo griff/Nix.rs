@@ -97,7 +97,7 @@ impl StoreDirDisplay for PathType {
                 for path in references {
                     write!(f, ":{}", store_dir.display(path))?
                 }
-                write!(f, ":sha256:{:x}", digest)
+                write!(f, ":sha256:{digest:x}")
             }
             PathType::Source {
                 references,
@@ -111,17 +111,17 @@ impl StoreDirDisplay for PathType {
                 if *self_ref {
                     f.write_str(":self")?;
                 }
-                write!(f, ":sha256:{:x}", digest)
+                write!(f, ":sha256:{digest:x}")
             }
             PathType::Output { hash } => {
-                let digest_input = format!("fixed:out:r:{:x}", hash);
+                let digest_input = format!("fixed:out:r:{hash:x}");
                 let digest = hash::Sha256::digest(digest_input);
-                write!(f, "output:out:sha256:{:x}", digest)
+                write!(f, "output:out:sha256:{digest:x}")
             }
             PathType::FlatOutput { hash } => {
-                let digest_input = format!("fixed:out:{:x}", hash);
+                let digest_input = format!("fixed:out:{hash:x}");
                 let digest = hash::Sha256::digest(digest_input);
-                write!(f, "output:out:sha256:{:x}", digest)
+                write!(f, "output:out:sha256:{digest:x}")
             }
         }
     }

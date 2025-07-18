@@ -101,7 +101,7 @@ fn validate_path(s: &str) -> Result<(), ParseDerivationError> {
 
 fn output_path_name(drv_name: &str, output_name: &str) -> String {
     if output_name != "out" {
-        format!("{}-{}", drv_name, output_name)
+        format!("{drv_name}-{output_name}")
     } else {
         drv_name.to_owned()
     }
@@ -209,13 +209,12 @@ impl DerivationOutput {
                     &ContentAddressWithReferences::without_refs(*ca),
                 )?;
                 sink.write_printed(store_dir, &path).await?;
-                sink.write_string(format!("{:#}", ca)).await?;
+                sink.write_string(format!("{ca:#}")).await?;
                 sink.write_string(format!("{:#x}", ca.hash)).await?;
             }
             DerivationOutput::CAFloating { method, hash_type } => {
                 sink.write_str("").await?;
-                sink.write_string(format!("{}{}", method, hash_type))
-                    .await?;
+                sink.write_string(format!("{method}{hash_type}")).await?;
                 sink.write_str("").await?;
             }
             DerivationOutput::Deferred => {
@@ -225,8 +224,7 @@ impl DerivationOutput {
             }
             DerivationOutput::Impure { method, hash_type } => {
                 sink.write_str("").await?;
-                sink.write_string(format!("{}{}", method, hash_type))
-                    .await?;
+                sink.write_string(format!("{method}{hash_type}")).await?;
                 sink.write_str("impure").await?;
             }
         }

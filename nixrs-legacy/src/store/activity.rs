@@ -108,9 +108,9 @@ impl<'a> TryFrom<&'a Attributes<'a>> for StartActivity {
     fn try_from(value: &'a Attributes<'a>) -> Result<Self, Self::Error> {
         let mut visitor = StartActivityVisitor::default();
         value.record(&mut visitor);
-        eprintln!("Activity {:?}", visitor);
+        eprintln!("Activity {visitor:?}");
         if let Some(result) = visitor.into_activity() {
-            eprintln!("OK Activity {:?}", result);
+            eprintln!("OK Activity {result:?}");
             Ok(result)
         } else {
             Err(())
@@ -140,7 +140,7 @@ impl StartActivityVisitor {
             if let Some(field) = f {
                 fields.push(field);
             } else {
-                eprintln!("Missing field {}", idx);
+                eprintln!("Missing field {idx}");
             }
         }
         Some(StartActivity {
@@ -207,7 +207,7 @@ impl Visit for StartActivityVisitor {
                     eprintln!("Extend {:?}", (self.fields.len()..=idx).map(|_| 0));
                     self.fields.extend((self.fields.len()..=idx).map(|_| None));
                 }
-                self.fields[idx] = Some(LoggerField::String(format!("{:?}", value)));
+                self.fields[idx] = Some(LoggerField::String(format!("{value:?}")));
             }
         }
     }
@@ -248,7 +248,7 @@ impl ActivityResultVisitor {
             if let Some(field) = f {
                 fields.push(field);
             } else {
-                eprintln!("Missing field {}", idx);
+                eprintln!("Missing field {idx}");
             }
         }
         Some(ActivityResult {
@@ -303,7 +303,7 @@ impl Visit for ActivityResultVisitor {
                     eprintln!("Extend {:?}", (self.fields.len()..=idx).map(|_| 0));
                     self.fields.extend((self.fields.len()..=idx).map(|_| None));
                 }
-                self.fields[idx] = Some(LoggerField::String(format!("{:?}", value)));
+                self.fields[idx] = Some(LoggerField::String(format!("{value:?}")));
             }
         }
     }

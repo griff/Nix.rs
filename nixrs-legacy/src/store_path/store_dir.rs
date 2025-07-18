@@ -123,7 +123,7 @@ impl StoreDir {
         hash: &str,
         name: &str,
     ) -> Result<StorePath, ParseStorePathError> {
-        let s = format!("{}:{}:{}:{}", path_type, hash, self, name);
+        let s = format!("{path_type}:{hash}:{self}:{name}");
         StorePath::from_hash(&hash::digest(hash::Algorithm::SHA256, s), name)
     }
 
@@ -133,7 +133,7 @@ impl StoreDir {
         hash: hash::Hash,
         name: &str,
     ) -> Result<StorePath, ParseStorePathError> {
-        self.make_store_path_str(path_type, &format!("{:x}", hash), name)
+        self.make_store_path_str(path_type, &format!("{hash:x}"), name)
     }
 
     pub fn make_fixed_output_path(
@@ -552,7 +552,7 @@ mod tests {
         );
         let d = hash::digest(
             hash::Algorithm::SHA256,
-            format!("output:out:{:x}:/nix/store:konsole-18.12.3", d),
+            format!("output:out:{d:x}:/nix/store:konsole-18.12.3"),
         );
         let p = StorePath::from_hash(&d, "konsole-18.12.3").unwrap();
 
@@ -584,7 +584,7 @@ mod tests {
         );
         let d = hash::digest(
             hash::Algorithm::SHA256,
-            format!("output:out:{:x}:/nix/store:konsole-18.12.3", d),
+            format!("output:out:{d:x}:/nix/store:konsole-18.12.3"),
         );
         let p = StorePath::from_hash(&d, "konsole-18.12.3").unwrap();
 

@@ -1,6 +1,6 @@
 { system ? builtins.currentSystem
 , sources ? import ./npins
-, nixpkgs ? sources.nixpkgs
+, nixpkgs ? ../nixpkgs #sources.nixpkgs
 , config ? {}
 }: let
   pkgs = import nixpkgs {

@@ -180,7 +180,7 @@ where
                     Entry::Entry(name, item) => {
                         depth += 1;
                         let event = NAREvent::DirectoryEntry { name: name.clone() };
-                        trace!("{}DirEntry {} {} {}", " ".repeat(depth), bstr::BStr::new(&name), offset, event.encoded_size());
+                        trace!("{}DirEntry {} {offset} {}", " ".repeat(depth), bstr::BStr::new(&name), event.encoded_size());
                         offset += event.encoded_size() as u64;
                         yield event;
                         (item, true)
@@ -192,10 +192,10 @@ where
                     let target_p = read_link(&path).await?;
                     let target = target_p.to_str().ok_or_else(|| {
                         io::Error::new(io::ErrorKind::InvalidData,
-                            format!("Target for {:?} is not UTF-8 {:?}", path, target_p))
+                            format!("Target for {path:?} is not UTF-8 {target_p:?}"))
                     })?.to_owned().into();
                     let event = NAREvent::SymlinkNode { target };
-                    trace!("{}Symlink {} {}", " ".repeat(depth), offset, event.encoded_size());
+                    trace!("{}Symlink {offset} {}", " ".repeat(depth), event.encoded_size());
                     offset += event.encoded_size() as u64;
                     yield event;
                 } else if file_type.is_file() {
@@ -264,7 +264,7 @@ where
                     let mut rd = read_dir(&parent_path).await?;
                     while let Some(entry) = rd.next_entry().await? {
                         let mut name = Vec::from_os_string(entry.file_name())
-                            .map_err(|s| io::Error::other(format!("filename {:?} not valid UTF-8", s) ))?;
+                            .map_err(|s| io::Error::other(format!("filename {s:?} not valid UTF-8") ))?;
                         let file_type = entry.file_type().await?;
                         let path = entry.path();
                         let item = Item {
@@ -294,13 +294,13 @@ where
                     }
                     close = false;
                 } else {
-                    Err(io::Error::other(format!("unsupported file type {:?}", file_type)))?;
+                    Err(io::Error::other(format!("unsupported file type {file_type:?}")))?;
                     return;
                 }
                 if close {
                     depth -= 1;
                     let event = NAREvent::EndDirectoryEntry;
-                    trace!("{}End DirEntry closing {} {}", " ".repeat(depth), offset, event.encoded_size());
+                    trace!("{}End DirEntry closing {offset} {}", " ".repeat(depth), event.encoded_size());
                     offset += event.encoded_size() as u64;
                     yield event;
                 }

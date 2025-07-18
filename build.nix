@@ -21,7 +21,7 @@
         crate = crates.internal.crates.${c};
       in lib.nameValuePair "${crate.crateName}-${crate.version}" crate.src.outputHash )
       [
-        #"nix-compat"
+        "capnp" "capnpc" "capnp-rpc" "capnp-futures"
       ]);
   };
   src = pkgs.lib.cleanSourceWith {
@@ -70,7 +70,7 @@ in {
       capnproto
     ];
     buildPhase = ''
-      cargo clippy --tests --examples --benches --no-deps -- -Dwarnings | tee $out
+      cargo clippy --tests --examples --benches --no-deps -- -Dwarnings 2>&1 | tee -a $out
     '';
   };
   rustdoc = pkgs.stdenv.mkDerivation {
@@ -105,7 +105,7 @@ in {
       capnproto
     ];
     buildPhase = ''
-      cargo test --doc | tee $out
+      cargo test --doc 2>&1 | tee -a $out
     '';
   };
   crate2nix-check = let
@@ -143,7 +143,7 @@ in {
       nixpkgs-fmt
     ];
     buildPhase = ''
-      treefmt . --ci | tee $out
+      treefmt . --ci 2>&1 | tee -a $out
     '';
   };
   meta.ci.targets = [
@@ -160,6 +160,7 @@ in {
   checks = let
     eligibleCheck = node: (node ? outPath) && !(node.meta.broken or false);
     in project.gather (t: eligibleCheck t);
+  check-names = lib.map (n: n.name) project.checks;
   check-all = pkgs.runCommand "check-all" {} ''
     mkdir -p $out
     ${pkgs.lib.concatMapStringsSep "\n"

@@ -75,7 +75,6 @@ in
 , perl
 , pkg-config
 , rapidcheck
-, Security
 , sqlite
 , util-linuxMinimal
 , xz
@@ -152,8 +151,6 @@ self = stdenv.mkDerivation {
     libgit2
   ] ++ lib.optionals (atLeast224 || lib.versionAtLeast version "pre20240626") [
     toml11
-  ] ++ lib.optionals stdenv.hostPlatform.isDarwin [
-    Security
   ] ++ lib.optionals (stdenv.hostPlatform.isx86_64) [
     libcpuid
   ] ++ lib.optionals atLeast214 [
@@ -162,8 +159,6 @@ self = stdenv.mkDerivation {
     libseccomp
   ] ++ lib.optionals withAWS [
     aws-sdk-cpp
-  ] ++ lib.optional (atLeast218 && stdenv.hostPlatform.isDarwin) [
-    darwin.apple_sdk.libs.sandbox
   ] ++ lib.optional (atLeast224 && stdenv.hostPlatform.isDarwin && stdenv.hostPlatform.isx86_64) [
     # Fix the following error with the default x86_64-darwin SDK:
     #
@@ -277,7 +272,7 @@ self = stdenv.mkDerivation {
   passthru = {
     inherit aws-sdk-cpp boehmgc;
 
-    perl-bindings = perl.pkgs.toPerlModule (callPackage ./nix-perl.nix { nix = self; inherit Security; });
+    perl-bindings = perl.pkgs.toPerlModule (callPackage ./nix-perl.nix { nix = self; });
 
     tests = {
       srcVersion = runCommand "nix-src-version" {

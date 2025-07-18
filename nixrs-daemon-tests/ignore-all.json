@@ -1,0 +1,10 @@
+{
+    "name": "ignored",
+    "conf_path": "../conf/nix_2_3.conf",
+    "program_path": "../lix_2_91/bin/nix-daemon",
+    "cmd_args": [],
+    "range": "1.10..1.37",
+    "op_log_prefix": true,
+    "skip_all": true,
+    "skipped": []
+}

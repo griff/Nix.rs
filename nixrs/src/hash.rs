@@ -81,7 +81,7 @@ impl Algorithm {
             Algorithm::SHA1 => &digest::SHA1_FOR_LEGACY_USE_ONLY,
             Algorithm::SHA256 => &digest::SHA256,
             Algorithm::SHA512 => &digest::SHA512,
-            a => panic!("Unsupported digest algorithm {:?}", a),
+            _ => panic!("Unsupported digest algorithm {self:?}"),
         }
     }
 
@@ -118,7 +118,7 @@ impl<'a> TryFrom<&'a digest::Algorithm> for Algorithm {
         } else if *value == digest::SHA512 {
             Ok(Algorithm::SHA512)
         } else {
-            Err(UnknownAlgorithm(format!("{:?}", value)))
+            Err(UnknownAlgorithm(format!("{value:?}")))
         }
     }
 }
@@ -339,7 +339,7 @@ impl Hash {
     }
 
     pub fn encode_base16(&self) -> String {
-        format!("{:#x}", self)
+        format!("{self:#x}")
     }
 
     pub fn encode_base32(&self) -> String {
@@ -390,7 +390,7 @@ impl fmt::LowerHex for Hash {
             write!(f, "{}:", self.algorithm())?;
         }
         for val in self.as_ref() {
-            write!(f, "{:02x}", val)?;
+            write!(f, "{val:02x}")?;
         }
         Ok(())
     }
@@ -402,7 +402,7 @@ impl fmt::UpperHex for Hash {
             write!(f, "{}:", self.algorithm())?;
         }
         for val in self.as_ref() {
-            write!(f, "{:02X}", val)?;
+            write!(f, "{val:02X}")?;
         }
         Ok(())
     }
@@ -487,9 +487,9 @@ impl fmt::Display for Base64Hash<'_> {
         let s = unsafe { std::str::from_utf8_unchecked(output) };
 
         if f.alternate() {
-            write!(f, "{}", s)
+            f.write_str(s)
         } else {
-            write!(f, "{}:{}", self.0.algorithm(), s)
+            write!(f, "{}:{s}", self.0.algorithm())
         }
     }
 }
@@ -556,21 +556,21 @@ impl FromStr for NarHash {
 impl fmt::Debug for NarHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("NarHash")
-            .field(&format_args!("{}", self))
+            .field(&format_args!("{self}"))
             .finish()
     }
 }
 
 impl fmt::Display for NarHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:x}", self)
+        write!(f, "{self:x}")
     }
 }
 
 impl fmt::LowerHex for NarHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for val in self.as_ref() {
-            write!(f, "{:02x}", val)?;
+            write!(f, "{val:02x}")?;
         }
         Ok(())
     }
@@ -579,7 +579,7 @@ impl fmt::LowerHex for NarHash {
 impl fmt::UpperHex for NarHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for val in self.as_ref() {
-            write!(f, "{:02X}", val)?;
+            write!(f, "{val:02X}")?;
         }
         Ok(())
     }
@@ -638,7 +638,7 @@ impl Sha256 {
 impl fmt::Debug for Sha256 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Sha256")
-            .field(&format_args!("{}", self))
+            .field(&format_args!("{self}"))
             .finish()
     }
 }
@@ -657,7 +657,7 @@ impl fmt::Display for Sha256 {
 impl fmt::LowerHex for Sha256 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for val in self.as_ref() {
-            write!(f, "{:02x}", val)?;
+            write!(f, "{val:02x}")?;
         }
         Ok(())
     }
@@ -983,8 +983,8 @@ mod unittests {
     fn base16_encode(#[case] hash: &Hash, #[case] base16: &str) {
         let algo = hash.algorithm();
         let base16_h = base16.to_uppercase();
-        let base16_p = format!("{}:{}", algo, base16);
-        let base16_hp = format!("{}:{}", algo, base16_h);
+        let base16_p = format!("{algo}:{base16}");
+        let base16_hp = format!("{algo}:{base16_h}");
 
         assert_eq!(format!("{:x}", hash), base16_p);
         assert_eq!(format!("{:#x}", hash), base16);
@@ -1016,7 +1016,7 @@ mod unittests {
     fn parse(#[case] hash: &Hash, #[case] base_x: &str) {
         let algo = hash.algorithm();
 
-        let base_xp = format!("{}:{}", algo, base_x);
+        let base_xp = format!("{algo}:{base_x}");
         assert_eq!(*hash, Hash::parse_any_prefixed(&base_xp).unwrap());
         assert_eq!(*hash, base_xp.parse().unwrap());
         assert_eq!(*hash, Hash::parse_any(&base_xp, None).unwrap());
@@ -1069,13 +1069,13 @@ mod unittests {
     #[case::sha512_long(&SHA512_LONG, "jpWbddrjE9qM9PcoFPwUP493ecbrn3+hcpmurbaIkBhQHSieSQD35DMbmd7EtUM6x9Mp7rbdJlReluVbh0vpCQ==")]
     fn base64_encode(#[case] hash: &Hash, #[case] base64: &str) {
         let algo = hash.algorithm();
-        let base64_p = format!("{}:{}", algo, base64);
+        let base64_p = format!("{algo}:{base64}");
 
         assert_eq!(format!("{}", hash.to_base64()), base64_p);
         assert_eq!(format!("{:#}", hash.to_base64()), base64);
         assert_eq!(hash.encode_base64(), base64);
 
-        let sri = format!("{}-{}", algo, base64);
+        let sri = format!("{algo}-{base64}");
         assert_eq!(format!("{}", hash.to_sri()), sri);
     }
 
@@ -1090,7 +1090,7 @@ mod unittests {
     #[case::sha512_long(&SHA512_LONG, "jpWbddrjE9qM9PcoFPwUP493ecbrn3+hcpmurbaIkBhQHSieSQD35DMbmd7EtUM6x9Mp7rbdJlReluVbh0vpCQ==")]
     fn base64_parse(#[case] hash: &Hash, #[case] base64: &str) {
         let algo = hash.algorithm();
-        let base64_p = format!("{}:{}", algo, base64);
+        let base64_p = format!("{algo}:{base64}");
 
         assert_eq!(*hash, base64_p.parse().unwrap());
         assert_eq!(*hash, Hash::parse_any(&base64_p, None).unwrap());
@@ -1098,7 +1098,7 @@ mod unittests {
         assert_eq!(*hash, Hash::parse_any(base64, Some(algo)).unwrap());
         assert_eq!(*hash, Hash::parse_non_sri_unprefixed(base64, algo).unwrap());
 
-        let sri = format!("{}-{}", algo, base64);
+        let sri = format!("{algo}-{base64}");
         assert_eq!(*hash, sri.parse().unwrap());
         assert_eq!(*hash, Hash::parse_any(&sri, None).unwrap());
         assert_eq!(*hash, Hash::parse_any(&sri, Some(algo)).unwrap());

@@ -570,7 +570,7 @@ where
                         match cmd.run_daemon_command().await {
                             Ok(_) => Ok(()),
                             Err(err) => {
-                                let err_txt = format!("Exec failed {:?}", err);
+                                let err_txt = format!("Exec failed {err:?}");
                                 send_error(err_txt, handle, channel).await;
                                 Err(err)
                             }

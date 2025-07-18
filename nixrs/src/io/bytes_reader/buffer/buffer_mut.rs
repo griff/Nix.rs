@@ -427,10 +427,7 @@ unsafe impl BufMut for BufferMut {
     unsafe fn advance_mut(&mut self, cnt: usize) {
         let remaining = self.cap - self.len();
         if cnt > remaining {
-            panic!(
-                "advance out of bounds: the len is {} but advancing by {}",
-                remaining, cnt
-            );
+            panic!("advance out of bounds: the len is {remaining} but advancing by {cnt}");
         }
         // Addition won't overflow since it is at most `self.cap`.
         self.len = self.len() + cnt;

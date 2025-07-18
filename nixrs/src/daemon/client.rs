@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
-use std::future::Future;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::atomic::AtomicU64;
 
 use async_stream::stream;
@@ -15,9 +15,7 @@ use tokio::sync::oneshot;
 use tracing::{debug, info, trace};
 
 use super::de::{NixDeserialize, NixRead as _, NixReader, NixReaderBuilder};
-use super::logger::{
-    DriveResult, FutureResult, ProcessStderr, ResultLog, ResultLogExt, ResultProcess,
-};
+use super::logger::{ProcessStderr, ResultLog, ResultLogExt};
 use super::ser::{NixWrite, NixWriter, NixWriterBuilder};
 use super::types::AddToStoreItem;
 use super::wire::logger::RawLogMessage;
@@ -31,6 +29,7 @@ use super::{
     HandshakeDaemonStore, LogMessage, ProtocolVersion, TrustLevel,
 };
 use crate::archive::{NarBytesReader, NarReader};
+use crate::daemon::FutureResultExt;
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
 use crate::io::{AsyncBufReadCompat, BytesReader, Lending};
@@ -166,13 +165,13 @@ impl DaemonClientBuilder {
     where
         P: AsRef<Path> + Send,
     {
-        FutureResult::new(async move { Ok(self.build_unix(path).await?.handshake()) })
+        async move { Ok(self.build_unix(path).await?.handshake()) }.future_result()
     }
 
     pub fn connect_daemon(
         self,
     ) -> impl ResultLog<Output = DaemonResult<DaemonClient<OwnedReadHalf, OwnedWriteHalf>>> {
-        FutureResult::new(async move { Ok(self.build_daemon().await?.handshake()) })
+        async move { Ok(self.build_daemon().await?.handshake()) }.future_result()
     }
 }
 
@@ -193,7 +192,7 @@ where
     type Store = DaemonClient<R, W>;
 
     fn handshake(self) -> impl ResultLog<Output = DaemonResult<Self::Store>> {
-        FutureResult::new(async move {
+        async move {
             let mut reader = self.reader;
             let mut writer = self.writer;
             let mut daemon_nix_version = None;
@@ -274,7 +273,8 @@ where
                     })
                 })
                 .stream())
-        })
+        }
+        .future_result()
     }
 }
 
@@ -332,10 +332,11 @@ where
     where
         T: NixDeserialize + Send + 'static,
     {
-        FutureResult::new(async {
+        async {
             self.writer.flush().await?;
             Ok(ProcessStderr::new(&mut self.reader).stream())
-        })
+        }
+        .future_result()
     }
 
     /*
@@ -367,24 +368,26 @@ where
         &'a mut self,
         options: &'a super::ClientOptions,
     ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
-        FutureResult::new(async {
+        async {
             self.writer.write_value(&Operation::SetOptions).await?;
             self.writer.write_value(options).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::SetOptions))
+        }
+        .future_result()
+        .fill_operation(Operation::SetOptions)
     }
 
     fn is_valid_path<'a>(
         &'a mut self,
         path: &'a crate::store_path::StorePath,
     ) -> impl ResultLog<Output = DaemonResult<bool>> + 'a {
-        FutureResult::new(async {
+        async {
             self.writer.write_value(&Operation::IsValidPath).await?;
             self.writer.write_value(path).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::IsValidPath))
+        }
+        .future_result()
+        .fill_operation(Operation::IsValidPath)
     }
 
     fn query_valid_paths<'a>(
@@ -392,96 +395,94 @@ where
         paths: &'a StorePathSet,
         substitute: bool,
     ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + 'a {
-        FutureResult::new(async move {
+        async move {
             self.writer.write_value(&Operation::QueryValidPaths).await?;
             self.writer.write_value(paths).await?;
             if (27..).contains(&self.writer.version().minor()) {
                 self.writer.write_value(&substitute).await?;
             }
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::QueryValidPaths))
+        }
+        .future_result()
+        .fill_operation(Operation::QueryValidPaths)
     }
 
     fn query_path_info<'a>(
         &'a mut self,
         path: &'a crate::store_path::StorePath,
     ) -> impl ResultLog<Output = DaemonResult<Option<super::UnkeyedValidPathInfo>>> + 'a {
-        FutureResult::new(async {
+        async {
             self.writer.write_value(&Operation::QueryPathInfo).await?;
             self.writer.write_value(path).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::QueryPathInfo))
+        }
+        .future_result()
+        .fill_operation(Operation::QueryPathInfo)
     }
 
     fn nar_from_path<'s>(
         &'s mut self,
         path: &'s StorePath,
-    ) -> impl Stream<Item = LogMessage>
-           + Future<Output = Result<impl AsyncBufRead + 's, DaemonError>>
-           + Send
-           + 's {
+    ) -> impl ResultLog<Output = DaemonResult<impl AsyncBufRead + use<R, W>>> + Send + 's {
         let reader = &mut self.reader;
         let writer = &mut self.writer;
         let (sender, receiver) = oneshot::channel();
-        ResultProcess {
-            stream: stream! {
-                let w = async {
-                    writer.write_value(&Operation::NarFromPath).await?;
-                    writer.write_value(path).await?;
-                    writer.flush().await?;
-                    Ok(())
-                }.await;
-                let result;
-                if w.is_err() {
-                    result = w;
-                } else {
-                    loop {
-                        let msg = reader.read_value::<RawLogMessage>().await;
-                        match msg {
-                            Ok(RawLogMessage::Next(msg)) => {
-                                yield LogMessage::Next(msg);
-                            }
-                            Ok(RawLogMessage::Result(result)) => {
-                                yield LogMessage::Result(result);
-                            }
-                            Ok(RawLogMessage::StartActivity(act)) => {
-                                yield LogMessage::StartActivity(act);
-                            }
-                            Ok(RawLogMessage::StopActivity(act)) => {
-                                yield LogMessage::StopActivity(act);
-                            }
-                            Ok(RawLogMessage::Read(_len)) => {
-                            }
-                            Ok(RawLogMessage::Write(_buf)) => {
-                            }
-                            Ok(RawLogMessage::Last) => {
-                                result = Ok(());
-                                break;
-                            }
-                            Ok(RawLogMessage::Error(err)) => {
-                                result = Err(err.into());
-                                break;
-                            }
-                            Err(err) => {
-                                result = Err(DaemonError::from(err));
-                                break;
-                            }
+        let logs = stream! {
+            let w = async {
+                writer.write_value(&Operation::NarFromPath).await?;
+                writer.write_value(path).await?;
+                writer.flush().await?;
+                Ok(())
+            }.await;
+            let result;
+            if w.is_err() {
+                result = w;
+            } else {
+                loop {
+                    let msg = reader.read_value::<RawLogMessage>().await;
+                    match msg {
+                        Ok(RawLogMessage::Next(msg)) => {
+                            yield LogMessage::Next(msg);
+                        }
+                        Ok(RawLogMessage::Result(result)) => {
+                            yield LogMessage::Result(result);
+                        }
+                        Ok(RawLogMessage::StartActivity(act)) => {
+                            yield LogMessage::StartActivity(act);
+                        }
+                        Ok(RawLogMessage::StopActivity(act)) => {
+                            yield LogMessage::StopActivity(act);
+                        }
+                        Ok(RawLogMessage::Read(_len)) => {
+                        }
+                        Ok(RawLogMessage::Write(_buf)) => {
+                        }
+                        Ok(RawLogMessage::Last) => {
+                            result = Ok(());
+                            break;
+                        }
+                        Ok(RawLogMessage::Error(err)) => {
+                            result = Err(err.into());
+                            break;
+                        }
+                        Err(err) => {
+                            result = Err(DaemonError::from(err));
+                            break;
                         }
                     }
                 }
-                let _ = sender.send((reader, result));
-            },
-            result: async {
-                let (reader, result) = receiver.await.unwrap();
-                let reader = reader.get_mut().lend(NarBytesReader::new);
-                match result {
-                    Ok(_) => Ok(AsyncBufReadCompat::new(reader)),
-                    Err(err) => Err(err.fill_operation(Operation::NarFromPath)),
-                }
-            },
+            }
+            let _ = sender.send((reader, result));
+        };
+        async {
+            let (reader, result) = receiver.await.unwrap();
+            let reader = reader.get_mut().lend(NarBytesReader::new);
+            match result {
+                Ok(_) => Ok(AsyncBufReadCompat::new(reader)),
+                Err(err) => Err(err.fill_operation(Operation::NarFromPath)),
+            }
         }
+        .with_logs(logs)
     }
 
     fn build_paths<'a>(
@@ -489,13 +490,14 @@ where
         paths: &'a [DerivedPath],
         mode: BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
-        FutureResult::new(async move {
+        async move {
             self.writer.write_value(&Operation::BuildPaths).await?;
             self.writer.write_value(&paths).await?;
             self.writer.write_value(&mode).await?;
             Ok(self.process_stderr().map_ok(|_ignored: IgnoredOne| ()))
-        })
-        .map_err(|err| err.fill_operation(Operation::BuildPaths))
+        }
+        .future_result()
+        .fill_operation(Operation::BuildPaths)
     }
 
     fn build_paths_with_results<'a>(
@@ -504,15 +506,16 @@ where
         mode: BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<Vec<super::wire::types2::KeyedBuildResult>>> + Send + 'a
     {
-        FutureResult::new(async move {
+        async move {
             self.writer
                 .write_value(&Operation::BuildPathsWithResults)
                 .await?;
             self.writer.write_value(&drvs).await?;
             self.writer.write_value(&mode).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::BuildPathsWithResults))
+        }
+        .future_result()
+        .fill_operation(Operation::BuildPathsWithResults)
     }
 
     fn build_derivation<'a>(
@@ -520,50 +523,52 @@ where
         drv: &'a BasicDerivation,
         mode: BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<super::wire::types2::BuildResult>> + 'a {
-        FutureResult::new(async move {
+        async move {
             self.writer.write_value(&Operation::BuildDerivation).await?;
             self.writer.write_value(drv).await?;
             self.writer.write_value(&mode).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::BuildDerivation))
+        }
+        .future_result()
+        .fill_operation(Operation::BuildDerivation)
     }
 
     fn query_missing<'a>(
         &'a mut self,
         paths: &'a [DerivedPath],
     ) -> impl ResultLog<Output = DaemonResult<super::wire::types2::QueryMissingResult>> + 'a {
-        FutureResult::new(async move {
+        async move {
             self.writer.write_value(&Operation::QueryMissing).await?;
             self.writer.write_value(&paths).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::QueryMissing))
+        }
+        .future_result()
+        .fill_operation(Operation::QueryMissing)
     }
 
     fn add_to_store_nar<'s, 'r, 'i, AR>(
         &'s mut self,
-        info: &'i super::wire::types2::ValidPathInfo,
+        info: &'i ValidPathInfo,
         source: AR,
         repair: bool,
         dont_check_sigs: bool,
-    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'r
+    ) -> Pin<Box<dyn ResultLog<Output = DaemonResult<()>> + Send + 'r>>
     where
         AR: AsyncBufRead + Send + Unpin + 'r,
         's: 'r,
         'i: 'r,
     {
-        Box::pin(
-            FutureResult::new(async move {
-                self.writer.write_value(&Operation::AddToStoreNar).await?;
-                self.writer.write_value(info).await?;
-                self.writer.write_value(&repair).await?;
-                self.writer.write_value(&dont_check_sigs).await?;
-                self.writer.flush().await?;
-                if self.writer.version().minor() >= 23 {
-                    Ok(Either::Left(Either::Left(Box::pin(DriveResult {
-                        result: ProcessStderr::new(&mut self.reader).stream(),
-                        driver: async {
+        async move {
+            self.writer.write_value(&Operation::AddToStoreNar).await?;
+            self.writer.write_value(info).await?;
+            self.writer.write_value(&repair).await?;
+            self.writer.write_value(&dont_check_sigs).await?;
+            self.writer.flush().await?;
+            if self.writer.version().minor() >= 23 {
+                Ok(Either::Left(Either::Left(Box::pin(
+                    ProcessStderr::new(&mut self.reader)
+                        .stream()
+                        .drive_result(async {
                             let mut source = source;
                             let mut framed = FramedWriter::new(&mut self.writer);
                             trace!("client:add_to_store_nar:driver: copy_buf");
@@ -573,32 +578,30 @@ where
                             self.writer.flush().await?;
                             trace!("client:add_to_store_nar:driver: done");
                             Ok(()) as DaemonResult<()>
-                        },
-                        driving: true,
-                        drive_err: None,
-                    }))))
-                } else if self.writer.version().minor() >= 21 {
-                    Ok(Either::Left(Either::Right(Box::pin(
-                        ProcessStderr::new(&mut self.reader)
-                            .with_source(&mut self.writer, source)
-                            .stream(),
-                    ))))
-                } else {
-                    Ok(Either::Right(Box::pin(DriveResult {
-                        result: ProcessStderr::new(&mut self.reader).stream(),
-                        driver: async {
+                        }),
+                ))))
+            } else if self.writer.version().minor() >= 21 {
+                Ok(Either::Left(Either::Right(Box::pin(
+                    ProcessStderr::new(&mut self.reader)
+                        .with_source(&mut self.writer, source)
+                        .stream(),
+                ))))
+            } else {
+                Ok(Either::Right(Box::pin(
+                    ProcessStderr::new(&mut self.reader)
+                        .stream()
+                        .drive_result(async {
                             let mut reader = NarReader::new(source);
                             copy_buf(&mut reader, &mut self.writer).await?;
                             self.writer.flush().await?;
                             Ok(()) as DaemonResult<()>
-                        },
-                        driving: true,
-                        drive_err: None,
-                    })))
-                }
-            })
-            .map_err(|err| err.fill_operation(Operation::AddToStoreNar)),
-        )
+                        }),
+                )))
+            }
+        }
+        .future_result()
+        .fill_operation(Operation::AddToStoreNar)
+        .boxed_result()
     }
 
     fn add_multiple_to_store<'s, 'i, 'r, S, SR>(
@@ -606,14 +609,14 @@ where
         repair: bool,
         dont_check_sigs: bool,
         stream: S,
-    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'r
+    ) -> Pin<Box<dyn ResultLog<Output = DaemonResult<()>> + Send + 'r>>
     where
         S: Stream<Item = Result<AddToStoreItem<SR>, DaemonError>> + Send + 'i,
         SR: AsyncBufRead + Send + Unpin + 'i,
         's: 'r,
         'i: 'r,
     {
-        FutureResult::new(async move {
+        async move {
             self.writer
                 .write_value(&Operation::AddMultipleToStore)
                 .await?;
@@ -637,82 +640,89 @@ where
                 debug!(id, "Write done");
                 Ok(()) as DaemonResult<()>
             };
-            Ok(DriveResult::new(
-                ProcessStderr::new(&mut self.reader).stream(),
-                driver,
-            ))
-        })
-        .map_err(|err| err.fill_operation(Operation::AddMultipleToStore))
+            Ok(ProcessStderr::new(&mut self.reader)
+                .stream()
+                .drive_result(driver))
+        }
+        .future_result()
+        .fill_operation(Operation::AddMultipleToStore)
+        .boxed_result()
     }
 
     fn query_all_valid_paths(
         &mut self,
     ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + '_ {
-        FutureResult::new(async move {
+        async move {
             self.writer
                 .write_value(&Operation::QueryAllValidPaths)
                 .await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::QueryAllValidPaths))
+        }
+        .future_result()
+        .fill_operation(Operation::QueryAllValidPaths)
     }
 
     fn query_referrers<'a>(
         &'a mut self,
         path: &'a StorePath,
     ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a {
-        FutureResult::new(async move {
+        async move {
             self.writer.write_value(&Operation::QueryReferrers).await?;
             self.writer.write_value(path).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::QueryReferrers))
+        }
+        .future_result()
+        .fill_operation(Operation::QueryReferrers)
     }
 
     fn ensure_path<'a>(
         &'a mut self,
         path: &'a StorePath,
     ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
-        FutureResult::new(async move {
+        async move {
             self.writer.write_value(&Operation::EnsurePath).await?;
             self.writer.write_value(path).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::EnsurePath))
+        }
+        .future_result()
+        .fill_operation(Operation::EnsurePath)
     }
 
     fn add_temp_root<'a>(
         &'a mut self,
         path: &'a StorePath,
     ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
-        FutureResult::new(async move {
+        async move {
             self.writer.write_value(&Operation::AddTempRoot).await?;
             self.writer.write_value(path).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::AddTempRoot))
+        }
+        .future_result()
+        .fill_operation(Operation::AddTempRoot)
     }
 
     fn add_indirect_root<'a>(
         &'a mut self,
         path: &'a DaemonPath,
     ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
-        FutureResult::new(async move {
+        async move {
             self.writer.write_value(&Operation::AddIndirectRoot).await?;
             self.writer.write_value(path).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::AddIndirectRoot))
+        }
+        .future_result()
+        .fill_operation(Operation::AddIndirectRoot)
     }
 
     fn find_roots(
         &mut self,
     ) -> impl ResultLog<Output = DaemonResult<BTreeMap<DaemonPath, StorePath>>> + Send + '_ {
-        FutureResult::new(async move {
+        async move {
             self.writer.write_value(&Operation::FindRoots).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::FindRoots))
+        }
+        .future_result()
+        .fill_operation(Operation::FindRoots)
     }
 
     fn collect_garbage<'a>(
@@ -722,65 +732,70 @@ where
         ignore_liveness: bool,
         max_freed: u64,
     ) -> impl ResultLog<Output = DaemonResult<CollectGarbageResponse>> + Send + 'a {
-        FutureResult::new(async move {
+        async move {
             self.writer.write_value(&Operation::CollectGarbage).await?;
             self.writer.write_value(&action).await?;
             self.writer.write_value(paths_to_delete).await?;
             self.writer.write_value(&ignore_liveness).await?;
             self.writer.write_value(&max_freed).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::CollectGarbage))
+        }
+        .future_result()
+        .fill_operation(Operation::CollectGarbage)
     }
 
     fn query_path_from_hash_part<'a>(
         &'a mut self,
         hash: &'a StorePathHash,
     ) -> impl ResultLog<Output = DaemonResult<Option<StorePath>>> + Send + 'a {
-        FutureResult::new(async move {
+        async move {
             self.writer
                 .write_value(&Operation::QueryPathFromHashPart)
                 .await?;
             self.writer.write_value(hash).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::QueryPathFromHashPart))
+        }
+        .future_result()
+        .fill_operation(Operation::QueryPathFromHashPart)
     }
 
     fn query_substitutable_paths<'a>(
         &'a mut self,
         paths: &'a StorePathSet,
     ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a {
-        FutureResult::new(async move {
+        async move {
             self.writer
                 .write_value(&Operation::QuerySubstitutablePaths)
                 .await?;
             self.writer.write_value(paths).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::QuerySubstitutablePaths))
+        }
+        .future_result()
+        .fill_operation(Operation::QuerySubstitutablePaths)
     }
 
     fn query_valid_derivers<'a>(
         &'a mut self,
         path: &'a StorePath,
     ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a {
-        FutureResult::new(async move {
+        async move {
             self.writer
                 .write_value(&Operation::QueryValidDerivers)
                 .await?;
             self.writer.write_value(path).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::QueryValidDerivers))
+        }
+        .future_result()
+        .fill_operation(Operation::QueryValidDerivers)
     }
 
     fn optimise_store(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + Send + '_ {
-        FutureResult::new(async move {
+        async move {
             self.writer.write_value(&Operation::OptimiseStore).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::OptimiseStore))
+        }
+        .future_result()
+        .fill_operation(Operation::OptimiseStore)
     }
 
     fn verify_store(
@@ -788,13 +803,14 @@ where
         check_contents: bool,
         repair: bool,
     ) -> impl ResultLog<Output = DaemonResult<bool>> + Send + '_ {
-        FutureResult::new(async move {
+        async move {
             self.writer.write_value(&Operation::VerifyStore).await?;
             self.writer.write_value(&check_contents).await?;
             self.writer.write_value(&repair).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::VerifyStore))
+        }
+        .future_result()
+        .fill_operation(Operation::VerifyStore)
     }
 
     fn add_signatures<'a>(
@@ -802,13 +818,14 @@ where
         path: &'a StorePath,
         signatures: &'a [Signature],
     ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
-        FutureResult::new(async move {
+        async move {
             self.writer.write_value(&Operation::AddSignatures).await?;
             self.writer.write_value(path).await?;
             self.writer.write_value(&signatures).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::AddSignatures))
+        }
+        .future_result()
+        .fill_operation(Operation::AddSignatures)
     }
 
     fn query_derivation_output_map<'a>(
@@ -816,73 +833,75 @@ where
         path: &'a StorePath,
     ) -> impl ResultLog<Output = DaemonResult<BTreeMap<OutputName, Option<StorePath>>>> + Send + 'a
     {
-        FutureResult::new(async move {
+        async move {
             self.writer
                 .write_value(&Operation::QueryDerivationOutputMap)
                 .await?;
             self.writer.write_value(path).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::QueryDerivationOutputMap))
+        }
+        .future_result()
+        .fill_operation(Operation::QueryDerivationOutputMap)
     }
 
     fn register_drv_output<'a>(
         &'a mut self,
         realisation: &'a Realisation,
     ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
-        FutureResult::new(async move {
+        async move {
             self.writer
                 .write_value(&Operation::RegisterDrvOutput)
                 .await?;
             self.writer.write_value(realisation).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::RegisterDrvOutput))
+        }
+        .future_result()
+        .fill_operation(Operation::RegisterDrvOutput)
     }
 
     fn query_realisation<'a>(
         &'a mut self,
         output_id: &'a DrvOutput,
     ) -> impl ResultLog<Output = DaemonResult<BTreeSet<Realisation>>> + Send + 'a {
-        FutureResult::new(async move {
+        async move {
             self.writer
                 .write_value(&Operation::QueryRealisation)
                 .await?;
             self.writer.write_value(output_id).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::QueryRealisation))
+        }
+        .future_result()
+        .fill_operation(Operation::QueryRealisation)
     }
 
     fn add_build_log<'s, 'r, 'p, S>(
         &'s mut self,
         path: &'p StorePath,
         source: S,
-    ) -> impl ResultLog<Output = DaemonResult<()>> + 'r
+    ) -> Pin<Box<dyn ResultLog<Output = DaemonResult<()>> + Send + 'r>>
     where
         S: AsyncBufRead + Send + Unpin + 'r,
         's: 'r,
         'p: 'r,
     {
-        FutureResult::new(async move {
+        async move {
             self.writer.write_value(&Operation::AddBuildLog).await?;
             self.writer.write_value(path).await?;
             self.writer.flush().await?;
-            Ok(DriveResult {
-                result: ProcessStderr::new(&mut self.reader).stream(),
-                driver: async {
+            Ok(ProcessStderr::new(&mut self.reader)
+                .stream()
+                .drive_result(async {
                     let mut source = source;
                     let mut framed = FramedWriter::new(&mut self.writer);
                     copy_buf(&mut source, &mut framed).await?;
                     framed.shutdown().await?;
                     self.writer.flush().await?;
                     Ok(()) as DaemonResult<()>
-                },
-                driving: true,
-                drive_err: None,
-            })
-        })
-        .map_err(|err| err.fill_operation(Operation::AddBuildLog))
+                }))
+        }
+        .future_result()
+        .fill_operation(Operation::AddBuildLog)
+        .boxed_result()
     }
 
     fn add_perm_root<'a>(
@@ -890,49 +909,53 @@ where
         path: &'a StorePath,
         gc_root: &'a DaemonPath,
     ) -> impl ResultLog<Output = DaemonResult<DaemonPath>> + Send + 'a {
-        FutureResult::new(async move {
+        async move {
             self.writer.write_value(&Operation::AddPermRoot).await?;
             self.writer.write_value(path).await?;
             self.writer.write_value(gc_root).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::AddPermRoot))
+        }
+        .future_result()
+        .fill_operation(Operation::AddPermRoot)
     }
 
     fn sync_with_gc(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + Send + '_ {
-        FutureResult::new(async move {
+        async move {
             self.writer.write_value(&Operation::SyncWithGC).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::SyncWithGC))
+        }
+        .future_result()
+        .fill_operation(Operation::SyncWithGC)
     }
 
     fn query_derivation_outputs<'a>(
         &'a mut self,
         path: &'a StorePath,
     ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + Send + 'a {
-        FutureResult::new(async move {
+        async move {
             self.writer
                 .write_value(&Operation::QueryDerivationOutputs)
                 .await?;
             self.writer.write_value(path).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::QueryDerivationOutputs))
+        }
+        .future_result()
+        .fill_operation(Operation::QueryDerivationOutputs)
     }
 
     fn query_derivation_output_names<'a>(
         &'a mut self,
         path: &'a StorePath,
     ) -> impl ResultLog<Output = DaemonResult<BTreeSet<OutputName>>> + Send + 'a {
-        FutureResult::new(async move {
+        async move {
             self.writer
                 .write_value(&Operation::QueryDerivationOutputNames)
                 .await?;
             self.writer.write_value(path).await?;
             Ok(self.process_stderr())
-        })
-        .map_err(|err| err.fill_operation(Operation::QueryDerivationOutputNames))
+        }
+        .future_result()
+        .fill_operation(Operation::QueryDerivationOutputNames)
     }
 
     fn add_ca_to_store<'a, 'r, S>(
@@ -942,33 +965,32 @@ where
         refs: &'a StorePathSet,
         repair: bool,
         source: S,
-    ) -> impl ResultLog<Output = DaemonResult<ValidPathInfo>> + Send + 'r
+    ) -> Pin<Box<dyn ResultLog<Output = DaemonResult<ValidPathInfo>> + Send + 'r>>
     where
         S: AsyncBufRead + Send + Unpin + 'r,
         'a: 'r,
     {
-        FutureResult::new(async move {
+        async move {
             self.writer.write_value(&Operation::AddToStore).await?;
             self.writer.write_value(name).await?;
             self.writer.write_value(&cam).await?;
             self.writer.write_value(refs).await?;
             self.writer.write_value(&repair).await?;
             self.writer.flush().await?;
-            Ok(DriveResult {
-                result: ProcessStderr::new(&mut self.reader).stream(),
-                driver: async {
+            Ok(ProcessStderr::new(&mut self.reader)
+                .stream()
+                .drive_result(async {
                     let mut source = source;
                     let mut framed = FramedWriter::new(&mut self.writer);
                     copy_buf(&mut source, &mut framed).await?;
                     framed.shutdown().await?;
                     self.writer.flush().await?;
                     Ok(()) as DaemonResult<()>
-                },
-                driving: true,
-                drive_err: None,
-            })
-        })
-        .map_err(|err| err.fill_operation(Operation::AddToStore))
+                }))
+        }
+        .future_result()
+        .fill_operation(Operation::AddToStore)
+        .boxed_result()
     }
 
     async fn shutdown(&mut self) -> DaemonResult<()> {

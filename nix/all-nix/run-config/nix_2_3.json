@@ -1,0 +1,17 @@
+{
+    "name": "nix_2_3",
+    "conf_path": "../conf/nix_2_3.conf",
+    "program_path": "../nix_2_3/bin/nix-daemon",
+    "cmd_args": [
+        "--process-ops",
+        "--debug",
+        "-vvvvvv",
+        "--stdio"
+    ],
+    "range": "1.10..1.22",
+    "op_log_prefix": false,
+    "skipped": [
+        "unittests::handshake_logs",
+        "unittests::sesennst"
+    ]
+}

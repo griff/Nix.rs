@@ -10,6 +10,6 @@ pkgs.stdenv.mkDerivation {
     rustPlatform.cargoSetupHook
   ];
   buildPhase = ''
-    cargo test -p nixrs-derive-tests | tee $out
+    cargo test -p nixrs-derive-tests 2>&1 | tee -a $out
   '';
 }

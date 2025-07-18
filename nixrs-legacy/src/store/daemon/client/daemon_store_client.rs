@@ -940,7 +940,7 @@ mod tests {
         )
         {
             let now = Instant::now();
-            eprintln!("Run test {}", drv_path);
+            eprintln!("Run test {drv_path}");
             drv.name = drv_path.name_from_drv().to_string();
             prop_store_cmd!(
                 TrustedFlag::Trusted,
@@ -948,7 +948,7 @@ mod tests {
                 build_derivation(&drv_path, &drv, build_mode),
                 result
             );
-            eprintln!("Completed test {} in {}", drv_path, now.elapsed().as_secs_f64());
+            eprintln!("Completed test {drv_path} in {}", now.elapsed().as_secs_f64());
         }
     }
 

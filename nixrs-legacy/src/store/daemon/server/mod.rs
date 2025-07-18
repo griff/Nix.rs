@@ -110,13 +110,13 @@ where
 {
     match cmd {
         TunnelCommand::LogNext(msg) => {
-            eprintln!("Log next: {}", msg);
+            eprintln!("Log next: {msg}");
             debug!("Log next: {}", msg);
             writer.write_u64_le(STDERR_NEXT).await?;
-            writer.write_string(format!("{}\n", msg)).await?;
+            writer.write_string(format!("{msg}\n")).await?;
         }
         TunnelCommand::StartActivity(id, activity) => {
-            eprintln!("!!!!!!!!!! start activity {}", id);
+            eprintln!("!!!!!!!!!! start activity {id}");
             debug!(id, "start activity {} {:?}", id, activity);
             if get_protocol_minor!(client_version) < 20 {
                 if !activity.text.is_empty() && level.get() >= activity.level {
@@ -148,7 +148,7 @@ where
             writer.write_u64_le(activity.parent).await?;
         }
         TunnelCommand::StopActivity(id) => {
-            eprintln!("!!!!!!!! stop activity {}", id);
+            eprintln!("!!!!!!!! stop activity {id}");
             debug!(id, "stop activity {}", id);
             if get_protocol_minor!(client_version) < 20 {
                 return Ok(());
@@ -157,8 +157,8 @@ where
             writer.write_u64_le(id).await?;
         }
         TunnelCommand::Result(result) => {
-            eprintln!("!!!!!!!!! result {}, {:?}", result.act, result);
-            debug!("result {}, {:?}", result.act, result);
+            eprintln!("!!!!!!!!! result {}, {result:?}", result.act);
+            debug!("result {}, {result:?}", result.act);
             if get_protocol_minor!(client_version) < 20 {
                 return Ok(());
             }
@@ -180,8 +180,8 @@ where
             }
         }
         TunnelCommand::Read(len) => {
-            eprintln!("read {}", len);
-            debug!(len, "read {}", len);
+            eprintln!("read {len}");
+            debug!(len, "read {len}");
             writer.write_u64_le(STDERR_READ).await?;
             writer.write_usize(len).await?;
         }
@@ -202,17 +202,17 @@ async fn process_tunnel<S>(
     let mut writer = None;
 
     while let Some(cmd) = receiver.recv().await {
-        eprintln!("Got Command {:?}", cmd);
+        eprintln!("Got Command {cmd:?}");
         match cmd {
             TunnelCommand::StartWork => {
                 eprintln!("Start work");
                 debug!("Start work");
                 let mut s = taker.take();
                 if let Err(err) = s.write_all(&buf).await {
-                    error!("Cound not write data for tunnel start work {}", err);
+                    error!("Cound not write data for tunnel start work {err}");
                 }
                 if let Err(err) = s.flush().await {
-                    error!("Cound not flush data for tunnel start work {}", err);
+                    error!("Cound not flush data for tunnel start work {err}");
                 }
                 writer = Some(s);
             }
@@ -231,7 +231,7 @@ async fn process_tunnel<S>(
                 }
                 .await;
                 if let Err(err) = res {
-                    error!("Cound not write data for tunnel stop work {}", err);
+                    error!("Cound not write data for tunnel stop work {err}");
                 }
                 drop(stream);
                 let _ = reply.send(());
@@ -239,10 +239,10 @@ async fn process_tunnel<S>(
             _ if writer.is_some() => {
                 let mut s = writer.as_mut().unwrap();
                 if let Err(err) = send_command(level.clone(), client_version, &mut s, cmd).await {
-                    error!("Could not write tunnel command: {}", err);
+                    error!("Could not write tunnel command: {err}");
                 }
                 if let Err(err) = s.flush().await {
-                    error!("Could not flush tunnel command: {}", err);
+                    error!("Could not flush tunnel command: {err}");
                 }
             }
             _ => {
@@ -254,7 +254,7 @@ async fn process_tunnel<S>(
                 )
                 .await
                 {
-                    error!("Could not write tunnel command: {}", err);
+                    error!("Could not write tunnel command: {err}");
                 }
             }
         }
@@ -284,7 +284,7 @@ fn format_event(a_level: ActiveVerbosity, event: &Event<'_>) -> Option<TunnelCom
         let message = if let Some(msg) = fmt.message {
             msg
         } else {
-            format!("{:?}", event)
+            format!("{event:?}")
         };
         Some(TunnelCommand::LogNext(message))
     } else {
@@ -728,7 +728,7 @@ where
                         return Err(err);
                     }
                 }
-                debug!("Completed op {}", op);
+                debug!("Completed op {op}");
 
                 to.flush().await?;
 
@@ -737,7 +737,7 @@ where
             Ok(()) as Result<(), Error>
         });
         if let Err(err) = fut.await {
-            eprintln!("Server error {:?}", err);
+            eprintln!("Server error {err:?}");
             tunnel_logger.stop_work_err(&err).await;
             to.flush().await?;
         }

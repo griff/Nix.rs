@@ -27,7 +27,7 @@ use crate::store_path::{StorePath, StorePathNameError};
     SerializeDisplay,
     DeserializeFromStr,
 )]
-#[display(fmt = "{:x}!{}", drv_hash, output_name)]
+#[display(fmt = "{drv_hash:x}!{output_name}")]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
 pub struct DrvOutput {

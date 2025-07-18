@@ -24,7 +24,7 @@ impl PartialEq for CIString {
 impl fmt::Display for CIString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let bstr = bstr::BStr::new(&self.0);
-        write!(f, "{}", bstr)
+        write!(f, "{bstr}")
     }
 }
 impl Eq for CIString {}
@@ -49,7 +49,7 @@ impl Entries {
                 debug!("case collision between '{}' and '{}'", o.key(), b_name);
                 let idx = o.get() + 1;
                 let mut new_name = name.to_vec();
-                write!(new_name, "{}{}", CASE_HACK_SUFFIX, idx).unwrap();
+                write!(new_name, "{CASE_HACK_SUFFIX}{idx}").unwrap();
                 o.insert(idx);
                 Bytes::from(new_name)
             }

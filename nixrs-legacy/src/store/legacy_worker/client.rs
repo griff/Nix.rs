@@ -86,7 +86,7 @@ async fn dump_log<R: AsyncRead + Unpin>(build_log: R, dispatcher: LogDispatch) {
         }
         let d = dispatcher.0.lock().unwrap();
         with_default(&d.dispatch, || {
-            eprintln!("Build log: {}", message);
+            eprintln!("Build log: {message}");
             let result_type: u64 = ResultType::BuildLogLine.into();
             error!(target: RESULT_TARGET, parent: d.span.clone(), result_type, message);
         });
@@ -875,7 +875,7 @@ mod tests {
         {
             settings.verbosity = Verbosity::Error;
             let now = Instant::now();
-            eprintln!("Run test {}", drv_path);
+            eprintln!("Run test {drv_path}");
             drv.name = drv_path.name_from_drv().to_string();
             store_cmd!(
                 settings,

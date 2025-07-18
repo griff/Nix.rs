@@ -148,28 +148,28 @@ impl fmt::Display for DisplayNarInfo<'_> {
         let mut first = true;
         for reference in &self.nar_info.path_info.references {
             if first {
-                write!(f, "{}", reference)?;
+                write!(f, "{reference}")?;
                 first = false;
             } else {
-                write!(f, " {}", reference)?;
+                write!(f, " {reference}")?;
             }
         }
         writeln!(f)?;
 
         if let Some(deriver) = self.nar_info.path_info.deriver.as_ref() {
-            writeln!(f, "Deriver: {}", deriver)?;
+            writeln!(f, "Deriver: {deriver}")?;
         }
 
         for sig in &self.nar_info.path_info.sigs {
-            writeln!(f, "Sig: {}", sig)?;
+            writeln!(f, "Sig: {sig}")?;
         }
 
         if let Some(ca) = self.nar_info.path_info.ca.as_ref() {
-            writeln!(f, "CA: {}", ca)?;
+            writeln!(f, "CA: {ca}")?;
         }
 
         for (key, value) in &self.nar_info.extra {
-            writeln!(f, "{}: {}", key, value)?;
+            writeln!(f, "{key}: {value}")?;
         }
 
         Ok(())

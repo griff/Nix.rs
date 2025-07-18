@@ -22,7 +22,7 @@ impl PartialEq for CIString {
 impl fmt::Display for CIString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let bstr = bstr::BStr::new(&self.0);
-        write!(f, "{}", bstr)
+        write!(f, "{bstr}")
     }
 }
 impl Eq for CIString {}
@@ -75,10 +75,10 @@ impl<Err, S: Stream<Item = Result<NAREvent, Err>>> Stream for CaseHackStream<S> 
                     match this.entries.entry(ci_str) {
                         Entry::Occupied(mut o) => {
                             let b_name = bstr::BStr::new(&name);
-                            debug!("case collision between '{}' and '{}'", o.key(), b_name);
+                            debug!("case collision between '{}' and '{b_name}'", o.key());
                             let idx = o.get() + 1;
                             let mut new_name = name.to_vec();
-                            write!(new_name, "{}{}", CASE_HACK_SUFFIX, idx).unwrap();
+                            write!(new_name, "{CASE_HACK_SUFFIX}{idx}").unwrap();
                             o.insert(idx);
                             NAREvent::DirectoryEntry {
                                 name: Bytes::from(new_name),

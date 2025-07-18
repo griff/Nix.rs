@@ -2,14 +2,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
 use std::future::Future;
 use std::ops::Deref;
-use std::pin::pin;
+use std::pin::{pin, Pin};
 
 use futures::future::TryFutureExt;
 use futures::{FutureExt, Stream, StreamExt as _};
-use tokio::io::{
-    copy, copy_buf, simplex, AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt,
-};
-use tokio::{select, try_join};
+use tokio::io::{copy_buf, AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt};
+use tokio::select;
 use tracing::{debug, error, info, instrument, trace, Instrument};
 
 use crate::archive::NarReader;
@@ -29,15 +27,16 @@ use crate::signature::Signature;
 use crate::store_path::{ContentAddressMethodAlgorithm, StorePath, StorePathHash, StorePathSet};
 
 use super::de::{NixRead, NixReader};
-use super::logger::LocalLoggerResult;
 use super::ser::{NixWrite, NixWriter};
-use super::types::{AddToStoreItem, LocalDaemonStore, LocalHandshakeDaemonStore};
+use super::types::AddToStoreItem;
 use super::wire::types2::{RegisterDrvOutputRequest, Request, ValidPathInfo};
 use super::wire::{CLIENT_MAGIC, SERVER_MAGIC};
 use super::{
     DaemonError, DaemonResult, DaemonStore, HandshakeDaemonStore, LogMessage, ProtocolVersion,
     ResultLog, TrustLevel, NIX_VERSION,
 };
+
+mod local;
 
 pub struct RecoverableError {
     pub can_recover: bool,
@@ -139,40 +138,6 @@ impl Builder {
         trace!("Server processed all requests!");
         Ok(())
     }
-
-    pub async fn local_serve_connection<'s, R, W, S>(
-        &'s self,
-        reader: R,
-        writer: W,
-        store: S,
-    ) -> DaemonResult<()>
-    where
-        R: AsyncRead + Debug + Send + Unpin + 's,
-        W: AsyncWrite + Debug + Send + Unpin + 's,
-        S: LocalHandshakeDaemonStore + Debug + Send + 's,
-    {
-        let reader = NixReader::new(reader);
-        let writer = NixWriter::new(writer);
-        let mut conn = DaemonConnection {
-            store_trust: self.store_trust,
-            reader,
-            writer,
-        };
-        let nix_version = self.nix_version.as_deref().unwrap_or(NIX_VERSION);
-        conn.handshake(self.min_version, self.max_version, nix_version)
-            .await?;
-        trace!("Server handshake done!");
-        let store_result = store.handshake();
-        let store = conn
-            .local_process_logs(store_result)
-            .await
-            .map_err(|e| e.source)?;
-        conn.writer.flush().await?;
-        trace!("Server handshake logs done!");
-        conn.local_process_requests(store).await?;
-        trace!("Server processed all requests!");
-        Ok(())
-    }
 }
 
 impl Default for Builder {
@@ -225,7 +190,7 @@ async fn process_logs<'s, T, W>(
     logs: impl ResultLog<Output = DaemonResult<T>> + 's,
 ) -> Result<T, RecoverableError>
 where
-    T: Send + 's,
+    T: 's,
     W: AsyncWrite + Send + Unpin,
 {
     let mut logs = pin!(logs);
@@ -245,6 +210,8 @@ where
 }
 
 struct BoxedStore<S>(S);
+
+#[warn(clippy::missing_trait_methods)]
 impl<S> DaemonStore for BoxedStore<S>
 where
     S: DaemonStore,
@@ -292,7 +259,7 @@ where
     fn nar_from_path<'s>(
         &'s mut self,
         path: &'s StorePath,
-    ) -> impl ResultLog<Output = DaemonResult<impl AsyncBufRead + 's>> + Send + 's {
+    ) -> impl ResultLog<Output = DaemonResult<impl AsyncBufRead + use<S>>> + Send + 's {
         let ret = Box::pin(self.0.nar_from_path(path));
         trace!("NarFromPath Size {}", size_of_val(&ret));
         ret
@@ -334,7 +301,7 @@ where
         source: R,
         repair: bool,
         dont_check_sigs: bool,
-    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'r
+    ) -> Pin<Box<dyn ResultLog<Output = DaemonResult<()>> + Send + 'r>>
     where
         R: AsyncBufRead + Send + Unpin + 'r,
         's: 'r,
@@ -353,17 +320,16 @@ where
         repair: bool,
         dont_check_sigs: bool,
         stream: ST,
-    ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'r
+    ) -> Pin<Box<dyn ResultLog<Output = DaemonResult<()>> + Send + 'r>>
     where
         ST: Stream<Item = Result<AddToStoreItem<STR>, DaemonError>> + Send + 'i,
         STR: AsyncBufRead + Send + Unpin + 'i,
         's: 'r,
         'i: 'r,
     {
-        let ret = Box::pin(
-            self.0
-                .add_multiple_to_store(repair, dont_check_sigs, stream),
-        );
+        let ret = self
+            .0
+            .add_multiple_to_store(repair, dont_check_sigs, stream);
         trace!("AddMultipleToStore Size {}", size_of_val(ret.deref()));
         ret
     }
@@ -532,13 +498,13 @@ where
         &'s mut self,
         path: &'p StorePath,
         source: R,
-    ) -> impl ResultLog<Output = DaemonResult<()>> + 'r
+    ) -> Pin<Box<dyn ResultLog<Output = DaemonResult<()>> + Send + 'r>>
     where
         R: AsyncBufRead + Send + Unpin + 'r,
         's: 'r,
         'p: 'r,
     {
-        let ret = Box::pin(self.0.add_build_log(path, source));
+        let ret = self.0.add_build_log(path, source);
         trace!("AddBuildLog Size {}", size_of_val(ret.deref()));
         ret
     }
@@ -587,12 +553,12 @@ where
         refs: &'a StorePathSet,
         repair: bool,
         source: R,
-    ) -> impl ResultLog<Output = DaemonResult<ValidPathInfo>> + Send + 'r
+    ) -> Pin<Box<dyn ResultLog<Output = DaemonResult<ValidPathInfo>> + Send + 'r>>
     where
         R: AsyncBufRead + Send + Unpin + 'r,
         'a: 'r,
     {
-        let ret = Box::pin(self.0.add_ca_to_store(name, cam, refs, repair, source));
+        let ret = self.0.add_ca_to_store(name, cam, refs, repair, source);
         trace!("AddToStore Size {}", size_of_val(ret.deref()));
         ret
     }
@@ -1402,618 +1368,6 @@ where
                 names :: [Set][se-Set] of [OutputName][se-OutputName]
                  */
                 self.writer.write_value(&value).await?;
-            }
-            // Obsolete Nix 2.0, Protocol 1.19*
-            QuerySubstitutablePathInfos(_req) => {
-                /*
-                ### Outputs
-                infos :: [Map][se-Map] of [StorePath][se-StorePath] to [SubstitutablePathInfo][se-SubstitutablePathInfo]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QuerySubstitutablePathInfos,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            // Obsolete Nix 2.0 Protocol 1.17
-            ExportPath(_path) => {
-                /*
-                ### Outputs
-                Uses [`STDERR_WRITE`](./logging.md#stderr_write) to send dump in
-                [export format][se-ExportFormat]
-
-                After dump it outputs.
-
-                1 :: [Int][se-Int] (hardcoded)
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::ExportPath,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            // Obsolete Nix 2.0 Protocol 1.17
-            ImportPaths => {
-                /*
-                ### Inputs
-                [List of NAR dumps][se-ImportPaths] coming from one or more ExportPath operations.
-
-                ### Outputs
-                importedPaths :: [List][se-List] of [StorePath][se-StorePath]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::ImportPaths,
-                ))
-                .with_operation(op)?;
-            }
-            // Obsolete Nix 2.0 Protocol 1.16
-            QueryPathHash(_path) => {
-                /*
-                ### Outputs
-                hash :: [NARHash][se-NARHash]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryPathHash,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            // Obsolete Nix 2.0 Protocol 1.16
-            QueryReferences(_path) => {
-                /*
-                ### Outputs
-                references :: [Set][se-Set] of [StorePath][se-StorePath]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryReferences,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            // Obsolete Nix 2.0 Protocol 1.16
-            QueryDeriver(_path) => {
-                /*
-                ### Outputs
-                deriver :: [OptStorePath][se-OptStorePath]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryDeriver,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            // Obsolete Nix 1.2 Protocol 1.12
-            HasSubstitutes(_paths) => {
-                /*
-                ### Outputs
-                paths :: [Set][se-Set] of [StorePath][se-StorePath]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::HasSubstitutes,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            // Obsolete Nix 1.2 Protocol 1.12
-            QuerySubstitutablePathInfo(_path) => {
-                /*
-                ### Outputs
-                found :: [Bool][se-Bool]
-
-                #### If found is true
-                - info :: [SubstitutablePathInfo][se-SubstitutablePathInfo]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QuerySubstitutablePathInfo,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-        }
-        Ok(())
-    }
-
-    pub async fn local_process_logs<'s, T: Send + 's>(
-        &'s mut self,
-        mut logs: impl LocalLoggerResult<T, DaemonError> + 's,
-    ) -> Result<T, RecoverableError> {
-        while let Some(msg) = logs.next().await {
-            self.writer.write_value(&msg.recover()?).await?;
-        }
-        // TODO: Test this recover
-        let value = logs.result().await.recover()?;
-        self.writer.write_value(&RawLogMessage::Last).await?;
-        Ok(value)
-    }
-
-    pub async fn local_process_requests<'s, S>(
-        &'s mut self,
-        mut store: S,
-    ) -> Result<(), DaemonError>
-    where
-        S: LocalDaemonStore + 's,
-    {
-        while let Some(request) = self.reader.try_read_value::<Request>().await? {
-            let op = request.operation();
-            info!("Server got operation {}", op);
-            if let Err(mut err) = self.local_process_request(&mut store, request).await {
-                err.source = err.source.fill_operation(op);
-                if err.can_recover {
-                    self.writer
-                        .write_value(&RawLogMessage::Error(err.source.into()))
-                        .await?;
-                } else {
-                    return Err(err.source);
-                }
-            }
-            info!("Server flush");
-            self.writer.flush().await?;
-        }
-        info!("Server handled all requests");
-        Ok(())
-    }
-
-    fn local_store_nar_from_path<'s, 'p, 'r, NW, S>(
-        store: &'s mut S,
-        path: &'p StorePath,
-        sink: NW,
-    ) -> impl LocalLoggerResult<(), DaemonError> + 'r
-    where
-        S: LocalDaemonStore + 's,
-        NW: AsyncWrite + Unpin + 'r,
-        's: 'r,
-        'p: 'r,
-    {
-        store.nar_from_path(path, sink)
-    }
-
-    async fn local_nar_from_path<'s, 't, S>(
-        &'s mut self,
-        store: &'t mut S,
-        path: StorePath,
-    ) -> Result<(), RecoverableError>
-    where
-        S: LocalDaemonStore + 't,
-    {
-        // FUTUREWORK: Fix that this whole implementation allocates 2 buffers
-
-        let (mut reader, sink) = simplex(10_000);
-        let mut logs = Self::local_store_nar_from_path(store, &path, sink);
-
-        while let Some(msg) = logs.next().await {
-            self.writer.write_value(&msg.recover()?).await?;
-        }
-
-        self.writer.write_value(&RawLogMessage::Last).await?;
-        try_join!(
-            async move {
-                info!("Copying NAR from server");
-                let ret = copy(&mut reader, &mut self.writer)
-                    .map_err(DaemonError::from)
-                    .await;
-                info!("Copied {:?} NAR from server", ret);
-                ret
-            },
-            logs.result().map_err(DaemonError::from)
-        )?;
-        Ok(())
-    }
-
-    pub async fn local_process_request<'s, S>(
-        &'s mut self,
-        mut store: S,
-        request: Request,
-    ) -> Result<(), RecoverableError>
-    where
-        S: LocalDaemonStore + 's,
-    {
-        use Request::*;
-        let op = request.operation();
-        match request {
-            SetOptions(options) => {
-                let logs = store.set_options(&options);
-                self.local_process_logs(logs).await?;
-            }
-            IsValidPath(path) => {
-                let logs = store.is_valid_path(&path);
-                let value = self.local_process_logs(logs).await?;
-                self.writer.write_value(&value).await?;
-            }
-            QueryValidPaths(req) => {
-                let logs = store.query_valid_paths(&req.paths, req.substitute);
-                let value = self.local_process_logs(logs).await?;
-                self.writer.write_value(&value).await?;
-            }
-            QueryPathInfo(path) => {
-                let logs = store.query_path_info(&path);
-                let value = self.local_process_logs(logs).await?;
-                self.writer.write_value(&value).await?;
-            }
-            NarFromPath(path) => {
-                self.local_nar_from_path(&mut store, path).await?;
-            }
-            QueryReferrers(_path) => {
-                /*
-                ### Outputs
-                referrers :: [Set][se-Set] of [StorePath][se-StorePath]
-                 */
-
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryReferrers,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            AddToStore(req) => {
-                match req {
-                    AddToStoreRequest::Protocol25(_post25_req) => {
-                        /*
-                        #### Inputs
-                        - name :: [StorePathName][se-StorePathName]
-                        - camStr :: [ContentAddressMethodWithAlgo][se-ContentAddressMethodWithAlgo]
-                        - refs :: [Set][se-Set] of [StorePath][se-StorePath]
-                        - repairBool :: [Bool64][se-Bool64]
-                        - [Framed][se-Framed] NAR dump
-
-                        #### Outputs
-                        info :: [ValidPathInfo][se-ValidPathInfo]
-                         */
-                    }
-                    AddToStoreRequest::ProtocolPre25(_pre25_req) => {
-                        /*
-                        #### Inputs
-                        - baseName :: [StorePathName][se-StorePathName]
-                        - fixed :: [Bool64][se-Bool64]
-                        - recursive :: [FileIngestionMethod][se-FileIngestionMethod]
-                        - hashAlgo :: [HashAlgorithm][se-HashAlgorithm]
-                        - NAR dump
-
-                        If fixed is `true`, hashAlgo is forced to `sha256` and recursive is forced to
-                        `NixArchive`.
-
-                        Only `Flat` and `NixArchive` values are supported for the recursive input
-                        parameter.
-
-                        #### Outputs
-                        path :: [StorePath][se-StorePath]
-                         */
-                    }
-                }
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::AddToStore,
-                ))
-                .with_operation(op)?;
-            }
-            BuildPaths(_req) => {
-                /*
-                ### Outputs
-                1 :: [Int][se-Int] (hardcoded and ignored by client)
-                 */
-
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::BuildPaths,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            EnsurePath(_path) => {
-                /*
-                ### Outputs
-                1 :: [Int][se-Int] (hardcoded and ignored by client)
-                 */
-
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::EnsurePath,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            AddTempRoot(_path) => {
-                /*
-                ### Outputs
-                1 :: [Int][se-Int] (hardcoded and ignored by client)
-                 */
-
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::AddTempRoot,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            AddIndirectRoot(_path) => {
-                /*
-                ### Outputs
-                1 :: [Int][se-Int] (hardcoded and ignored by client)
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::AddIndirectRoot,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            FindRoots => {
-                /*
-                ### Outputs
-                roots :: [Map][se-Map] of [Path][se-Path] to [StorePath][se-StorePath]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::FindRoots,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            CollectGarbage(_req) => {
-                /*
-                ### Outputs
-                - pathsDeleted :: [Set][se-Set] of [Path][se-Path]
-                - bytesFreed :: [UInt64][se-UInt64]
-                - 0 :: [UInt64][se-UInt64] (hardcoded, obsolete and ignored by client)
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::CollectGarbage,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            QueryAllValidPaths => {
-                /*
-                ### Outputs
-                paths :: [Set][se-Set] of [StorePath][se-StorePath]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryAllValidPaths,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            QueryPathFromHashPart(_hash) => {
-                /*
-                ### Outputs
-                path :: [OptStorePath][se-OptStorePath]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryPathFromHashPart,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            QuerySubstitutablePaths(_paths) => {
-                /*
-                ### Outputs
-                paths :: [Set][se-Set] of [StorePath][se-StorePath]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QuerySubstitutablePaths,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            QueryValidDerivers(_path) => {
-                /*
-                ### Outputs
-                derivers :: [Set][se-Set] of [StorePath][se-StorePath]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryValidDerivers,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            OptimiseStore => {
-                /*
-                ### Outputs
-                1 :: [Int][se-Int] (hardcoded and ignored by client)
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::OptimiseStore,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            VerifyStore(_req) => {
-                /*
-                ### Outputs
-                errors :: [Bool][se-Bool]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::VerifyStore,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            BuildDerivation(_req) => {
-                /*
-                ### Outputs
-                buildResult :: [BuildResult][se-BuildResult]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::BuildDerivation,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            AddSignatures(_req) => {
-                /*
-                ### Outputs
-                1 :: [Int][se-Int] (hardcoded and ignored by client)
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::AddSignatures,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            AddToStoreNar(_req) => {
-                /*
-                ### Inputs
-                #### If protocol version is 1.23 or newer
-                [Framed][se-Framed] NAR dump
-
-                #### If protocol version is between 1.21 and 1.23
-                NAR dump sent using [`STDERR_READ`](./logging.md#stderr_read)
-
-                #### If protocol version is older than 1.21
-                NAR dump sent raw on stream
-
-                ### Outputs
-                Nothing
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::AddToStoreNar,
-                ))
-                .with_operation(op)?;
-            }
-            QueryMissing(_paths) => {
-                /*
-                ### Outputs
-                - willBuild :: [Set][se-Set] of [StorePath][se-StorePath]
-                - willSubstitute :: [Set][se-Set] of [StorePath][se-StorePath]
-                - unknown :: [Set][se-Set] of [StorePath][se-StorePath]
-                - downloadSize :: [UInt64][se-UInt64]
-                - narSize :: [UInt64][se-UInt64]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryMissing,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            QueryDerivationOutputMap(_path) => {
-                /*
-                ### Outputs
-                outputs :: [Map][se-Map] of [OutputName][se-OutputName] to [OptStorePath][se-OptStorePath]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryDerivationOutputMap,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            RegisterDrvOutput(_req) => {
-                /*
-                ### Outputs
-                Nothing
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::RegisterDrvOutput,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            QueryRealisation(_output_id) => {
-                /*
-                ### Outputs
-                #### If protocol is 1.31 or newer
-                realisations :: [Set][se-Set] of [Realisation][se-Realisation]
-
-                #### If protocol is older than 1.31
-                outPaths :: [Set][se-Set] of [StorePath][se-StorePath]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryRealisation,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            AddMultipleToStore(_req) => {
-                /*
-                ### Inputs
-                - repair :: [Bool64][se-Bool64]
-                - dontCheckSigs :: [Bool64][se-Bool64]
-                - [Framed][se-Framed] stream of [add multiple NAR dump][se-AddMultipleToStore]
-
-                ### Outputs
-                Nothing
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::AddMultipleToStore,
-                ))
-                .with_operation(op)?;
-            }
-            AddBuildLog(BaseStorePath(_path)) => {
-                /*
-                ### Inputs
-                - path :: [BaseStorePath][se-BaseStorePath]
-                - [Framed][se-Framed] stream of log lines
-
-                ### Outputs
-                1 :: [Int][se-Int] (hardcoded and ignored by client)
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::AddBuildLog,
-                ))
-                .with_operation(op)?;
-            }
-            BuildPathsWithResults(_req) => {
-                /*
-                ### Outputs
-                results :: [List][se-List] of [KeyedBuildResult][se-KeyedBuildResult]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::BuildPathsWithResults,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            AddPermRoot(_req) => {
-                /*
-                ### Outputs
-                gcRoot :: [Path][se-Path]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::AddPermRoot,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-
-            // Obsolete Nix 2.5.0 Protocol 1.32
-            SyncWithGC => {
-                /*
-                ### Outputs
-                Nothing
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::SyncWithGC,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            // Obsolete Nix 2.4 Protocol 1.25
-            AddTextToStore(_req) => {
-                /*
-                ### Outpus
-                path :: [StorePath][se-StorePath]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::AddTextToStore,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            // Obsolete Nix 2.4 Protocol 1.22*
-            QueryDerivationOutputs(_path) => {
-                /*
-                ### Outputs
-                derivationOutputs :: [Set][se-Set] of [StorePath][se-StorePath]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryDerivationOutputs,
-                ))
-                .with_operation(op)
-                .recover()?;
-            }
-            // Obsolete Nix 2.4 Protocol 1.21
-            QueryDerivationOutputNames(_path) => {
-                /*
-                ### Outputs
-                names :: [Set][se-Set] of [OutputName][se-OutputName]
-                 */
-                Err(DaemonErrorKind::UnimplementedOperation(
-                    Operation::QueryDerivationOutputNames,
-                ))
-                .with_operation(op)
-                .recover()?;
             }
             // Obsolete Nix 2.0, Protocol 1.19*
             QuerySubstitutablePathInfos(_req) => {

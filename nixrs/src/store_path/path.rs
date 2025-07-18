@@ -91,7 +91,7 @@ impl StorePath {
 impl fmt::Debug for StorePath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("StorePath")
-            .field(&format_args!("{}", self))
+            .field(&format_args!("{self}"))
             .finish()
     }
 }
@@ -165,7 +165,7 @@ impl FromStoreDirStr for StorePath {
 
 impl StoreDirDisplay for StorePath {
     fn fmt(&self, store_dir: &StoreDir, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}/{}", store_dir, self)
+        write!(f, "{store_dir}/{self}")
     }
 }
 
@@ -219,7 +219,7 @@ impl StorePathHash {
 
 impl fmt::Debug for StorePathHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "StorePathHash({})", self)
+        write!(f, "StorePathHash({self})")
     }
 }
 
@@ -649,7 +649,7 @@ mod unittests {
     #[case::longest("test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
     fn store_path_ok(#[case] case_name: &str) {
         let case_hash = "00ljmhbmf3d12aq4l5l7yr7bxn03yqvf";
-        let path_name = format!("{}-{}", case_hash, case_name);
+        let path_name = format!("{case_hash}-{case_name}");
         let path = path_name.parse::<StorePath>().expect("parses path");
         assert_eq!(path_name, path.to_string());
         let path2 = path_name.as_bytes().try_into().expect("parses path bytes");

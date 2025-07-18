@@ -73,7 +73,7 @@ impl Algorithm {
             Algorithm::SHA1 => &digest::SHA1_FOR_LEGACY_USE_ONLY,
             Algorithm::SHA256 => &digest::SHA256,
             Algorithm::SHA512 => &digest::SHA512,
-            a => panic!("Unsupported digest algorithm {:?}", a),
+            _ => panic!("Unsupported digest algorithm {self:?}"),
         }
     }
 }
@@ -92,7 +92,7 @@ impl<'a> TryFrom<&'a digest::Algorithm> for Algorithm {
         } else if *value == digest::SHA512 {
             Ok(Algorithm::SHA512)
         } else {
-            Err(UnknownAlgorithm(format!("{:?}", value)))
+            Err(UnknownAlgorithm(format!("{value:?}")))
         }
     }
 }
@@ -295,7 +295,7 @@ impl Hash {
     }
 
     pub fn encode_base16(&self) -> String {
-        format!("{:#x}", self)
+        format!("{self:#x}")
     }
 
     pub fn encode_base32(&self) -> String {
@@ -342,7 +342,7 @@ impl fmt::LowerHex for Hash {
             write!(f, "{}:", self.algorithm())?;
         }
         for val in self.as_ref() {
-            write!(f, "{:02x}", val)?;
+            write!(f, "{val:02x}")?;
         }
         Ok(())
     }
@@ -354,7 +354,7 @@ impl fmt::UpperHex for Hash {
             write!(f, "{}:", self.algorithm())?;
         }
         for val in self.as_ref() {
-            write!(f, "{:02X}", val)?;
+            write!(f, "{val:02X}")?;
         }
         Ok(())
     }
@@ -389,9 +389,9 @@ impl fmt::Display for Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = base32::encode(self.as_ref());
         if f.alternate() {
-            write!(f, "{}", s)
+            write!(f, "{s}")
         } else {
-            write!(f, "{}:{}", self.algorithm(), s)
+            write!(f, "{}:{s}", self.algorithm())
         }
     }
 }
@@ -416,7 +416,7 @@ impl fmt::Display for Base32Hash<'_> {
         if f.alternate() {
             f.write_str(s)
         } else {
-            write!(f, "{}:{}", self.0.algorithm(), s)
+            write!(f, "{}:{s}", self.0.algorithm())
         }
     }
 }
@@ -426,9 +426,9 @@ impl fmt::Display for Base64Hash<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = base64::encode(self.0.as_ref());
         if f.alternate() {
-            write!(f, "{}", s)
+            write!(f, "{s}")
         } else {
-            write!(f, "{}:{}", self.0.algorithm(), s)
+            write!(f, "{}:{s}", self.0.algorithm())
         }
     }
 }
@@ -437,7 +437,7 @@ struct SRIHash<'a>(&'a Hash);
 impl fmt::Display for SRIHash<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = base64::encode(self.0.as_ref());
-        write!(f, "{}-{}", self.0.algorithm(), s)
+        write!(f, "{}-{s}", self.0.algorithm())
     }
 }
 
@@ -648,11 +648,11 @@ mod tests {
     fn test_hash(s1: &str, algo: Algorithm, base16: &str, base32: &str, base64: &str) {
         let hash = digest(algo, s1);
         let base16_h = base16.to_uppercase();
-        let base16_p = format!("{}:{}", algo, base16);
-        let base16_hp = format!("{}:{}", algo, base16_h);
-        let base32_p = format!("{}:{}", algo, base32);
-        let base64_p = format!("{}:{}", algo, base64);
-        let sri = format!("{}-{}", algo, base64);
+        let base16_p = format!("{algo}:{base16}");
+        let base16_hp = format!("{algo}:{base16_h}");
+        let base32_p = format!("{algo}:{base32}");
+        let base64_p = format!("{algo}:{base64}");
+        let sri = format!("{algo}-{base64}");
         assert_eq!(format!("{:x}", hash), base16_p);
         assert_eq!(format!("{:#x}", hash), base16);
         assert_eq!(format!("{:X}", hash), base16_hp);

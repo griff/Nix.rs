@@ -46,7 +46,7 @@ pub fn main() {
         if argument == "--write" {
             write_allowed = true;
         } else {
-            eprintln!("unknown flag '{}'", argument);
+            eprintln!("unknown flag '{argument}'");
             exit(1);
         }
     }
@@ -70,8 +70,8 @@ pub fn main() {
             .await
         });
 
-    if let Err(e) = res {
-        eprintln!("Nix.rs Error: {}", e);
-        exit(e.exit_code() as i32);
+    if let Err(err) = res {
+        eprintln!("Nix.rs Error: {err}");
+        exit(err.exit_code() as i32);
     }
 }

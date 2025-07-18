@@ -19,7 +19,7 @@ pub enum ParseDrvOutputError {
 }
 
 #[derive(Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Deserialize, Serialize)]
-#[display(fmt = "{:x}!{}", drv_hash, output_name)]
+#[display(fmt = "{drv_hash:x}!{output_name}")]
 #[serde(try_from = "String", into = "String")]
 pub struct DrvOutput {
     /// The hash modulo of the derivation

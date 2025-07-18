@@ -398,7 +398,7 @@ impl Store for AssertStore {
         self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::StorePathSet(set) => Ok(set),
-            e => panic!("Invalid response {:?} for query_valid_paths", e),
+            e => panic!("Invalid response {e:?} for query_valid_paths"),
         }
     }
 
@@ -408,7 +408,7 @@ impl Store for AssertStore {
         self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::ValidPathInfo(res) => Ok(res),
-            e => panic!("Invalid response {:?} for query_path_info", e),
+            e => panic!("Invalid response {e:?} for query_path_info"),
         }
     }
 
@@ -426,7 +426,7 @@ impl Store for AssertStore {
                 sink.flush().await?;
                 Ok(())
             }
-            e => panic!("Invalid response {:?} for nar_from_path", e),
+            e => panic!("Invalid response {e:?} for nar_from_path"),
         }
     }
 
@@ -449,7 +449,7 @@ impl Store for AssertStore {
         self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::Empty => Ok(()),
-            e => panic!("Invalid response {:?} for add_to_store", e),
+            e => panic!("Invalid response {e:?} for add_to_store"),
         }
     }
     async fn build_derivation(
@@ -469,7 +469,7 @@ impl Store for AssertStore {
         self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::BuildResult(res) => Ok(res),
-            e => panic!("Invalid response {:?} for build_derivation", e),
+            e => panic!("Invalid response {e:?} for build_derivation"),
         }
     }
     async fn build_paths(
@@ -486,7 +486,7 @@ impl Store for AssertStore {
         self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::Empty => Ok(()),
-            e => panic!("Invalid response {:?} for build_paths", e),
+            e => panic!("Invalid response {e:?} for build_paths"),
         }
     }
 }
@@ -508,7 +508,7 @@ impl LegacyStore for AssertStore {
         self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::StorePathSet(set) => Ok(set),
-            e => panic!("Invalid response {:?} for legacy_query_valid_paths", e),
+            e => panic!("Invalid response {e:?} for legacy_query_valid_paths"),
         }
     }
     async fn export_paths<W: AsyncWrite + Send + Unpin>(
@@ -525,7 +525,7 @@ impl LegacyStore for AssertStore {
                 sink.flush().await?;
                 Ok(())
             }
-            e => panic!("Invalid response {:?} for export_paths", e),
+            e => panic!("Invalid response {e:?} for export_paths"),
         }
     }
     async fn import_paths<R: AsyncRead + Send + Unpin>(
@@ -539,7 +539,7 @@ impl LegacyStore for AssertStore {
         self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::Empty => Ok(()),
-            e => panic!("Invalid response {:?} for import_paths", e),
+            e => panic!("Invalid response {e:?} for import_paths"),
         }
     }
     async fn query_closure(
@@ -555,7 +555,7 @@ impl LegacyStore for AssertStore {
         self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::StorePathSet(set) => Ok(set),
-            e => panic!("Invalid response {:?} for query_closure", e),
+            e => panic!("Invalid response {e:?} for query_closure"),
         }
     }
 }
@@ -576,7 +576,7 @@ impl DaemonStore for AssertStore {
         self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::Bool(res) => Ok(res),
-            e => panic!("Invalid response {:?} for is_valid_path", e),
+            e => panic!("Invalid response {e:?} for is_valid_path"),
         }
     }
 
@@ -597,7 +597,7 @@ impl DaemonStore for AssertStore {
         self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::Empty => Ok(()),
-            e => panic!("Invalid response {:?} for add_multiple_to_store", e),
+            e => panic!("Invalid response {e:?} for add_multiple_to_store"),
         }
     }
 
@@ -610,7 +610,7 @@ impl DaemonStore for AssertStore {
         self.actual = Some(actual);
         match take(&mut self.response)? {
             MessageResponse::QueryMissingResult(res) => Ok(res),
-            e => panic!("Invalid response {:?} for query_missing", e),
+            e => panic!("Invalid response {e:?} for query_missing"),
         }
     }
 }

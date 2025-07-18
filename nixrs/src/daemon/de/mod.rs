@@ -27,7 +27,7 @@ pub trait Error: Sized + StdError {
     }
 
     fn io_error(err: std::io::Error) -> Self {
-        Self::custom(format_args!("There was an I/O error {}", err))
+        Self::custom(format_args!("There was an I/O error {err}"))
     }
 
     fn invalid_data<T: fmt::Display>(msg: T) -> Self {

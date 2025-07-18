@@ -53,7 +53,7 @@ impl fmt::Display for ServeCommand {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use ServeCommand::*;
         match self {
-            Unknown(cmd) => write!(f, "unknown command {}", cmd),
+            Unknown(cmd) => write!(f, "unknown command {cmd}"),
             CmdQueryValidPaths => write!(f, "query valid paths"),
             CmdQueryPathInfos => write!(f, "query path infos"),
             CmdDumpStorePath => write!(f, "dump store path"),

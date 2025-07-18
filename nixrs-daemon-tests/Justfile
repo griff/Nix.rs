@@ -1,0 +1,3 @@
+test-all: (test "nix_2_3") (test "nix_2_24") (test "lix_2_91")
+test TEST *TEST_ARGS:
+    NIX_IMPL="${ALL_NIX}/run-config/{{TEST}}.json" cargo test -- {{TEST_ARGS}}

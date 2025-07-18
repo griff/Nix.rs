@@ -877,10 +877,10 @@ mod unittests {
                 assert_eq!(kind, err.kind());
             }
             (_, Err(err)) => {
-                panic!("Unexpected read failure {:?}", err);
+                panic!("Unexpected read failure {err:?}");
             }
             (Err(kind), _) => {
-                panic!("Read should fail with {:?} error", kind);
+                panic!("Read should fail with {kind:?} error");
             }
         }
     }

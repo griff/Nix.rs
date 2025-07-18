@@ -82,9 +82,9 @@ impl fmt::Display for OutputSpec {
             OutputSpec::Named(outputs) => {
                 let mut it = outputs.iter();
                 if let Some(output) = it.next() {
-                    write!(f, "{}", output)?;
+                    write!(f, "{output}")?;
                     for output in it {
-                        write!(f, ",{}", output)?;
+                        write!(f, ",{output}")?;
                     }
                 }
             }

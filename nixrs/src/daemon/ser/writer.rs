@@ -47,8 +47,7 @@ impl NixWriterBuilder {
     pub fn set_display_buf_size(mut self, size: usize) -> Self {
         assert!(
             size >= 8,
-            "display_buf_size of {} is to small to store u64",
-            size
+            "display_buf_size of {size} is to small to store u64",
         );
         self.display_buf_size = size;
         self
@@ -57,8 +56,7 @@ impl NixWriterBuilder {
     pub fn set_reserved_buf_size(mut self, size: usize) -> Self {
         assert!(
             size >= 8,
-            "reserved_buf_size of {} is to small to store u64",
-            size
+            "reserved_buf_size of {size} is to small to store u64"
         );
         self.reserved_buf_size = size;
         self
@@ -326,7 +324,7 @@ where
         }
         let offset = self.buf.len();
         self.buf.put_u64_le(0);
-        if let Err(err) = write!(self.buf, "{}", msg) {
+        if let Err(err) = write!(self.buf, "{msg}") {
             self.buf.truncate(offset);
             return Err(Self::Error::unsupported_data(err));
         }

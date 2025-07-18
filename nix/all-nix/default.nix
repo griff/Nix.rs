@@ -12,7 +12,6 @@ pkgs.callPackage (
 , fetchpatch2
 , runCommand
 , buildPackages
-, Security
 , storeDir ? "/nix/store"
 , stateDir ? "/nix/var"
 , confDir ? "/etc"
@@ -113,7 +112,7 @@ let
     callPackage
       (import ./common.nix ({ inherit lib fetchFromGitHub; } // args))
       {
-        inherit Security storeDir stateDir confDir;
+        inherit storeDir stateDir confDir;
         boehmgc = boehmgc-nix;
         aws-sdk-cpp = if lib.versionAtLeast args.version "2.12pre" then aws-sdk-cpp-nix else aws-sdk-cpp-old-nix;
         libgit2 = if lib.versionAtLeast args.version "2.25.0" then libgit2-thin-packfile else libgit2;
@@ -347,17 +346,22 @@ let
   };
   selected = [ "nix_2_3" "nix_2_24" "lix_2_91"]; 
   selected-nix = lib.getAttrs selected all-nix;
+  unbroken = lib.attrNames (lib.filterAttrs (n: v: (lib.isDerivation v) && !(v.meta.broken or false)) all-nix);
 in lib.makeExtensible (self: (
   all-nix // {
+    inherit unbroken;
+    files = {
+      run-config = "${./run-config}";
+      conf = "${./conf}";
+    };
     all-nix = runCommand "all-nix" { meta.flake.exported = "all-nix"; } ''
       mkdir $out
       cp -a ${./conf} $out/conf
+      cp -a ${./run-config} $out/run-config
       ${lib.concatStringsSep "\n" (lib.mapAttrsToList (n: d: ''
         ln -s ${toString d} $out/${n}
       '') (lib.filterAttrs (n: v: (lib.isDerivation v) && !(v.meta.broken or false)) selected-nix))}
     '';
     meta.ci.targets = (lib.attrNames all-nix) ++ [ "all-nix" ];
   }
-))) {
-  inherit (pkgs.darwin.apple_sdk.frameworks) Security;
-}
+))) {}

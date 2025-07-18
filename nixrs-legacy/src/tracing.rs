@@ -18,7 +18,7 @@ impl ParentLayer {
     }
     pub fn new_debug() -> ParentLayer {
         let parent = get_default(|d| d.clone());
-        eprintln!("Parent {:?}", parent);
+        eprintln!("Parent {parent:?}");
         ParentLayer { parent, log: true }
     }
 }
@@ -101,7 +101,7 @@ where
 
     fn on_id_change(&self, old: &span::Id, new: &span::Id, ctx: layer::Context<'_, S>) {
         if self.log {
-            eprintln!("Id change from {:?} to {:?}", old, new);
+            eprintln!("Id change from {old:?} to {new:?}");
         }
         if let Some(span) = ctx.span(old) {
             if let Some(parent_id) = span.extensions().get::<ParentId>() {
@@ -153,11 +153,11 @@ where
 
     fn on_close(&self, id: span::Id, ctx: layer::Context<'_, S>) {
         if self.log {
-            eprintln!("Span close {:?}", id);
+            eprintln!("Span close {id:?}");
         }
         if let Some(span) = ctx.span(&id) {
             if self.log {
-                eprintln!("Found Span close {:?} {}", id, span.name());
+                eprintln!("Found Span close {id:?} {}", span.name());
             }
             if let Some(parent_id) = span.extensions().get::<ParentId>() {
                 if self.log {
@@ -167,7 +167,7 @@ where
             }
         }
         if self.log {
-            eprintln!("Span after close {:?}", id);
+            eprintln!("Span after close {id:?}");
         }
     }
 }

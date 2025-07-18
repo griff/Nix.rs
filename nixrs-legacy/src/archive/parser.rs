@@ -40,7 +40,7 @@ where
                 if magic != NAR_VERSION_MAGIC_1 {
                     Err(io::Error::new(
                         io::ErrorKind::InvalidData,
-                        format!("input doesn't look like a Nix archive {}!={}", magic, NAR_VERSION_MAGIC_1)))?;
+                        format!("input doesn't look like a Nix archive {magic}!={NAR_VERSION_MAGIC_1}")))?;
                     return;
                 }
                 yield NAREvent::Magic(Arc::new(magic));
@@ -103,7 +103,7 @@ where
                     if s != ")" {
                         Err(io::Error::new(
                             io::ErrorKind::InvalidData,
-                            format!("unknown field '{}'", s)))?;
+                            format!("unknown field '{s}'")))?;
                         return;
                     }
                     depth -= 1;
@@ -137,7 +137,7 @@ where
                 } else {
                     Err(io::Error::new(
                         io::ErrorKind::InvalidData,
-                        format!("unknown file type {}", t)))?;
+                        format!("unknown file type {t}")))?;
                     break
                 }
             } else if s == "executable" && file_type == Some(FileType::Regular) {
@@ -256,7 +256,7 @@ where
                     } else {
                         Err(io::Error::new(
                             io::ErrorKind::InvalidData,
-                            format!("unknown field '{}'", s)))?;
+                            format!("unknown field '{s}'")))?;
                         return;
                     }
                 }
@@ -269,7 +269,7 @@ where
             } else {
                 Err(io::Error::new(
                     io::ErrorKind::InvalidData,
-                    format!("unknown field '{}'", s)))?;
+                    format!("unknown field '{s}'")))?;
                 return;
             }
         }

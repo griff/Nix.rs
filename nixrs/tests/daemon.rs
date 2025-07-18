@@ -88,7 +88,7 @@ impl NixImpl for StdNixImpl {
             let id: u64 = op.into();
             logs.insert(
                 0,
-                LogMessage::Next(format!("performing daemon worker op: {}\n", id).into()),
+                LogMessage::Next(format!("performing daemon worker op: {id}\n").into()),
             )
         }
     }
@@ -151,7 +151,7 @@ where
 {
     let mut logs = pin!(logs);
     while let Some(log) = logs.next().await {
-        eprintln!("Msg: {:?}", log);
+        eprintln!("Msg: {log:?}");
     }
     logs.await
 }
@@ -229,7 +229,7 @@ where
     let stderr_copy = async move {
         let mut lines = BufReader::new(stderr).lines();
         while let Some(line) = lines.next_line().await? {
-            println!("{}", line);
+            println!("{line}");
         }
         Ok(()) as Result<(), E>
     };
@@ -239,7 +239,7 @@ where
      */
 
     let client = async move {
-        let mut result = DaemonClient::builder().connect(stdout, stdin);
+        let result = DaemonClient::builder().connect(stdout, stdin);
         let mut r = pin!(result);
         let logs: Vec<_> = r.by_ref().collect().await;
         let client = r.await?;
