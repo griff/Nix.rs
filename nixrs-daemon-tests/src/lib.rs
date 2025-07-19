@@ -24,6 +24,8 @@ use tokio::try_join;
 use tracing::warn;
 
 #[cfg(test)]
+mod proptests;
+#[cfg(test)]
 mod unittests;
 
 pub trait NixImpl: std::fmt::Debug {
@@ -52,6 +54,9 @@ pub trait NixImpl: std::fmt::Debug {
     //fn prepare_op_logs2(&self, op: Operation, logs: &mut VecDeque<LogMessage>);
     fn protocol_range(&self) -> ProtocolRange;
     //fn handshake_logs_range(&self) -> SizeRange;
+    fn collect_log(&self, log: LogMessage) -> LogMessage {
+        log
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -62,6 +67,7 @@ pub struct JsonNixImpl {
     cmd_args: Vec<String>,
     range: ProtocolRange,
     op_log_prefix: bool,
+    chomp_log: bool,
     #[serde(default)]
     skip_all: bool,
     skipped: BTreeSet<String>,
@@ -91,6 +97,12 @@ pub static ENV_NIX_IMPL: LazyLock<JsonNixImpl> = LazyLock::new(|| {
     let nix_impl = std::env::var("NIX_IMPL").expect("NIX_IMPL env var is not set");
     JsonNixImpl::load_file(nix_impl).expect("NIX_IMPL env var does not point to json document")
 });
+pub fn nix_protocol_range() -> ProtocolRange {
+    ENV_NIX_IMPL
+        .range
+        .intersect(&ProtocolRange::default())
+        .unwrap()
+}
 
 impl NixImpl for JsonNixImpl {
     fn name(&self) -> &str {
@@ -114,6 +126,13 @@ impl NixImpl for JsonNixImpl {
                 0,
                 LogMessage::Next(format!("performing daemon worker op: {id}\n").into()),
             )
+        }
+    }
+    fn collect_log(&self, log: LogMessage) -> LogMessage {
+        if self.chomp_log {
+            chomp_log(log)
+        } else {
+            log
         }
     }
     fn protocol_range(&self) -> ProtocolRange {
@@ -170,6 +189,9 @@ impl NixImpl for StdNixImpl {
         }
     }
     */
+    fn collect_log(&self, log: LogMessage) -> LogMessage {
+        chomp_log(log)
+    }
 
     fn protocol_range(&self) -> ProtocolRange {
         self.range.intersect(&ProtocolRange::default()).unwrap()

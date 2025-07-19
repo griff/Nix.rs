@@ -15,8 +15,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 test-log = { workspace = true, features = ["trace"] }
+test-strategy = { workspace = true }
 tracing = { workspace = true }
 
 [dependencies.tokio]
 workspace = true
-features = ["fs", "io-util", "macros", "process", "rt-multi-thread"]
+features = ["fs", "io-util", "macros", "process", "rt-multi-thread", "time"]

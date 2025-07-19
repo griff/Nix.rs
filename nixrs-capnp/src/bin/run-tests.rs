@@ -1,7 +1,6 @@
 use std::future::Future;
 use std::path::Path;
 
-use capnp::Error;
 use capnp_rpc::rpc_twoparty_capnp::Side;
 use capnp_rpc::{
     new_client, new_future_client, rpc_twoparty_capnp, twoparty, Disconnector, RpcSystem,
@@ -9,8 +8,8 @@ use capnp_rpc::{
 use futures::io as fio;
 use futures::{try_join, AsyncReadExt, TryFutureExt as _};
 use nixrs::daemon::client::DaemonClient;
-use nixrs::daemon::{server, DaemonError, DaemonResult, MutexStore};
-use nixrs_capnp::{CapnpServer, CapnpStore, DEFAULT_BUF_SIZE};
+use nixrs::daemon::{server, DaemonError, DaemonResult, MutexHandshakeStore};
+use nixrs_capnp::{from_error, HandshakeLoggedCapnpServer, LoggedCapnpStore, DEFAULT_BUF_SIZE};
 use tokio::io::{duplex, AsyncRead, AsyncWrite};
 use tokio::task::LocalSet;
 
@@ -29,10 +28,10 @@ where
     ));
     let mut rpc_system = RpcSystem::new(network, None);
     let disconnector = rpc_system.get_disconnector();
-    let client: nixrs_capnp::capnp::nix_daemon_capnp::nix_daemon::Client =
+    let client: nixrs_capnp::capnp::nix_daemon_capnp::logged_nix_daemon::Client =
         rpc_system.bootstrap(rpc_twoparty_capnp::Side::Server);
     tokio::task::spawn_local(rpc_system);
-    let store = CapnpStore::new(client);
+    let store = LoggedCapnpStore::new(client);
     let ret = async move {
         let b = server::Builder::new();
         let server = b.local_serve_connection(tokio::io::stdin(), tokio::io::stdout(), store);
@@ -58,16 +57,16 @@ where
         Default::default(),
     );
 
-    let client: nixrs_capnp::capnp::nix_daemon_capnp::nix_daemon::Client =
+    let client: nixrs_capnp::capnp::nix_daemon_capnp::logged_nix_daemon::Client =
         new_future_client(async move {
             let store = DaemonClient::builder()
-                .connect_unix(socket)
+                .build_unix(socket)
                 .await
-                .map_err(|err| Error::failed(err.to_string()))?;
-            let store = MutexStore::new(store);
+                .map_err(from_error)?;
+            let store = MutexHandshakeStore::new(store);
 
-            let rpc_server = CapnpServer::without_logger(store);
-            let client: nixrs_capnp::capnp::nix_daemon_capnp::nix_daemon::Client =
+            let rpc_server = HandshakeLoggedCapnpServer::new(store);
+            let client: nixrs_capnp::capnp::nix_daemon_capnp::logged_nix_daemon::Client =
                 new_client(rpc_server);
             Ok(client)
         });

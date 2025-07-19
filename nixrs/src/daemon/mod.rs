@@ -30,7 +30,7 @@ pub use logger::{
     LogMessage, ResultLog, ResultLogExt, ResultProcess, ResultType, TraceLine, Verbosity,
 };
 #[cfg(feature = "nixrs-derive")]
-pub use mutex::MutexStore;
+pub use mutex::{MutexHandshakeStore, MutexStore};
 #[cfg(feature = "nixrs-derive")]
 pub use types::{
     AddToStoreItem, ClientOptions, DaemonError, DaemonErrorContext, DaemonErrorKind, DaemonInt,

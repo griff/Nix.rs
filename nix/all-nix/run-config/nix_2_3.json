@@ -10,6 +10,7 @@
     ],
     "range": "1.10..1.22",
     "op_log_prefix": false,
+    "chomp_log": true,
     "skipped": [
         "unittests::handshake_logs",
         "unittests::sesennst"

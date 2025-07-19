@@ -25,7 +25,7 @@ use rstest::rstest;
 use tokio::io::copy_buf;
 
 use crate::assert_result;
-use crate::{chomp_log, prepare_mock, process_logs, run_store_test, NixImpl as _, ENV_NIX_IMPL};
+use crate::{prepare_mock, process_logs, run_store_test, NixImpl as _, ENV_NIX_IMPL};
 
 #[tokio::test]
 #[should_panic(
@@ -83,7 +83,9 @@ async fn op_logs(#[case] mut logs: Vec<LogMessage>) {
             let actual_logs: Vec<_> = r.by_ref().collect().await;
             assert_eq!(
                 actual_logs,
-                logs.into_iter().map(chomp_log).collect::<Vec<_>>()
+                logs.into_iter()
+                    .map(|log| nix.collect_log(log))
+                    .collect::<Vec<_>>()
             );
             r.await?;
         }
@@ -113,7 +115,9 @@ async fn handshake_logs(#[case] logs: Vec<LogMessage>) {
     run_store_test(nix, version, mock, |client, actual_logs| async move {
         assert_eq!(
             actual_logs,
-            logs.into_iter().map(chomp_log).collect::<Vec<_>>()
+            logs.into_iter()
+                .map(|log| nix.collect_log(log))
+                .collect::<Vec<_>>()
         );
         Ok(client) as DaemonResult<_>
     })
@@ -801,7 +805,7 @@ async fn sesennst() {
     let nar = b"\r\0\0\0\0\0\0\0nix-archive-1\0\0\0\x01\0\0\0\0\0\0\0(\0\0\0\0\0\0\0\x04\0\0\0\0\0\0\0type\0\0\0\0\x07\0\0\0\0\0\0\0symlink\0\x06\0\0\0\0\0\0\0target\0\0a\0\0\0\0\0\0\0a6 ++Et?+C+= = ABYL+D7C=qEIc?nk/967?//747/0H?by=C+= 3=+?=3+4+e= B+j=i+5v+pW=e+?ht e79?U1/f =P+.KX\0\0\0\0\0\0\0\x01\0\0\0\0\0\0\0)\0\0\0\0\0\0\0";
     let handshake_logs = handshake_logs
         .into_iter()
-        .map(chomp_log)
+        .map(|log| nix.collect_log(log))
         .collect::<Vec<_>>();
     let mut mock = prepare_mock(nix);
     for log in handshake_logs.iter() {

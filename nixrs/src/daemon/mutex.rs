@@ -2,12 +2,37 @@ use std::future::Future;
 use std::pin::Pin;
 use std::{pin::pin, sync::Arc};
 
-use crate::daemon::{DaemonStore, FutureResultExt as _, ResultLog, ResultLogExt};
+use crate::daemon::{
+    DaemonStore, FutureResultExt as _, HandshakeDaemonStore, ResultLog, ResultLogExt,
+};
 use async_stream::stream;
 use futures::channel::oneshot;
 use futures::{FutureExt as _, StreamExt as _};
 use tokio::io::AsyncBufRead;
 use tokio::sync::Mutex;
+
+#[derive(Debug)]
+pub struct MutexHandshakeStore<HS> {
+    inner: HS,
+}
+
+impl<HS> MutexHandshakeStore<HS> {
+    pub fn new(store: HS) -> Self {
+        Self { inner: store }
+    }
+}
+
+impl<HS, S> HandshakeDaemonStore for MutexHandshakeStore<HS>
+where
+    HS: HandshakeDaemonStore<Store = S>,
+    S: DaemonStore + 'static,
+{
+    type Store = MutexStore<S>;
+
+    fn handshake(self) -> impl ResultLog<Output = super::DaemonResult<Self::Store>> + Send {
+        self.inner.handshake().map_ok(MutexStore::new)
+    }
+}
 
 #[derive(Debug)]
 pub struct MutexStore<S> {

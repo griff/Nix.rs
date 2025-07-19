@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 29112fa1764f47c58b2a9a0ac47aebf770968be497586cebf8649ba44058299b # shrinks to input = _ProptestOpLogsArgs { version: ProtocolVersion(1, 10), op_logs: [] }
+cc 25eeb5183faa59fea21e29645c1f03a913091d30cf53069946822ac5bb30dc73 # shrinks to input = _ProptestQueryValidPathsArgs { version: ProtocolVersion(1, 15), paths: {}, result: {} }
+cc 0e2f147d148a6817886fceaa35fd7f3b224f7c95e385bed0e25879cb70fa0e4b # shrinks to input = _ProptestHandshakeArgs { version: ProtocolVersion(1, 13), op_logs: [] }
+cc f9e02b3c3c8f459141027dbb6f0ffd86be8fc52ae315193b47511e3288a73a93 # shrinks to input = _ProptestIsValidPathArgs { version: ProtocolVersion(1, 18), op_logs: [], path: StorePath(00000000000000000000000000000000-+), result: false }

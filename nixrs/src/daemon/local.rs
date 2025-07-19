@@ -64,7 +64,7 @@ pub trait LocalDaemonStore {
     fn nar_from_path<'s>(
         &'s mut self,
         path: &'s StorePath,
-    ) -> impl ResultLog<Output = DaemonResult<impl AsyncBufRead + 's>> + 's {
+    ) -> impl ResultLog<Output = DaemonResult<impl AsyncBufRead + use<Self>>> + 's {
         ready(Err(DaemonError::unimplemented(Operation::NarFromPath)) as Result<&[u8], DaemonError>)
             .empty_logs()
     }
@@ -329,7 +329,7 @@ pub trait LocalDaemonStore {
     fn shutdown(&mut self) -> impl Future<Output = DaemonResult<()>> + '_;
 }
 
-impl<S> LocalDaemonStore for &mut S
+impl<'bs, S> LocalDaemonStore for &'bs mut S
 where
     S: LocalDaemonStore,
 {
@@ -369,7 +369,7 @@ where
     fn nar_from_path<'s>(
         &'s mut self,
         path: &'s StorePath,
-    ) -> impl ResultLog<Output = DaemonResult<impl AsyncBufRead + 's>> + 's {
+    ) -> impl ResultLog<Output = DaemonResult<impl AsyncBufRead + use<'bs, S>>> + 's {
         (**self).nar_from_path(path)
     }
 

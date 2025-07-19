@@ -116,7 +116,7 @@ impl From<ActivityType> for nix_daemon_capnp::ActivityType {
             ActivityType::CopyPath => nix_daemon_capnp::ActivityType::CopyPath,
             ActivityType::FileTransfer => nix_daemon_capnp::ActivityType::FileTransfer,
             ActivityType::Realise => nix_daemon_capnp::ActivityType::Realise,
-            ActivityType::CopyPaths => nix_daemon_capnp::ActivityType::CopyPath,
+            ActivityType::CopyPaths => nix_daemon_capnp::ActivityType::CopyPaths,
             ActivityType::Builds => nix_daemon_capnp::ActivityType::Builds,
             ActivityType::Build => nix_daemon_capnp::ActivityType::Build,
             ActivityType::OptimiseStore => nix_daemon_capnp::ActivityType::OptimiseStore,
@@ -421,6 +421,25 @@ impl<'b> BuildFrom<LogMessage> for nix_daemon_capnp::log_message::Builder<'b> {
     }
 }
 
+impl<'r> ReadFrom<nix_daemon_capnp::log_message::Reader<'r>> for LogMessage {
+    fn read_from(reader: nix_daemon_capnp::log_message::Reader<'r>) -> Result<Self, Error> {
+        match reader.which()? {
+            nix_daemon_capnp::log_message::Which::Next(msg) => {
+                Ok(LogMessage::Next(Bytes::copy_from_slice(msg?)))
+            }
+            nix_daemon_capnp::log_message::Which::StartActivity(act) => {
+                Ok(LogMessage::StartActivity(act.read_into()?))
+            }
+            nix_daemon_capnp::log_message::Which::StopActivity(act) => {
+                Ok(LogMessage::StopActivity(act.get_act()))
+            }
+            nix_daemon_capnp::log_message::Which::Result(res) => {
+                Ok(LogMessage::Result(res.read_into()?))
+            }
+        }
+    }
+}
+
 impl<'b> BuildFrom<Activity> for nix_daemon_capnp::log_message::start_activity::Builder<'b> {
     fn build_from(&mut self, input: &Activity) -> Result<(), Error> {
         self.set_act(input.act);
@@ -435,6 +454,27 @@ impl<'b> BuildFrom<Activity> for nix_daemon_capnp::log_message::start_activity::
     }
 }
 
+impl<'r> ReadFrom<nix_daemon_capnp::log_message::start_activity::Reader<'r>> for Activity {
+    fn read_from(
+        reader: nix_daemon_capnp::log_message::start_activity::Reader<'r>,
+    ) -> Result<Self, Error> {
+        let act = reader.get_act();
+        let activity_type = reader.get_activity_type()?.into();
+        let level = reader.get_level()?.into();
+        let text = Bytes::copy_from_slice(reader.get_text()?);
+        let fields = reader.get_fields()?.read_into()?;
+        let parent = reader.get_parent();
+        Ok(Activity {
+            act,
+            activity_type,
+            level,
+            text,
+            fields,
+            parent,
+        })
+    }
+}
+
 impl<'b> BuildFrom<ActivityResult> for nix_daemon_capnp::log_message::result::Builder<'b> {
     fn build_from(&mut self, input: &ActivityResult) -> Result<(), Error> {
         self.set_act(input.act);
@@ -446,6 +486,19 @@ impl<'b> BuildFrom<ActivityResult> for nix_daemon_capnp::log_message::result::Bu
     }
 }
 
+impl<'r> ReadFrom<nix_daemon_capnp::log_message::result::Reader<'r>> for ActivityResult {
+    fn read_from(reader: nix_daemon_capnp::log_message::result::Reader<'r>) -> Result<Self, Error> {
+        let act = reader.get_act();
+        let result_type = reader.get_result_type()?.into();
+        let fields = reader.get_fields()?.read_into()?;
+        Ok(ActivityResult {
+            act,
+            result_type,
+            fields,
+        })
+    }
+}
+
 impl<'b> BuildFrom<Field> for nix_daemon_capnp::field::Builder<'b> {
     fn build_from(&mut self, input: &Field) -> Result<(), Error> {
         match input {
@@ -453,5 +506,16 @@ impl<'b> BuildFrom<Field> for nix_daemon_capnp::field::Builder<'b> {
             Field::String(value) => self.set_string(value.as_ref()),
         }
         Ok(())
+    }
+}
+
+impl<'r> ReadFrom<nix_daemon_capnp::field::Reader<'r>> for Field {
+    fn read_from(reader: nix_daemon_capnp::field::Reader<'r>) -> Result<Self, Error> {
+        match reader.which()? {
+            nix_daemon_capnp::field::Which::Int(value) => Ok(Field::Int(value)),
+            nix_daemon_capnp::field::Which::String(value) => {
+                Ok(Field::String(Bytes::copy_from_slice(value?)))
+            }
+        }
     }
 }

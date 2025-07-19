@@ -1,6 +1,6 @@
-build-run-tests:
+build-tests:
     cargo build --bin run-tests
 
 [working-directory: '../nixrs-daemon-tests']
-run-tests *TEST_ARGS: build-run-tests
+test-all *TEST_ARGS: build-tests
     NIX_IMPL="../nixrs-capnp/run-tests.json" cargo test -- {{TEST_ARGS}}

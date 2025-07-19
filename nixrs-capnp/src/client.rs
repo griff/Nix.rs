@@ -2,14 +2,16 @@ use std::fmt;
 use std::future::ready;
 use std::pin::pin;
 
+use ::capnp::capability::Promise;
 use ::capnp::Error;
 use capnp_rpc::new_client;
+use futures::channel::{mpsc, oneshot};
 use futures::stream::TryStreamExt;
-use futures::TryFutureExt as _;
+use futures::{FutureExt as _, SinkExt, TryFutureExt as _};
 use nixrs::daemon::wire::types2::BuildMode;
 use nixrs::daemon::{
     DaemonError, DaemonResult, DriveResult, FutureResultExt as _, LocalDaemonStore,
-    LocalHandshakeDaemonStore, ResultLog, UnkeyedValidPathInfo,
+    LocalHandshakeDaemonStore, LogMessage, ResultLog, ResultLogExt, UnkeyedValidPathInfo,
 };
 use nixrs::derived_path::DerivedPath;
 use nixrs::hash::NarHash;
@@ -19,7 +21,7 @@ use tokio::io::{copy_buf, simplex, AsyncWriteExt, BufReader};
 use crate::capnp::nix_daemon_capnp;
 use crate::convert::{BuildFrom, ReadInto};
 use crate::stream::from_cap_error;
-use crate::{ByteStreamWrap, ByteStreamWriter, DEFAULT_BUF_SIZE};
+use crate::{from_error, ByteStreamWrap, ByteStreamWriter, DEFAULT_BUF_SIZE};
 
 pub struct CapnpStore {
     store: nix_daemon_capnp::nix_daemon::Client,
@@ -159,7 +161,7 @@ impl LocalDaemonStore for CapnpStore {
     fn nar_from_path<'s>(
         &'s mut self,
         path: &'s StorePath,
-    ) -> impl ResultLog<Output = DaemonResult<impl tokio::io::AsyncBufRead + 's>> + 's {
+    ) -> impl ResultLog<Output = DaemonResult<impl tokio::io::AsyncBufRead + use<>>> + 's {
         (async move {
             let (reader, writer) = simplex(DEFAULT_BUF_SIZE);
             let reader = BufReader::new(reader);
@@ -326,5 +328,236 @@ impl LocalDaemonStore for CapnpStore {
             Ok(())
         })
         .empty_logs()
+    }
+}
+
+pub struct LoggerStream {
+    sender: mpsc::Sender<LogMessage>,
+}
+impl LoggerStream {
+    pub fn new() -> (LoggerStream, mpsc::Receiver<LogMessage>) {
+        let (sender, receiver) = mpsc::channel(2);
+        (LoggerStream { sender }, receiver)
+    }
+}
+
+impl nix_daemon_capnp::logger::Server for LoggerStream {
+    fn write(
+        &mut self,
+        params: nix_daemon_capnp::logger::WriteParams,
+    ) -> Promise<(), ::capnp::Error> {
+        let mut sender = self.sender.clone();
+        Promise::from_future(async move {
+            let msg = params.get()?.get_event()?.read_into()?;
+            sender.send(msg).await.map_err(from_error)
+        })
+    }
+
+    fn end(
+        &mut self,
+        _: nix_daemon_capnp::logger::EndParams,
+        _: nix_daemon_capnp::logger::EndResults,
+    ) -> Promise<(), ::capnp::Error> {
+        self.sender.disconnect();
+        Promise::ok(())
+    }
+}
+
+pub struct LoggedCapnpStore {
+    store: nix_daemon_capnp::logged_nix_daemon::Client,
+}
+
+impl LoggedCapnpStore {
+    pub fn new(client: nix_daemon_capnp::logged_nix_daemon::Client) -> Self {
+        Self { store: client }
+    }
+}
+
+impl fmt::Debug for LoggedCapnpStore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LoggedCapnpStore").finish()
+    }
+}
+
+impl LocalHandshakeDaemonStore for LoggedCapnpStore {
+    type Store = Self;
+
+    fn handshake(self) -> impl ResultLog<Output = DaemonResult<Self::Store>> {
+        (async move {
+            let (sender, receiver) = LoggerStream::new();
+            let mut req = self.store.capture_logs_request();
+            req.get().set_logger(new_client(sender));
+            eprintln!("Doing client handsshake");
+            let capture_res = req.send();
+            let capnp_store = capture_res.pipeline.get_daemon();
+            let (sender, res_receiver) = oneshot::channel();
+            let driver = async move {
+                let mut store = CapnpStore::new(capnp_store);
+                eprintln!("Shutting down client handsshake");
+                let end_res = store.shutdown().await;
+                let _ = capture_res.promise.await.map_err(DaemonError::custom);
+                eprintln!("Sending client handsshake result");
+                sender.send(end_res.map(|_| self)).map_err(|_| {
+                    DaemonError::custom(format_args!(
+                        "Internal error: Could not send result around"
+                    ))
+                })
+            };
+            Ok(res_receiver
+                .map_err(DaemonError::custom)
+                .map(|res| res.and_then(|s| s))
+                .with_logs(receiver)
+                .drive_result(driver))
+        })
+        .future_result()
+    }
+}
+
+macro_rules! make_request {
+    ($self:ident, |$store:ident| $($block:tt)*) => {
+        (async move {
+            let (sender, receiver) = LoggerStream::new();
+            let mut req = $self.store.capture_logs_request();
+            req.get().set_logger(new_client(sender));
+            let capture_res = req.send();
+            let capnp_store = capture_res.pipeline.get_daemon();
+            let (sender, res_receiver) = oneshot::channel();
+            let driver = async move {
+                let mut $store = CapnpStore::new(capnp_store);
+                let res = {
+                    $($block)*
+                };
+                let end_res = $store.shutdown().await;
+                let _ = capture_res.promise.await.map_err(DaemonError::custom);
+                sender.send(res.and_then(|res| end_res.map(|_| res))).map_err(|_| DaemonError::custom(format_args!("Internal error: Could not send result around")))
+            };
+            Ok(res_receiver
+                .map_err(DaemonError::custom)
+                .map(|res| res.and_then(|s| s))
+                .with_logs(receiver)
+                .drive_result(driver))
+        })
+        .future_result()
+    };
+}
+
+impl LocalDaemonStore for LoggedCapnpStore {
+    fn trust_level(&self) -> nixrs::daemon::TrustLevel {
+        nixrs::daemon::TrustLevel::Trusted
+    }
+
+    fn set_options<'a>(
+        &'a mut self,
+        options: &'a nixrs::daemon::ClientOptions,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
+        make_request!(self, |store| store.set_options(options).await )
+    }
+
+    fn is_valid_path<'a>(
+        &'a mut self,
+        path: &'a nixrs::store_path::StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<bool>> + 'a {
+        make_request!(self, |store| store.is_valid_path(path).await )
+    }
+
+    fn query_valid_paths<'a>(
+        &'a mut self,
+        paths: &'a StorePathSet,
+        substitute: bool,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + 'a {
+        make_request!(self, |store| {
+            store.query_valid_paths(paths, substitute).await
+        })
+    }
+
+    fn query_path_info<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<Option<UnkeyedValidPathInfo>>> + 'a {
+        make_request!(self, |store| store.query_path_info(path).await )
+    }
+
+    fn nar_from_path<'s>(
+        &'s mut self,
+        path: &'s StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<impl tokio::io::AsyncBufRead + use<>>> + 's {
+        make_request!(self, |store| store.nar_from_path(path).await )
+    }
+
+    fn build_paths<'a>(
+        &'a mut self,
+        drvs: &'a [DerivedPath],
+        mode: BuildMode,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
+        make_request!(self, |store| store.build_paths(drvs, mode).await )
+    }
+
+    fn build_paths_with_results<'a>(
+        &'a mut self,
+        drvs: &'a [DerivedPath],
+        mode: BuildMode,
+    ) -> impl ResultLog<Output = DaemonResult<Vec<nixrs::daemon::wire::types2::KeyedBuildResult>>> + 'a
+    {
+        make_request!(self, |store| {
+            store.build_paths_with_results(drvs, mode).await
+        })
+    }
+
+    fn build_derivation<'a>(
+        &'a mut self,
+        drv: &'a nixrs::derivation::BasicDerivation,
+        mode: BuildMode,
+    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::wire::types2::BuildResult>> + 'a {
+        make_request!(self, |store| store.build_derivation(drv, mode).await )
+    }
+
+    fn query_missing<'a>(
+        &'a mut self,
+        paths: &'a [DerivedPath],
+    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::wire::types2::QueryMissingResult>> + 'a
+    {
+        make_request!(self, |store| store.query_missing(paths).await )
+    }
+
+    fn add_to_store_nar<'s, 'r, 'i, R>(
+        &'s mut self,
+        info: &'i nixrs::daemon::wire::types2::ValidPathInfo,
+        source: R,
+        repair: bool,
+        dont_check_sigs: bool,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'r
+    where
+        R: tokio::io::AsyncBufRead + Unpin + 'r,
+        's: 'r,
+        'i: 'r,
+    {
+        make_request!(self, |store| {
+            store
+                .add_to_store_nar(info, source, repair, dont_check_sigs)
+                .await
+        })
+    }
+
+    fn add_multiple_to_store<'s, 'i, 'r, S, R>(
+        &'s mut self,
+        repair: bool,
+        dont_check_sigs: bool,
+        stream: S,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'r
+    where
+        S: futures::Stream<Item = Result<nixrs::daemon::AddToStoreItem<R>, DaemonError>> + 'i,
+        R: tokio::io::AsyncBufRead + Unpin + 'i,
+        's: 'r,
+        'i: 'r,
+    {
+        make_request!(self, |store| {
+            store
+                .add_multiple_to_store(repair, dont_check_sigs, stream)
+                .await
+        })
+    }
+
+    async fn shutdown(&mut self) -> DaemonResult<()> {
+        Ok(())
     }
 }

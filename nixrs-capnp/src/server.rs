@@ -1,14 +1,15 @@
-use std::future::Future;
-use std::pin::pin;
-use std::task::{ready, Poll};
+use std::future::{poll_fn, Future};
+use std::pin::{pin, Pin};
+use std::sync::{Arc, Mutex};
+use std::task::{ready, Context, Poll};
 
 use ::capnp::capability::Promise;
 use ::capnp::Error;
 use capnp_rpc::new_client;
-use futures::channel::mpsc;
+use futures::channel::{mpsc, oneshot};
 use futures::stream::StreamExt;
 use futures::{SinkExt as _, Stream, TryFutureExt};
-use nixrs::daemon::{AddToStoreItem, DaemonResult, DaemonStore, ResultLog};
+use nixrs::daemon::{AddToStoreItem, DaemonResult, DaemonStore, HandshakeDaemonStore, ResultLog};
 use nixrs::derived_path::DerivedPath;
 use pin_project_lite::pin_project;
 use tokio::io::{copy_buf, simplex, AsyncWriteExt as _, BufReader, ReadHalf, SimplexStream};
@@ -25,7 +26,7 @@ use crate::capnp::nix_daemon_capnp::nix_daemon::{
     QueryValidPathsParams, QueryValidPathsResults, SetOptionsParams, SetOptionsResults,
 };
 use crate::convert::{BuildFrom, ReadInto};
-use crate::{ByteStreamWrap, ByteStreamWriter, DEFAULT_BUF_SIZE};
+use crate::{from_error, ByteStreamWrap, ByteStreamWriter, DEFAULT_BUF_SIZE};
 
 pub struct NoopLogger;
 impl logger::Server for NoopLogger {
@@ -55,7 +56,7 @@ impl Logger {
             params.init_event().build_from(&msg)?;
             req.send().await?;
         }
-        logs.await.map_err(|err| Error::failed(err.to_string()))
+        logs.await.map_err(from_error)
     }
 
     pub fn end(&self) -> impl Future<Output = Result<(), Error>> {
@@ -91,10 +92,7 @@ where
         Promise::from_future(async move {
             this.logger.end().await?;
             if this.shutdown {
-                this.store
-                    .shutdown()
-                    .await
-                    .map_err(|err| Error::failed(err.to_string()))?;
+                this.store.shutdown().await.map_err(from_error)?;
             }
             Ok(())
         })
@@ -359,7 +357,7 @@ impl nix_daemon_capnp::add_multiple_stream::Server for AddMultipleStreamServer {
             sender
                 .send(Ok(AddToStoreItem { info, reader }))
                 .await
-                .map_err(|err| Error::failed(err.to_string()))?;
+                .map_err(from_error)?;
             if remaining == 0 {
                 sender.close_channel();
             }
@@ -397,5 +395,188 @@ impl Stream for CountedStream {
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         (self.count as usize, Some(self.count as usize))
+    }
+}
+
+enum Inner<HS, S> {
+    Handshake(HS),
+    Progress(Pin<Box<dyn Future<Output = ::capnp::Result<S>>>>),
+    Store(S),
+    Invalid,
+}
+
+impl<HS, S> Inner<HS, S>
+where
+    HS: HandshakeDaemonStore<Store = S> + 'static,
+    S: DaemonStore + Clone + 'static,
+{
+    fn poll_handshake(
+        &mut self,
+        cx: &mut Context<'_>,
+        logger: nix_daemon_capnp::logger::Client,
+    ) -> Poll<::capnp::Result<S>> {
+        loop {
+            match std::mem::replace(self, Self::Invalid) {
+                Inner::Handshake(hs) => {
+                    let logger = logger.clone();
+                    let fut = Box::pin(async move {
+                        let logger = Logger { client: logger };
+                        let logs = hs.handshake();
+                        logger.process_logs(logs).await
+                    });
+                    *self = Inner::Progress(fut);
+                }
+                Inner::Progress(mut fut) => match fut.as_mut().poll(cx) {
+                    Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
+                    Poll::Ready(Ok(store)) => {
+                        *self = Inner::Store(store);
+                    }
+                    Poll::Pending => {
+                        *self = Inner::Progress(fut);
+                        return Poll::Pending;
+                    }
+                },
+                Inner::Store(store) => {
+                    let ret = store.clone();
+                    *self = Inner::Store(store);
+                    return Poll::Ready(Ok(ret));
+                }
+                Inner::Invalid => panic!("Invalid inner for HandshakeDaemonStore"),
+            }
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct HandshakeLoggedCapnpServer<HS, S> {
+    inner: Arc<Mutex<Inner<HS, S>>>,
+}
+
+impl<HS, S> HandshakeLoggedCapnpServer<HS, S>
+where
+    HS: HandshakeDaemonStore<Store = S>,
+    S: DaemonStore + Clone + 'static,
+{
+    pub fn new(store: HS) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(Inner::Handshake(store))),
+        }
+    }
+}
+
+impl<HS, S> nix_daemon_capnp::logged_nix_daemon::Server for HandshakeLoggedCapnpServer<HS, S>
+where
+    HS: HandshakeDaemonStore<Store = S> + 'static,
+    S: DaemonStore + Clone + 'static,
+{
+    fn capture_logs(
+        &mut self,
+        params: nix_daemon_capnp::logged_nix_daemon::CaptureLogsParams,
+        mut result: nix_daemon_capnp::logged_nix_daemon::CaptureLogsResults,
+    ) -> Promise<(), ::capnp::Error> {
+        let inner = self.inner.clone();
+        Promise::from_future(async move {
+            let (sender, receiver) = oneshot::channel();
+            let logger = params.get()?.get_logger()?;
+            let captures = Captures {
+                client: logger,
+                sender: Some(sender),
+            };
+            let client: nix_daemon_capnp::logger::Client = new_client(captures);
+            let store = poll_fn(|cx| {
+                let logger = client.clone();
+                let mut guard = inner.lock().unwrap();
+                guard.poll_handshake(cx, logger)
+            })
+            .await?;
+
+            let server = CapnpServer {
+                logger: Logger { client },
+                store,
+                shutdown: false,
+            };
+            result.get().set_daemon(new_client(server));
+            result.set_pipeline()?;
+            receiver.await.map_err(from_error)?;
+            Ok(())
+        })
+    }
+}
+
+#[derive(Clone)]
+pub struct LoggedCapnpServer<S> {
+    store: S,
+}
+
+impl<S> LoggedCapnpServer<S> {
+    pub fn new(store: S) -> Self {
+        Self { store }
+    }
+}
+
+struct Captures {
+    client: nix_daemon_capnp::logger::Client,
+    sender: Option<oneshot::Sender<()>>,
+}
+
+impl nix_daemon_capnp::logger::Server for Captures {
+    fn write(
+        &mut self,
+        params: nix_daemon_capnp::logger::WriteParams,
+    ) -> Promise<(), ::capnp::Error> {
+        let client = self.client.clone();
+        Promise::from_future(async move {
+            let mut req = client.write_request();
+            req.get().set_event(params.get()?.get_event()?)?;
+            req.send().await
+        })
+    }
+
+    fn end(
+        &mut self,
+        _: nix_daemon_capnp::logger::EndParams,
+        _: nix_daemon_capnp::logger::EndResults,
+    ) -> Promise<(), ::capnp::Error> {
+        let client = self.client.clone();
+        let sender = self.sender.take();
+        Promise::from_future(async move {
+            let req = client.end_request();
+            req.send().promise.await?;
+            if let Some(sender) = sender {
+                let _ = sender.send(());
+            }
+            Ok(())
+        })
+    }
+}
+
+impl<S> nix_daemon_capnp::logged_nix_daemon::Server for LoggedCapnpServer<S>
+where
+    S: DaemonStore + Clone + 'static,
+{
+    fn capture_logs(
+        &mut self,
+        params: nix_daemon_capnp::logged_nix_daemon::CaptureLogsParams,
+        mut result: nix_daemon_capnp::logged_nix_daemon::CaptureLogsResults,
+    ) -> Promise<(), ::capnp::Error> {
+        let store = self.store.clone();
+        Promise::from_future(async move {
+            let (sender, receiver) = oneshot::channel();
+            let client = params.get()?.get_logger()?;
+            let captures = Captures {
+                client,
+                sender: Some(sender),
+            };
+            let client = new_client(captures);
+            let server = CapnpServer {
+                logger: Logger { client },
+                store,
+                shutdown: false,
+            };
+            result.get().set_daemon(new_client(server));
+            result.set_pipeline()?;
+            receiver.await.map_err(from_error)?;
+            Ok(())
+        })
     }
 }

@@ -11,6 +11,7 @@
     ],
     "range": "1.10..1.37",
     "op_log_prefix": true,
+    "chomp_log": true,
     "skipped": [
     ]
 }

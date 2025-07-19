@@ -6,9 +6,6 @@
     ],
     "range": "1.10..1.37",
     "op_log_prefix": false,
-    "skipped": [
-        "unittests::op_logs",
-        "unittests::handshake_logs",
-        "unittests::sesennst"
-    ]
+    "chomp_log": false,
+    "skipped": []
 }

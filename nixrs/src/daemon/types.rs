@@ -343,6 +343,7 @@ pub trait DaemonStore: Send {
     ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
         ready(Err(DaemonError::unimplemented(Operation::BuildPaths))).empty_logs()
     }
+
     fn build_paths_with_results<'a>(
         &'a mut self,
         drvs: &'a [DerivedPath],
