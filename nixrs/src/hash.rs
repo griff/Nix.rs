@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::fmt;
+use std::fmt::LowerHex;
 use std::str::FromStr;
 
 use data_encoding::DecodeError;
@@ -178,17 +179,11 @@ pub enum ParseHashError {
     WrongHashLength2(Algorithm, usize),
 }
 
-pub fn split_prefix(s: &str, prefix: char) -> Option<(&str, &str)> {
-    let mut it = s.splitn(2, prefix);
-    let prefix = it.next().unwrap();
-    it.next().map(|rest| (prefix, rest))
-}
-
 pub(crate) fn parse_prefix(s: &str) -> Result<Option<(Algorithm, bool, &str)>, UnknownAlgorithm> {
-    if let Some((prefix, rest)) = split_prefix(s, ':') {
+    if let Some((prefix, rest)) = s.split_once(':') {
         let a: Algorithm = prefix.parse()?;
         Ok(Some((a, false, rest)))
-    } else if let Some((prefix, rest)) = split_prefix(s, '-') {
+    } else if let Some((prefix, rest)) = s.split_once('-') {
         let a: Algorithm = prefix.parse()?;
         Ok(Some((a, true, rest)))
     } else {
@@ -271,7 +266,7 @@ impl Hash {
     ///
     /// These have the format `<type>-<base64>`,
     pub fn parse_sri(s: &str) -> Result<Hash, ParseHashError> {
-        if let Some((prefix, rest)) = split_prefix(s, '-') {
+        if let Some((prefix, rest)) = s.split_once('-') {
             let a: Algorithm = prefix.parse()?;
             Hash::from_str(rest, a, true)
         } else {
@@ -316,7 +311,7 @@ impl Hash {
     }
 
     pub fn parse_non_sri_prefixed(s: &str) -> Result<Hash, ParseHashError> {
-        if let Some((prefix, rest)) = split_prefix(s, ':') {
+        if let Some((prefix, rest)) = s.split_once(':') {
             let a = prefix.parse()?;
             Hash::from_str(rest, a, false)
         } else {
@@ -354,8 +349,9 @@ impl Hash {
         Bare(self.to_base32())
     }
 
-    pub fn to_base16(&self) -> impl fmt::Display + '_ {
-        Base16Hash(self)
+    pub fn to_base16(&self) -> &Base16Hash<Hash> {
+        // SAFETY: `Hash` and `Base16Hash` have the same ABI
+        unsafe { &*(self as *const Hash as *const Base16Hash<Hash>) }
     }
 
     pub fn to_base32(&self) -> impl fmt::Display + '_ {
@@ -448,8 +444,10 @@ where
     }
 }
 
-struct Base16Hash<'a>(&'a Hash);
-impl fmt::Display for Base16Hash<'_> {
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
+#[repr(transparent)]
+pub struct Base16Hash<H>(H);
+impl<H: LowerHex> fmt::Display for Base16Hash<H> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if f.alternate() {
             write!(f, "{:#x}", self.0)

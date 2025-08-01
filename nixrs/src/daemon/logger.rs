@@ -9,282 +9,20 @@ use std::task::{ready, Context, Poll};
 use async_stream::stream;
 use futures::stream::{empty, Empty};
 use futures::Stream;
-#[cfg(feature = "nixrs-derive")]
-use nixrs_derive::{NixDeserialize, NixSerialize};
-use num_enum::{FromPrimitive, IntoPrimitive, TryFromPrimitive};
 use pin_project_lite::pin_project;
-#[cfg(any(test, feature = "test"))]
-use proptest::prelude::*;
-#[cfg(any(test, feature = "test"))]
-use proptest::prop_oneof;
-#[cfg(any(test, feature = "test"))]
-use test_strategy::Arbitrary;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt as _};
 use tokio::sync::oneshot;
+use tracing::trace;
 
 use super::de::{NixDeserialize, NixRead};
 use super::ser::{NixWrite, NixWriter};
-use super::wire::logger::{IgnoredErrorType, RawLogMessage, RawLogMessageType};
-use super::wire::IgnoredZero;
-use super::{
-    DaemonError, DaemonErrorKind, DaemonInt, DaemonResult, DaemonString, ProtocolVersion,
-    RemoteError,
-};
-#[cfg(feature = "nixrs-derive")]
-use crate::daemon::ser::NixSerialize;
+use super::wire::logger::RawLogMessage;
+use super::{DaemonError, DaemonErrorKind, DaemonResult};
 use crate::daemon::wire::types::Operation;
-use crate::test::arbitrary::arb_byte_string;
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, FromPrimitive, IntoPrimitive, Default,
-)]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(from = "u16", into = "u16"))]
-#[repr(u16)]
-pub enum Verbosity {
-    #[default]
-    Error = 0,
-    Warn = 1,
-    Notice = 2,
-    Info = 3,
-    Talkative = 4,
-    Chatty = 5,
-    Debug = 6,
-    #[catch_all]
-    Vomit = 7,
-}
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
-)]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
-#[repr(u16)]
-pub enum ActivityType {
-    Unknown = 0,
-    CopyPath = 100,
-    FileTransfer = 101,
-    Realise = 102,
-    CopyPaths = 103,
-    Builds = 104,
-    Build = 105,
-    OptimiseStore = 106,
-    VerifyPaths = 107,
-    Substitute = 108,
-    QueryPathInfo = 109,
-    PostBuildHook = 110,
-    BuildWaiting = 111,
-    FetchTree = 112,
-}
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
-)]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
-#[repr(u16)]
-pub enum ResultType {
-    FileLinked = 100,
-    BuildLogLine = 101,
-    UntrustedPath = 102,
-    CorruptedPath = 103,
-    SetPhase = 104,
-    Progress = 105,
-    SetExpected = 106,
-    PostBuildLogLine = 107,
-    FetchStatus = 108,
-}
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
-)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
-#[repr(u16)]
-pub enum FieldType {
-    Int = 0,
-    String = 1,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
-pub struct TraceLine {
-    _have_pos: IgnoredZero,
-    pub hint: DaemonString, // If logger is JSON, invalid UTF-8 is replaced with U+FFFD
-}
-
-fn default_exit_status() -> DaemonInt {
-    1
-}
-
-#[derive(Debug)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-pub struct LogError {
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "26.."))]
-    _ty: IgnoredErrorType,
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "26.."))]
-    pub level: Verbosity,
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "26.."))]
-    _name: IgnoredErrorType,
-    pub msg: DaemonString, // If logger is JSON, invalid UTF-8 is replaced with U+FFFD
-    #[cfg_attr(
-        feature = "nixrs-derive",
-        nix(version = "..=25", default = "default_exit_status")
-    )]
-    pub exit_status: DaemonInt,
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "26.."))]
-    _have_pos: IgnoredZero,
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "26.."))]
-    pub traces: Vec<TraceLine>,
-}
-
-impl From<RemoteError> for LogError {
-    fn from(value: RemoteError) -> Self {
-        LogError {
-            level: value.level,
-            msg: value.msg,
-            exit_status: value.exit_status,
-            traces: value.traces,
-            _ty: IgnoredErrorType,
-            _name: IgnoredErrorType,
-            _have_pos: IgnoredZero,
-        }
-    }
-}
-
-impl From<DaemonError> for LogError {
-    fn from(value: DaemonError) -> Self {
-        match value.kind().clone() {
-            DaemonErrorKind::Remote(remote_error) => remote_error.into(),
-            _ => {
-                let msg = value.to_string().into_bytes().into();
-                LogError {
-                    msg,
-                    level: Verbosity::Error,
-                    exit_status: 1,
-                    traces: Vec::new(),
-                    _ty: IgnoredErrorType,
-                    _name: IgnoredErrorType,
-                    _have_pos: IgnoredZero,
-                }
-            }
-        }
-    }
-}
-
-impl From<LogError> for RemoteError {
-    fn from(err: LogError) -> Self {
-        RemoteError {
-            level: err.level,
-            msg: err.msg,
-            traces: err.traces,
-            exit_status: err.exit_status,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum LogMessage {
-    Next(DaemonString),
-    StartActivity(Activity),
-    StopActivity(u64),
-    Result(ActivityResult),
-}
-
-impl NixSerialize for LogMessage {
-    async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
-    where
-        W: super::ser::NixWrite,
-    {
-        match self {
-            LogMessage::Next(msg) => {
-                writer.write_value(&RawLogMessageType::Next).await?;
-                writer.write_value(msg).await?;
-            }
-            LogMessage::StartActivity(act) => {
-                if writer.version().minor() >= 20 {
-                    writer
-                        .write_value(&RawLogMessageType::StartActivity)
-                        .await?;
-                    writer.write_value(act).await?;
-                } else {
-                    writer.write_value(&RawLogMessageType::Next).await?;
-                    writer.write_value(&act.text).await?;
-                }
-            }
-            LogMessage::StopActivity(act) => {
-                if writer.version().minor() >= 20 {
-                    writer.write_value(&RawLogMessageType::StopActivity).await?;
-                    writer.write_value(act).await?;
-                }
-            }
-            LogMessage::Result(result) => {
-                if writer.version().minor() >= 20 {
-                    writer.write_value(&RawLogMessageType::Result).await?;
-                    writer.write_value(result).await?;
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl proptest::arbitrary::Arbitrary for LogMessage {
-    type Parameters = ProtocolVersion;
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-        use proptest::prelude::*;
-        if args.minor() >= 20 {
-            prop_oneof![
-                arb_byte_string().prop_map(LogMessage::Next),
-                any::<Activity>().prop_map(LogMessage::StartActivity),
-                any::<ActivityResult>().prop_map(LogMessage::Result),
-                any::<u64>().prop_map(LogMessage::StopActivity)
-            ]
-            .boxed()
-        } else {
-            arb_byte_string().prop_map(LogMessage::Next).boxed()
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-pub struct Activity {
-    pub act: u64,
-    pub level: Verbosity,
-    pub activity_type: ActivityType,
-    #[strategy(arb_byte_string())]
-    pub text: DaemonString, // If logger is JSON, invalid UTF-8 is replaced with U+FFFD
-    pub fields: Vec<Field>,
-    pub parent: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-pub struct ActivityResult {
-    pub act: u64,
-    pub result_type: ResultType,
-    pub fields: Vec<Field>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(tag = "FieldType"))]
-pub enum Field {
-    Int(u64),
-    String(#[strategy(arb_byte_string())] DaemonString),
-}
+use crate::log::{LogMessage, Message, Verbosity};
 
 pub trait ResultLog: Stream<Item = LogMessage> + Future {}
-impl<RL, O> ResultLog for RL where RL: Stream<Item = LogMessage> + Future<Output = O> {}
+impl<RL> ResultLog for RL where RL: Stream<Item = LogMessage> + Future {}
 
 pin_project! {
     struct MapOkResult<L, F, T> {
@@ -613,10 +351,51 @@ where
 }
 
 pub trait FutureResultExt: Future {
+    /// Create a [ResultLog] with an empty log from a [Future]
+    ///
+    /// This takes any [Future] and makes it into a [ResultLog] implementation
+    /// that just returns [Option::None] for the [Stream] part while
+    /// [Future::Output] is used as the output for the [ResultLog].
+    ///
+    /// ```rust
+    /// # use std::future::{ready, Future};
+    /// # use std::pin::pin;
+    /// # use futures::stream::StreamExt as _;
+    /// use nixrs::daemon::FutureResultExt as _;
+    /// # tokio_test::block_on(async {
+    /// let result = ready(12).empty_logs();
+    /// let mut rp = pin!(result);
+    /// assert!(rp.next().await.is_none());
+    /// assert_eq!(rp.await, 12);
+    /// # })
+    /// ```
     fn empty_logs(self) -> impl ResultLog<Output = Self::Output>;
+
+    /// Create a [ResultLog] with the provided logs and with the output from
+    /// the [Future]
+    ///
+    ///
     fn with_logs<S>(self, logs: S) -> impl ResultLog<Output = Self::Output>
     where
         S: Stream<Item = LogMessage>;
+
+    /// Flattens a [Future] that outputs a [ResultLog] to a [ResultLog]
+    ///
+    /// ```rust
+    /// # use std::future::{ready, Future};
+    /// # use std::pin::pin;
+    /// # use futures::stream::StreamExt as _;
+    /// # use nixrs::daemon::DaemonResult;
+    /// use nixrs::daemon::FutureResultExt as _;
+    /// # tokio_test::block_on(async {
+    /// let result = async {
+    ///     Ok(ready(Ok(12) as DaemonResult<i32>).empty_logs())
+    /// }.future_result();
+    /// let mut rp = pin!(result);
+    /// assert!(rp.next().await.is_none());
+    /// assert_eq!(rp.await.unwrap(), 12);
+    /// # })
+    /// ```
     fn future_result<R, T, E>(self) -> impl ResultLog<Output = Result<T, E>>
     where
         Self: Future<Output = Result<R, E>>,
@@ -976,10 +755,15 @@ where
         ResultProcess {
             stream: stream! {
                 loop {
+                    trace!("Reading log message");
                     let msg = self.reader.read_value::<RawLogMessage>().await;
+                    trace!(?msg, "Got log message");
                     match msg {
-                        Ok(RawLogMessage::Next(msg)) => {
-                            yield LogMessage::Next(msg);
+                        Ok(RawLogMessage::Next(text)) => {
+                            yield LogMessage::Message(Message {
+                                text,
+                                level: Verbosity::Error,
+                            });
                         }
                         Ok(RawLogMessage::Result(result)) => {
                             yield LogMessage::Result(result);
@@ -1005,7 +789,9 @@ where
                             }
                         }
                         Ok(RawLogMessage::Last) => {
+                            trace!("Reading result");
                             let value = self.reader.read_value().await;
+                            trace!("Read result");
                             self.result = Some(value.map_err(|err| err.into()));
                             break;
                         }

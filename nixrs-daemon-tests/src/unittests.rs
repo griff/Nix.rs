@@ -12,12 +12,12 @@ use nixrs::daemon::wire::types2::{
     BuildMode, BuildResult, BuildStatus, QueryMissingResult, ValidPathInfo,
 };
 use nixrs::daemon::{
-    AddToStoreItem, DaemonError, DaemonResult, DaemonStore as _, DaemonString, LogMessage,
-    UnkeyedValidPathInfo,
+    AddToStoreItem, DaemonError, DaemonResult, DaemonStore as _, DaemonString, UnkeyedValidPathInfo,
 };
 use nixrs::derivation::{BasicDerivation, DerivationOutput};
 use nixrs::derived_path::{DerivedPath, OutputName};
 use nixrs::hash::NarHash;
+use nixrs::log::{Activity, ActivityResult, LogMessage};
 use nixrs::store_path::{StoreDir, StorePath, StorePathSet};
 use nixrs::{btree_set, ByteString};
 use pretty_assertions::assert_eq;
@@ -54,12 +54,25 @@ async fn check_unread_fails() {
 }
 
 #[rstest]
-#[case(vec![LogMessage::Next("Hello".into())])]
-#[case(vec![LogMessage::Next("Hello\r".into())])]
-#[case(vec![LogMessage::Next("Hello\n\r".into())])]
-#[case(vec![LogMessage::Next("Hello\r\n".into())])]
-#[case(vec![LogMessage::Next("Lines\n  More\n   ".into())])]
-#[case(vec![LogMessage::Next("Hello".into()), LogMessage::Next("World".into())])]
+#[case::message(vec![LogMessage::message("Hello")])]
+#[case::message_cr(vec![LogMessage::message("Hello\r")])]
+#[case::message_lncr(vec![LogMessage::message("Hello\n\r")])]
+#[case::message_crln(vec![LogMessage::message("Hello\r\n")])]
+#[case::messaage_lines(vec![LogMessage::message("Lines\n  More\n   ")])]
+#[case::start_activity(vec![LogMessage::StartActivity(Activity {
+    id: 666,
+    level: nixrs::log::Verbosity::Chatty,
+    text: "Hello World".into(),
+    activity_type: nixrs::log::ActivityType::OptimiseStore,
+    fields: vec![nixrs::log::Field::Int(44), nixrs::log::Field::String("More path".into())],
+    parent: 555,
+})])]
+#[case::result(vec![LogMessage::Result(ActivityResult {
+    id: 666,
+    result_type: nixrs::log::ResultType::CorruptedPath,
+    fields: vec![nixrs::log::Field::Int(44), nixrs::log::Field::String("More path".into())],
+})])]
+#[case::multiple(vec![LogMessage::message("Hello"), LogMessage::message("World")])]
 #[tokio::test]
 async fn op_logs(#[case] mut logs: Vec<LogMessage>) {
     let nix = ENV_NIX_IMPL.deref();
@@ -96,10 +109,10 @@ async fn op_logs(#[case] mut logs: Vec<LogMessage>) {
 }
 
 #[rstest]
-#[case::single(vec![LogMessage::Next("Hello".into())])]
-#[case::empty(vec![LogMessage::Next("".into())])]
-#[case::whitespace(vec![LogMessage::Next("Lines\n  More\n   ".into())])]
-#[case::multiple(vec![LogMessage::Next("Hello".into()), LogMessage::Next("World".into())])]
+#[case::single(vec![LogMessage::message("Hello")])]
+#[case::empty(vec![LogMessage::message("")])]
+#[case::whitespace(vec![LogMessage::message("Lines\n  More\n   ")])]
+#[case::multiple(vec![LogMessage::message("Hello"), LogMessage::message("World")])]
 #[tokio::test]
 async fn handshake_logs(#[case] logs: Vec<LogMessage>) {
     let nix = ENV_NIX_IMPL.deref();
@@ -690,6 +703,7 @@ async fn add_to_store_nar(
     Ok(()),
     Ok(())
 )]
+#[case::empty(true, true, vec![], Ok(()), Ok(()))]
 #[case::error(
     true,
     true,
@@ -788,7 +802,7 @@ async fn sesennst() {
     {
         return;
     }
-    let handshake_logs = vec![LogMessage::Next(Bytes::new())];
+    let handshake_logs = vec![LogMessage::message(Bytes::new())];
     let path_info = ValidPathInfo {
         path: "00000000000000000000000000000000--".parse().unwrap(),
         info: UnkeyedValidPathInfo {

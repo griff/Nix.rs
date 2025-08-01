@@ -3,8 +3,6 @@
 using Cxx = import "/capnp/c++.capnp";
 $Cxx.namespace("capnp");
 #$Cxx.allowCancellation;
-using Rust = import "rust.capnp";
-$Rust.parentModule("capnp");
 
 interface ByteStream {
   write @0 (bytes :Data) -> stream;

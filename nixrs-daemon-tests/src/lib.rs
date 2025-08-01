@@ -13,8 +13,9 @@ use futures::{FutureExt as _, StreamExt as _, TryFutureExt as _};
 use nixrs::daemon::client::DaemonClient;
 use nixrs::daemon::mock::{self, MockReporter, MockStore, ReporterError};
 use nixrs::daemon::wire::types::Operation;
-use nixrs::daemon::{server, LogMessage, ProtocolRange, ProtocolVersion, ResultLog};
+use nixrs::daemon::{server, ProtocolRange, ProtocolVersion, ResultLog};
 use nixrs::daemon::{DaemonError, DaemonResult, DaemonStore as _};
+use nixrs::log::{LogMessage, Message, Verbosity};
 use serde::de::Error;
 use serde::Deserialize;
 use tempfile::Builder;
@@ -67,6 +68,7 @@ pub struct JsonNixImpl {
     cmd_args: Vec<String>,
     range: ProtocolRange,
     op_log_prefix: bool,
+    #[serde(default)]
     chomp_log: bool,
     #[serde(default)]
     skip_all: bool,
@@ -124,8 +126,19 @@ impl NixImpl for JsonNixImpl {
             let id: u64 = op.into();
             logs.insert(
                 0,
-                LogMessage::Next(format!("performing daemon worker op: {id}\n").into()),
+                LogMessage::Message(Message {
+                    text: format!("performing daemon worker op: {id}\n").into(),
+                    level: Verbosity::Error,
+                }),
             )
+        }
+        for log in logs.iter_mut() {
+            match log {
+                LogMessage::Message(Message { level, text: _ }) if *level != Verbosity::Error => {
+                    *level = Verbosity::Error
+                }
+                _ => {}
+            }
         }
     }
     fn collect_log(&self, log: LogMessage) -> LogMessage {
@@ -175,7 +188,7 @@ impl NixImpl for StdNixImpl {
             let id: u64 = op.into();
             logs.insert(
                 0,
-                LogMessage::Next(format!("performing daemon worker op: {id}\n").into()),
+                LogMessage::message(format!("performing daemon worker op: {id}\n")),
             )
         }
     }
@@ -384,11 +397,14 @@ pub fn prepare_mock(nix: &dyn NixImpl) -> mock::Builder<()> {
 
 pub fn chomp_log(log: LogMessage) -> LogMessage {
     match log {
-        LogMessage::Next(msg) => {
-            let chomped = msg.trim_end_with(|ch| matches!(ch, ' ' | '\n' | '\r' | '\t'));
+        LogMessage::Message(mut msg) => {
+            let chomped = msg
+                .text
+                .trim_end_with(|ch| matches!(ch, ' ' | '\n' | '\r' | '\t'));
             let mut new_msg = BytesMut::from(chomped);
             new_msg.extend_from_slice(b"\n");
-            LogMessage::Next(new_msg.freeze())
+            msg.text = new_msg.freeze();
+            LogMessage::Message(msg)
         }
         m => m,
     }

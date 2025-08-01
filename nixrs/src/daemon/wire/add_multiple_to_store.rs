@@ -31,6 +31,7 @@ where
     writer.write_value(&size).await?;
     let mut stream = pin!(stream.enumerate());
     let mut written = 0;
+    trace!(size, "Reading stream items");
     while let Some((idx, item)) = stream.next().await {
         trace!(idx, size, written, "Write stream item");
         if idx >= size {
@@ -55,6 +56,7 @@ where
         .instrument(span)
         .await?;
     }
+    trace!(size, "Completed stream write");
     if written != size {
         return Err(DaemonError::custom(format!(
             "Not enough items in stream: Expected {size} got {written}"

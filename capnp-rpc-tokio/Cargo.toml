@@ -1,0 +1,19 @@
+[package]
+name = "capnp-rpc-tokio"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+capnp.workspace = true
+capnp-rpc.workspace = true
+futures.workspace = true
+pin-project-lite.workspace = true
+tracing.workspace = true
+
+[dependencies.tokio-util]
+workspace = true
+features = ["compat"]
+
+[dependencies.tokio]
+workspace = true
+#features = ["io-util", "io-std", "macros", "fs"]

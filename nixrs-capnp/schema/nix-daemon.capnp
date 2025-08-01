@@ -1,24 +1,9 @@
 @0xb83d96947a7e4ccb;
 
-using Rust = import "rust.capnp";
-$Rust.parentModule("capnp");
 using ByteStream = import "byte-stream.capnp".ByteStream;
-
-struct Map(Key, Value) {
-  entries @0 :List(Entry);
-  struct Entry {
-    key @0 :Key;
-    value @1 :Value;
-  }
-}
-
-struct StorePath {
-    hash @0 :Data;
-    name @1 :Text;
-}
+using Types = import "nix-types.capnp";
 
 using DaemonInt = UInt32;
-using DaemonTime = Int64;
 using DaemonString = Data;
 using Microseconds = Int64;
 
@@ -28,67 +13,43 @@ struct ClientOptions {
     tryFallback @2 :Bool;
     verbosity @3 :Verbosity;
     maxBuildJobs @4 :DaemonInt;
-    maxSilentTime @5 :DaemonTime;
+    maxSilentTime @5 :Types.Time;
     verboseBuild @6 :Verbosity;
     buildCores @7 :DaemonInt;
     useSubstitutes @8 :Bool;
-    otherSettings @9 :Map(Text, DaemonString);
+    otherSettings @9 :Types.Map(Text, DaemonString);
 }
 
-using NarHash = Data;
-using Sha256 = Data;
-
-struct Signature {
-    key @0 :Text;
-    hash @1 :Data;
-}
-enum HashAlgo {
-    md5 @0;
-    sha1 @1;
-    sha256 @2;
-    sha512 @3;
-}
-struct Hash {
-    algo @0 :HashAlgo;
-    digest @1 :Data;
-}
-struct ContentAddress {
-    union {
-        text @0 :Sha256;
-        flat @1 :Hash;
-        recursive @2 :Hash;
-    }
-}
 struct ContentAddressMethodAlgorithm {
     union {
         text @0 :Void;
-        flat @1 :HashAlgo;
-        recursive @2 :HashAlgo;
+        flat @1 :Types.HashAlgo;
+        recursive @2 :Types.HashAlgo;
     }
 }
 struct ValidPathInfo {
-    path @0 :StorePath;
+    path @0 :Types.StorePath;
     info @1 :UnkeyedValidPathInfo;
 }
 struct UnkeyedValidPathInfo {
-    deriver @0 :StorePath;
-    narHash @1 :NarHash;
-    references @2 :List(StorePath);
-    registrationTime @3 :DaemonTime;
+    deriver @0 :Types.StorePath;
+    narHash @1 :Types.NarHash;
+    references @2 :List(Types.StorePath);
+    registrationTime @3 :Types.Time;
     narSize @4 :UInt64;
     ultimate @5 :Bool;
-    signatures @6 :List(Signature);
-    ca @7 :ContentAddress;
+    signatures @6 :List(Types.Signature);
+    ca @7 :Types.ContentAddress;
 }
 struct DrvOutput {
-    drvHash @0 :Hash;
+    drvHash @0 :Types.Hash;
     outputName @1 :OutputName;
 }
 struct Realisation {
     id @0 :DrvOutput;
-    outPath @1 :StorePath;
-    signatures @2 :List(Signature);
-    dependentRealisations @3 :Map(DrvOutput, StorePath);
+    outPath @1 :Types.StorePath;
+    signatures @2 :List(Types.Signature);
+    dependentRealisations @3 :Types.Map(DrvOutput, Types.StorePath);
 }
 enum BuildStatus {
     built @0;
@@ -112,11 +73,11 @@ struct BuildResult {
     errorMsg @1 :DaemonString;
     timesBuilt @2 :DaemonInt;
     isNonDeterministic @3 :Bool;
-    startTime @4 :DaemonTime;
-    stopTime @5 :DaemonTime;
+    startTime @4 :Types.Time;
+    stopTime @5 :Types.Time;
     cpuUser @6 :Microseconds = -1;
     cpuSystem @7 :Microseconds = -1;
-    builtOutputs @8 :Map(DrvOutput, Realisation);
+    builtOutputs @8 :Types.Map(DrvOutput, Realisation);
 }
 struct KeyedBuildResult {
     path @0 :DerivedPath;
@@ -126,7 +87,7 @@ struct KeyedBuildResult {
 using OutputName = Text;
 struct SingleDerivedPath {
     union {
-        opaque @0 :StorePath;
+        opaque @0 :Types.StorePath;
         built :group {
             drvPath @1 :SingleDerivedPath;
             output @2 :OutputName;
@@ -141,7 +102,7 @@ struct OutputSpec {
 }
 struct DerivedPath {
     union {
-        opaque @0 :StorePath;
+        opaque @0 :Types.StorePath;
         built :group {
             drvPath @1 :SingleDerivedPath;
             outputs @2 :OutputSpec;
@@ -150,8 +111,8 @@ struct DerivedPath {
 }
 struct DerivationOutput {
     union {
-        inputAddressed @0 :StorePath;
-        caFixed @1 :ContentAddress;
+        inputAddressed @0 :Types.StorePath;
+        caFixed @1 :Types.ContentAddress;
         deferred @2 :Void;
         caFloating @3 :ContentAddressMethodAlgorithm;
         impure @4 :ContentAddressMethodAlgorithm;
@@ -159,18 +120,18 @@ struct DerivationOutput {
 }
 
 struct BasicDerivation {
-    drvPath @0 :StorePath;
-    outputs @1 :Map(OutputName, DerivationOutput);
-    inputSrcs @2 :List(StorePath);
+    drvPath @0 :Types.StorePath;
+    outputs @1 :Types.Map(OutputName, DerivationOutput);
+    inputSrcs @2 :List(Types.StorePath);
     platform @3 :Data;
     builder @4 :Data;
     args @5 :List(Data);
-    env @6 :Map(Data, Data);
+    env @6 :Types.Map(Data, Data);
 }
 struct QueryMissingResult {
-    willBuild @0 :List(StorePath);
-    willSubstitute @1 :List(StorePath);
-    unknown @2 :List(StorePath);
+    willBuild @0 :List(Types.StorePath);
+    willSubstitute @1 :List(Types.StorePath);
+    unknown @2 :List(Types.StorePath);
     downloadSize @3 :UInt64;
     narSize @4 :UInt64;
 }
@@ -186,10 +147,10 @@ enum BuildMode {
 interface NixDaemon {
     end @0 ();
     setOptions @1 (options :ClientOptions);
-    isValidPath @2 (path :StorePath) -> (valid :Bool);
-    queryValidPaths @3 (paths :List(StorePath), substitute :Bool) -> (validSet :List(StorePath));
-    queryPathInfo @4 (path :StorePath) -> (info :UnkeyedValidPathInfo);
-    narFromPath @5 (path :StorePath, stream :ByteStream);
+    isValidPath @2 (path :Types.StorePath) -> (valid :Bool);
+    queryValidPaths @3 (paths :List(Types.StorePath), substitute :Bool) -> (validSet :List(Types.StorePath));
+    queryPathInfo @4 (path :Types.StorePath) -> (info :UnkeyedValidPathInfo);
+    narFromPath @5 (path :Types.StorePath, stream :ByteStream);
     buildPaths @6 (drvs :List(DerivedPath), mode :BuildMode);
     buildPathsWithResults @7 (drvs :List(DerivedPath), mode :BuildMode) -> (results :List(KeyedBuildResult));
     buildDerivation @8 (drv :BasicDerivation, mode :BuildMode) -> (result :BuildResult);
@@ -247,9 +208,12 @@ struct Field {
 
 struct LogMessage {
     union {
-        next @0 :DaemonString;
+        message :group {
+            text @0 :DaemonString;
+            level @11 :Verbosity = error;
+        }
         startActivity :group {
-            act @1 :UInt64;
+            id @1 :UInt64;
             level @2 :Verbosity;
             activityType @3 :ActivityType;
             text @4 :DaemonString;
@@ -257,10 +221,10 @@ struct LogMessage {
             parent @6 :UInt64;
         }
         stopActivity :group {
-            act @7 :UInt64;
+            id @7 :UInt64;
         }
         result :group {
-            act @8 :UInt64;
+            id @8 :UInt64;
             resultType @9 :ResultType;
             fields @10 :List(Field);
         }
@@ -274,13 +238,4 @@ interface Logger {
 
 interface LoggedNixDaemon {
     captureLogs @0 (logger :Logger) -> (daemon :NixDaemon);
-}
-
-struct Matcher {
-    capType @0 :UInt64;
-    params @1 :AnyPointer;
-}
-
-interface NixBootstrap {
-    bootstrap @0 (priority :List(Matcher)) -> (capType :UInt64, cap :Capability);
 }

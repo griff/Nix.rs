@@ -15,6 +15,7 @@ pub const FROM_STORE_DIR_STR: Symbol = Symbol("from_store_dir_str");
 pub const INTO: Symbol = Symbol("into");
 pub const TRY_INTO: Symbol = Symbol("try_into");
 pub const DISPLAY: Symbol = Symbol("display");
+pub const SKIP: Symbol = Symbol("skip");
 pub const STORE_DIR_DISPLAY: Symbol = Symbol("store_dir_display");
 pub const CRATE: Symbol = Symbol("crate");
 pub const TAG: Symbol = Symbol("tag");

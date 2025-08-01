@@ -9,7 +9,8 @@ use futures::io as fio;
 use futures::{try_join, AsyncReadExt, TryFutureExt as _};
 use nixrs::daemon::client::DaemonClient;
 use nixrs::daemon::{server, DaemonError, DaemonResult, MutexHandshakeStore};
-use nixrs_capnp::{from_error, HandshakeLoggedCapnpServer, LoggedCapnpStore, DEFAULT_BUF_SIZE};
+use nixrs_capnp::nix_daemon::{HandshakeLoggedCapnpServer, LoggedCapnpStore};
+use nixrs_capnp::{from_error, DEFAULT_BUF_SIZE};
 use tokio::io::{duplex, AsyncRead, AsyncWrite};
 use tokio::task::LocalSet;
 

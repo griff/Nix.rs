@@ -4,7 +4,7 @@ use syn::parse::Parse;
 use syn::{parse_quote, Attribute, Expr, ExprLit, ExprPath, Lit, Token};
 
 use super::symbol::{
-    Symbol, CRATE, DEFAULT, DISPLAY, FROM, FROM_STORE_DIR_STR, FROM_STR, INTO, NIX,
+    Symbol, CRATE, DEFAULT, DISPLAY, FROM, FROM_STORE_DIR_STR, FROM_STR, INTO, NIX, SKIP,
     STORE_DIR_DISPLAY, TAG, TRY_FROM, TRY_INTO, VERSION,
 };
 use super::Context;
@@ -27,6 +27,7 @@ impl Default {
 pub struct Field {
     pub default: Default,
     pub version: Option<syn::ExprRange>,
+    pub skip: bool,
 }
 
 impl Field {
@@ -34,6 +35,7 @@ impl Field {
         let mut version = None;
         let mut version_path = None;
         let mut default = Default::None;
+        let mut skip = false;
         for attr in attrs {
             if attr.path() != NIX {
                 continue;
@@ -50,6 +52,8 @@ impl Field {
                     } else {
                         default = Default::Default(meta.path);
                     }
+                } else if meta.path == SKIP {
+                    skip = true;
                 } else {
                     let path = meta.path.to_token_stream().to_string();
                     return Err(meta.error(format_args!("unknown nix field attribute '{path}'")));
@@ -64,7 +68,11 @@ impl Field {
             default = Default::Default(version_path.unwrap());
         }
 
-        Field { default, version }
+        Field {
+            default,
+            version,
+            skip,
+        }
     }
 }
 
@@ -242,6 +250,7 @@ mod test {
             Field {
                 default: Default::Default(parse_quote!(version)),
                 version: Some(parse_quote!(..34)),
+                skip: false,
             }
         );
     }
@@ -257,6 +266,7 @@ mod test {
             Field {
                 default: Default::Default(parse_quote!(default)),
                 version: None,
+                skip: false,
             }
         );
     }
@@ -272,6 +282,7 @@ mod test {
             Field {
                 default: Default::Path(parse_quote!(Default::default)),
                 version: None,
+                skip: false,
             }
         );
     }
@@ -288,6 +299,7 @@ mod test {
             Field {
                 default: Default::Path(parse_quote!(Default::default)),
                 version: Some(parse_quote!(..)),
+                skip: false,
             }
         );
     }
@@ -304,6 +316,7 @@ mod test {
             Field {
                 default: Default::Path(parse_quote!(Default::default)),
                 version: Some(parse_quote!(..)),
+                skip: false,
             }
         );
     }
@@ -319,6 +332,7 @@ mod test {
             Field {
                 default: Default::None,
                 version: None,
+                skip: false,
             }
         );
     }
@@ -334,6 +348,7 @@ mod test {
             Field {
                 default: Default::None,
                 version: None,
+                skip: false,
             }
         );
     }

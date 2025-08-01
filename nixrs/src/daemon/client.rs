@@ -26,13 +26,14 @@ use super::wire::{
 };
 use super::{
     DaemonError, DaemonErrorKind, DaemonPath, DaemonResult, DaemonResultExt as _, DaemonStore,
-    HandshakeDaemonStore, LogMessage, ProtocolVersion, TrustLevel,
+    HandshakeDaemonStore, ProtocolVersion, TrustLevel,
 };
 use crate::archive::{NarBytesReader, NarReader};
 use crate::daemon::FutureResultExt;
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
 use crate::io::{AsyncBufReadCompat, BytesReader, Lending};
+use crate::log::{LogMessage, Message, Verbosity};
 use crate::realisation::{DrvOutput, Realisation};
 use crate::signature::Signature;
 use crate::store_path::{
@@ -441,8 +442,11 @@ where
                 loop {
                     let msg = reader.read_value::<RawLogMessage>().await;
                     match msg {
-                        Ok(RawLogMessage::Next(msg)) => {
-                            yield LogMessage::Next(msg);
+                        Ok(RawLogMessage::Next(text)) => {
+                            yield LogMessage::Message(Message {
+                                text,
+                                level: Verbosity::Error
+                            });
                         }
                         Ok(RawLogMessage::Result(result)) => {
                             yield LogMessage::Result(result);
@@ -538,6 +542,7 @@ where
         paths: &'a [DerivedPath],
     ) -> impl ResultLog<Output = DaemonResult<super::wire::types2::QueryMissingResult>> + 'a {
         async move {
+            trace!(paths = paths.len(), "Sending QueryMissing");
             self.writer.write_value(&Operation::QueryMissing).await?;
             self.writer.write_value(&paths).await?;
             Ok(self.process_stderr())

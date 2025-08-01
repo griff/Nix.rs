@@ -196,7 +196,7 @@ where
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<(), io::Error>> {
-        ready!(self.as_mut().poll_flush_buf(cx))?;
+        ready!(self.as_mut().poll_flush(cx))?;
         self.project().inner.poll_shutdown(cx)
     }
 }

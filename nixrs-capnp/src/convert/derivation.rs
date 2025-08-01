@@ -1,3 +1,4 @@
+use capnp::traits::{FromPointerBuilder as _, SetterInput};
 use capnp::Error;
 use nixrs::derivation::{BasicDerivation, DerivationOutput};
 
@@ -8,21 +9,51 @@ impl<'b> BuildFrom<DerivationOutput> for nix_daemon_capnp::derivation_output::Bu
     fn build_from(&mut self, input: &DerivationOutput) -> Result<(), Error> {
         match input {
             DerivationOutput::InputAddressed(path) => {
-                self.reborrow().set_input_addressed(path)?;
+                self.set_input_addressed(path)?;
             }
             DerivationOutput::CAFixed(ca) => {
-                self.reborrow().init_ca_fixed().build_from(ca)?;
+                self.set_ca_fixed(ca)?;
             }
             DerivationOutput::Deferred => {
                 self.set_deferred(());
             }
             #[cfg(feature = "xp-ca-derivations")]
             DerivationOutput::CAFloating(cama) => {
-                self.reborrow().init_ca_floating().build_from(cama)?;
+                self.set_ca_floating(cama)?;
             }
             #[cfg(feature = "xp-impure-derivations")]
             DerivationOutput::Impure(cama) => {
-                self.reborrow().init_impure(cama).build_from(cama)?;
+                self.set_impure(cama)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl SetterInput<nix_daemon_capnp::derivation_output::Owned> for &'_ DerivationOutput {
+    fn set_pointer_builder(
+        builder: capnp::private::layout::PointerBuilder<'_>,
+        input: Self,
+        _canonicalize: bool,
+    ) -> capnp::Result<()> {
+        let mut builder = nix_daemon_capnp::derivation_output::Builder::init_pointer(builder, 0);
+        match input {
+            DerivationOutput::InputAddressed(path) => {
+                builder.set_input_addressed(path)?;
+            }
+            DerivationOutput::CAFixed(ca) => {
+                builder.set_ca_fixed(ca)?;
+            }
+            DerivationOutput::Deferred => {
+                builder.set_deferred(());
+            }
+            #[cfg(feature = "xp-ca-derivations")]
+            DerivationOutput::CAFloating(cama) => {
+                builder.set_ca_floating(cama)?;
+            }
+            #[cfg(feature = "xp-impure-derivations")]
+            DerivationOutput::Impure(cama) => {
+                builder.set_impure(cama)?;
             }
         }
         Ok(())
@@ -73,17 +104,52 @@ impl<'r> ReadFrom<nix_daemon_capnp::derivation_output::Reader<'r>> for Derivatio
 
 impl<'b> BuildFrom<BasicDerivation> for nix_daemon_capnp::basic_derivation::Builder<'b> {
     fn build_from(&mut self, input: &BasicDerivation) -> Result<(), Error> {
-        self.reborrow().set_drv_path(&input.drv_path)?;
+        self.set_drv_path(&input.drv_path)?;
         self.reborrow().init_outputs().build_from(&input.outputs)?;
         self.reborrow()
             .init_input_srcs(input.input_srcs.len() as u32)
             .build_from(&input.input_srcs)?;
-        self.reborrow().set_platform(input.platform.as_ref());
-        self.reborrow().set_builder(input.builder.as_ref());
+        self.set_platform(input.platform.as_ref());
+        self.set_builder(input.builder.as_ref());
         self.reborrow()
             .init_args(input.args.len() as u32)
             .build_from(&input.args)?;
         let mut entries = self
+            .reborrow()
+            .init_env()
+            .init_entries(input.env.len() as u32);
+        for (index, (key, value)) in input.env.iter().enumerate() {
+            let mut entry = entries.reborrow().get(index as u32);
+            entry.set_key(key.as_ref())?;
+            entry.set_value(value.as_ref())?;
+        }
+        Ok(())
+    }
+}
+
+impl SetterInput<nix_daemon_capnp::basic_derivation::Owned> for &'_ BasicDerivation {
+    fn set_pointer_builder(
+        builder: capnp::private::layout::PointerBuilder<'_>,
+        input: Self,
+        _canonicalize: bool,
+    ) -> capnp::Result<()> {
+        let mut builder = nix_daemon_capnp::basic_derivation::Builder::init_pointer(builder, 0);
+        builder.set_drv_path(&input.drv_path)?;
+        builder
+            .reborrow()
+            .init_outputs()
+            .build_from(&input.outputs)?;
+        builder
+            .reborrow()
+            .init_input_srcs(input.input_srcs.len() as u32)
+            .build_from(&input.input_srcs)?;
+        builder.set_platform(input.platform.as_ref());
+        builder.set_builder(input.builder.as_ref());
+        builder
+            .reborrow()
+            .init_args(input.args.len() as u32)
+            .build_from(&input.args)?;
+        let mut entries = builder
             .reborrow()
             .init_env()
             .init_entries(input.env.len() as u32);

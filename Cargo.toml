@@ -7,18 +7,17 @@ members = [
   "nixrs-legacy",
   "nixrs-ssh-store",
   "nixrs-capnp",
-  "nixrs-test-utils",
-  "nixrs-test-utils-macros",
   "examples/nixrs-nix-store",
   "examples/nix-docker-build",
   "examples/tester",
-  "nixrs-daemon-tests",
+  "nixrs-daemon-tests", "capnp-rpc-tokio",
 ]
 
 [workspace.dependencies]
 async-stream = "0.3.6"
 bstr = "^1.11.1"
 bytes = "^1.10.1"
+clap = { version = "^4.5.41", features = ["derive"] }
 # criterion = { version = "^0.5", features = ["html_reports"] }
 data-encoding = "^2.6.0"
 derive_more = "^0.99.18"

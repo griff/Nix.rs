@@ -25,9 +25,7 @@ use test_strategy::Arbitrary;
 use tokio::io::{AsyncBufRead, AsyncReadExt as _};
 use tracing::trace;
 
-use super::logger::{
-    Activity, ActivityResult, FutureResult, LogMessage, ResultLogExt as _, ResultProcess,
-};
+use super::logger::{FutureResult, ResultLogExt as _, ResultProcess};
 use super::types::AddToStoreItem;
 use super::wire::types::Operation;
 use super::wire::types2::{
@@ -38,11 +36,12 @@ use super::wire::types2::{
 };
 use super::{
     ClientOptions, DaemonError, DaemonPath, DaemonResult, DaemonResultExt, DaemonStore,
-    DaemonString, HandshakeDaemonStore, ResultLog, TrustLevel, UnkeyedValidPathInfo,
+    HandshakeDaemonStore, ResultLog, TrustLevel, UnkeyedValidPathInfo,
 };
 use crate::daemon::FutureResultExt;
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
+use crate::log::{Activity, ActivityResult, LogMessage, Message, StopActivity};
 #[cfg(any(test, feature = "test"))]
 use crate::pretty_prop_assert_eq;
 use crate::realisation::{DrvOutput, Realisation};
@@ -1614,17 +1613,17 @@ pub struct LogBuilder<'b, R, O> {
 }
 
 impl<R, O> LogBuilder<'_, R, O> {
-    pub fn message<M: Into<DaemonString>>(self, msg: M) -> Self {
+    pub fn message<M: Into<Message>>(self, msg: M) -> Self {
         let msg = msg.into();
-        self.add_log(LogMessage::Next(msg))
+        self.add_log(LogMessage::Message(msg))
     }
 
     pub fn start_activity(self, act: Activity) -> Self {
         self.add_log(LogMessage::StartActivity(act))
     }
 
-    pub fn stop_activity(self, act: u64) -> Self {
-        self.add_log(LogMessage::StopActivity(act))
+    pub fn stop_activity(self, id: u64) -> Self {
+        self.add_log(LogMessage::StopActivity(StopActivity { id }))
     }
 
     pub fn result(self, result: ActivityResult) -> Self {

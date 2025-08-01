@@ -2,12 +2,21 @@
 name = "nixrs-capnp"
 version = "0.1.0"
 authors = ["Brian Olsen <brian@maven-group.org>"]
-edition = "2021"
+edition = "2024"
 license = "EUPL-1.2 OR MIT"
 build = "build.rs"
 
 [[bin]]
 name = "run-tests"
+path = "src/bin/run_tests.rs"
+
+[[bin]]
+name = "nixrs-capnp-proxy"
+path = "src/bin/nixrs_capnp_proxy.rs"
+
+[[bin]]
+name = "nix-daemon-proxy"
+path = "src/bin/nix_daemon_proxy.rs"
 
 [features]
 # Nix Experimental Features
@@ -16,12 +25,16 @@ xp-ca-derivations = ["nixrs/xp-ca-derivations"]
 xp-impure-derivations = ["nixrs/xp-impure-derivations"]
 
 [dependencies]
-bytes = { workspace = true }
-capnp = { workspace = true }
-capnp-rpc = { workspace = true }
-futures = { workspace = true }
+bytes.workspace = true
+clap.workspace = true
+capnp.workspace = true
+capnp-rpc.workspace = true
+futures.workspace = true
 nixrs = { path = "../nixrs", features = [ "daemon" ] }
-pin-project-lite = { workspace = true }
+capnp-rpc-tokio.path = "../capnp-rpc-tokio"
+pin-project-lite.workspace = true
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [dependencies.tokio-util]
 workspace = true
@@ -29,8 +42,8 @@ features = ["compat"]
 
 [dependencies.tokio]
 workspace = true
-features = ["io-util", "io-std", "macros", "fs"]
+features = ["io-util", "io-std", "macros", "fs", "signal", "time"]
 
 [build-dependencies]
-capnpc = { workspace = true }
-which = { workspace = true }
+capnpc.workspace = true
+which.workspace = true

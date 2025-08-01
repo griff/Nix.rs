@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, str::FromStr};
 use capnp::traits::{Owned, OwnedStruct, SetterInput};
 use capnp::Error;
 
-use crate::capnp::nix_daemon_capnp;
+use crate::capnp::nix_types_capnp;
 use crate::convert::{BuildFrom, ReadFrom, ReadInto};
 
 impl<'b, T> BuildFrom<BTreeSet<T>> for capnp::text_list::Builder<'b>
@@ -135,7 +135,7 @@ where
 }
 
 impl<'b, K, V, KR, VR> BuildFrom<BTreeMap<K, V>>
-    for capnp::struct_list::Builder<'b, nix_daemon_capnp::map::entry::Owned<KR, VR>>
+    for capnp::struct_list::Builder<'b, nix_types_capnp::map::entry::Owned<KR, VR>>
 where
     KR: Owned,
     for<'kr> &'kr K: SetterInput<KR>,
@@ -153,7 +153,7 @@ where
 }
 
 impl<'r, K, V, KR, VR>
-    ReadFrom<capnp::struct_list::Reader<'r, nix_daemon_capnp::map::entry::Owned<KR, VR>>>
+    ReadFrom<capnp::struct_list::Reader<'r, nix_types_capnp::map::entry::Owned<KR, VR>>>
     for BTreeMap<K, V>
 where
     K: ReadFrom<<KR as Owned>::Reader<'r>> + Ord,
@@ -162,7 +162,7 @@ where
     VR: Owned,
 {
     fn read_from(
-        reader: capnp::struct_list::Reader<'r, nix_daemon_capnp::map::entry::Owned<KR, VR>>,
+        reader: capnp::struct_list::Reader<'r, nix_types_capnp::map::entry::Owned<KR, VR>>,
     ) -> Result<Self, Error> {
         let mut ret = BTreeMap::new();
         for item_r in reader.iter() {
@@ -174,7 +174,7 @@ where
     }
 }
 
-impl<'b, K, V, KR, VR> BuildFrom<BTreeMap<K, V>> for nix_daemon_capnp::map::Builder<'b, KR, VR>
+impl<'b, K, V, KR, VR> BuildFrom<BTreeMap<K, V>> for nix_types_capnp::map::Builder<'b, KR, VR>
 where
     for<'kb> &'kb K: SetterInput<KR>,
     KR: Owned,
@@ -188,14 +188,14 @@ where
     }
 }
 
-impl<'r, K, V, KR, VR> ReadFrom<nix_daemon_capnp::map::Reader<'r, KR, VR>> for BTreeMap<K, V>
+impl<'r, K, V, KR, VR> ReadFrom<nix_types_capnp::map::Reader<'r, KR, VR>> for BTreeMap<K, V>
 where
     K: ReadFrom<<KR as Owned>::Reader<'r>> + Ord,
     KR: Owned,
     V: ReadFrom<<VR as Owned>::Reader<'r>>,
     VR: Owned,
 {
-    fn read_from(reader: nix_daemon_capnp::map::Reader<'r, KR, VR>) -> Result<Self, Error> {
+    fn read_from(reader: nix_types_capnp::map::Reader<'r, KR, VR>) -> Result<Self, Error> {
         reader.get_entries()?.read_into()
     }
 }

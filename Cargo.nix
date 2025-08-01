@@ -37,6 +37,16 @@ rec {
   # You can override the features with
   # workspaceMembers."${crateName}".build.override { features = [ "default" "feature1" ... ]; }.
   workspaceMembers = {
+    "capnp-rpc-tokio" = rec {
+      packageId = "capnp-rpc-tokio";
+      build = internal.buildRustCrateWithFeatures {
+        packageId = "capnp-rpc-tokio";
+      };
+
+      # Debug support which might change between releases.
+      # File a bug if you depend on any for non-debug work!
+      debug = internal.debugCrate { inherit packageId; };
+    };
     "nix-docker-build" = rec {
       packageId = "nix-docker-build";
       build = internal.buildRustCrateWithFeatures {
@@ -121,26 +131,6 @@ rec {
       packageId = "nixrs-ssh-store";
       build = internal.buildRustCrateWithFeatures {
         packageId = "nixrs-ssh-store";
-      };
-
-      # Debug support which might change between releases.
-      # File a bug if you depend on any for non-debug work!
-      debug = internal.debugCrate { inherit packageId; };
-    };
-    "nixrs-test-utils" = rec {
-      packageId = "nixrs-test-utils";
-      build = internal.buildRustCrateWithFeatures {
-        packageId = "nixrs-test-utils";
-      };
-
-      # Debug support which might change between releases.
-      # File a bug if you depend on any for non-debug work!
-      debug = internal.debugCrate { inherit packageId; };
-    };
-    "nixrs-test-utils-macros" = rec {
-      packageId = "nixrs-test-utils-macros";
-      build = internal.buildRustCrateWithFeatures {
-        packageId = "nixrs-test-utils-macros";
       };
 
       # Debug support which might change between releases.
@@ -1029,12 +1019,21 @@ rec {
           "Carl Lerche <me@carllerche.com>"
           "Sean McArthur <sean@seanmonstar.com>"
         ];
+        dependencies = [
+          {
+            name = "serde";
+            packageId = "serde";
+            optional = true;
+            usesDefaultFeatures = false;
+            features = [ "alloc" ];
+          }
+        ];
         features = {
           "default" = [ "std" ];
           "extra-platforms" = [ "dep:extra-platforms" ];
           "serde" = [ "dep:serde" ];
         };
-        resolvedDefaultFeatures = [ "default" "std" ];
+        resolvedDefaultFeatures = [ "default" "serde" "std" ];
       };
       "caches" = rec {
         crateName = "caches";
@@ -1181,6 +1180,45 @@ rec {
             packageId = "futures";
             usesDefaultFeatures = false;
             features = [ "std" ];
+          }
+        ];
+
+      };
+      "capnp-rpc-tokio" = rec {
+        crateName = "capnp-rpc-tokio";
+        version = "0.1.0";
+        edition = "2024";
+        src = lib.cleanSourceWith { filter = sourceFilter;  src = ./capnp-rpc-tokio; };
+        libName = "capnp_rpc_tokio";
+        dependencies = [
+          {
+            name = "capnp";
+            packageId = "capnp";
+          }
+          {
+            name = "capnp-rpc";
+            packageId = "capnp-rpc";
+          }
+          {
+            name = "futures";
+            packageId = "futures";
+          }
+          {
+            name = "pin-project-lite";
+            packageId = "pin-project-lite";
+          }
+          {
+            name = "tokio";
+            packageId = "tokio";
+          }
+          {
+            name = "tokio-util";
+            packageId = "tokio-util";
+            features = [ "compat" ];
+          }
+          {
+            name = "tracing";
+            packageId = "tracing";
           }
         ];
 
@@ -4281,29 +4319,6 @@ rec {
           "std" = [ "block-padding/std" ];
         };
       };
-      "inventory" = rec {
-        crateName = "inventory";
-        version = "0.3.20";
-        edition = "2021";
-        sha256 = "10ybwdx175d7xpvzpz0g2cczn0yvqykkwf75974z55sq5k6xf25b";
-        authors = [
-          "David Tolnay <dtolnay@gmail.com>"
-        ];
-        dependencies = [
-          {
-            name = "rustversion";
-            packageId = "rustversion";
-            target = { target, features }: (builtins.elem "wasm" target."family");
-          }
-        ];
-        devDependencies = [
-          {
-            name = "rustversion";
-            packageId = "rustversion";
-          }
-        ];
-
-      };
       "io-uring" = rec {
         crateName = "io-uring";
         version = "0.7.8";
@@ -4920,6 +4935,7 @@ rec {
           {
             name = "bytes";
             packageId = "bytes";
+            features = [ "serde" ];
           }
           {
             name = "data-encoding";
@@ -4951,7 +4967,6 @@ rec {
           {
             name = "num_enum";
             packageId = "num_enum";
-            optional = true;
           }
           {
             name = "parking_lot";
@@ -5077,7 +5092,7 @@ rec {
           "default" = [ "test" "daemon" ];
           "full" = [ "test" "daemon" ];
           "md5" = [ "dep:md5" ];
-          "nixrs-derive" = [ "daemon-serde" "dep:nixrs-derive" "dep:libc" "dep:num_enum" "dep:bstr" ];
+          "nixrs-derive" = [ "daemon-serde" "dep:nixrs-derive" "dep:libc" "dep:bstr" ];
           "proptest" = [ "dep:proptest" ];
           "test" = [ "proptest" "dep:proptest-derive" "dep:test-strategy" "dep:pretty_assertions" ];
         };
@@ -5086,11 +5101,21 @@ rec {
       "nixrs-capnp" = rec {
         crateName = "nixrs-capnp";
         version = "0.1.0";
-        edition = "2021";
+        edition = "2024";
         crateBin = [
           {
+            name = "nix-daemon-proxy";
+            path = "src/bin/nix_daemon_proxy.rs";
+            requiredFeatures = [ ];
+          }
+          {
+            name = "nixrs-capnp-proxy";
+            path = "src/bin/nixrs_capnp_proxy.rs";
+            requiredFeatures = [ ];
+          }
+          {
             name = "run-tests";
-            path = "src/bin/run-tests.rs";
+            path = "src/bin/run_tests.rs";
             requiredFeatures = [ ];
           }
         ];
@@ -5113,6 +5138,15 @@ rec {
             packageId = "capnp-rpc";
           }
           {
+            name = "capnp-rpc-tokio";
+            packageId = "capnp-rpc-tokio";
+          }
+          {
+            name = "clap";
+            packageId = "clap";
+            features = [ "derive" ];
+          }
+          {
             name = "futures";
             packageId = "futures";
           }
@@ -5128,12 +5162,21 @@ rec {
           {
             name = "tokio";
             packageId = "tokio";
-            features = [ "io-util" "io-std" "macros" "fs" ];
+            features = [ "io-util" "io-std" "macros" "fs" "signal" "time" ];
           }
           {
             name = "tokio-util";
             packageId = "tokio-util";
             features = [ "compat" ];
+          }
+          {
+            name = "tracing";
+            packageId = "tracing";
+          }
+          {
+            name = "tracing-subscriber";
+            packageId = "tracing-subscriber";
+            features = [ "env-filter" ];
           }
         ];
         buildDependencies = [
@@ -5207,9 +5250,13 @@ rec {
             features = [ "trace" ];
           }
           {
+            name = "test-strategy";
+            packageId = "test-strategy";
+          }
+          {
             name = "tokio";
             packageId = "tokio";
-            features = [ "fs" "io-util" "macros" "process" "rt-multi-thread" ];
+            features = [ "fs" "io-util" "macros" "process" "rt-multi-thread" "time" ];
           }
           {
             name = "tracing";
@@ -5628,56 +5675,6 @@ rec {
           "legacy" = [ "dep:nixrs-legacy" ];
         };
         resolvedDefaultFeatures = [ "default" "legacy" ];
-      };
-      "nixrs-test-utils" = rec {
-        crateName = "nixrs-test-utils";
-        version = "0.1.0";
-        edition = "2021";
-        src = lib.cleanSourceWith { filter = sourceFilter;  src = ./nixrs-test-utils; };
-        libName = "nixrs_test_utils";
-        authors = [
-          "Brian Olsen <brian@maven-group.org>"
-        ];
-        dependencies = [
-          {
-            name = "inventory";
-            packageId = "inventory";
-          }
-          {
-            name = "nixrs-test-utils-macros";
-            packageId = "nixrs-test-utils-macros";
-          }
-        ];
-
-      };
-      "nixrs-test-utils-macros" = rec {
-        crateName = "nixrs-test-utils-macros";
-        version = "0.1.0";
-        edition = "2024";
-        src = lib.cleanSourceWith { filter = sourceFilter;  src = ./nixrs-test-utils-macros; };
-        procMacro = true;
-        libName = "nixrs_test_utils_macros";
-        authors = [
-          "Brian Olsen <brian@maven-group.org>"
-        ];
-        dependencies = [
-          {
-            name = "proc-macro2";
-            packageId = "proc-macro2";
-            features = [ "proc-macro" ];
-          }
-          {
-            name = "quote";
-            packageId = "quote";
-            features = [ "proc-macro" ];
-          }
-          {
-            name = "syn";
-            packageId = "syn";
-            features = [ "clone-impls" "derive" "extra-traits" "full" "parsing" "printing" "proc-macro" ];
-          }
-        ];
-
       };
       "nu-ansi-term" = rec {
         crateName = "nu-ansi-term";

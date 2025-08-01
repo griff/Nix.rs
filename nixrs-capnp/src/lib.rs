@@ -1,12 +1,9 @@
+mod byte_stream;
 pub mod capnp;
-mod client;
 mod convert;
-mod server;
-mod stream;
+pub mod nix_daemon;
 
-pub use client::{CapnpStore, LoggedCapnpStore};
-pub use server::{CapnpServer, HandshakeLoggedCapnpServer, LoggedCapnpServer};
-pub use stream::{ByteStreamWrap, ByteStreamWriter};
+pub use byte_stream::{ByteStreamWrap, ByteStreamWriter};
 
 pub const DEFAULT_BUF_SIZE: usize = 32 * 1024;
 

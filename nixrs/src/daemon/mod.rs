@@ -25,10 +25,7 @@ pub use fail_store::FailStore;
 #[cfg(feature = "nixrs-derive")]
 pub use local::{LocalDaemonStore, LocalHandshakeDaemonStore};
 #[cfg(feature = "nixrs-derive")]
-pub use logger::{
-    Activity, ActivityResult, ActivityType, DriveResult, Field, FutureResultExt, LogError,
-    LogMessage, ResultLog, ResultLogExt, ResultProcess, ResultType, TraceLine, Verbosity,
-};
+pub use logger::{DriveResult, FutureResultExt, ResultLog, ResultLogExt, ResultProcess};
 #[cfg(feature = "nixrs-derive")]
 pub use mutex::{MutexHandshakeStore, MutexStore};
 #[cfg(feature = "nixrs-derive")]
@@ -845,22 +842,19 @@ mod proptests {
     use bytes::Bytes;
     use futures::stream::iter;
     use proptest::prelude::*;
-    use proptest::sample::size_range;
     use proptest::test_runner::TestCaseResult;
     use proptest::{prop_assert, prop_assert_eq, proptest};
     use tokio::io::copy_buf;
     use tracing::info;
 
-    use super::mock::{LogOperation, MockStore};
+    use super::mock::MockStore;
     use super::unittests::run_store_test;
     use super::wire::types2::{BuildMode, BuildResult, KeyedBuildResult, QueryMissingResult};
     use super::DaemonResult;
     use super::{ClientOptions, UnkeyedValidPathInfo};
     use crate::archive::{read_nar, test_data};
-    use crate::daemon::mock::arbitrary::MockOperationParams;
-    use crate::daemon::unittests::run_store_test_version;
     use crate::daemon::wire::types2::ValidPathInfo;
-    use crate::daemon::{AddToStoreItem, DaemonStore as _, ProtocolVersion};
+    use crate::daemon::{AddToStoreItem, DaemonStore as _};
     use crate::derivation::BasicDerivation;
     use crate::derived_path::DerivedPath;
     use crate::hash::NarHash;
@@ -1131,6 +1125,7 @@ mod proptests {
         .await
     }
 
+    /*
     #[test_strategy::proptest(
         async = "tokio",
         ProptestConfig::default(),
@@ -1154,4 +1149,5 @@ mod proptests {
         })
         .await
     }
+     */
 }

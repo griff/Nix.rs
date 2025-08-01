@@ -4,13 +4,14 @@ use bytes::Bytes;
 use capnp::Error;
 use nixrs::signature::Signature;
 
-use crate::capnp::nix_daemon_capnp;
+use crate::capnp::nix_types_capnp;
 
 mod collections;
 mod daemon;
 mod derivation;
 mod derived_path;
 mod hash;
+mod log;
 mod realisation;
 mod store_path;
 
@@ -64,7 +65,7 @@ impl<'r> ReadFrom<capnp::data::Reader<'r>> for Bytes {
     }
 }
 
-impl<'b> BuildFrom<Signature> for nix_daemon_capnp::signature::Builder<'b> {
+impl<'b> BuildFrom<Signature> for nix_types_capnp::signature::Builder<'b> {
     fn build_from(&mut self, input: &Signature) -> Result<(), Error> {
         self.set_key(input.name());
         self.set_hash(input.signature_bytes());
@@ -72,8 +73,8 @@ impl<'b> BuildFrom<Signature> for nix_daemon_capnp::signature::Builder<'b> {
     }
 }
 
-impl<'r> ReadFrom<nix_daemon_capnp::signature::Reader<'r>> for Signature {
-    fn read_from(value: nix_daemon_capnp::signature::Reader<'r>) -> Result<Self, Error> {
+impl<'r> ReadFrom<nix_types_capnp::signature::Reader<'r>> for Signature {
+    fn read_from(value: nix_types_capnp::signature::Reader<'r>) -> Result<Self, Error> {
         let c_key = value.get_key()?.to_str()?;
         let c_hash = value.get_hash()?;
         let signature =

@@ -11,16 +11,16 @@ use futures::{FutureExt as _, SinkExt, TryFutureExt as _};
 use nixrs::daemon::wire::types2::BuildMode;
 use nixrs::daemon::{
     DaemonError, DaemonResult, DriveResult, FutureResultExt as _, LocalDaemonStore,
-    LocalHandshakeDaemonStore, LogMessage, ResultLog, ResultLogExt, UnkeyedValidPathInfo,
+    LocalHandshakeDaemonStore, ResultLog, ResultLogExt, UnkeyedValidPathInfo,
 };
 use nixrs::derived_path::DerivedPath;
-use nixrs::hash::NarHash;
+use nixrs::log::LogMessage;
 use nixrs::store_path::{StorePath, StorePathSet};
 use tokio::io::{copy_buf, simplex, AsyncWriteExt, BufReader};
 
+use crate::byte_stream::from_cap_error;
 use crate::capnp::nix_daemon_capnp;
 use crate::convert::{BuildFrom, ReadInto};
-use crate::stream::from_cap_error;
 use crate::{from_error, ByteStreamWrap, ByteStreamWriter, DEFAULT_BUF_SIZE};
 
 pub struct CapnpStore {
@@ -52,13 +52,22 @@ impl LocalDaemonStore for CapnpStore {
         nixrs::daemon::TrustLevel::Trusted
     }
 
+    async fn shutdown(&mut self) -> DaemonResult<()> {
+        let req = self.store.end_request();
+        req.send()
+            .promise
+            .await
+            .map(|_| ())
+            .map_err(DaemonError::custom)
+    }
+
     fn set_options<'a>(
         &'a mut self,
         options: &'a nixrs::daemon::ClientOptions,
     ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
         (async move {
             let mut req = self.store.set_options_request();
-            req.get().init_options().build_from(options)?;
+            req.get().set_options(options)?;
             req.send().promise.await.map(|_| ())
         })
         .map_err(DaemonError::custom)
@@ -111,51 +120,13 @@ impl LocalDaemonStore for CapnpStore {
             let resp = req.send().promise.await?;
             let r = resp.get()?;
             if r.has_info() {
-                let info = r.get_info()?;
-                let deriver = if info.has_deriver() {
-                    let c_path = info.get_deriver()?;
-                    Some(c_path.read_into()?)
-                } else {
-                    None
-                };
-                let nar_hash = NarHash::from_slice(info.get_nar_hash()?)
-                    .map_err(|err| Error::failed(err.to_string()))?;
-                let nar_size = info.get_nar_size();
-                let registration_time = info.get_registration_time();
-                let ultimate = info.get_ultimate();
-                let references = info.get_references()?.read_into()?;
-                let signatures = info.get_signatures()?.read_into()?;
-                let ca = if info.has_ca() {
-                    let ca = info.get_ca()?.read_into()?;
-                    Some(ca)
-                } else {
-                    None
-                };
-                Ok(Some(UnkeyedValidPathInfo {
-                    deriver,
-                    nar_hash,
-                    nar_size,
-                    registration_time,
-                    ultimate,
-                    references,
-                    signatures,
-                    ca,
-                }))
+                Ok(Some(r.get_info()?.read_into()?))
             } else {
                 Ok(None) as Result<_, Error>
             }
         })
         .map_err(DaemonError::custom)
         .empty_logs()
-    }
-
-    async fn shutdown(&mut self) -> DaemonResult<()> {
-        let req = self.store.end_request();
-        req.send()
-            .promise
-            .await
-            .map(|_| ())
-            .map_err(DaemonError::custom)
     }
 
     fn nar_from_path<'s>(
@@ -226,8 +197,11 @@ impl LocalDaemonStore for CapnpStore {
         (async move {
             let mut req = self.store.build_derivation_request();
             let mut params = req.get();
+            params.set_drv(drv)?;
+            /*
             let mut drv_b = params.reborrow().init_drv();
             drv_b.build_from(drv)?;
+            */
             params.set_mode(mode.into());
             let resp = req.send().promise.await?;
             resp.get()?.get_result()?.read_into()
@@ -450,14 +424,14 @@ impl LocalDaemonStore for LoggedCapnpStore {
         &'a mut self,
         options: &'a nixrs::daemon::ClientOptions,
     ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
-        make_request!(self, |store| store.set_options(options).await )
+        make_request!(self, |store| store.set_options(options).await)
     }
 
     fn is_valid_path<'a>(
         &'a mut self,
         path: &'a nixrs::store_path::StorePath,
     ) -> impl ResultLog<Output = DaemonResult<bool>> + 'a {
-        make_request!(self, |store| store.is_valid_path(path).await )
+        make_request!(self, |store| store.is_valid_path(path).await)
     }
 
     fn query_valid_paths<'a>(
@@ -474,14 +448,14 @@ impl LocalDaemonStore for LoggedCapnpStore {
         &'a mut self,
         path: &'a StorePath,
     ) -> impl ResultLog<Output = DaemonResult<Option<UnkeyedValidPathInfo>>> + 'a {
-        make_request!(self, |store| store.query_path_info(path).await )
+        make_request!(self, |store| store.query_path_info(path).await)
     }
 
     fn nar_from_path<'s>(
         &'s mut self,
         path: &'s StorePath,
     ) -> impl ResultLog<Output = DaemonResult<impl tokio::io::AsyncBufRead + use<>>> + 's {
-        make_request!(self, |store| store.nar_from_path(path).await )
+        make_request!(self, |store| store.nar_from_path(path).await)
     }
 
     fn build_paths<'a>(
@@ -489,7 +463,7 @@ impl LocalDaemonStore for LoggedCapnpStore {
         drvs: &'a [DerivedPath],
         mode: BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
-        make_request!(self, |store| store.build_paths(drvs, mode).await )
+        make_request!(self, |store| store.build_paths(drvs, mode).await)
     }
 
     fn build_paths_with_results<'a>(
@@ -508,7 +482,7 @@ impl LocalDaemonStore for LoggedCapnpStore {
         drv: &'a nixrs::derivation::BasicDerivation,
         mode: BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::wire::types2::BuildResult>> + 'a {
-        make_request!(self, |store| store.build_derivation(drv, mode).await )
+        make_request!(self, |store| store.build_derivation(drv, mode).await)
     }
 
     fn query_missing<'a>(
@@ -516,7 +490,7 @@ impl LocalDaemonStore for LoggedCapnpStore {
         paths: &'a [DerivedPath],
     ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::wire::types2::QueryMissingResult>> + 'a
     {
-        make_request!(self, |store| store.query_missing(paths).await )
+        make_request!(self, |store| store.query_missing(paths).await)
     }
 
     fn add_to_store_nar<'s, 'r, 'i, R>(

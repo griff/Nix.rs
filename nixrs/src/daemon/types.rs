@@ -15,10 +15,12 @@ use thiserror::Error;
 use tokio::io::AsyncBufRead;
 
 use crate::daemon::logger::FutureResultExt;
+use crate::daemon::wire::logger::{LogError, TraceLine};
 use crate::daemon::ResultLogExt;
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
 use crate::hash::NarHash;
+use crate::log::Verbosity;
 use crate::realisation::{DrvOutput, Realisation};
 #[cfg(any(test, feature = "test"))]
 use crate::signature::proptests::arb_signatures;
@@ -27,7 +29,7 @@ use crate::store_path::{
     ContentAddress, ContentAddressMethodAlgorithm, StorePath, StorePathHash, StorePathSet,
 };
 
-use super::logger::{LogError, ResultLog, TraceLine, Verbosity};
+use super::logger::ResultLog;
 use super::wire::types::Operation;
 use super::wire::types2::{
     BuildMode, BuildResult, CollectGarbageResponse, GCAction, KeyedBuildResult, QueryMissingResult,

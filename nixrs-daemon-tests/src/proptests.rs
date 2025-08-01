@@ -4,7 +4,8 @@ use std::time::{Duration, Instant};
 use futures::StreamExt as _;
 use nixrs::daemon::mock::MockStore;
 use nixrs::daemon::wire::types::Operation;
-use nixrs::daemon::{DaemonStore as _, LogMessage, ProtocolVersion};
+use nixrs::daemon::{DaemonStore as _, ProtocolVersion};
+use nixrs::log::LogMessage;
 use nixrs::pretty_prop_assert_eq;
 use nixrs::store_path::{StorePath, StorePathSet};
 use proptest::prelude::*;
@@ -15,7 +16,6 @@ use tracing::error;
 
 use crate::{nix_protocol_range, prepare_mock, run_store_test, NixImpl as _, ENV_NIX_IMPL};
 
-// TODO: proptest handshake
 #[test_log::test(test_strategy::proptest(
     async = "tokio",
     ProptestConfig::default(),
@@ -180,7 +180,7 @@ async fn proptest_operations(
     #[any((size_range(0..10), MockOperationParams { version: #version, allow_options: false }))]
     ops: Vec<LogOperation>,
 ) -> TestCaseResult {
-     if nix.is_skipped("proptests::proptest_query_valid_paths") {
+     if nix.is_skipped("proptests::proptest_operations") {
         return Ok(());
     }
     let mut mock = MockStore::builder();
@@ -221,6 +221,9 @@ async fn proptest_op_logs(
     #[any((size_range(0..100), #version))] mut op_logs: Vec<LogMessage>,
 ) -> TestCaseResult {
     let nix = &*ENV_NIX_IMPL;
+    if nix.is_skipped("proptests::proptest_op_logs") {
+        return Ok(());
+    }
     let mut mock = MockStore::builder();
     let store_path = "00000000000000000000000000000000-_".parse().unwrap();
     let mut op = mock.is_valid_path(&store_path, Ok(true));

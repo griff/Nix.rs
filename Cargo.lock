@@ -333,6 +333,9 @@ name = "bytes"
 version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "caches"
@@ -372,6 +375,19 @@ dependencies = [
  "capnp",
  "capnp-futures",
  "futures",
+]
+
+[[package]]
+name = "capnp-rpc-tokio"
+version = "0.1.0"
+dependencies = [
+ "capnp",
+ "capnp-rpc",
+ "futures",
+ "pin-project-lite",
+ "tokio",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]
@@ -1368,15 +1384,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "inventory"
-version = "0.3.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab08d7cd2c5897f2c949e5383ea7c7db03fb19130ffcfbf7eda795137ae3cb83"
-dependencies = [
- "rustversion",
-]
-
-[[package]]
 name = "io-uring"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1618,12 +1625,16 @@ dependencies = [
  "bytes",
  "capnp",
  "capnp-rpc",
+ "capnp-rpc-tokio",
  "capnpc",
+ "clap",
  "futures",
  "nixrs",
  "pin-project-lite",
  "tokio",
  "tokio-util",
+ "tracing",
+ "tracing-subscriber",
  "which",
 ]
 
@@ -1745,23 +1756,6 @@ dependencies = [
  "tokio-test",
  "tokio-util",
  "tracing",
-]
-
-[[package]]
-name = "nixrs-test-utils"
-version = "0.1.0"
-dependencies = [
- "inventory",
- "nixrs-test-utils-macros",
-]
-
-[[package]]
-name = "nixrs-test-utils-macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]

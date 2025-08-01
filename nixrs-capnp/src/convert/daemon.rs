@@ -1,12 +1,10 @@
 use bytes::Bytes;
+use capnp::traits::{FromPointerBuilder as _, SetterInput};
 use capnp::Error;
 use nixrs::daemon::wire::types2::{
     BuildMode, BuildResult, BuildStatus, KeyedBuildResult, QueryMissingResult, ValidPathInfo,
 };
-use nixrs::daemon::{
-    Activity, ActivityResult, ActivityType, ClientOptions, Field, LogMessage, ResultType,
-    UnkeyedValidPathInfo, Verbosity,
-};
+use nixrs::daemon::{ClientOptions, UnkeyedValidPathInfo};
 
 use crate::capnp::nix_daemon_capnp;
 use crate::convert::{BuildFrom, ReadFrom, ReadInto as _};
@@ -79,110 +77,6 @@ impl From<nix_daemon_capnp::BuildMode> for BuildMode {
     }
 }
 
-impl From<Verbosity> for nix_daemon_capnp::Verbosity {
-    fn from(value: Verbosity) -> Self {
-        match value {
-            Verbosity::Error => nix_daemon_capnp::Verbosity::Error,
-            Verbosity::Warn => nix_daemon_capnp::Verbosity::Warn,
-            Verbosity::Notice => nix_daemon_capnp::Verbosity::Notice,
-            Verbosity::Info => nix_daemon_capnp::Verbosity::Info,
-            Verbosity::Talkative => nix_daemon_capnp::Verbosity::Talkative,
-            Verbosity::Chatty => nix_daemon_capnp::Verbosity::Chatty,
-            Verbosity::Debug => nix_daemon_capnp::Verbosity::Debug,
-            Verbosity::Vomit => nix_daemon_capnp::Verbosity::Vomit,
-        }
-    }
-}
-
-impl From<nix_daemon_capnp::Verbosity> for Verbosity {
-    fn from(value: nix_daemon_capnp::Verbosity) -> Self {
-        match value {
-            nix_daemon_capnp::Verbosity::Error => Verbosity::Error,
-            nix_daemon_capnp::Verbosity::Warn => Verbosity::Warn,
-            nix_daemon_capnp::Verbosity::Notice => Verbosity::Notice,
-            nix_daemon_capnp::Verbosity::Info => Verbosity::Info,
-            nix_daemon_capnp::Verbosity::Talkative => Verbosity::Talkative,
-            nix_daemon_capnp::Verbosity::Chatty => Verbosity::Chatty,
-            nix_daemon_capnp::Verbosity::Debug => Verbosity::Debug,
-            nix_daemon_capnp::Verbosity::Vomit => Verbosity::Vomit,
-        }
-    }
-}
-
-impl From<ActivityType> for nix_daemon_capnp::ActivityType {
-    fn from(value: ActivityType) -> Self {
-        match value {
-            ActivityType::Unknown => nix_daemon_capnp::ActivityType::Unknown,
-            ActivityType::CopyPath => nix_daemon_capnp::ActivityType::CopyPath,
-            ActivityType::FileTransfer => nix_daemon_capnp::ActivityType::FileTransfer,
-            ActivityType::Realise => nix_daemon_capnp::ActivityType::Realise,
-            ActivityType::CopyPaths => nix_daemon_capnp::ActivityType::CopyPaths,
-            ActivityType::Builds => nix_daemon_capnp::ActivityType::Builds,
-            ActivityType::Build => nix_daemon_capnp::ActivityType::Build,
-            ActivityType::OptimiseStore => nix_daemon_capnp::ActivityType::OptimiseStore,
-            ActivityType::VerifyPaths => nix_daemon_capnp::ActivityType::VerifyPaths,
-            ActivityType::Substitute => nix_daemon_capnp::ActivityType::Substitute,
-            ActivityType::QueryPathInfo => nix_daemon_capnp::ActivityType::QueryPathInfo,
-            ActivityType::PostBuildHook => nix_daemon_capnp::ActivityType::PostBuildHook,
-            ActivityType::BuildWaiting => nix_daemon_capnp::ActivityType::BuildWaiting,
-            ActivityType::FetchTree => nix_daemon_capnp::ActivityType::FetchTree,
-        }
-    }
-}
-
-impl From<nix_daemon_capnp::ActivityType> for ActivityType {
-    fn from(value: nix_daemon_capnp::ActivityType) -> Self {
-        match value {
-            nix_daemon_capnp::ActivityType::Unknown => ActivityType::Unknown,
-            nix_daemon_capnp::ActivityType::CopyPath => ActivityType::CopyPath,
-            nix_daemon_capnp::ActivityType::FileTransfer => ActivityType::FileTransfer,
-            nix_daemon_capnp::ActivityType::Realise => ActivityType::Realise,
-            nix_daemon_capnp::ActivityType::CopyPaths => ActivityType::CopyPaths,
-            nix_daemon_capnp::ActivityType::Builds => ActivityType::Builds,
-            nix_daemon_capnp::ActivityType::Build => ActivityType::Build,
-            nix_daemon_capnp::ActivityType::OptimiseStore => ActivityType::OptimiseStore,
-            nix_daemon_capnp::ActivityType::VerifyPaths => ActivityType::VerifyPaths,
-            nix_daemon_capnp::ActivityType::Substitute => ActivityType::Substitute,
-            nix_daemon_capnp::ActivityType::QueryPathInfo => ActivityType::QueryPathInfo,
-            nix_daemon_capnp::ActivityType::PostBuildHook => ActivityType::PostBuildHook,
-            nix_daemon_capnp::ActivityType::BuildWaiting => ActivityType::BuildWaiting,
-            nix_daemon_capnp::ActivityType::FetchTree => ActivityType::FetchTree,
-        }
-    }
-}
-
-impl From<ResultType> for nix_daemon_capnp::ResultType {
-    fn from(value: ResultType) -> Self {
-        match value {
-            ResultType::FileLinked => nix_daemon_capnp::ResultType::FileLinked,
-            ResultType::BuildLogLine => nix_daemon_capnp::ResultType::BuildLogLine,
-            ResultType::UntrustedPath => nix_daemon_capnp::ResultType::UntrustedPath,
-            ResultType::CorruptedPath => nix_daemon_capnp::ResultType::CorruptedPath,
-            ResultType::SetPhase => nix_daemon_capnp::ResultType::SetPhase,
-            ResultType::Progress => nix_daemon_capnp::ResultType::Progress,
-            ResultType::SetExpected => nix_daemon_capnp::ResultType::SetExpected,
-            ResultType::PostBuildLogLine => nix_daemon_capnp::ResultType::PostBuildLogLine,
-            ResultType::FetchStatus => nix_daemon_capnp::ResultType::FetchStatus,
-        }
-    }
-}
-
-impl From<nix_daemon_capnp::ResultType> for ResultType {
-    fn from(value: nix_daemon_capnp::ResultType) -> Self {
-        match value {
-            nix_daemon_capnp::ResultType::FileLinked => ResultType::FileLinked,
-            nix_daemon_capnp::ResultType::BuildLogLine => ResultType::BuildLogLine,
-            nix_daemon_capnp::ResultType::UntrustedPath => ResultType::UntrustedPath,
-            nix_daemon_capnp::ResultType::CorruptedPath => ResultType::CorruptedPath,
-            nix_daemon_capnp::ResultType::SetPhase => ResultType::SetPhase,
-            nix_daemon_capnp::ResultType::Progress => ResultType::Progress,
-            nix_daemon_capnp::ResultType::SetExpected => ResultType::SetExpected,
-            nix_daemon_capnp::ResultType::PostBuildLogLine => ResultType::PostBuildLogLine,
-            nix_daemon_capnp::ResultType::FetchStatus => ResultType::FetchStatus,
-        }
-    }
-}
-
 impl<'b> BuildFrom<ClientOptions> for nix_daemon_capnp::client_options::Builder<'b> {
     fn build_from(&mut self, options: &ClientOptions) -> Result<(), Error> {
         self.set_keep_failed(options.keep_failed);
@@ -206,6 +100,36 @@ impl<'b> BuildFrom<ClientOptions> for nix_daemon_capnp::client_options::Builder<
         Ok(())
     }
 }
+
+impl SetterInput<nix_daemon_capnp::client_options::Owned> for &'_ ClientOptions {
+    fn set_pointer_builder(
+        builder: capnp::private::layout::PointerBuilder<'_>,
+        input: Self,
+        _canonicalize: bool,
+    ) -> capnp::Result<()> {
+        let mut builder = nix_daemon_capnp::client_options::Builder::init_pointer(builder, 0);
+        builder.set_keep_failed(input.keep_failed);
+        builder.set_keep_going(input.keep_going);
+        builder.set_try_fallback(input.try_fallback);
+        builder.set_verbosity(input.verbosity.into());
+        builder.set_max_build_jobs(input.max_build_jobs);
+        builder.set_max_silent_time(input.max_silent_time);
+        builder.set_verbose_build(input.verbose_build.into());
+        builder.set_build_cores(input.build_cores);
+        builder.set_use_substitutes(input.use_substitutes);
+        if !input.other_settings.is_empty() {
+            let other = builder.reborrow().init_other_settings();
+            let mut entries = other.init_entries(input.other_settings.len() as u32);
+            for (index, (k, v)) in input.other_settings.iter().enumerate() {
+                let mut entry = entries.reborrow().get(index as u32);
+                entry.set_key(k)?;
+                entry.set_value(&v[..])?;
+            }
+        }
+        Ok(())
+    }
+}
+
 impl<'r> ReadFrom<nix_daemon_capnp::client_options::Reader<'r>> for ClientOptions {
     fn read_from(reader: nix_daemon_capnp::client_options::Reader<'r>) -> Result<Self, Error> {
         let mut options = ClientOptions::default();
@@ -243,6 +167,34 @@ impl<'b> BuildFrom<BuildResult> for nix_daemon_capnp::build_result::Builder<'b> 
         Ok(())
     }
 }
+
+impl SetterInput<nix_daemon_capnp::build_result::Owned> for &'_ BuildResult {
+    fn set_pointer_builder(
+        builder: capnp::private::layout::PointerBuilder<'_>,
+        input: Self,
+        _canonicalize: bool,
+    ) -> capnp::Result<()> {
+        let mut builder = nix_daemon_capnp::build_result::Builder::init_pointer(builder, 0);
+        builder.set_status(input.status.into());
+        builder.set_error_msg(input.error_msg.as_ref());
+        builder.set_times_built(input.times_built);
+        builder.set_is_non_deterministic(input.is_non_deterministic);
+        builder.set_start_time(input.start_time);
+        builder.set_stop_time(input.stop_time);
+        if let Some(cpu_user) = input.cpu_user.as_ref() {
+            builder.set_cpu_user((*cpu_user).into());
+        }
+        if let Some(cpu_system) = input.cpu_system.as_ref() {
+            builder.set_cpu_system((*cpu_system).into());
+        }
+        builder
+            .reborrow()
+            .init_built_outputs()
+            .build_from(&input.built_outputs)?;
+        Ok(())
+    }
+}
+
 impl<'r> ReadFrom<nix_daemon_capnp::build_result::Reader<'r>> for BuildResult {
     fn read_from(value: nix_daemon_capnp::build_result::Reader<'r>) -> Result<Self, Error> {
         let status = value.get_status()?.into();
@@ -278,8 +230,21 @@ impl<'r> ReadFrom<nix_daemon_capnp::build_result::Reader<'r>> for BuildResult {
 
 impl<'b> BuildFrom<KeyedBuildResult> for nix_daemon_capnp::keyed_build_result::Builder<'b> {
     fn build_from(&mut self, input: &KeyedBuildResult) -> Result<(), Error> {
-        self.reborrow().init_path().build_from(&input.path)?;
-        self.reborrow().init_result().build_from(&input.result)?;
+        self.set_path(&input.path)?;
+        self.set_result(&input.result)?;
+        Ok(())
+    }
+}
+
+impl SetterInput<nix_daemon_capnp::keyed_build_result::Owned> for &'_ KeyedBuildResult {
+    fn set_pointer_builder(
+        builder: capnp::private::layout::PointerBuilder<'_>,
+        input: Self,
+        _canonicalize: bool,
+    ) -> capnp::Result<()> {
+        let mut builder = nix_daemon_capnp::keyed_build_result::Builder::init_pointer(builder, 0);
+        builder.set_path(&input.path)?;
+        builder.set_result(&input.result)?;
         Ok(())
     }
 }
@@ -309,6 +274,31 @@ impl<'b> BuildFrom<QueryMissingResult> for nix_daemon_capnp::query_missing_resul
     }
 }
 
+impl SetterInput<nix_daemon_capnp::query_missing_result::Owned> for &'_ QueryMissingResult {
+    fn set_pointer_builder(
+        builder: capnp::private::layout::PointerBuilder<'_>,
+        input: Self,
+        _canonicalize: bool,
+    ) -> capnp::Result<()> {
+        let mut builder = nix_daemon_capnp::query_missing_result::Builder::init_pointer(builder, 0);
+        builder
+            .reborrow()
+            .init_unknown(input.unknown.len() as u32)
+            .build_from(&input.unknown)?;
+        builder
+            .reborrow()
+            .init_will_build(input.will_build.len() as u32)
+            .build_from(&input.will_build)?;
+        builder
+            .reborrow()
+            .init_will_substitute(input.will_substitute.len() as u32)
+            .build_from(&input.will_substitute)?;
+        builder.set_download_size(input.download_size);
+        builder.set_nar_size(input.nar_size);
+        Ok(())
+    }
+}
+
 impl<'r> ReadFrom<nix_daemon_capnp::query_missing_result::Reader<'r>> for QueryMissingResult {
     fn read_from(
         reader: nix_daemon_capnp::query_missing_result::Reader<'r>,
@@ -333,7 +323,7 @@ impl<'b> BuildFrom<UnkeyedValidPathInfo>
 {
     fn build_from(&mut self, input: &UnkeyedValidPathInfo) -> Result<(), Error> {
         if let Some(deriver) = input.deriver.as_ref() {
-            self.reborrow().set_deriver(deriver)?;
+            self.set_deriver(deriver)?;
         }
         self.set_nar_hash(input.nar_hash.as_ref());
         self.reborrow()
@@ -346,7 +336,37 @@ impl<'b> BuildFrom<UnkeyedValidPathInfo>
             .init_signatures(input.signatures.len() as u32)
             .build_from(&input.signatures)?;
         if let Some(ca) = input.ca.as_ref() {
-            self.reborrow().init_ca().build_from(ca)?;
+            self.set_ca(ca)?;
+        }
+        Ok(())
+    }
+}
+
+impl SetterInput<nix_daemon_capnp::unkeyed_valid_path_info::Owned> for &'_ UnkeyedValidPathInfo {
+    fn set_pointer_builder(
+        builder: capnp::private::layout::PointerBuilder<'_>,
+        input: Self,
+        _canonicalize: bool,
+    ) -> capnp::Result<()> {
+        let mut builder =
+            nix_daemon_capnp::unkeyed_valid_path_info::Builder::init_pointer(builder, 0);
+        if let Some(deriver) = input.deriver.as_ref() {
+            builder.set_deriver(deriver)?;
+        }
+        builder.set_nar_hash(input.nar_hash.as_ref());
+        builder
+            .reborrow()
+            .init_references(input.references.len() as u32)
+            .build_from(&input.references)?;
+        builder.set_registration_time(input.registration_time);
+        builder.set_nar_size(input.nar_size);
+        builder.set_ultimate(input.ultimate);
+        builder
+            .reborrow()
+            .init_signatures(input.signatures.len() as u32)
+            .build_from(&input.signatures)?;
+        if let Some(ca) = input.ca.as_ref() {
+            builder.set_ca(ca)?;
         }
         Ok(())
     }
@@ -387,8 +407,21 @@ impl<'r> ReadFrom<nix_daemon_capnp::unkeyed_valid_path_info::Reader<'r>> for Unk
 
 impl<'b> BuildFrom<ValidPathInfo> for nix_daemon_capnp::valid_path_info::Builder<'b> {
     fn build_from(&mut self, input: &ValidPathInfo) -> Result<(), Error> {
-        self.reborrow().set_path(&input.path)?;
-        self.reborrow().init_info().build_from(&input.info)?;
+        self.set_path(&input.path)?;
+        self.set_info(&input.info)?;
+        Ok(())
+    }
+}
+
+impl SetterInput<nix_daemon_capnp::valid_path_info::Owned> for &'_ ValidPathInfo {
+    fn set_pointer_builder(
+        builder: capnp::private::layout::PointerBuilder<'_>,
+        input: Self,
+        _canonicalize: bool,
+    ) -> capnp::Result<()> {
+        let mut builder = nix_daemon_capnp::valid_path_info::Builder::init_pointer(builder, 0);
+        builder.set_path(&input.path)?;
+        builder.set_info(&input.info)?;
         Ok(())
     }
 }
@@ -398,124 +431,5 @@ impl<'r> ReadFrom<nix_daemon_capnp::valid_path_info::Reader<'r>> for ValidPathIn
         let path = reader.get_path()?.read_into()?;
         let info = reader.get_info()?.read_into()?;
         Ok(ValidPathInfo { path, info })
-    }
-}
-
-impl<'b> BuildFrom<LogMessage> for nix_daemon_capnp::log_message::Builder<'b> {
-    fn build_from(&mut self, input: &LogMessage) -> Result<(), Error> {
-        match input {
-            LogMessage::Next(msg) => {
-                self.set_next(msg.as_ref());
-            }
-            LogMessage::StartActivity(activity) => {
-                self.reborrow().init_start_activity().build_from(activity)?;
-            }
-            LogMessage::StopActivity(act) => {
-                self.reborrow().init_stop_activity().set_act(*act);
-            }
-            LogMessage::Result(result) => {
-                self.reborrow().init_result().build_from(result)?;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl<'r> ReadFrom<nix_daemon_capnp::log_message::Reader<'r>> for LogMessage {
-    fn read_from(reader: nix_daemon_capnp::log_message::Reader<'r>) -> Result<Self, Error> {
-        match reader.which()? {
-            nix_daemon_capnp::log_message::Which::Next(msg) => {
-                Ok(LogMessage::Next(Bytes::copy_from_slice(msg?)))
-            }
-            nix_daemon_capnp::log_message::Which::StartActivity(act) => {
-                Ok(LogMessage::StartActivity(act.read_into()?))
-            }
-            nix_daemon_capnp::log_message::Which::StopActivity(act) => {
-                Ok(LogMessage::StopActivity(act.get_act()))
-            }
-            nix_daemon_capnp::log_message::Which::Result(res) => {
-                Ok(LogMessage::Result(res.read_into()?))
-            }
-        }
-    }
-}
-
-impl<'b> BuildFrom<Activity> for nix_daemon_capnp::log_message::start_activity::Builder<'b> {
-    fn build_from(&mut self, input: &Activity) -> Result<(), Error> {
-        self.set_act(input.act);
-        self.set_activity_type(input.activity_type.into());
-        self.set_level(input.level.into());
-        self.set_text(input.text.as_ref());
-        self.set_parent(input.parent);
-        self.reborrow()
-            .init_fields(input.fields.len() as u32)
-            .build_from(&input.fields)?;
-        Ok(())
-    }
-}
-
-impl<'r> ReadFrom<nix_daemon_capnp::log_message::start_activity::Reader<'r>> for Activity {
-    fn read_from(
-        reader: nix_daemon_capnp::log_message::start_activity::Reader<'r>,
-    ) -> Result<Self, Error> {
-        let act = reader.get_act();
-        let activity_type = reader.get_activity_type()?.into();
-        let level = reader.get_level()?.into();
-        let text = Bytes::copy_from_slice(reader.get_text()?);
-        let fields = reader.get_fields()?.read_into()?;
-        let parent = reader.get_parent();
-        Ok(Activity {
-            act,
-            activity_type,
-            level,
-            text,
-            fields,
-            parent,
-        })
-    }
-}
-
-impl<'b> BuildFrom<ActivityResult> for nix_daemon_capnp::log_message::result::Builder<'b> {
-    fn build_from(&mut self, input: &ActivityResult) -> Result<(), Error> {
-        self.set_act(input.act);
-        self.set_result_type(input.result_type.into());
-        self.reborrow()
-            .init_fields(input.fields.len() as u32)
-            .build_from(&input.fields)?;
-        Ok(())
-    }
-}
-
-impl<'r> ReadFrom<nix_daemon_capnp::log_message::result::Reader<'r>> for ActivityResult {
-    fn read_from(reader: nix_daemon_capnp::log_message::result::Reader<'r>) -> Result<Self, Error> {
-        let act = reader.get_act();
-        let result_type = reader.get_result_type()?.into();
-        let fields = reader.get_fields()?.read_into()?;
-        Ok(ActivityResult {
-            act,
-            result_type,
-            fields,
-        })
-    }
-}
-
-impl<'b> BuildFrom<Field> for nix_daemon_capnp::field::Builder<'b> {
-    fn build_from(&mut self, input: &Field) -> Result<(), Error> {
-        match input {
-            Field::Int(value) => self.set_int(*value),
-            Field::String(value) => self.set_string(value.as_ref()),
-        }
-        Ok(())
-    }
-}
-
-impl<'r> ReadFrom<nix_daemon_capnp::field::Reader<'r>> for Field {
-    fn read_from(reader: nix_daemon_capnp::field::Reader<'r>) -> Result<Self, Error> {
-        match reader.which()? {
-            nix_daemon_capnp::field::Which::Int(value) => Ok(Field::Int(value)),
-            nix_daemon_capnp::field::Which::String(value) => {
-                Ok(Field::String(Bytes::copy_from_slice(value?)))
-            }
-        }
     }
 }

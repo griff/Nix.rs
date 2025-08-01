@@ -14,7 +14,7 @@ test = ["proptest", "dep:proptest-derive", "dep:test-strategy", "dep:pretty_asse
 archive = ["dep:walkdir"]
 daemon = ["nixrs-derive", "archive", "tokio/rt"]
 daemon-serde = []
-nixrs-derive = ["daemon-serde", "dep:nixrs-derive", "dep:libc", "dep:num_enum", "dep:bstr"]
+nixrs-derive = ["daemon-serde", "dep:nixrs-derive", "dep:libc", "dep:bstr"]
 internal = []
 full = ["test", "daemon"]
 
@@ -29,13 +29,13 @@ default = ["test", "daemon"]
 [dependencies]
 async-stream = { workspace = true }
 bstr = { workspace = true, optional = true }
-bytes = { workspace = true }
+bytes = { workspace = true, features = ["serde"] }
 data-encoding = { workspace = true }
 derive_more = { workspace = true }
 futures = { workspace = true }
 libc = { workspace = true, optional = true }
 md5 = { workspace = true, optional = true }
-num_enum = { workspace = true, optional = true }
+num_enum = { workspace = true }
 parking_lot = { version = "^0.12.3", features = ["arc_lock"] }
 pin-project-lite = { workspace = true }
 pretty_assertions = { workspace = true, optional = true }

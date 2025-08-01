@@ -13,6 +13,7 @@ use nixrs::daemon::{AddToStoreItem, DaemonResult, DaemonStore, HandshakeDaemonSt
 use nixrs::derived_path::DerivedPath;
 use pin_project_lite::pin_project;
 use tokio::io::{copy_buf, simplex, AsyncWriteExt as _, BufReader, ReadHalf, SimplexStream};
+use tracing::trace;
 
 use crate::capnp::nix_daemon_capnp;
 use crate::capnp::nix_daemon_capnp::add_multiple_stream::{AddParams, AddResults};
@@ -308,24 +309,25 @@ where
             let p = params.get()?;
             let repair = p.get_repair();
             let dont_check_sigs = p.get_dont_check_sigs();
-            let count = p.get_count();
-            let (sender, stream) = mpsc::channel(2);
-            let sender = AddMultipleStreamServer {
-                remaining: count,
-                sender,
-            };
+            let remaining = p.get_count();
+            trace!(count = remaining, "add_multiple_to_store Processing stream");
+            let (mut sender, stream) = mpsc::channel(2);
+            if remaining == 0 {
+                sender.close_channel();
+            }
+            let sender = AddMultipleStreamServer { remaining, sender };
             let add_stream = new_client(sender);
             result.get().set_stream(add_stream);
             result.set_pipeline()?;
-            eprintln!("add_multiple_to_store set_pipeline");
-            let stream = CountedStream { count, stream };
+            trace!(count = remaining, "add_multiple_to_store set_pipeline");
+            let stream = CountedStream { remaining, stream };
             this.logger
                 .process_logs(
                     this.store
                         .add_multiple_to_store(repair, dont_check_sigs, stream),
                 )
                 .await?;
-            eprintln!("add_multiple_to_store Done");
+            trace!(count = remaining, "add_multiple_to_store Done");
             Ok(())
         })
     }
@@ -368,7 +370,7 @@ impl nix_daemon_capnp::add_multiple_stream::Server for AddMultipleStreamServer {
 
 pin_project! {
     struct CountedStream {
-        count: u16,
+        remaining: u16,
         #[pin]
         stream: mpsc::Receiver<DaemonResult<AddToStoreItem<BufReader<ReadHalf<SimplexStream>>>>>,
     }
@@ -382,19 +384,22 @@ impl Stream for CountedStream {
         cx: &mut std::task::Context<'_>,
     ) -> Poll<Option<Self::Item>> {
         let this = self.project();
-        eprintln!("CountedStream: poll_next {}", *this.count);
+        trace!(remaining = *this.remaining, "CountedStream: poll_next");
         if let Some(result) = ready!(this.stream.poll_next(cx)) {
-            eprintln!("CountedStream: Returning result {}", *this.count);
-            *this.count -= 1;
+            trace!(
+                remaining = *this.remaining,
+                "CountedStream: Returning result"
+            );
+            *this.remaining -= 1;
             Poll::Ready(Some(result))
         } else {
-            eprintln!("CountedStream: Donne {}", *this.count);
+            trace!(remaining = *this.remaining, "CountedStream: Done");
             Poll::Ready(None)
         }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.count as usize, Some(self.count as usize))
+        (self.remaining as usize, Some(self.remaining as usize))
     }
 }
 

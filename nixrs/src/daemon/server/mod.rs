@@ -22,6 +22,7 @@ use crate::daemon::{DaemonErrorKind, DaemonPath, DaemonResultExt, PROTOCOL_VERSI
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
 use crate::io::{AsyncBufReadCompat, BytesReader};
+use crate::log::LogMessage;
 use crate::realisation::{DrvOutput, Realisation};
 use crate::signature::Signature;
 use crate::store_path::{ContentAddressMethodAlgorithm, StorePath, StorePathHash, StorePathSet};
@@ -32,8 +33,8 @@ use super::types::AddToStoreItem;
 use super::wire::types2::{RegisterDrvOutputRequest, Request, ValidPathInfo};
 use super::wire::{CLIENT_MAGIC, SERVER_MAGIC};
 use super::{
-    DaemonError, DaemonResult, DaemonStore, HandshakeDaemonStore, LogMessage, ProtocolVersion,
-    ResultLog, TrustLevel, NIX_VERSION,
+    DaemonError, DaemonResult, DaemonStore, HandshakeDaemonStore, ProtocolVersion, ResultLog,
+    TrustLevel, NIX_VERSION,
 };
 
 mod local;
@@ -156,25 +157,25 @@ where
     W: AsyncWrite + Send + Unpin,
 {
     match &msg {
-        LogMessage::Next(raw_msg) => {
-            let msg = String::from_utf8_lossy(raw_msg);
+        LogMessage::Message(raw_msg) => {
+            let msg = String::from_utf8_lossy(&raw_msg.text);
             trace!("log_message: {}", msg);
         }
         LogMessage::StartActivity(activity) => {
             let text = String::from_utf8_lossy(&activity.text);
-            trace!(id=activity.act, level=?activity.level, type=?activity.activity_type,
+            trace!(id=activity.id, level=?activity.level, type=?activity.activity_type,
                 ?text,
                 parent=activity.parent,
                 "start_activity: {:?} {:?}: {}", activity.activity_type, activity.fields, text);
         }
         LogMessage::StopActivity(activity) => {
-            trace!(id = activity, "stop_activity: {}", activity);
+            trace!(id = activity.id, "stop_activity: {}", activity.id);
         }
         LogMessage::Result(result) => {
             trace!(
-                id = result.act,
+                id = result.id,
                 "log_result: {} {:?} {:?}",
-                result.act,
+                result.id,
                 result.result_type,
                 result.fields,
             );
