@@ -338,6 +338,12 @@ let
     lix_2_91 = pkgs.lix.overrideAttrs {
       patches = [
         ./proxy-patches/lix-2_91.patch
+        # Support for lowdown >= 1.4, https://gerrit.lix.systems/c/lix/+/3731
+        (fetchpatch2 {
+          name = "lix-2.91-lowdown-1.4.0.patch";
+          url = "https://git.lix.systems/lix-project/lix/commit/ecff59d77371b21fef229c33ebb629bc49a8fad5.patch";
+          sha256 = "sha256-2M5oId5kObwzpw67rddAPI2RbWPEVlGBrMUXZWqqmEo=";
+        })
       ];
       doCheck = false;
       doInstallCheck = false;

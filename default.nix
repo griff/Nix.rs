@@ -1,6 +1,6 @@
 { system ? builtins.currentSystem
 , sources ? import ./npins
-, nixpkgs ? sources.nixpkgs-staging # 2025-08-01 Needed until next merge
+, nixpkgs ? sources.nixpkgs-fixed # 2025-08-01 Needed until next staging merge
 , config ? {}
 }: let
   pkgs = import nixpkgs {
