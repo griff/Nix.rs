@@ -18,6 +18,10 @@ path = "src/bin/nixrs_capnp_proxy.rs"
 name = "nix-daemon-proxy"
 path = "src/bin/nix_daemon_proxy.rs"
 
+[[bin]]
+name = "hup-test"
+path = "src/bin/hup_test.rs"
+
 [features]
 # Nix Experimental Features
 xp-dynamic-derivations = ["nixrs/xp-dynamic-derivations"]
@@ -35,6 +39,7 @@ capnp-rpc-tokio.path = "../capnp-rpc-tokio"
 pin-project-lite.workspace = true
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+mio = "1.0.4"
 
 [dependencies.tokio-util]
 workspace = true
@@ -42,7 +47,7 @@ features = ["compat"]
 
 [dependencies.tokio]
 workspace = true
-features = ["io-util", "io-std", "macros", "fs", "signal", "time"]
+features = ["io-util", "io-std", "macros", "fs", "signal", "time", "sync"]
 
 [build-dependencies]
 capnpc.workspace = true
