@@ -173,6 +173,34 @@ pub fn dir_example() -> TestNarEvents {
     ]
 }
 
+pub fn case_hack_sorting() -> TestNarEvents {
+    use NarEvent::*;
+    vec![
+        StartDirectory {
+            name: Bytes::from_static(b""),
+        },
+        File {
+            name: Bytes::from_static(b"N"),
+            executable: false,
+            size: 0,
+            reader: Cursor::new(Bytes::from_static(b"")),
+        },
+        File {
+            name: Bytes::from_static(b"n"),
+            executable: false,
+            size: 0,
+            reader: Cursor::new(Bytes::from_static(b"")),
+        },
+        File {
+            name: Bytes::from_static(b"n?"),
+            executable: false,
+            size: 0,
+            reader: Cursor::new(Bytes::from_static(b"")),
+        },
+        EndDirectory,
+    ]
+}
+
 pub fn create_dir_example<P>(path: P, case_hack: bool) -> io::Result<()>
 where
     P: AsRef<Path>,

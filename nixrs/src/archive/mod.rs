@@ -1,6 +1,5 @@
 use crate::ByteString;
 
-mod case_hack;
 mod dumper;
 mod parser;
 pub(crate) mod radix_tree;
@@ -9,7 +8,6 @@ mod restorer;
 pub mod test_data;
 mod writer;
 
-pub use case_hack::{CaseHackStream, UncaseHackStream, CASE_HACK_SUFFIX};
 pub use dumper::{dump, DumpOptions, DumpedFile, NarDumper};
 #[cfg(any(test, feature = "test"))]
 pub use parser::read_nar;
@@ -19,6 +17,8 @@ pub use restorer::{restore, NarRestorer, NarWriteError, RestoreOptions};
 #[cfg(any(test, feature = "test"))]
 pub use writer::write_nar;
 pub use writer::NarWriter;
+
+pub const CASE_HACK_SUFFIX: &str = "~nix~case~hack~";
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub enum NarEvent<R> {

@@ -1,5 +1,8 @@
+use std::cmp::Ordering;
+use std::ffi::OsStr;
 use std::fs::read_link;
 use std::future::Future as _;
+use std::os::unix::ffi::OsStrExt;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
@@ -10,7 +13,6 @@ use std::{collections::VecDeque, io};
 
 use bstr::{ByteSlice as _, ByteVec as _};
 use bytes::Bytes;
-use futures::future::Either;
 use futures::Stream;
 use pin_project_lite::pin_project;
 use tokio::fs;
@@ -18,9 +20,10 @@ use tokio::io::{AsyncBufRead, AsyncRead, BufReader};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::{spawn_blocking, JoinHandle};
 use tokio_util::sync::PollSemaphore;
-use walkdir::IntoIter;
+use tracing::debug;
+use walkdir::{DirEntry, IntoIter};
 
-use super::{NarEvent, UncaseHackStream};
+use super::{NarEvent, CASE_HACK_SUFFIX};
 
 pub struct DumpOptions {
     use_case_hack: bool,
@@ -49,15 +52,25 @@ impl DumpOptions {
         self
     }
 
-    pub fn dump<P: Into<PathBuf>>(
-        self,
-        path: P,
-    ) -> impl Stream<Item = io::Result<NarEvent<impl AsyncBufRead>>> {
-        let s = NarDumper::with_max_open_files(path, self.max_open_files);
-        if self.use_case_hack {
-            Either::Left(UncaseHackStream::new(s))
+    pub fn dump<P: Into<PathBuf>>(self, path: P) -> NarDumper {
+        let root = path.into();
+        let dir = root.clone();
+        let mut walker = walkdir::WalkDir::new(&root)
+            .follow_links(false)
+            .follow_root_links(false);
+        walker = if self.use_case_hack {
+            walker.sort_by(sort_case_hack)
         } else {
-            Either::Right(s)
+            walker.sort_by_file_name()
+        };
+        let walker = walker.into_iter();
+        NarDumper {
+            state: State::Idle(Some((VecDeque::with_capacity(CHUNK_SIZE), walker, true))),
+            next: None,
+            level: 0,
+            dir,
+            use_case_hack: self.use_case_hack,
+            semaphore: Arc::new(Semaphore::new(self.max_open_files)),
         }
     }
 }
@@ -72,6 +85,30 @@ pub fn dump<P: Into<PathBuf>>(
     path: P,
 ) -> impl Stream<Item = io::Result<NarEvent<impl AsyncBufRead>>> {
     DumpOptions::new().dump(path)
+}
+
+fn sort_case_hack(left: &DirEntry, right: &DirEntry) -> Ordering {
+    let left_file_name = left.file_name();
+    let right_file_name = right.file_name();
+    remove_case_hack_osstr(left_file_name)
+        .unwrap_or(left_file_name)
+        .cmp(remove_case_hack_osstr(right_file_name).unwrap_or(right_file_name))
+}
+
+fn remove_case_hack_osstr(name: &OsStr) -> Option<&OsStr> {
+    if let Some(n) = <[u8]>::from_os_str(name) {
+        if let Some(pos) = n.rfind(CASE_HACK_SUFFIX) {
+            return Some(OsStr::from_bytes(&n[..pos]));
+        }
+    }
+    None
+}
+
+fn remove_case_hack(name: &mut Bytes) {
+    if let Some(pos) = name.rfind(CASE_HACK_SUFFIX) {
+        debug!("removing case hack suffix from '{:?}'", name);
+        name.truncate(pos);
+    }
 }
 
 pin_project! {
@@ -296,6 +333,7 @@ pub struct NarDumper {
     level: u32,
     dir: PathBuf,
     semaphore: Arc<Semaphore>,
+    use_case_hack: bool,
 }
 
 const OPEN_FILES: usize = 100;
@@ -312,20 +350,7 @@ impl NarDumper {
     where
         P: Into<PathBuf>,
     {
-        let root = root.into();
-        let dir = root.clone();
-        let walker = walkdir::WalkDir::new(&root)
-            .sort_by_file_name()
-            .follow_links(false)
-            .follow_root_links(false)
-            .into_iter();
-        Self {
-            state: State::Idle(Some((VecDeque::with_capacity(CHUNK_SIZE), walker, true))),
-            next: None,
-            level: 0,
-            dir,
-            semaphore: Arc::new(Semaphore::new(max_open_files)),
-        }
+        DumpOptions::new().max_open_files(max_open_files).dump(root)
     }
 }
 
@@ -350,7 +375,11 @@ impl Stream for NarDumper {
                     let n = <[u8]>::from_os_str(filename).ok_or_else(|| {
                         io::Error::other(format!("filename {filename:?} not valid UTF-8"))
                     })?;
-                    Bytes::copy_from_slice(n)
+                    let mut name = Bytes::copy_from_slice(n);
+                    if self.use_case_hack {
+                        remove_case_hack(&mut name);
+                    }
+                    name
                 } else {
                     Bytes::new()
                 };

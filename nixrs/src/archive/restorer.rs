@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::fmt;
 use std::fs::{create_dir, OpenOptions};
 use std::future::Future;
 use std::io::{self, BufRead as _, Write as _};
@@ -8,6 +10,7 @@ use std::pin::pin;
 use std::task::{ready, Poll};
 
 use bstr::ByteSlice as _;
+use bytes::Bytes;
 use derive_more::Display;
 use futures::{Sink, Stream};
 use pin_project_lite::pin_project;
@@ -15,9 +18,9 @@ use thiserror::Error;
 use tokio::io::AsyncBufRead;
 use tokio::task::{spawn_blocking, JoinHandle};
 use tokio_util::io::SyncIoBridge;
-use tracing::trace;
+use tracing::{debug, trace};
 
-use super::{CaseHackStream, NarEvent};
+use super::{NarEvent, CASE_HACK_SUFFIX};
 
 #[derive(Display, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum NarWriteOperation {
@@ -74,11 +77,22 @@ pin_project! {
         path: PathBuf,
         #[pin]
         state: Option<JoinHandle<Result<(), NarWriteError>>>,
+        use_case_hack: bool,
+        entries: Entries,
+        dir_stack: Vec<Entries>,
     }
 }
 
 impl NarRestorer {
-    pub fn new<P>(path: P) -> Self
+    pub fn new<P: Into<PathBuf>>(path: P) -> Self {
+        Self::new_restorer(path, false)
+    }
+
+    pub fn with_case_hack<P: Into<PathBuf>>(path: P) -> Self {
+        Self::new_restorer(path, true)
+    }
+
+    fn new_restorer<P>(path: P, use_case_hack: bool) -> Self
     where
         P: Into<PathBuf>,
     {
@@ -87,6 +101,9 @@ impl NarRestorer {
             root: path.clone(),
             path,
             state: None,
+            use_case_hack,
+            entries: Default::default(),
+            dir_stack: Default::default(),
         }
     }
 }
@@ -142,6 +159,12 @@ where
                 size: _,
                 reader,
             } => {
+                let name = if self.use_case_hack {
+                    self.entries.hack_name(name)
+                } else {
+                    name
+                };
+
                 let path = join_name(&self.path, &name)?;
                 let mut options = OpenOptions::new();
                 options.write(true);
@@ -182,6 +205,12 @@ where
                 self.state = Some(handle);
             }
             NarEvent::Symlink { name, target } => {
+                let name = if self.use_case_hack {
+                    self.entries.hack_name(name)
+                } else {
+                    name
+                };
+
                 let path = join_name(&self.path, &name)?;
                 let target_os = target
                     .to_os_str()
@@ -200,6 +229,17 @@ where
                 }));
             }
             NarEvent::StartDirectory { name } => {
+                let name = if self.use_case_hack {
+                    let name = self.entries.hack_name(name);
+
+                    #[allow(clippy::mutable_key_type)]
+                    let entries = std::mem::take(&mut self.entries);
+                    self.dir_stack.push(entries);
+                    name
+                } else {
+                    name
+                };
+
                 let path = join_name(&self.path, &name)?;
                 self.path = path;
                 let path = self.path.clone();
@@ -209,6 +249,9 @@ where
                 }));
             }
             NarEvent::EndDirectory => {
+                if self.use_case_hack {
+                    self.entries = self.dir_stack.pop().unwrap_or_default();
+                }
                 self.path.pop();
             }
         }
@@ -227,6 +270,57 @@ where
         cx: &mut std::task::Context<'_>,
     ) -> Poll<Result<(), Self::Error>> {
         <Self as Sink<NarEvent<R>>>::poll_ready(self, cx)
+    }
+}
+
+struct CIString(Bytes, String);
+
+impl PartialEq for CIString {
+    fn eq(&self, other: &Self) -> bool {
+        self.1.eq(&other.1)
+    }
+}
+
+impl fmt::Display for CIString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let bstr = bstr::BStr::new(&self.0);
+        write!(f, "{bstr}")
+    }
+}
+
+impl Eq for CIString {}
+
+impl std::hash::Hash for CIString {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.1.hash(state)
+    }
+}
+
+#[derive(Default)]
+struct Entries(HashMap<CIString, u32>);
+
+impl Entries {
+    fn hack_name(&mut self, name: Bytes) -> Bytes {
+        use std::collections::hash_map::Entry;
+        use std::io::Write;
+
+        let lower = String::from_utf8_lossy(&name).to_lowercase();
+        let ci_str = CIString(name.clone(), lower);
+        match self.0.entry(ci_str) {
+            Entry::Occupied(mut o) => {
+                let b_name = bstr::BStr::new(&name);
+                debug!("case collision between '{}' and '{}'", o.key(), b_name);
+                let idx = o.get() + 1;
+                let mut new_name = name.to_vec();
+                write!(new_name, "{CASE_HACK_SUFFIX}{idx}").unwrap();
+                o.insert(idx);
+                Bytes::from(new_name)
+            }
+            Entry::Vacant(v) => {
+                v.insert(0);
+                name
+            }
+        }
     }
 }
 
@@ -256,14 +350,8 @@ impl RestoreOptions {
         R: AsyncBufRead + Send + 'static,
     {
         use futures::stream::StreamExt as _;
-        let restorer = NarRestorer::new(path);
-        let event_s = stream.map(|item| item.into());
-        if self.use_case_hack {
-            let hack = CaseHackStream::new(event_s);
-            hack.forward(restorer).await
-        } else {
-            event_s.forward(restorer).await
-        }
+        let restorer = NarRestorer::new_restorer(path, self.use_case_hack);
+        stream.map(|item| item.into()).forward(restorer).await
     }
 }
 
@@ -286,8 +374,8 @@ where
 #[cfg(test)]
 mod unittests {
     use super::*;
-    use crate::archive::{test_data, NarEvent};
-    use futures::stream::{iter, StreamExt as _};
+    use crate::archive::{dump, test_data, NarEvent};
+    use futures::stream::{iter, StreamExt as _, TryStreamExt as _};
     use rstest::rstest;
     use tempfile::Builder;
 
@@ -301,11 +389,8 @@ mod unittests {
     #[case::empty_dir_in_dir(test_data::empty_dir_in_dir())]
     #[case::symlink(test_data::symlink())]
     #[case::dir_example(test_data::dir_example())]
+    #[case::case_hack_sorting(test_data::case_hack_sorting())]
     async fn test_restore(#[case] events: test_data::TestNarEvents) {
-        use futures::TryStreamExt as _;
-
-        use crate::archive::dump;
-
         let dir = Builder::new().prefix("test_restore").tempdir().unwrap();
         let path = dir.path().join("output");
 
