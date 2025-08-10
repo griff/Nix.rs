@@ -12,5 +12,4 @@ let
   };
 in test-lib.test.overrideAttrs (finalAttrs: previousAttrs: {
   outputs = ["out" "bin"];
-  NIX_IMPL = ./ignore-all.json;
 })

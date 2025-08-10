@@ -96,8 +96,22 @@ impl JsonNixImpl {
     }
 }
 pub static ENV_NIX_IMPL: LazyLock<JsonNixImpl> = LazyLock::new(|| {
-    let nix_impl = std::env::var("NIX_IMPL").expect("NIX_IMPL env var is not set");
-    JsonNixImpl::load_file(nix_impl).expect("NIX_IMPL env var does not point to json document")
+    if let Some(nix_impl) = std::env::var_os("NIX_IMPL") {
+        JsonNixImpl::load_file(nix_impl).expect("NIX_IMPL env var does not point to json document")
+    } else {
+        eprintln!("NIX_IMPL was not set. Ignoring ALL tests");
+        JsonNixImpl {
+            name: "ignored".into(),
+            conf_path: "ignored.conf".into(),
+            program_path: "bin/ignored".into(),
+            cmd_args: vec![],
+            range: ProtocolRange::default(),
+            op_log_prefix: true,
+            chomp_log: false,
+            skip_all: true,
+            skipped: BTreeSet::new(),
+        }
+    }
 });
 pub fn nix_protocol_range() -> ProtocolRange {
     ENV_NIX_IMPL
