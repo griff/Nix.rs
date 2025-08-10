@@ -37,14 +37,14 @@ interface DirectoryAccess {
 
 interface Blob {
     getSize @0 () -> (size :UInt64);
-    writeTo @0 (stream :ByteStream, startAtOffset :UInt64 = 0);
-    getSlice @1 (offset :UInt64, size :UInt32) -> (data :Data);
+    writeTo @1 (stream :ByteStream, startAtOffset :UInt64 = 0);
+    getSlice @2 (offset :UInt64, size :UInt32) -> (data :Data);
 }
 
 interface FileAccess extends(Blob) {
-    getExecutable @1 () -> (flag :Bool);
-    getExtra @2 (id :UInt64) -> (value :AnyPointer);
-    getExtras @3 () -> (extras :List(Extra));
+    getExecutable @0 () -> (flag :Bool);
+    getExtra @1 (id :UInt64) -> (value :AnyPointer);
+    getExtras @2 () -> (extras :List(Extra));
 }
 
 interface NodeAccess {
