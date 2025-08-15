@@ -10,12 +10,18 @@ use std::sync::Arc;
 use std::task::{ready, Poll};
 use std::time::Duration;
 
+use capnp_rpc::new_client;
+use capnp_rpc_tokio::builder::RpcSystemBuilder;
+use capnp_rpc_tokio::client::ClientBuilder;
 use clap::Parser;
-use nixrs::daemon::{
-    client::DaemonClient, server, wire::types2::BuildMode, DaemonStore, FutureResultExt,
-    LocalDaemonStore, LocalHandshakeDaemonStore,
-};
+use nixrs::daemon::DaemonStore;
+use nixrs::daemon::HandshakeDaemonStore;
+use nixrs::daemon::{wire::types2::BuildMode, FutureResultExt, LocalDaemonStore};
+use nixrs_capnp::capnp::nix_daemon_capnp;
+use nixrs_capnp::nix_daemon::HandshakeLoggedCapnpServer;
+use nixrs_capnp::nix_daemon::LoggedCapnpStore;
 use pin_project_lite::pin_project;
+use tokio::io::join;
 use tokio::io::{Interest, Ready};
 use tokio::sync::{mpsc, watch};
 use tokio::{
@@ -29,7 +35,7 @@ use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _
 
 #[derive(Debug)]
 struct SleepStore(Duration);
-impl LocalHandshakeDaemonStore for SleepStore {
+impl HandshakeDaemonStore for SleepStore {
     type Store = Self;
 
     fn handshake(
@@ -38,7 +44,7 @@ impl LocalHandshakeDaemonStore for SleepStore {
         ready(Ok(self)).empty_logs()
     }
 }
-impl LocalDaemonStore for SleepStore {
+impl DaemonStore for SleepStore {
     fn trust_level(&self) -> nixrs::daemon::TrustLevel {
         nixrs::daemon::TrustLevel::Trusted
     }
@@ -61,6 +67,19 @@ impl LocalDaemonStore for SleepStore {
             Ok(())
         }
         .empty_logs()
+    }
+}
+
+impl Clone for SleepStore {
+    fn clone(&self) -> Self {
+        eprintln!("Cloning SleepStore");
+        Self(self.0)
+    }
+}
+
+impl Drop for SleepStore {
+    fn drop(&mut self) {
+        eprintln!("SleepStore dropped");
     }
 }
 
@@ -186,18 +205,34 @@ async fn run_server(listener: UnixListener, sleep: Duration) {
         monitor_hup(fd).unwrap();
     });
     let reader = InterruptedReader::new(reader, signal_tx);
-    let b = server::Builder::new();
+    let client: nix_daemon_capnp::logged_nix_daemon::Client =
+        new_client(HandshakeLoggedCapnpServer::new(SleepStore(sleep)));
+    let mut conn = RpcSystemBuilder::new()
+        .bootstrap(client)
+        .serve_connection(join(reader, writer));
+    //let b = server::Builder::new();
     tokio::select! {
-        res = b.local_serve_connection(reader, writer, SleepStore(sleep)) => {
+        res = &mut conn => {
             if let Err(err) = res {
                 error!("Error while running connection: {err:#}");
             }
         }
+        /*
+        res = b.serve_connection(reader, writer, SleepStore(sleep)) => {
+            if let Err(err) = res {
+                error!("Error while running connection: {err:#}");
+            }
+        }
+        */
         res = signal_rx.changed() => {
             if let Err(err) = res {
                 error!("Error while listening for connection signal: {err:#}");
             }
         }
+    }
+    info!("Done with select");
+    if let Err(err) = conn.await {
+        error!("Error while running connection: {err:#}");
     }
     info!("Completed connection");
 }
@@ -289,10 +324,19 @@ async fn run_main(args: Args) {
         run_server(listener, args.server_sleep).await;
     });
 
+    let client: nixrs_capnp::capnp::nix_daemon_capnp::logged_nix_daemon::Client =
+        ClientBuilder::default()
+            .connect_unix(args.bind)
+            .await
+            .unwrap();
+    let mut store = LoggedCapnpStore::new(client);
+
+    /*
     let mut store = DaemonClient::builder()
         .connect_unix(args.bind)
         .await
         .unwrap();
+     */
     tokio::select! {
         result = store.build_paths(&[], BuildMode::Normal) => {
             info!(?result, "Completed build");
