@@ -1,9 +1,6 @@
-mod byte_stream;
 pub mod capnp;
 mod convert;
 pub mod nix_daemon;
-
-pub use byte_stream::{ByteStreamWrap, ByteStreamWriter};
 
 pub const DEFAULT_BUF_SIZE: usize = 32 * 1024;
 

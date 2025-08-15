@@ -6,6 +6,7 @@ use std::task::{ready, Context, Poll};
 use ::capnp::capability::Promise;
 use ::capnp::Error;
 use capnp_rpc::new_client;
+use capnp_rpc_tokio::stream::{ByteStreamWrap, ByteStreamWriter};
 use futures::channel::{mpsc, oneshot};
 use futures::stream::StreamExt;
 use futures::{SinkExt as _, Stream, TryFutureExt};
@@ -27,7 +28,7 @@ use crate::capnp::nix_daemon_capnp::nix_daemon::{
     QueryValidPathsParams, QueryValidPathsResults, SetOptionsParams, SetOptionsResults,
 };
 use crate::convert::{BuildFrom, ReadInto};
-use crate::{from_error, ByteStreamWrap, ByteStreamWriter, DEFAULT_BUF_SIZE};
+use crate::{from_error, DEFAULT_BUF_SIZE};
 
 pub struct NoopLogger;
 impl logger::Server for NoopLogger {

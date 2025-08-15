@@ -8,6 +8,9 @@
       nixrs-capnp = prev: {
         buildInputs = [pkgs.capnproto];
       };
+      capnp-rpc-tokio = prev: {
+        buildInputs = [pkgs.capnproto];
+      };
       libsodium-sys = prev: {
         nativeBuildInputs = [pkgs.pkg-config];
         buildInputs = [pkgs.libsodium];

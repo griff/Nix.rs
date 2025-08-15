@@ -1225,6 +1225,12 @@ rec {
             packageId = "tracing";
           }
         ];
+        buildDependencies = [
+          {
+            name = "capnpc";
+            packageId = "capnpc";
+          }
+        ];
 
       };
       "capnpc" = rec {

@@ -11,12 +11,12 @@ fn main() {
         .unwrap();
     eprintln!("Capnp include {}", capnp_include.display());
     capnpc::CompilerCommand::new()
+        .crate_provides("capnp_rpc_tokio", [0x8f5d14e1c273738d])
         .src_prefix("schema")
         .file("schema/nix-daemon.capnp")
         .file("schema/nix-types.capnp")
         .file("schema/nixrs.capnp")
         .file("schema/lookup.capnp")
-        .file("schema/byte-stream.capnp")
         .default_parent_module(vec!["capnp".into()])
         //.import_path(&capnp_include)
         //.src_prefix(&capnp_include)

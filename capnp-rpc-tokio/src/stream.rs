@@ -11,7 +11,7 @@ use pin_project_lite::pin_project;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::sync::oneshot;
 
-use crate::capnp::byte_stream_capnp::byte_stream;
+use crate::byte_stream_capnp::byte_stream;
 
 pub fn from_cap_error(err: capnp::Error) -> io::Error {
     let kind = match err.kind {
@@ -23,8 +23,9 @@ pub fn from_cap_error(err: capnp::Error) -> io::Error {
 }
 
 pin_project! {
+    #[project = ByteStreamWriterProj]
     pub struct ByteStreamWriter {
-        inner: crate::capnp::byte_stream_capnp::byte_stream::Client,
+        inner: crate::byte_stream_capnp::byte_stream::Client,
         #[pin]
         req: Option<Promise<(), Error>>,
         shutdown: bool,
@@ -32,12 +33,22 @@ pin_project! {
 }
 
 impl ByteStreamWriter {
-    pub fn new(client: crate::capnp::byte_stream_capnp::byte_stream::Client) -> Self {
+    pub fn new(client: crate::byte_stream_capnp::byte_stream::Client) -> Self {
         Self {
             inner: client,
             req: None,
             shutdown: false,
         }
+    }
+}
+
+impl ByteStreamWriterProj<'_> {
+    fn poll_req(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        if let Some(req) = self.req.as_mut().as_pin_mut() {
+            ready!(req.poll(cx)).map_err(from_cap_error)?;
+        }
+        self.req.set(None);
+        Poll::Ready(Ok(()))
     }
 }
 
@@ -48,10 +59,7 @@ impl AsyncWrite for ByteStreamWriter {
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
         let mut this = self.project();
-        if let Some(req) = this.req.as_mut().as_pin_mut() {
-            ready!(req.poll(cx)).map_err(from_cap_error)?;
-        }
-        this.req.set(None);
+        ready!(this.poll_req(cx))?;
         if *this.shutdown {
             return Poll::Ready(Err(io::Error::new(
                 io::ErrorKind::BrokenPipe,
@@ -65,12 +73,8 @@ impl AsyncWrite for ByteStreamWriter {
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        eprintln!("poll_flush");
         let mut this = self.project();
-        if let Some(req) = this.req.as_mut().as_pin_mut() {
-            ready!(req.poll(cx)).map_err(from_cap_error)?;
-        }
-        this.req.set(None);
+        ready!(this.poll_req(cx))?;
         if *this.shutdown {
             Poll::Ready(Err(io::Error::new(
                 io::ErrorKind::BrokenPipe,
@@ -82,23 +86,16 @@ impl AsyncWrite for ByteStreamWriter {
     }
 
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        eprintln!("poll_shutdown");
         let mut this = self.project();
+        ready!(this.poll_req(cx))?;
         if !*this.shutdown {
-            if let Some(req) = this.req.as_mut().as_pin_mut() {
-                ready!(req.poll(cx)).map_err(from_cap_error)?;
-            }
             *this.shutdown = true;
             let req = this.inner.end_request();
             this.req.set(Some(Promise::from_future(
                 req.send().promise.map_ok(|_| ()),
             )));
         }
-        if let Some(req) = this.req.as_mut().as_pin_mut() {
-            ready!(req.poll(cx)).map_err(from_cap_error)?;
-        }
-        this.req.set(None);
-        Poll::Ready(Ok(()))
+        this.poll_req(cx)
     }
 }
 
@@ -137,22 +134,17 @@ where
     fn write(&mut self, data: BsWriteParams) -> Promise<(), capnp::Error> {
         match mem::take(self) {
             WriteState::Writeable(mut writer) => {
-                eprintln!("Writeable");
                 let (c, rec) = oneshot::channel();
                 let p = async move {
-                    eprintln!("Write all");
                     writer.write_all(data.as_ref()).await?;
-                    eprintln!("Send writer");
                     c.send(writer)
                         .map_err(|_| capnp::Error::failed("Receiver dropped".into()))?;
-                    eprintln!("Write done");
                     Ok(())
                 };
                 *self = WriteState::Writing(rec);
                 Promise::from_future(p)
             }
             WriteState::Writing(fut) => {
-                eprintln!("Writing");
                 let (c, rec) = oneshot::channel();
                 let p = async move {
                     let mut writer: W = fut
@@ -176,7 +168,6 @@ where
     fn end(&mut self) -> Promise<(), capnp::Error> {
         match mem::replace(self, WriteState::None) {
             WriteState::Writeable(mut writer) => {
-                eprintln!("Writeable end");
                 let p = async move {
                     writer.shutdown().await.map_err(capnp::Error::from)?;
                     Ok(())
@@ -185,15 +176,11 @@ where
                 Promise::from_future(p)
             }
             WriteState::Writing(rec) => {
-                eprintln!("Writing end");
                 let p = async move {
-                    eprintln!("Get writer");
                     let mut writer = rec
                         .await
                         .map_err(|err| capnp::Error::failed(format!("{err}")))?;
-                    eprintln!("Call shutdown");
                     writer.shutdown().await.map_err(capnp::Error::from)?;
-                    eprintln!("Shutdown done");
                     Ok(())
                 };
                 *self = WriteState::Finished;
