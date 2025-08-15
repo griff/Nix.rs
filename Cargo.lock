@@ -351,8 +351,8 @@ dependencies = [
 
 [[package]]
 name = "capnp"
-version = "0.21.2"
-source = "git+https://github.com/griff/capnproto-rust.git?branch=feat%2Fsetter-input-everywhere#26e0920d10cd01230d8605f5ebac0dc022b8a774"
+version = "0.21.4"
+source = "git+https://github.com/griff/capnproto-rust.git?branch=feat%2Fsetter-input-everywhere#083b39c90ae1e48194bb9645a6ff812ef6b3a08d"
 dependencies = [
  "embedded-io",
 ]
@@ -360,7 +360,7 @@ dependencies = [
 [[package]]
 name = "capnp-futures"
 version = "0.21.0"
-source = "git+https://github.com/griff/capnproto-rust.git?branch=feat%2Fsetter-input-everywhere#26e0920d10cd01230d8605f5ebac0dc022b8a774"
+source = "git+https://github.com/griff/capnproto-rust.git?branch=feat%2Fsetter-input-everywhere#083b39c90ae1e48194bb9645a6ff812ef6b3a08d"
 dependencies = [
  "capnp",
  "futures-channel",
@@ -370,7 +370,7 @@ dependencies = [
 [[package]]
 name = "capnp-rpc"
 version = "0.21.0"
-source = "git+https://github.com/griff/capnproto-rust.git?branch=feat%2Fsetter-input-everywhere#26e0920d10cd01230d8605f5ebac0dc022b8a774"
+source = "git+https://github.com/griff/capnproto-rust.git?branch=feat%2Fsetter-input-everywhere#083b39c90ae1e48194bb9645a6ff812ef6b3a08d"
 dependencies = [
  "capnp",
  "capnp-futures",
@@ -387,13 +387,14 @@ dependencies = [
  "pin-project-lite",
  "tokio",
  "tokio-util",
+ "tower-service",
  "tracing",
 ]
 
 [[package]]
 name = "capnpc"
-version = "0.21.1"
-source = "git+https://github.com/griff/capnproto-rust.git?branch=feat%2Fsetter-input-everywhere#26e0920d10cd01230d8605f5ebac0dc022b8a774"
+version = "0.21.2"
+source = "git+https://github.com/griff/capnproto-rust.git?branch=feat%2Fsetter-input-everywhere#083b39c90ae1e48194bb9645a6ff812ef6b3a08d"
 dependencies = [
  "capnp",
 ]

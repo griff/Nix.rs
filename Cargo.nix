@@ -1083,13 +1083,13 @@ rec {
       };
       "capnp" = rec {
         crateName = "capnp";
-        version = "0.21.2";
+        version = "0.21.4";
         edition = "2021";
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/griff/capnproto-rust.git";
-          rev = "26e0920d10cd01230d8605f5ebac0dc022b8a774";
-          sha256 = "1qkhyczin6ka9i7r9pg0k8iac1pl7ndl29jm4ldgp37ff3r3nlh8";
+          rev = "083b39c90ae1e48194bb9645a6ff812ef6b3a08d";
+          sha256 = "0p41yp5vxr7fp5giwbysn96mcxg6xfqcvg6ihqs3jcsbad3y9r77";
         };
         authors = [
           "David Renshaw <dwrenshaw@gmail.com>"
@@ -1118,8 +1118,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/griff/capnproto-rust.git";
-          rev = "26e0920d10cd01230d8605f5ebac0dc022b8a774";
-          sha256 = "1qkhyczin6ka9i7r9pg0k8iac1pl7ndl29jm4ldgp37ff3r3nlh8";
+          rev = "083b39c90ae1e48194bb9645a6ff812ef6b3a08d";
+          sha256 = "0p41yp5vxr7fp5giwbysn96mcxg6xfqcvg6ihqs3jcsbad3y9r77";
         };
         libName = "capnp_futures";
         authors = [
@@ -1159,8 +1159,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/griff/capnproto-rust.git";
-          rev = "26e0920d10cd01230d8605f5ebac0dc022b8a774";
-          sha256 = "1qkhyczin6ka9i7r9pg0k8iac1pl7ndl29jm4ldgp37ff3r3nlh8";
+          rev = "083b39c90ae1e48194bb9645a6ff812ef6b3a08d";
+          sha256 = "0p41yp5vxr7fp5giwbysn96mcxg6xfqcvg6ihqs3jcsbad3y9r77";
         };
         libName = "capnp_rpc";
         authors = [
@@ -1217,6 +1217,10 @@ rec {
             features = [ "compat" ];
           }
           {
+            name = "tower-service";
+            packageId = "tower-service";
+          }
+          {
             name = "tracing";
             packageId = "tracing";
           }
@@ -1225,14 +1229,14 @@ rec {
       };
       "capnpc" = rec {
         crateName = "capnpc";
-        version = "0.21.1";
+        version = "0.21.2";
         edition = "2021";
         crateBin = [];
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/griff/capnproto-rust.git";
-          rev = "26e0920d10cd01230d8605f5ebac0dc022b8a774";
-          sha256 = "1qkhyczin6ka9i7r9pg0k8iac1pl7ndl29jm4ldgp37ff3r3nlh8";
+          rev = "083b39c90ae1e48194bb9645a6ff812ef6b3a08d";
+          sha256 = "0p41yp5vxr7fp5giwbysn96mcxg6xfqcvg6ihqs3jcsbad3y9r77";
         };
         authors = [
           "David Renshaw <dwrenshaw@gmail.com>"

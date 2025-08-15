@@ -9,6 +9,7 @@ capnp-rpc.workspace = true
 futures.workspace = true
 pin-project-lite.workspace = true
 tracing.workspace = true
+tower-service = "0.3.3"
 
 [dependencies.tokio-util]
 workspace = true

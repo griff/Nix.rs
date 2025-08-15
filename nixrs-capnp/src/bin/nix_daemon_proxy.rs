@@ -2,15 +2,14 @@ use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;
 
-use capnp_rpc::RpcSystem;
-use capnp_rpc_tokio::{GracefulShutdown, RpcSystemExt as _};
+use capnp_rpc_tokio::client::ClientBuilder;
 use clap::Parser;
 use nixrs::daemon::server;
 use nixrs_capnp::nix_daemon::LoggedCapnpStore;
-use tokio::net::{UnixListener, UnixStream};
+use tokio::net::UnixListener;
 use tokio::task::LocalSet;
 use tracing::level_filters::LevelFilter;
-use tracing::{error, info, trace};
+use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 use tracing_subscriber::EnvFilter;
@@ -54,7 +53,16 @@ pub async fn main() {
         .init();
 
     let args = Args::parse();
-    LocalSet::new().run_until(run_main(args)).await
+    let local_set = LocalSet::new();
+    local_set.run_until(run_main(args)).await;
+    tokio::select! {
+        _ = local_set => {
+            info!("all connections gracefully closed");
+        },
+        _ = tokio::time::sleep(std::time::Duration::from_secs(10)) => {
+            error!("timed out wait for all connections to close");
+        }
+    }
 }
 
 async fn shutdown_signal() {
@@ -65,19 +73,12 @@ async fn shutdown_signal() {
 }
 
 async fn run_main(args: Args) {
-    let stream = UnixStream::connect(args.socket).await.unwrap();
-    let shutdown = GracefulShutdown::new();
-    let mut conn = RpcSystem::builder().connect(stream);
     let client: nixrs_capnp::capnp::nix_daemon_capnp::logged_nix_daemon::Client =
-        conn.server_bootstrap();
-    let watcher = shutdown.watcher();
+        ClientBuilder::default()
+            .connect_unix(args.socket)
+            .await
+            .unwrap();
     let mut signal = std::pin::pin!(shutdown_signal());
-
-    tokio::task::spawn_local(async move {
-        if let Err(err) = watcher.watch(conn).await {
-            error!("Failed to run RPC system: {err:#}");
-        }
-    });
 
     if args.stdio {
         let store = LoggedCapnpStore::new(client);
@@ -146,15 +147,6 @@ async fn run_main(args: Args) {
                     error!("Error while running connection: {err:#}");
                 }
             });
-        }
-    }
-    trace!("waiting for {} tasks to finish", shutdown.count());
-    tokio::select! {
-        _ = shutdown.shutdown() => {
-            info!("all connections gracefully closed");
-        },
-        _ = tokio::time::sleep(std::time::Duration::from_secs(10)) => {
-            error!("timed out wait for all connections to close");
         }
     }
 }

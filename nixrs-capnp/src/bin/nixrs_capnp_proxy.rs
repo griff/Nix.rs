@@ -1,12 +1,15 @@
 use std::{fs::Permissions, os::unix::fs::PermissionsExt as _, path::PathBuf};
 
-use capnp_rpc::{new_client, new_future_client, RpcSystem};
-use capnp_rpc_tokio::{GracefulShutdown, RpcSystemExt as _};
+use capnp_rpc::{new_client, new_future_client};
+use capnp_rpc_tokio::builder::RpcSystemBuilder;
+use capnp_rpc_tokio::serve::{make_client, serve};
 use clap::Parser;
 use nixrs::daemon::{client::DaemonClient, MutexHandshakeStore};
 use nixrs_capnp::{from_error, nix_daemon::HandshakeLoggedCapnpServer};
-use tokio::{io::join, net::UnixListener, task::LocalSet};
-use tracing::{error, info, level_filters::LevelFilter, trace};
+use tokio::io::join;
+use tokio::net::UnixListener;
+use tokio::task::LocalSet;
+use tracing::{error, level_filters::LevelFilter};
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _, EnvFilter};
 
 #[derive(Parser, Debug)]
@@ -55,9 +58,6 @@ async fn shutdown_signal() {
 }
 
 async fn run_main(args: Args) {
-    let shutdown = GracefulShutdown::new();
-    let mut signal = std::pin::pin!(shutdown_signal());
-
     let socket = if args.store == "daemon" {
         "/nix/var/nix/daemon-socket/socket".to_string()
     } else if let Some(socket) = args.store.strip_prefix("unix://") {
@@ -82,19 +82,11 @@ async fn run_main(args: Args) {
 
     if args.stdio {
         let io = join(tokio::io::stdin(), tokio::io::stdout());
-        let conn = RpcSystem::builder().bootstrap(client).serve_connection(io);
-        let watcher = shutdown.watcher();
-        let join = tokio::task::spawn_local(async move {
-            if let Err(err) = watcher.watch(conn).await {
-                error!("Failed to run RPC system: {err:#}");
-            }
-        });
-        tokio::select! {
-            _ = join => {},
-            _ = &mut signal => {
-                info!("signal received, shutting down");
-            }
-        }
+        RpcSystemBuilder::new()
+            .bootstrap(client)
+            .serve_connection(io)
+            .with_graceful_shutdown(shutdown_signal())
+            .await;
     } else {
         if let Some(path) = args.bind.parent() {
             let _ = tokio::fs::create_dir_all(path).await;
@@ -116,48 +108,11 @@ async fn run_main(args: Args) {
             })
             .unwrap();
 
-        loop {
-            let (io, _addr) = tokio::select! {
-                result = listener.accept() => match result {
-                    Ok(conn) => conn,
-                    Err(err) => {
-                        error!("Failed to accept connection: {err:#}");
-                        break;
-                    }
-                },
-                _ = &mut signal => {
-                    drop(listener);
-                    info!("signal received, not accepting new connections");
-                    break;
-                }
-            };
-            /*
-            let server = if let Ok(cred) = io.peer_cred() {
-                trace!(pid=cred.pid(), uid=cred.uid(), gid=cred.gid(), "Got unix connection");
-                server.authorize(Principal::Uid(cred.uid())).client
-            } else {
-                trace!("Got anonymous unix connection");
-                server.authorize(Principal::Unauthenticated).client
-            };
-            */
-            let conn = RpcSystem::builder()
-                .bootstrap(client.clone())
-                .serve_connection(io);
-            let watcher = shutdown.watcher();
-            tokio::task::spawn_local(async move {
-                if let Err(err) = watcher.watch(conn).await {
-                    error!("Failed to run RPC system: {err:#}");
-                }
-            });
-        }
-    }
-    trace!("waiting for {} tasks to finish", shutdown.count());
-    tokio::select! {
-        _ = shutdown.shutdown() => {
-            info!("all connections gracefully closed");
-        },
-        _ = tokio::time::sleep(std::time::Duration::from_secs(10)) => {
-            error!("timed out wait for all connections to close");
+        let res = serve(listener, make_client(client))
+            .with_graceful_shutdown(shutdown_signal())
+            .await;
+        if let Err(err) = res {
+            error!("Failed to run RPC system: {err:#}");
         }
     }
 }

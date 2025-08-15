@@ -1,6 +1,6 @@
 {
-  "git+https://github.com/griff/capnproto-rust.git?branch=feat%2Fsetter-input-everywhere#capnp-futures@0.21.0": "1qkhyczin6ka9i7r9pg0k8iac1pl7ndl29jm4ldgp37ff3r3nlh8",
-  "git+https://github.com/griff/capnproto-rust.git?branch=feat%2Fsetter-input-everywhere#capnp-rpc@0.21.0": "1qkhyczin6ka9i7r9pg0k8iac1pl7ndl29jm4ldgp37ff3r3nlh8",
-  "git+https://github.com/griff/capnproto-rust.git?branch=feat%2Fsetter-input-everywhere#capnp@0.21.2": "1qkhyczin6ka9i7r9pg0k8iac1pl7ndl29jm4ldgp37ff3r3nlh8",
-  "git+https://github.com/griff/capnproto-rust.git?branch=feat%2Fsetter-input-everywhere#capnpc@0.21.1": "1qkhyczin6ka9i7r9pg0k8iac1pl7ndl29jm4ldgp37ff3r3nlh8"
+  "git+https://github.com/griff/capnproto-rust.git?branch=feat%2Fsetter-input-everywhere#capnp-futures@0.21.0": "0p41yp5vxr7fp5giwbysn96mcxg6xfqcvg6ihqs3jcsbad3y9r77",
+  "git+https://github.com/griff/capnproto-rust.git?branch=feat%2Fsetter-input-everywhere#capnp-rpc@0.21.0": "0p41yp5vxr7fp5giwbysn96mcxg6xfqcvg6ihqs3jcsbad3y9r77",
+  "git+https://github.com/griff/capnproto-rust.git?branch=feat%2Fsetter-input-everywhere#capnp@0.21.4": "0p41yp5vxr7fp5giwbysn96mcxg6xfqcvg6ihqs3jcsbad3y9r77",
+  "git+https://github.com/griff/capnproto-rust.git?branch=feat%2Fsetter-input-everywhere#capnpc@0.21.2": "0p41yp5vxr7fp5giwbysn96mcxg6xfqcvg6ihqs3jcsbad3y9r77"
 }
