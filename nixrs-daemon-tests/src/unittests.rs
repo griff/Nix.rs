@@ -34,7 +34,9 @@ use crate::{prepare_mock, process_logs, run_store_test, NixImpl as _, ENV_NIX_IM
 async fn check_unread_fails() {
     let nix = ENV_NIX_IMPL.deref();
     if nix.is_skipped("unittests::check_unread_fails") {
-        panic!("store dropped with LogOperation {{ operation: IsValidPath(StorePath(00000000000000000000000000000000-_), Ok(true)), logs: [] }} operation still unread");
+        panic!(
+            "store dropped with LogOperation {{ operation: IsValidPath(StorePath(00000000000000000000000000000000-_), Ok(true)), logs: [] }} operation still unread"
+        );
     }
     let mut mock = prepare_mock(nix);
     let store_path = "00230000000000000000000000000000-_".parse().unwrap();
