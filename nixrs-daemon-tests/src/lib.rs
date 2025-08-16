@@ -13,13 +13,13 @@ use futures::{FutureExt as _, StreamExt as _, TryFutureExt as _};
 use nixrs::daemon::client::DaemonClient;
 use nixrs::daemon::mock::{self, MockReporter, MockStore, ReporterError};
 use nixrs::daemon::wire::types::Operation;
-use nixrs::daemon::{server, ProtocolRange, ProtocolVersion, ResultLog};
 use nixrs::daemon::{DaemonError, DaemonResult, DaemonStore as _};
+use nixrs::daemon::{ProtocolRange, ProtocolVersion, ResultLog, server};
 use nixrs::log::{LogMessage, Message, Verbosity};
-use serde::de::Error;
 use serde::Deserialize;
+use serde::de::Error;
 use tempfile::Builder;
-use tokio::io::{split, AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, BufReader, split};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::try_join;
 use tracing::warn;
@@ -156,11 +156,7 @@ impl NixImpl for JsonNixImpl {
         }
     }
     fn collect_log(&self, log: LogMessage) -> LogMessage {
-        if self.chomp_log {
-            chomp_log(log)
-        } else {
-            log
-        }
+        if self.chomp_log { chomp_log(log) } else { log }
     }
     fn protocol_range(&self) -> ProtocolRange {
         self.range

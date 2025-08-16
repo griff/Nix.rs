@@ -1,17 +1,17 @@
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::fmt;
 use std::hash::Hash;
 use std::io::Write;
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 use bytes::Bytes;
 use futures::Stream;
 use pin_project_lite::pin_project;
 use tracing::debug;
 
-use super::{NAREvent, CASE_HACK_SUFFIX};
+use super::{CASE_HACK_SUFFIX, NAREvent};
 
 struct CIString(Bytes, String);
 impl PartialEq for CIString {

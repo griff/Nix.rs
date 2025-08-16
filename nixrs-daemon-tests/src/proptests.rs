@@ -14,7 +14,7 @@ use proptest::test_runner::TestCaseResult;
 use tokio::time::timeout;
 use tracing::error;
 
-use crate::{nix_protocol_range, prepare_mock, run_store_test, NixImpl as _, ENV_NIX_IMPL};
+use crate::{ENV_NIX_IMPL, NixImpl as _, nix_protocol_range, prepare_mock, run_store_test};
 
 #[test_log::test(test_strategy::proptest(
     async = "tokio",

@@ -1,4 +1,4 @@
-use std::fs::{create_dir_all, set_permissions, write, Permissions};
+use std::fs::{Permissions, create_dir_all, set_permissions, write};
 use std::io::{self, Cursor};
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;

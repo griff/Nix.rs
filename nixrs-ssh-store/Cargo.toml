@@ -2,7 +2,7 @@
 name = "nixrs-ssh-store"
 version = "0.1.0"
 authors = ["Brian Olsen <brian@maven-group.org>"]
-edition = "2021"
+edition = "2024"
 license = "EUPL-1.2 OR MIT"
 
 [features]

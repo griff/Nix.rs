@@ -426,7 +426,7 @@
 
 use internal::inputs::RemoteInput;
 use proc_macro::TokenStream;
-use syn::{parse_quote, DeriveInput};
+use syn::{DeriveInput, parse_quote};
 
 mod de;
 mod internal;

@@ -1,9 +1,9 @@
 use core::fmt;
 use std::{
     convert::Infallible,
-    future::{poll_fn, ready, Ready},
+    future::{Ready, poll_fn, ready},
     io,
-    pin::{pin, Pin},
+    pin::{Pin, pin},
 };
 
 use capnp::capability::{Client, FromClientHook};

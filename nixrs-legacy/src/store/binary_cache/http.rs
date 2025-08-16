@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use reqwest::{header::CONTENT_TYPE, Client, IntoUrl, StatusCode, Url};
+use reqwest::{Client, IntoUrl, StatusCode, Url, header::CONTENT_TYPE};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use super::BinaryCache;
@@ -94,8 +94,8 @@ mod tests {
     #[cfg(feature = "compress-tools")]
     use crate::hash::{Algorithm, HashSink};
 
-    use crate::store::binary_cache::BinaryStoreWrap;
     use crate::store::Store;
+    use crate::store::binary_cache::BinaryStoreWrap;
     use crate::store_path::StorePath;
 
     use super::*;

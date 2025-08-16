@@ -3,11 +3,11 @@ use std::fmt;
 use async_trait::async_trait;
 use nixrs_legacy::path_info::ValidPathInfo;
 use nixrs_legacy::store::legacy_worker::{LegacyStore, LegacyStoreBuilder, LegacyStoreClient};
-use nixrs_legacy::store::{copy_paths, BuildMode};
 use nixrs_legacy::store::{
     BasicDerivation, BuildResult, CheckSignaturesFlag, DerivedPath, Error, RepairFlag, Store,
     SubstituteFlag,
 };
+use nixrs_legacy::store::{BuildMode, copy_paths};
 use nixrs_legacy::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
 use tokio::io::{BufReader, BufWriter};
 use tokio::process::{ChildStdin, ChildStdout};

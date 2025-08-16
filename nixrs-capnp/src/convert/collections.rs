@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::{collections::BTreeMap, str::FromStr};
 
-use capnp::traits::{Owned, OwnedStruct, SetterInput};
 use capnp::Error;
+use capnp::traits::{Owned, OwnedStruct, SetterInput};
 
 use crate::capnp::nix_types_capnp;
 use crate::convert::{BuildFrom, ReadFrom, ReadInto};

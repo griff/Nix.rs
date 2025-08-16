@@ -3,8 +3,8 @@ use std::fmt;
 use std::future::Future;
 use std::io::{self, Cursor};
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::task::Poll;
 
 use bytes::{Buf, Bytes, BytesMut};
@@ -12,17 +12,17 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::sync::{mpsc, oneshot};
 use tracing::field::Visit;
 use tracing::span;
-use tracing::{debug, error, instrument, trace, Event, Subscriber};
+use tracing::{Event, Subscriber, debug, error, instrument, trace};
 use tracing_futures::WithSubscriber;
+use tracing_subscriber::Layer;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::registry::LookupSpan;
-use tracing_subscriber::Layer;
 use tracing_subscriber::{layer, registry};
 
 use super::{
-    get_protocol_major, get_protocol_minor, DaemonStore, TrustedFlag, WorkerProtoOp,
-    PROTOCOL_VERSION, STDERR_ERROR, STDERR_LAST, STDERR_NEXT, STDERR_READ, STDERR_RESULT,
-    STDERR_START_ACTIVITY, STDERR_STOP_ACTIVITY, WORKER_MAGIC_1, WORKER_MAGIC_2,
+    DaemonStore, PROTOCOL_VERSION, STDERR_ERROR, STDERR_LAST, STDERR_NEXT, STDERR_READ,
+    STDERR_RESULT, STDERR_START_ACTIVITY, STDERR_STOP_ACTIVITY, TrustedFlag, WORKER_MAGIC_1,
+    WORKER_MAGIC_2, WorkerProtoOp, get_protocol_major, get_protocol_minor,
 };
 use crate::hash;
 use crate::io::{AsyncSink, AsyncSource, FramedSource, TakenStream, Taker};
@@ -30,7 +30,7 @@ use crate::path_info::ValidPathInfo;
 use crate::signature::{ParseSignatureError, SignatureSet};
 use crate::store::activity::{ActivityResult, LoggerField, LoggerFieldType, StartActivity};
 use crate::store::error::Verbosity;
-use crate::store::settings::{get_mut_settings, BuildSettings, WithSettings};
+use crate::store::settings::{BuildSettings, WithSettings, get_mut_settings};
 use crate::store::{
     BasicDerivation, BuildMode, CheckSignaturesFlag, DerivedPath, DrvOutputs, Error,
     StorePathWithOutputs, SubstituteFlag,

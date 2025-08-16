@@ -2,13 +2,13 @@ use std::future::Future;
 use std::io;
 use std::marker::PhantomData;
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 use pin_project_lite::pin_project;
 use tokio::io::AsyncRead;
 
-use super::read_string::ReadString;
 use super::StateParse;
+use super::read_string::ReadString;
 
 pin_project! {
     #[derive(Debug)]

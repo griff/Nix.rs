@@ -7,9 +7,9 @@ use std::task::{Context, Poll};
 
 use tokio::io::AsyncWrite;
 
-use super::write_int::WriteU64;
-use super::write_slice::{write_str, WriteSlice};
 use super::CollectionSize;
+use super::write_int::WriteU64;
+use super::write_slice::{WriteSlice, write_str};
 
 #[derive(Debug)]
 #[must_use = "futures do nothing unless you `.await` or poll them"]

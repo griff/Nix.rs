@@ -195,7 +195,7 @@ impl Encoder<NAREvent> for NAREncoder {
 
 #[cfg(test)]
 mod tests {
-    use futures::{stream::iter, StreamExt, TryStreamExt};
+    use futures::{StreamExt, TryStreamExt, stream::iter};
     use pretty_assertions::assert_eq;
     use std::io;
     use tempfile::tempdir;

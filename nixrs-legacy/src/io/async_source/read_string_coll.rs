@@ -6,9 +6,9 @@ use std::task::{Context, Poll};
 
 use tokio::io::AsyncRead;
 
+use super::CollectionRead;
 use super::read_int::ReadUsize;
 use super::read_string::ReadString;
-use super::CollectionRead;
 
 #[derive(Debug)]
 #[must_use = "futures do nothing unless you `.await` or poll them"]

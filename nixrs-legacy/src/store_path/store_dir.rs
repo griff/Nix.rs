@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::fmt;
-use std::path::{Path, PathBuf, MAIN_SEPARATOR};
+use std::path::{MAIN_SEPARATOR, Path, PathBuf};
 use std::sync::Arc;
 
 use tokio::fs;
@@ -468,7 +468,10 @@ mod tests {
     #[test]
     fn test_store_dir_make_output_path() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let d = hash::digest(hash::Algorithm::SHA256, "source:sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1:/nix/store:konsole-18.12.3");
+        let d = hash::digest(
+            hash::Algorithm::SHA256,
+            "source:sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1:/nix/store:konsole-18.12.3",
+        );
         let p = StorePath::from_hash(&d, "konsole-18.12.3").unwrap();
         let hash = "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
             .parse::<hash::Hash>()
@@ -486,7 +489,10 @@ mod tests {
     #[test]
     fn test_store_dir_make_fixed_output_path() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let d = hash::digest(hash::Algorithm::SHA256, "source:sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1:/nix/store:konsole-18.12.3");
+        let d = hash::digest(
+            hash::Algorithm::SHA256,
+            "source:sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1:/nix/store:konsole-18.12.3",
+        );
         let p = StorePath::from_hash(&d, "konsole-18.12.3").unwrap();
 
         let hash = "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
@@ -510,7 +516,10 @@ mod tests {
     #[test]
     fn test_store_dir_make_fixed_output_path2() {
         let store_dir = StoreDir::new("/nix/store").unwrap();
-        let d = hash::digest(hash::Algorithm::SHA256, "source:/nix/store/7h7qgvs4kgzsn8a6rb274saxyqh4jxlz-konsole-18.12.3.drv:/nix/store/ldhh7c134ap5swsm86rqnc0i7cinqvrc-my-terminal:self:sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1:/nix/store:konsole-18.12.3");
+        let d = hash::digest(
+            hash::Algorithm::SHA256,
+            "source:/nix/store/7h7qgvs4kgzsn8a6rb274saxyqh4jxlz-konsole-18.12.3.drv:/nix/store/ldhh7c134ap5swsm86rqnc0i7cinqvrc-my-terminal:self:sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1:/nix/store:konsole-18.12.3",
+        );
         let p = StorePath::from_hash(&d, "konsole-18.12.3").unwrap();
 
         let hash = "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"

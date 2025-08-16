@@ -6,14 +6,14 @@ use async_trait::async_trait;
 use futures::Stream;
 use nixrs_legacy::store::binary_cache::{BinaryStoreWrap, HttpBinaryCache};
 use nixrs_legacy::store::{
-    compute_fs_closure, copy_paths, copy_store_path, CheckSignaturesFlag, RepairFlag, Store,
+    CheckSignaturesFlag, RepairFlag, Store, compute_fs_closure, copy_paths, copy_store_path,
 };
 use nixrs_legacy::store_path::{StoreDirProvider, StorePath};
 use nixrs_legacy::store_paths;
 use tokio::sync::Mutex;
 use tvix_castore::blobservice::BlobService;
 use tvix_castore::proto as castorepb;
-use tvix_castore::{directoryservice::DirectoryService, Error};
+use tvix_castore::{Error, directoryservice::DirectoryService};
 use tvix_store::pathinfoservice::from_addr;
 use tvix_store::{pathinfoservice::PathInfoService, proto::PathInfo};
 

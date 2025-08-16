@@ -7,9 +7,9 @@ use std::task::{Context, Poll};
 
 use tokio::io::AsyncWrite;
 
-use super::write_int::WriteU64;
-use super::write_string::{write_string, WriteString};
 use super::CollectionSize;
+use super::write_int::WriteU64;
+use super::write_string::{WriteString, write_string};
 
 pub fn write_owned_string_coll<W, C, I>(dst: W, coll: C) -> WriteOwnedStringColl<W, I>
 where

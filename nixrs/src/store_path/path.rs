@@ -615,7 +615,9 @@ mod unittests {
     #[case::dotdot("..")]
     #[case::dotdash(".-")]
     #[case::dotdotdash("..-")]
-    #[case::longest("test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    #[case::longest(
+        "test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    )]
     fn name_ok(#[case] case: &str) {
         let name = case.parse::<StorePathName>().expect("parses");
         assert_eq!(case, name.to_string());
@@ -630,7 +632,10 @@ mod unittests {
 
     #[rstest]
     #[case::empty("", StorePathNameError::NameLength)]
-    #[case::too_long("test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", StorePathNameError::NameLength)]
+    #[case::too_long(
+        "test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        StorePathNameError::NameLength
+    )]
     #[case::invalid_char("test|more", StorePathNameError::Symbol(4, b'|'))]
     fn name_errors(#[case] name: &str, #[case] expected: StorePathNameError) {
         assert_eq!(
@@ -646,7 +651,9 @@ mod unittests {
     #[case::dotdot("..")]
     #[case::dotdash(".-")]
     #[case::dotdotdash("..-")]
-    #[case::longest("test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    #[case::longest(
+        "test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    )]
     fn store_path_ok(#[case] case_name: &str) {
         let case_hash = "00ljmhbmf3d12aq4l5l7yr7bxn03yqvf";
         let path_name = format!("{case_hash}-{case_name}");
@@ -690,7 +697,10 @@ mod unittests {
     )]
     #[case::name_too_long(
         "00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        ParseStorePathError::new("00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", StorePathError::NameLength)
+        ParseStorePathError::new(
+            "00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            StorePathError::NameLength
+        )
     )]
     #[case::name_with_invalid_char(
         "00ljmhbmf3d12aq4l5l7yr7bxn03yqvv-test|more",
@@ -746,7 +756,10 @@ mod unittests {
         "/nix/store/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home",
         "ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home"
     )]
-    #[case("/nix/store/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-.-_?+=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSSTUVWXYZ", "ywrs8hr8fa4244bpdxi88bd87qxqgmy0-.-_?+=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSSTUVWXYZ")]
+    #[case(
+        "/nix/store/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-.-_?+=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSSTUVWXYZ",
+        "ywrs8hr8fa4244bpdxi88bd87qxqgmy0-.-_?+=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSSTUVWXYZ"
+    )]
     #[test]
     fn from_store_dir_str(#[case] store_path: &str, #[case] base_path: StorePath) {
         let store = StoreDir::default();
@@ -830,7 +843,10 @@ mod unittests {
         "/nix/store/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home",
         "ywrs8hr8fa4244bpdxi88bd87qxqgmy0-app-home"
     )]
-    #[case("/nix/store/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-.-_?+=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSSTUVWXYZ", "ywrs8hr8fa4244bpdxi88bd87qxqgmy0-.-_?+=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSSTUVWXYZ")]
+    #[case(
+        "/nix/store/ywrs8hr8fa4244bpdxi88bd87qxqgmy0-.-_?+=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSSTUVWXYZ",
+        "ywrs8hr8fa4244bpdxi88bd87qxqgmy0-.-_?+=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSSTUVWXYZ"
+    )]
     #[test]
     fn store_dir_display(#[case] store_path: &str, #[case] base_path: StorePath) {
         let store = StoreDir::default();

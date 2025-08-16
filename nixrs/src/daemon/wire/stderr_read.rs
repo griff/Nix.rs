@@ -1,6 +1,6 @@
 use std::io;
 use std::pin::Pin;
-use std::task::{ready, Poll};
+use std::task::{Poll, ready};
 
 use bytes::{Buf, Bytes};
 use pin_project_lite::pin_project;
@@ -8,7 +8,7 @@ use tokio::io::{AsyncBufRead, AsyncRead};
 use tokio::sync::mpsc;
 use tokio_util::sync::PollSender;
 
-use crate::io::{AsyncBytesRead, TryReadBytesLimited, DEFAULT_BUF_SIZE};
+use crate::io::{AsyncBytesRead, DEFAULT_BUF_SIZE, TryReadBytesLimited};
 
 enum State {
     Sending(usize),
@@ -92,7 +92,7 @@ where
                 State::Buffer(bytes) if bytes.is_empty() => {
                     *me.state = State::Sending(DEFAULT_BUF_SIZE);
                 }
-                State::Buffer(ref bytes) => {
+                State::Buffer(bytes) => {
                     return Poll::Ready(Ok(&bytes[..]));
                 }
             }
@@ -102,7 +102,7 @@ where
     fn consume(self: std::pin::Pin<&mut Self>, amt: usize) {
         let me = self.project();
         match me.state {
-            State::Buffer(ref mut bytes) => bytes.advance(amt),
+            State::Buffer(bytes) => bytes.advance(amt),
             _ => panic!("No buffer available"),
         }
     }

@@ -1,9 +1,9 @@
 use tracing::{
+    Dispatch, Event, Subscriber,
     dispatcher::{get_default, with_default},
     span::{self, Attributes},
-    Dispatch, Event, Subscriber,
 };
-use tracing_subscriber::{layer, registry::LookupSpan, Layer};
+use tracing_subscriber::{Layer, layer, registry::LookupSpan};
 
 struct ParentId(span::Id);
 

@@ -4,8 +4,8 @@ use std::collections::BTreeMap;
 use nixrs_derive::NixDeserialize;
 use proptest::prelude::{Arbitrary, BoxedStrategy};
 
-use crate::store_path::{StorePath, StorePathSet};
 use crate::ByteString;
+use crate::store_path::{StorePath, StorePathSet};
 
 use super::DerivationOutputs;
 
@@ -94,12 +94,12 @@ mod daemon_serde {
         use rstest::rstest;
         use tokio::io::AsyncWriteExt;
 
+        use crate::ByteString;
         use crate::daemon::de::{NixRead as _, NixReader};
         use crate::daemon::ser::{NixWrite as _, NixWriter};
         use crate::derivation::{BasicDerivation, DerivationOutput};
         use crate::derived_path::OutputName;
         use crate::store_path::StorePathSet;
-        use crate::ByteString;
 
         macro_rules! store_path_set {
             () => { StorePathSet::new() };

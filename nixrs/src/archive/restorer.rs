@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 use std::fmt;
-use std::fs::{create_dir, OpenOptions};
+use std::fs::{OpenOptions, create_dir};
 use std::future::Future;
 use std::io::{self, BufRead as _, Write as _};
 #[cfg(unix)]
-use std::os::unix::fs::{symlink, OpenOptionsExt as _};
+use std::os::unix::fs::{OpenOptionsExt as _, symlink};
 use std::path::{Path, PathBuf};
 use std::pin::pin;
-use std::task::{ready, Poll};
+use std::task::{Poll, ready};
 
 use bstr::ByteSlice as _;
 use bytes::Bytes;
@@ -16,11 +16,11 @@ use futures::{Sink, Stream};
 use pin_project_lite::pin_project;
 use thiserror::Error;
 use tokio::io::AsyncBufRead;
-use tokio::task::{spawn_blocking, JoinHandle};
+use tokio::task::{JoinHandle, spawn_blocking};
 use tokio_util::io::SyncIoBridge;
 use tracing::{debug, trace};
 
-use super::{NarEvent, CASE_HACK_SUFFIX};
+use super::{CASE_HACK_SUFFIX, NarEvent};
 
 #[derive(Display, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum NarWriteOperation {
@@ -374,8 +374,8 @@ where
 #[cfg(test)]
 mod unittests {
     use super::*;
-    use crate::archive::{dump, test_data, NarEvent};
-    use futures::stream::{iter, StreamExt as _, TryStreamExt as _};
+    use crate::archive::{NarEvent, dump, test_data};
+    use futures::stream::{StreamExt as _, TryStreamExt as _, iter};
     use rstest::rstest;
     use tempfile::Builder;
 
@@ -414,7 +414,7 @@ mod proptests {
     use proptest::proptest;
     use tempfile::tempdir;
 
-    use crate::archive::{dump, restore, test_data, NarEvent, NarWriteError};
+    use crate::archive::{NarEvent, NarWriteError, dump, restore, test_data};
     use crate::pretty_prop_assert_eq;
     use crate::test::arbitrary::archive::arb_nar_events;
 

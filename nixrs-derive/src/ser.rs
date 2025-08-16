@@ -5,7 +5,7 @@ use syn::{DeriveInput, Generics, Path, Type};
 
 use crate::internal::attrs::Default;
 use crate::internal::inputs::RemoteInput;
-use crate::internal::{attrs, Container, Context, Data, Field, Remote, Style, Variant};
+use crate::internal::{Container, Context, Data, Field, Remote, Style, Variant, attrs};
 
 pub fn expand_nix_serialize(crate_path: Path, input: &mut DeriveInput) -> syn::Result<TokenStream> {
     let cx = Context::new();

@@ -16,10 +16,10 @@ mod restore;
 pub mod test_data;
 
 pub use case_hack::CaseHackStream;
-pub use dump::{dump, All, DumpOptions, Filter};
+pub use dump::{All, DumpOptions, Filter, dump};
 pub use encoder::NAREncoder;
 pub use parser::parse_nar;
-pub use restore::{restore, NARRestorer};
+pub use restore::{NARRestorer, restore};
 
 pub const NAR_VERSION_MAGIC_1: &str = "nix-archive-1";
 pub const CASE_HACK_SUFFIX: &str = "~nix~case~hack~";

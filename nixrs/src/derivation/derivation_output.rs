@@ -232,7 +232,7 @@ mod daemon_serde {
         StorePathName,
     };
 
-    use super::{output_path_name, DerivationOutput};
+    use super::{DerivationOutput, output_path_name};
 
     #[derive(Error, Debug, PartialEq, Clone)]
     pub enum ParseDerivationOutput {

@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use tvix_castore::{blobservice::BlobService, directoryservice::DirectoryService, Error};
+use tvix_castore::{Error, blobservice::BlobService, directoryservice::DirectoryService};
 use tvix_store::pathinfoservice::{
     GRPCPathInfoService, MemoryPathInfoService, PathInfoService, SledPathInfoService,
 };

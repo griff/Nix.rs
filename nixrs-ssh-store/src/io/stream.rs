@@ -5,7 +5,7 @@
 use super::read_buffer::ReadBuffer;
 use std::io;
 use std::pin::Pin;
-use std::task::{ready, Poll};
+use std::task::{Poll, ready};
 
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;

@@ -375,7 +375,7 @@ mod proptest {
     use std::io;
 
     use proptest::{
-        prelude::{any, Arbitrary, BoxedStrategy, Just, Strategy},
+        prelude::{Arbitrary, BoxedStrategy, Just, Strategy, any},
         prop_oneof,
     };
 
@@ -496,9 +496,9 @@ mod proptest {
 mod unittests {
     use hex_literal::hex;
 
-    use crate::daemon::ser::mock::OperationType;
     use crate::daemon::ser::Error as _;
     use crate::daemon::ser::NixWrite;
+    use crate::daemon::ser::mock::OperationType;
 
     use super::{Builder, Error};
 
@@ -646,7 +646,7 @@ mod unittests {
 
 #[cfg(test)]
 mod proptests {
-    use proptest::prelude::{any, TestCaseError};
+    use proptest::prelude::{TestCaseError, any};
     use proptest::proptest;
 
     use crate::daemon::ser::mock::proptest::arb_extra_write;

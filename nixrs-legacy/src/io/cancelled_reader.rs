@@ -1,8 +1,8 @@
 use std::{future::Future, task::Poll};
 
 use futures::{
-    future::{Fuse, FusedFuture},
     FutureExt,
+    future::{Fuse, FusedFuture},
 };
 use pin_project_lite::pin_project;
 use tokio::{io::AsyncRead, sync::oneshot};

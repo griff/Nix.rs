@@ -1,6 +1,6 @@
 use std::io;
 use std::pin::Pin;
-use std::task::{ready, Poll};
+use std::task::{Poll, ready};
 
 use bytes::Buf;
 use pin_project_lite::pin_project;

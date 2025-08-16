@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::future::{ready, Future};
+use std::future::{Future, ready};
 
 use futures::Stream;
 use tokio::io::AsyncBufRead;

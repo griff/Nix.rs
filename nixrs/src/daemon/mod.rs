@@ -35,7 +35,7 @@ pub use types::{
     HandshakeDaemonStore, RemoteError, TrustLevel, UnkeyedValidPathInfo,
 };
 pub use version::{
-    ProtocolRange, ProtocolVersion, NIX_VERSION, PROTOCOL_VERSION, PROTOCOL_VERSION_MIN,
+    NIX_VERSION, PROTOCOL_VERSION, PROTOCOL_VERSION_MIN, ProtocolRange, ProtocolVersion,
 };
 
 #[cfg(any(test, feature = "test"))]
@@ -44,7 +44,7 @@ pub mod arbitrary {}
 #[cfg(all(test, feature = "daemon"))]
 pub(crate) mod unittests {
     use std::collections::BTreeSet;
-    use std::future::{ready, Future};
+    use std::future::{Future, ready};
     use std::io::Cursor;
 
     use bytes::Bytes;
@@ -52,7 +52,7 @@ pub(crate) mod unittests {
     use futures::{FutureExt as _, StreamExt as _, TryFutureExt as _};
     use pretty_assertions::assert_eq;
     use rstest::rstest;
-    use tokio::io::{copy_buf, duplex, split, DuplexStream, ReadHalf, WriteHalf};
+    use tokio::io::{DuplexStream, ReadHalf, WriteHalf, copy_buf, duplex, split};
     use tokio::try_join;
     use tracing::trace;
 
@@ -847,10 +847,10 @@ mod proptests {
     use tokio::io::copy_buf;
     use tracing::info;
 
+    use super::DaemonResult;
     use super::mock::MockStore;
     use super::unittests::run_store_test;
     use super::wire::types2::{BuildMode, BuildResult, KeyedBuildResult, QueryMissingResult};
-    use super::DaemonResult;
     use super::{ClientOptions, UnkeyedValidPathInfo};
     use crate::archive::{read_nar, test_data};
     use crate::daemon::wire::types2::ValidPathInfo;
@@ -885,7 +885,7 @@ mod proptests {
                     prop_assert!(res.is_ok(), "invalid result {:?}", res);
                     Ok(client)
                 }).await?;
-                Ok(()) as Result<_, TestCaseError>
+                Ok(()) as Result<(), TestCaseError>
             })?;
             info!("Completed test {}", now.elapsed().as_secs_f64());
         }
@@ -912,7 +912,7 @@ mod proptests {
                     prop_assert_eq!(res.unwrap(), result);
                     Ok(client)
                 }).await?;
-                Ok(()) as Result<_, TestCaseError>
+                Ok(()) as Result<(), TestCaseError>
             })?;
             info!("Completed test {}", now.elapsed().as_secs_f64());
         }
@@ -940,7 +940,7 @@ mod proptests {
                     prop_assert_eq!(res.unwrap(), result);
                     Ok(client)
                 }).await?;
-                Ok(()) as Result<_, TestCaseError>
+                Ok(()) as Result<(), TestCaseError>
             })?;
             info!("Completed test {}", now.elapsed().as_secs_f64());
         }
@@ -967,7 +967,7 @@ mod proptests {
                     prop_assert_eq!(res.unwrap(), result);
                     Ok(client)
                 }).await?;
-                Ok(()) as Result<_, TestCaseError>
+                Ok(()) as Result<(), TestCaseError>
             })?;
             info!("Completed test {}", now.elapsed().as_secs_f64());
         }
@@ -1002,7 +1002,7 @@ mod proptests {
                     }
                     Ok(client)
                 }).await?;
-                Ok(()) as Result<_, TestCaseError>
+                Ok(()) as Result<(), TestCaseError>
             })?;
             info!("Completed test {}", now.elapsed().as_secs_f64());
         }
@@ -1030,7 +1030,7 @@ mod proptests {
                     client.add_to_store_nar(&info, Cursor::new(nar_content), repair, dont_check_sigs).await?;
                     Ok(client) as DaemonResult<_>
                 }).await?;
-                Ok(()) as Result<_, TestCaseError>
+                Ok(()) as Result<(), TestCaseError>
             })?;
             info!("Completed test {}", now.elapsed().as_secs_f64());
         }

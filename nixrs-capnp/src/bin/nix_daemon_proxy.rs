@@ -10,9 +10,9 @@ use tokio::net::UnixListener;
 use tokio::task::LocalSet;
 use tracing::level_filters::LevelFilter;
 use tracing::{error, info};
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
-use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]

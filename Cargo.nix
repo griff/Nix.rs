@@ -4872,7 +4872,7 @@ rec {
       "nix-docker-build" = rec {
         crateName = "nix-docker-build";
         version = "0.1.0";
-        edition = "2021";
+        edition = "2024";
         crateBin = [
           {
             name = "nix-docker-build";
@@ -4932,7 +4932,7 @@ rec {
       "nixrs" = rec {
         crateName = "nixrs";
         version = "0.1.0";
-        edition = "2021";
+        edition = "2024";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./nixrs; };
         authors = [
           "Brian Olsen <brian@maven-group.org>"
@@ -5292,7 +5292,7 @@ rec {
       "nixrs-derive" = rec {
         crateName = "nixrs-derive";
         version = "0.1.0";
-        edition = "2021";
+        edition = "2024";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./nixrs-derive; };
         procMacro = true;
         libName = "nixrs_derive";
@@ -5360,7 +5360,7 @@ rec {
       "nixrs-derive-tests" = rec {
         crateName = "nixrs-derive-tests";
         version = "0.1.0";
-        edition = "2021";
+        edition = "2024";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./nixrs-derive-tests; };
         authors = [
           "Brian Olsen <brian@maven-group.org>"
@@ -5411,7 +5411,7 @@ rec {
       "nixrs-legacy" = rec {
         crateName = "nixrs-legacy";
         version = "0.1.0";
-        edition = "2021";
+        edition = "2024";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./nixrs-legacy; };
         libName = "nixrs_legacy";
         authors = [
@@ -5575,7 +5575,7 @@ rec {
       "nixrs-nix-store" = rec {
         crateName = "nixrs-nix-store";
         version = "0.1.0";
-        edition = "2021";
+        edition = "2024";
         crateBin = [
           {
             name = "nixrs-store";
@@ -5609,7 +5609,7 @@ rec {
       "nixrs-ssh-store" = rec {
         crateName = "nixrs-ssh-store";
         version = "0.1.0";
-        edition = "2021";
+        edition = "2024";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./nixrs-ssh-store; };
         libName = "nixrs_ssh_store";
         authors = [

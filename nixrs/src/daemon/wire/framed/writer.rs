@@ -1,12 +1,12 @@
 use std::cmp::min;
 use std::io;
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 use bytes::{Buf as _, BufMut, BytesMut};
 use pin_project_lite::pin_project;
 use tokio::io::AsyncWrite;
-use tracing::{debug, trace, trace_span, Span};
+use tracing::{Span, debug, trace, trace_span};
 
 use crate::io::{DEFAULT_BUF_SIZE, RESERVED_BUF_SIZE};
 

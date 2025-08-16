@@ -1,7 +1,7 @@
 use std::cmp::max;
 use std::io;
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 use bytes::{Buf, Bytes};
 use pin_project_lite::pin_project;

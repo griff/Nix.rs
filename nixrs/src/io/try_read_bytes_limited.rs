@@ -3,7 +3,7 @@ use std::future::poll_fn;
 use std::io;
 use std::ops::RangeInclusive;
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 use bytes::Bytes;
 

@@ -1,10 +1,10 @@
-use std::future::{poll_fn, Future};
-use std::pin::{pin, Pin};
+use std::future::{Future, poll_fn};
+use std::pin::{Pin, pin};
 use std::sync::{Arc, Mutex};
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
-use ::capnp::capability::Promise;
 use ::capnp::Error;
+use ::capnp::capability::Promise;
 use capnp_rpc::new_client;
 use capnp_rpc_tokio::stream::{ByteStreamWrap, ByteStreamWriter};
 use futures::channel::{mpsc, oneshot};
@@ -13,7 +13,7 @@ use futures::{SinkExt as _, Stream, TryFutureExt};
 use nixrs::daemon::{AddToStoreItem, DaemonResult, DaemonStore, HandshakeDaemonStore, ResultLog};
 use nixrs::derived_path::DerivedPath;
 use pin_project_lite::pin_project;
-use tokio::io::{copy_buf, simplex, AsyncWriteExt as _, BufReader, ReadHalf, SimplexStream};
+use tokio::io::{AsyncWriteExt as _, BufReader, ReadHalf, SimplexStream, copy_buf, simplex};
 use tracing::trace;
 
 use crate::capnp::nix_daemon_capnp;
@@ -28,7 +28,7 @@ use crate::capnp::nix_daemon_capnp::nix_daemon::{
     QueryValidPathsParams, QueryValidPathsResults, SetOptionsParams, SetOptionsResults,
 };
 use crate::convert::{BuildFrom, ReadInto};
-use crate::{from_error, DEFAULT_BUF_SIZE};
+use crate::{DEFAULT_BUF_SIZE, from_error};
 
 pub struct NoopLogger;
 impl logger::Server for NoopLogger {

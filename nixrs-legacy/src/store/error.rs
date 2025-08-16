@@ -36,8 +36,8 @@ num_enum! {
 
 impl Verbosity {
     pub const fn to_tracing(self) -> tracing::Level {
-        use tracing::Level;
         use Verbosity::*;
+        use tracing::Level;
         match self {
             Error => Level::ERROR,
             Warn => Level::WARN,
@@ -74,7 +74,9 @@ impl From<Verbosity> for tracing::Level {
 pub enum Error {
     #[error("Store path set forms a cycle")]
     CycleDetected,
-    #[error("wanted to fetch '{0}' but the legacy ssh protocol doesn't support merely substituting drv files via the build paths command. It would build them instead. Try using ssh-ng://")]
+    #[error(
+        "wanted to fetch '{0}' but the legacy ssh protocol doesn't support merely substituting drv files via the build paths command. It would build them instead. Try using ssh-ng://"
+    )]
     WantedFetchInLegacy(String),
     #[error("{0}")]
     StorePath(
@@ -213,9 +215,13 @@ pub enum Error {
     },
     #[error("got unsupported field type {0:x} from Nix daemon")]
     UnsupportedFieldType(u64),
-    #[error("trying to request '{0}', but daemon protocol {1}.{2} is too old (< 1.29) to request a derivation file")]
+    #[error(
+        "trying to request '{0}', but daemon protocol {1}.{2} is too old (< 1.29) to request a derivation file"
+    )]
     ProtocolTooOld(String, u64, u64),
-    #[error("wanted to build a derivation that is itself a build product, but the legacy 'ssh://' protocol doesn't support that. Try using 'ssh-ng://'")]
+    #[error(
+        "wanted to build a derivation that is itself a build product, but the legacy 'ssh://' protocol doesn't support that. Try using 'ssh-ng://'"
+    )]
     DerivationIsBuildProduct,
     #[error("repairing or checking is not supported when building through the Nix daemon")]
     RepairingOrCheckingNotSupported,

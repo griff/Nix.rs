@@ -10,11 +10,11 @@ use futures::{Future, FutureExt};
 use nixrs_legacy::store::legacy_worker;
 use thrussh::server::Config;
 use thrussh::{
-    server::{self, Handle},
     ChannelId, ChannelOpenFailure, CryptoVec,
+    server::{self, Handle},
 };
 use thrussh_keys::key::{KeyPair, PublicKey};
-use thrussh_keys::{decode_secret_key, key, parse_public_key_base64, PublicKeyBase64};
+use thrussh_keys::{PublicKeyBase64, decode_secret_key, key, parse_public_key_base64};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, BufReader, BufWriter};
 use tokio::select;
@@ -23,10 +23,10 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info};
 
+use crate::StoreProvider;
 #[cfg(feature = "legacy")]
 use crate::io::ExtendedDataWrite;
 use crate::io::{ChannelRead, DataWrite};
-use crate::StoreProvider;
 
 #[derive(Debug)]
 pub struct ServerConfig<S> {

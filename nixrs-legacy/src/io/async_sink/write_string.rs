@@ -6,10 +6,10 @@ use std::task::{Context, Poll};
 
 use tokio::io::AsyncWrite;
 
-use crate::io::calc_padding;
 use crate::io::STATIC_PADDING;
+use crate::io::calc_padding;
 
-use super::write_all::{write_all, WriteAll};
+use super::write_all::{WriteAll, write_all};
 use super::write_int::WriteU64;
 
 pub(crate) fn write_string<W>(dst: W, s: String) -> WriteString<W> {

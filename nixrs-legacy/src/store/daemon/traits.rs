@@ -35,7 +35,7 @@ pub trait DaemonStore: Store {
     /// derivations that will be built, and the set of output paths that
     /// will be substituted.
     async fn query_missing(&mut self, targets: &[DerivedPath])
-        -> Result<QueryMissingResult, Error>;
+    -> Result<QueryMissingResult, Error>;
     async fn substitute_paths(&mut self, paths: &StorePathSet) -> Result<(), Error> {
         let mut paths2 = Vec::new();
         for path in paths {

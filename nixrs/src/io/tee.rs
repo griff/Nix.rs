@@ -1,7 +1,7 @@
 use std::cmp::min;
 use std::io;
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 use pin_project_lite::pin_project;
 use tokio::io::AsyncWrite;

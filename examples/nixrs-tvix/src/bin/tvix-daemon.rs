@@ -4,18 +4,18 @@ use clap::Parser;
 use nixrs_tvix::pathinfoservice;
 use tokio_listener::{Listener, SystemOptions, UserOptions};
 use tonic::transport::Server;
-use tracing::info;
 use tracing::Level;
+use tracing::info;
 use tracing_subscriber::filter;
 use tracing_subscriber::prelude::*;
 use tvix_castore::blobservice;
 use tvix_castore::directoryservice;
-use tvix_castore::proto::blob_service_server::BlobServiceServer;
-use tvix_castore::proto::directory_service_server::DirectoryServiceServer;
 use tvix_castore::proto::GRPCBlobServiceWrapper;
 use tvix_castore::proto::GRPCDirectoryServiceWrapper;
-use tvix_store::proto::path_info_service_server::PathInfoServiceServer;
+use tvix_castore::proto::blob_service_server::BlobServiceServer;
+use tvix_castore::proto::directory_service_server::DirectoryServiceServer;
 use tvix_store::proto::GRPCPathInfoServiceWrapper;
+use tvix_store::proto::path_info_service_server::PathInfoServiceServer;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]

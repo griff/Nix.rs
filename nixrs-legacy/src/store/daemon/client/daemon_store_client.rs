@@ -3,7 +3,7 @@ use std::fmt;
 
 use async_trait::async_trait;
 use futures::TryFutureExt;
-use tokio::io::{copy, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, copy};
 use tracing::{debug, instrument};
 
 use super::process_stderr::ProcessStderr;
@@ -13,15 +13,15 @@ use crate::io::{AsyncSink, AsyncSource};
 use crate::path_info::ValidPathInfo;
 use crate::store::activity::ActivityLogger;
 use crate::store::daemon::{
-    get_protocol_major, get_protocol_minor, DaemonStore, QueryMissingResult, TrustedFlag,
-    WorkerProtoOp, PROTOCOL_VERSION, WORKER_MAGIC_1, WORKER_MAGIC_2,
+    DaemonStore, PROTOCOL_VERSION, QueryMissingResult, TrustedFlag, WORKER_MAGIC_1, WORKER_MAGIC_2,
+    WorkerProtoOp, get_protocol_major, get_protocol_minor,
 };
 use crate::store::error::Verbosity;
 use crate::store::misc::add_multiple_to_store_old;
 use crate::store::settings::get_settings;
 use crate::store::{
-    BasicDerivation, BuildMode, BuildResult, BuildStatus, CheckSignaturesFlag, DerivedPath, Error,
-    RepairFlag, SPWOParseResult, Store, SubstituteFlag, EXPORT_MAGIC,
+    BasicDerivation, BuildMode, BuildResult, BuildStatus, CheckSignaturesFlag, DerivedPath,
+    EXPORT_MAGIC, Error, RepairFlag, SPWOParseResult, Store, SubstituteFlag,
 };
 use crate::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
 
@@ -302,11 +302,12 @@ where
             overrides.remove("max-silent-time");
             overrides.remove("cores"); // build_cores
             overrides.remove("substitute"); // use_substitutes
-                                            /*
-                                            overrides.erase(loggerSettings.showTrace.name);
-                                            overrides.erase(experimentalFeatureSettings.experimentalFeatures.name);
-                                            overrides.erase(settings.pluginFiles.name);
-                                             */
+
+            /*
+            overrides.erase(loggerSettings.showTrace.name);
+            overrides.erase(experimentalFeatureSettings.experimentalFeatures.name);
+            overrides.erase(settings.pluginFiles.name);
+             */
             self.sink.write_usize(overrides.len()).await?;
             for (k, v) in overrides.iter() {
                 self.sink.write_str(k).await?;
@@ -681,11 +682,11 @@ mod tests {
     use crate::path_info::proptest::arb_valid_info_and_content;
     use crate::pretty_prop_assert_eq;
     use crate::signature::SignatureSet;
-    use crate::store::assert_store::AssertStore;
-    use crate::store::settings::BuildSettings;
     use crate::store::DerivationOutput;
     use crate::store::DrvOutput;
     use crate::store::Realisation;
+    use crate::store::assert_store::AssertStore;
+    use crate::store::settings::BuildSettings;
     use crate::store_path::proptest::arb_drv_store_path;
 
     macro_rules! store_cmd {

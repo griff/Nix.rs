@@ -4,7 +4,7 @@ use std::mem::take;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 use bstr::ByteSlice;
 use bytes::Bytes;
@@ -15,7 +15,7 @@ use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 use tvix_castore::blobservice::{BlobService, BlobWriter};
 use tvix_castore::directoryservice::{DirectoryPutter, DirectoryService};
-use tvix_castore::{proto, B3Digest};
+use tvix_castore::{B3Digest, proto};
 
 pub async fn store_nar<S, U>(
     blob_service: Arc<dyn BlobService>,
@@ -423,7 +423,7 @@ impl Sink<NAREvent> for NARStorer {
 
 #[cfg(test)]
 mod tests {
-    use futures::{stream::iter, StreamExt};
+    use futures::{StreamExt, stream::iter};
 
     use nixrs_legacy::archive::test_data as nixrs_test_data;
     use tokio::io::AsyncReadExt;

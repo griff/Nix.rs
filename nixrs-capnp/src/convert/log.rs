@@ -1,13 +1,13 @@
 use capnp::{
-    traits::{FromPointerBuilder as _, SetterInput},
     Error,
+    traits::{FromPointerBuilder as _, SetterInput},
 };
 use nixrs::{
+    ByteString,
     log::{
         Activity, ActivityResult, ActivityType, Field, LogMessage, Message, ResultType,
         StopActivity, Verbosity,
     },
-    ByteString,
 };
 
 use crate::{

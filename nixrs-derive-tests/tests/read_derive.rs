@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
-use nixrs::daemon::de::mock::{Builder, Error};
 use nixrs::daemon::de::NixRead;
+use nixrs::daemon::de::mock::{Builder, Error};
 use nixrs::store_path::{FromStoreDirStr, StoreDir};
 use nixrs_derive::NixDeserialize;
 use num_enum::TryFromPrimitive;

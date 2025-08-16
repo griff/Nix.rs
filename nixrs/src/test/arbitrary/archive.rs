@@ -4,7 +4,7 @@ use std::io::Cursor;
 use ::proptest::prelude::*;
 use bytes::Bytes;
 
-use crate::archive::{write_nar, NarEvent};
+use crate::archive::{NarEvent, write_nar};
 use crate::test::arbitrary::{arb_filename, arb_path};
 
 #[derive(Clone, Debug)]

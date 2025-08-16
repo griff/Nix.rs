@@ -1,5 +1,5 @@
 use std::io;
-use std::task::{ready, Poll};
+use std::task::{Poll, ready};
 
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead};
@@ -79,7 +79,7 @@ where
         let mut me = self.project();
         loop {
             match me.state {
-                FramedReadState::ReadLen(ref mut r) => {
+                FramedReadState::ReadLen(r) => {
                     trace!("FramedReader:poll_fill_buf: ReadLen");
                     let len = ready!(r.poll_reader(cx, me.reader.as_mut()))?.ok_or_else(|| {
                         io::Error::new(io::ErrorKind::UnexpectedEof, "EOF in framed reader")

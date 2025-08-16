@@ -7,7 +7,7 @@ use std::os::fd::RawFd;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::task::{ready, Poll};
+use std::task::{Poll, ready};
 use std::time::Duration;
 
 use capnp_rpc::new_client;
@@ -16,7 +16,7 @@ use capnp_rpc_tokio::client::ClientBuilder;
 use clap::Parser;
 use nixrs::daemon::DaemonStore;
 use nixrs::daemon::HandshakeDaemonStore;
-use nixrs::daemon::{wire::types2::BuildMode, FutureResultExt, LocalDaemonStore};
+use nixrs::daemon::{FutureResultExt, LocalDaemonStore, wire::types2::BuildMode};
 use nixrs_capnp::capnp::nix_daemon_capnp;
 use nixrs_capnp::nix_daemon::HandshakeLoggedCapnpServer;
 use nixrs_capnp::nix_daemon::LoggedCapnpStore;
@@ -26,12 +26,12 @@ use tokio::io::{Interest, Ready};
 use tokio::sync::{mpsc, watch};
 use tokio::{
     io::AsyncRead,
-    net::{unix::OwnedReadHalf, UnixListener},
+    net::{UnixListener, unix::OwnedReadHalf},
     task::LocalSet,
     time::sleep,
 };
 use tracing::{error, info, level_filters::LevelFilter};
-use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _, EnvFilter};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 #[derive(Debug)]
 struct SleepStore(Duration);

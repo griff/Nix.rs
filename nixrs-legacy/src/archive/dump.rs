@@ -1,5 +1,5 @@
-use std::collections::btree_map::IntoIter;
 use std::collections::BTreeMap;
+use std::collections::btree_map::IntoIter;
 use std::fs::{FileType, Metadata};
 use std::future::Future;
 use std::io;
@@ -11,15 +11,15 @@ use std::sync::Arc;
 use async_stream::try_stream;
 use bstr::{ByteSlice, ByteVec};
 use bytes::{Bytes, BytesMut};
-use futures::future::Ready;
 use futures::Stream;
+use futures::future::Ready;
 use tokio::fs::File;
 use tokio::fs::{read_dir, read_link, symlink_metadata};
 use tokio::io::AsyncReadExt;
 use tracing::debug;
 use tracing::trace;
 
-use super::{NAREvent, CASE_HACK_SUFFIX, NAR_VERSION_MAGIC_1};
+use super::{CASE_HACK_SUFFIX, NAR_VERSION_MAGIC_1, NAREvent};
 
 struct Item {
     path: PathBuf,

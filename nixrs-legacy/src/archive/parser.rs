@@ -12,7 +12,7 @@ use tracing::trace;
 use crate::io::AsyncSource;
 use crate::io::OffsetReader;
 
-use super::{NAREvent, NAR_VERSION_MAGIC_1};
+use super::{NAR_VERSION_MAGIC_1, NAREvent};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 enum FileType {

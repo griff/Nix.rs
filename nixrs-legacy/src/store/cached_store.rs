@@ -2,7 +2,7 @@ use std::fmt;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use caches::{lru::CacheError, Cache, LRUCache, RawLRU};
+use caches::{Cache, LRUCache, RawLRU, lru::CacheError};
 use lazy_static::lazy_static;
 use tokio::io::{AsyncRead, AsyncWrite};
 

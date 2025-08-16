@@ -10,7 +10,7 @@ use proptest::prelude::*;
 #[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 
-use crate::store_path::{into_name, StorePathNameError};
+use crate::store_path::{StorePathNameError, into_name};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
@@ -138,7 +138,10 @@ mod unittests {
     #[case("out,", Err(StorePathNameError::NameLength))]
     #[case("", Err(StorePathNameError::NameLength))]
     #[case(",out", Err(StorePathNameError::NameLength))]
-    #[case::too_long("test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Err(StorePathNameError::NameLength))]
+    #[case::too_long(
+        "test-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        Err(StorePathNameError::NameLength)
+    )]
     fn parse(#[case] value: &str, #[case] expected: Result<OutputSpec, StorePathNameError>) {
         let actual: Result<OutputSpec, _> = value.parse();
         assert_eq!(actual, expected);

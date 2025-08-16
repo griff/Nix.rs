@@ -6,11 +6,11 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::Mutex;
 
 use crate::path_info::ValidPathInfo;
-use crate::store::{legacy_worker::LegacyStore, Store};
 use crate::store::{
     BasicDerivation, BuildMode, BuildResult, CheckSignaturesFlag, DerivedPath, Error, RepairFlag,
     SubstituteFlag,
 };
+use crate::store::{Store, legacy_worker::LegacyStore};
 use crate::store_path::{StoreDir, StoreDirProvider, StorePath, StorePathSet};
 
 #[derive(Clone)]

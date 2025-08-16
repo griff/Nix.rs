@@ -10,14 +10,14 @@ use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, BufReader, BufWriter};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{ChildStdin, ChildStdout, Command};
 use tokio::spawn;
-use tracing::dispatcher::{get_default, with_default};
 use tracing::Instrument;
+use tracing::dispatcher::{get_default, with_default};
+use tracing::{Dispatch, error};
 use tracing::{debug, instrument, trace};
-use tracing::{error, Dispatch};
 
 use super::{
-    get_protocol_major, get_protocol_minor, LegacyStore, ServeCommand, SERVE_MAGIC_1,
-    SERVE_MAGIC_2, SERVE_PROTOCOL_VERSION,
+    LegacyStore, SERVE_MAGIC_1, SERVE_MAGIC_2, SERVE_PROTOCOL_VERSION, ServeCommand,
+    get_protocol_major, get_protocol_minor,
 };
 use crate::activity;
 use crate::archive::copy_nar;
@@ -25,12 +25,12 @@ use crate::hash::Hash;
 use crate::io::{AsyncSink, AsyncSource};
 use crate::path_info::ValidPathInfo;
 use crate::signature::{ParseSignatureError, SignatureSet};
-use crate::store::activity::{ActivityType, ResultType, RESULT_TARGET};
+use crate::store::activity::{ActivityType, RESULT_TARGET, ResultType};
 use crate::store::error::Verbosity;
 use crate::store::settings::get_settings;
 use crate::store::{
-    BasicDerivation, BuildMode, BuildResult, BuildStatus, CheckSignaturesFlag, DerivedPath, Error,
-    RepairFlag, SPWOParseResult, Store, SubstituteFlag, EXPORT_MAGIC,
+    BasicDerivation, BuildMode, BuildResult, BuildStatus, CheckSignaturesFlag, DerivedPath,
+    EXPORT_MAGIC, Error, RepairFlag, SPWOParseResult, Store, SubstituteFlag,
 };
 use crate::store_path::{ParseStorePathError, StoreDir, StoreDirProvider, StorePath, StorePathSet};
 
@@ -771,10 +771,10 @@ mod tests {
     use crate::hash;
     use crate::path_info::proptest::arb_valid_info_and_content;
     use crate::pretty_prop_assert_eq;
+    use crate::store::StorePathWithOutputs;
     use crate::store::assert_store::AssertStore;
     use crate::store::error::Verbosity;
     use crate::store::settings::{BuildSettings, WithSettings};
-    use crate::store::StorePathWithOutputs;
     use crate::store_path::proptest::arb_drv_store_path;
 
     macro_rules! store_cmd {

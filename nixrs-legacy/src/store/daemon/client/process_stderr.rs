@@ -4,15 +4,15 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tracing::{debug, error, info};
 
 use crate::io::{AsyncSink, AsyncSource};
+use crate::store::Error;
 use crate::store::activity::{
     ActivityId, ActivityLogger, ActivityType, LoggerField, LoggerFieldType, ResultType,
 };
 use crate::store::daemon::{
-    get_protocol_minor, STDERR_ERROR, STDERR_LAST, STDERR_NEXT, STDERR_READ, STDERR_RESULT,
-    STDERR_START_ACTIVITY, STDERR_STOP_ACTIVITY, STDERR_WRITE,
+    STDERR_ERROR, STDERR_LAST, STDERR_NEXT, STDERR_READ, STDERR_RESULT, STDERR_START_ACTIVITY,
+    STDERR_STOP_ACTIVITY, STDERR_WRITE, get_protocol_minor,
 };
 use crate::store::error::Verbosity;
-use crate::store::Error;
 
 async fn read_fields<R: AsyncRead + Unpin>(mut source: R) -> Result<Vec<LoggerField>, Error> {
     let size = source.read_usize().await?;

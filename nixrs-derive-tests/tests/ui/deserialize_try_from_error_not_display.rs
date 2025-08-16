@@ -8,11 +8,7 @@ impl TryFrom<u64> for Test {
     type Error = ();
 
     fn try_from(value: u64) -> Result<Test, Self::Error> {
-        if value == 42 {
-            Ok(Test)
-        } else {
-            Err(())
-        }
+        if value == 42 { Ok(Test) } else { Err(()) }
     }
 }
 

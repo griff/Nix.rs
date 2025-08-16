@@ -4,13 +4,13 @@ use capnp_rpc::{new_client, new_future_client};
 use capnp_rpc_tokio::builder::RpcSystemBuilder;
 use capnp_rpc_tokio::serve::{make_client, serve};
 use clap::Parser;
-use nixrs::daemon::{client::DaemonClient, MutexHandshakeStore};
+use nixrs::daemon::{MutexHandshakeStore, client::DaemonClient};
 use nixrs_capnp::{from_error, nix_daemon::HandshakeLoggedCapnpServer};
 use tokio::io::join;
 use tokio::net::UnixListener;
 use tokio::task::LocalSet;
 use tracing::{error, level_filters::LevelFilter};
-use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _, EnvFilter};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]

@@ -1,4 +1,4 @@
-use std::collections::{btree_map::Entry, BTreeMap};
+use std::collections::{BTreeMap, btree_map::Entry};
 use std::fmt;
 
 use tokio::io::{AsyncRead, AsyncReadExt};
@@ -263,7 +263,7 @@ mod tests {
     use crate::path_info::ValidPathInfo;
     use crate::store::{Error, Store};
     use crate::store_path::{
-        StoreDir, StoreDirProvider, StorePath, StorePathSet, STORE_PATH_HASH_BYTES,
+        STORE_PATH_HASH_BYTES, StoreDir, StoreDirProvider, StorePath, StorePathSet,
     };
 
     macro_rules! store_path {

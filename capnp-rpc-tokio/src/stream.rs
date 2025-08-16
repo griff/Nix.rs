@@ -1,10 +1,10 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 use std::{io, mem};
 
-use capnp::capability::Promise;
 use capnp::Error;
+use capnp::capability::Promise;
 use capnp_rpc::pry;
 use futures::TryFutureExt as _;
 use pin_project_lite::pin_project;

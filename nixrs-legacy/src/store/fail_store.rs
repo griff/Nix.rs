@@ -7,9 +7,9 @@ use crate::{
 };
 
 use super::{
+    CheckSignaturesFlag, DerivedPath, Error, RepairFlag, Store, SubstituteFlag,
     daemon::{DaemonStore, QueryMissingResult, TrustedFlag},
     legacy_worker::LegacyStore,
-    CheckSignaturesFlag, DerivedPath, Error, RepairFlag, Store, SubstituteFlag,
 };
 
 #[derive(Debug)]

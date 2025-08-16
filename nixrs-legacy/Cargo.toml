@@ -2,7 +2,7 @@
 name = "nixrs-legacy"
 version = "0.1.0"
 authors = ["Brian Olsen <brian@maven-group.org>", "Nix Authors"]
-edition = "2021"
+edition = "2024"
 license = "LGPL-2.1-or-later"
 
 [features]

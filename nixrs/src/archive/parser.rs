@@ -1,6 +1,6 @@
 use std::io;
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 use bytes::Buf;
 use futures::Stream;
@@ -8,12 +8,12 @@ use pin_project_lite::pin_project;
 use tokio::io::AsyncRead;
 use tracing::trace;
 
+use crate::ByteString;
 use crate::io::{AsyncBufReadCompat, AsyncBytesRead, BytesReader, Lending, LentReader};
 use crate::wire::PaddedReader;
-use crate::ByteString;
 
 use super::read_nar::{Inner, InnerState, NodeType};
-use super::{test_data, NarEvent};
+use super::{NarEvent, test_data};
 
 pin_project! {
     pub struct NarParser<R> {

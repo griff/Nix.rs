@@ -1,8 +1,8 @@
 use std::{
     future::poll_fn,
     io,
-    pin::{pin, Pin},
-    task::{ready, Context, Poll},
+    pin::{Pin, pin},
+    task::{Context, Poll, ready},
 };
 
 use bytes::Buf;

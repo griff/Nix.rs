@@ -129,8 +129,8 @@ where
         &'s mut self,
         path: &'s crate::store_path::StorePath,
     ) -> impl ResultLog<Output = super::DaemonResult<impl tokio::io::AsyncBufRead + Send + use<S>>>
-           + Send
-           + 's {
+    + Send
+    + 's {
         let store = self.m.clone();
         let (sender, receiver) = oneshot::channel();
         let logs = stream! {
@@ -159,8 +159,8 @@ where
         drvs: &'a [crate::derived_path::DerivedPath],
         mode: super::wire::types2::BuildMode,
     ) -> impl ResultLog<Output = super::DaemonResult<Vec<super::wire::types2::KeyedBuildResult>>>
-           + Send
-           + 'a {
+    + Send
+    + 'a {
         mutex_result!(self, |store| { store.build_paths_with_results(drvs, mode) })
     }
 
@@ -262,7 +262,7 @@ where
             std::collections::BTreeMap<super::DaemonPath, crate::store_path::StorePath>,
         >,
     > + Send
-           + '_ {
+    + '_ {
         mutex_result!(self, |store| { store.find_roots() })
     }
 
@@ -273,8 +273,8 @@ where
         ignore_liveness: bool,
         max_freed: u64,
     ) -> impl ResultLog<Output = super::DaemonResult<super::wire::types2::CollectGarbageResponse>>
-           + Send
-           + 'a {
+    + Send
+    + 'a {
         mutex_result!(self, |store| {
             store.collect_garbage(action, paths_to_delete, ignore_liveness, max_freed)
         })
@@ -335,7 +335,7 @@ where
             >,
         >,
     > + Send
-           + 'a {
+    + 'a {
         mutex_result!(self, |store| { store.query_derivation_output_map(path) })
     }
 
@@ -352,7 +352,7 @@ where
     ) -> impl ResultLog<
         Output = super::DaemonResult<std::collections::BTreeSet<crate::realisation::Realisation>>,
     > + Send
-           + 'a {
+    + 'a {
         mutex_result!(self, |store| { store.query_realisation(output_id) })
     }
 
@@ -395,7 +395,7 @@ where
     ) -> impl ResultLog<
         Output = super::DaemonResult<std::collections::BTreeSet<crate::derived_path::OutputName>>,
     > + Send
-           + 'a {
+    + 'a {
         mutex_result!(self, |store| { store.query_derivation_output_names(path) })
     }
 

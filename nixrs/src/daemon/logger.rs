@@ -4,11 +4,11 @@ use std::future::Future;
 use std::io::Cursor;
 use std::marker::PhantomData;
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 use async_stream::stream;
-use futures::stream::{empty, Empty};
 use futures::Stream;
+use futures::stream::{Empty, empty};
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt as _};
 use tokio::sync::oneshot;

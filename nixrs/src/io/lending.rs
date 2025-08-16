@@ -1,8 +1,8 @@
-use std::future::{poll_fn, Future};
+use std::future::{Future, poll_fn};
 use std::io;
 use std::mem::replace;
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 use bytes::Bytes;
 use futures::FutureExt;

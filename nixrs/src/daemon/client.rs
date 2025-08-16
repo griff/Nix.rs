@@ -5,12 +5,12 @@ use std::pin::Pin;
 use std::sync::atomic::AtomicU64;
 
 use async_stream::stream;
+use futures::Stream;
 use futures::future::Either;
 use futures::io::Cursor;
-use futures::Stream;
-use tokio::io::{copy_buf, AsyncBufRead, AsyncRead, AsyncWrite, AsyncWriteExt as _};
-use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, AsyncWriteExt as _, copy_buf};
 use tokio::net::UnixStream;
+use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::oneshot;
 use tracing::{debug, info, trace};
 
@@ -22,7 +22,7 @@ use super::wire::logger::RawLogMessage;
 use super::wire::types::Operation;
 use super::wire::types2::{BuildMode, CollectGarbageResponse, GCAction, ValidPathInfo};
 use super::wire::{
-    write_add_multiple_to_store_stream, FramedWriter, IgnoredOne, CLIENT_MAGIC, SERVER_MAGIC,
+    CLIENT_MAGIC, FramedWriter, IgnoredOne, SERVER_MAGIC, write_add_multiple_to_store_stream,
 };
 use super::{
     DaemonError, DaemonErrorKind, DaemonPath, DaemonResult, DaemonResultExt as _, DaemonStore,

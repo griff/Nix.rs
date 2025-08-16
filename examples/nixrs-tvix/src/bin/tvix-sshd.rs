@@ -1,4 +1,4 @@
-use std::future::{ready, Ready};
+use std::future::{Ready, ready};
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -7,10 +7,10 @@ use clap::Parser;
 use nixrs::daemon::FailStore;
 use nixrs_legacy::store::legacy_worker::LegacyWrapStore;
 use nixrs_legacy::store_path::StoreDir;
-use nixrs_ssh_store::server::{Server, ServerConfig};
 use nixrs_ssh_store::StoreProvider;
+use nixrs_ssh_store::server::{Server, ServerConfig};
 use nixrs_tvix::store::TvixStore;
-use tracing::{info, Level};
+use tracing::{Level, info};
 use tracing_subscriber::prelude::*;
 use tvix_castore::blobservice;
 use tvix_castore::directoryservice;

@@ -3,7 +3,7 @@ use std::future::poll_fn;
 use std::io::{self, Cursor};
 use std::ops::{Index, IndexMut, Range, RangeFull};
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 use bytes::{Buf, BufMut, BytesMut};
 use pin_project_lite::pin_project;
@@ -12,7 +12,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use crate::daemon::ProtocolVersion;
 use crate::io::{DEFAULT_BUF_SIZE, RESERVED_BUF_SIZE};
 use crate::store_path::StoreDir;
-use crate::wire::{calc_padding, ZEROS};
+use crate::wire::{ZEROS, calc_padding};
 
 use super::{Error, NixWrite};
 
@@ -274,7 +274,9 @@ unsafe impl BufMut for LimitBuffer {
 
     #[inline]
     unsafe fn advance_mut(&mut self, cnt: usize) {
-        self.0.advance_mut(cnt);
+        unsafe {
+            self.0.advance_mut(cnt);
+        }
     }
 
     #[inline]

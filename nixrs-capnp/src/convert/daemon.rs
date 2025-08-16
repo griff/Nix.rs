@@ -1,6 +1,6 @@
 use bytes::Bytes;
-use capnp::traits::{FromPointerBuilder as _, SetterInput};
 use capnp::Error;
+use capnp::traits::{FromPointerBuilder as _, SetterInput};
 use nixrs::daemon::wire::types2::{
     BuildMode, BuildResult, BuildStatus, KeyedBuildResult, QueryMissingResult, ValidPathInfo,
 };

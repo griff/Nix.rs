@@ -1,11 +1,11 @@
-use std::pin::{pin, Pin};
+use std::pin::{Pin, pin};
 use std::task;
 
 use capnp::capability::{Client, FromClientHook};
 use capnp::message::ReaderOptions;
-use capnp_rpc::{rpc_twoparty_capnp, twoparty, Disconnector, RpcSystem};
-use futures::io as fio;
+use capnp_rpc::{Disconnector, RpcSystem, rpc_twoparty_capnp, twoparty};
 use futures::AsyncReadExt as _;
+use futures::io as fio;
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::{error, info};

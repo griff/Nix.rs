@@ -6,14 +6,14 @@ use proptest::prelude::{Arbitrary, BoxedStrategy};
 use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
 
+use crate::ByteString;
+#[cfg(any(test, feature = "test"))]
+use crate::daemon::ProtocolVersion;
 #[cfg(feature = "nixrs-derive")]
 use crate::daemon::ser::{NixSerialize, NixWrite};
 #[cfg(feature = "nixrs-derive")]
 use crate::daemon::wire::logger::RawLogMessageType;
-#[cfg(any(test, feature = "test"))]
-use crate::daemon::ProtocolVersion;
 use crate::test::arbitrary::arb_byte_string;
-use crate::ByteString;
 
 #[derive(
     Debug,

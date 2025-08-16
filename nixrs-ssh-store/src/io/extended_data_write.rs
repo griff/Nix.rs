@@ -1,7 +1,7 @@
 use std::fmt;
 use std::io;
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 use thrussh::server::Handle;
 use thrussh::{ChannelId, CryptoVec};

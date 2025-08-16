@@ -3,8 +3,8 @@ use std::pin::pin;
 use async_stream::try_stream;
 use futures::{Stream, StreamExt};
 use pin_project_lite::pin_project;
-use tokio::io::{copy_buf, AsyncBufRead, AsyncRead, AsyncWrite};
-use tracing::{debug, debug_span, instrument, trace, Instrument};
+use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, copy_buf};
+use tracing::{Instrument, debug, debug_span, instrument, trace};
 
 use crate::archive::NarBytesReader;
 use crate::daemon::wire::types2::ValidPathInfo;

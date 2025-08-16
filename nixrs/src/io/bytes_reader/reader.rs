@@ -1,7 +1,7 @@
 use std::future::poll_fn;
 use std::io::{self, Cursor};
 use std::pin::Pin;
-use std::task::{ready, Poll};
+use std::task::{Poll, ready};
 
 use bytes::{Buf, BufMut as _, Bytes};
 use pin_project_lite::pin_project;

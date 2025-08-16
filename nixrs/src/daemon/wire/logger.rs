@@ -6,10 +6,10 @@ use bytes::Bytes;
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
+use crate::daemon::DaemonString;
 #[cfg(feature = "nixrs-derive")]
 use crate::daemon::ser::{NixSerialize, NixWrite};
 use crate::daemon::wire::IgnoredZero;
-use crate::daemon::DaemonString;
 use crate::daemon::{DaemonError, DaemonErrorKind, DaemonInt, RemoteError};
 use crate::log::{Activity, ActivityResult, StopActivity, Verbosity};
 

@@ -8,15 +8,15 @@ use tracing_appender::non_blocking::NonBlocking;
 use tracing_futures::WithSubscriber;
 
 use super::{
-    get_protocol_minor, LegacyStore, ServeCommand, SERVE_MAGIC_1, SERVE_MAGIC_2,
-    SERVE_PROTOCOL_VERSION,
+    LegacyStore, SERVE_MAGIC_1, SERVE_MAGIC_2, SERVE_PROTOCOL_VERSION, ServeCommand,
+    get_protocol_minor,
 };
 use crate::hash;
 use crate::io::{AsyncSink, AsyncSource};
 use crate::path_info::ValidPathInfo;
 use crate::signature::{ParseSignatureError, SignatureSet};
 use crate::store::error::Verbosity;
-use crate::store::settings::{get_mut_settings, get_settings, BuildSettings, WithSettings};
+use crate::store::settings::{BuildSettings, WithSettings, get_mut_settings, get_settings};
 use crate::store::store_api::BuildMode;
 use crate::store::{
     BasicDerivation, CheckSignaturesFlag, DerivedPath, Error, RepairFlag, StorePathWithOutputs,

@@ -35,7 +35,7 @@ pub use misc::{
 pub use output_spec::{OutputSpec, ParseOutputSpecError};
 pub use path_with_outputs::{SPWOParseResult, StorePathWithOutputs};
 pub use realisation::{DrvOutput, DrvOutputs, ParseDrvOutputError, Realisation};
-pub use store_api::{copy_paths, copy_paths_full, copy_store_path};
 pub use store_api::{
-    BuildMode, BuildResult, BuildStatus, CheckSignaturesFlag, Store, SubstituteFlag, EXPORT_MAGIC,
+    BuildMode, BuildResult, BuildStatus, CheckSignaturesFlag, EXPORT_MAGIC, Store, SubstituteFlag,
 };
+pub use store_api::{copy_paths, copy_paths_full, copy_store_path};

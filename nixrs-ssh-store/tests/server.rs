@@ -1,11 +1,11 @@
 use std::fmt;
-use std::future::{ready, Future, Ready};
+use std::future::{Future, Ready, ready};
 use std::process::Stdio;
 use std::sync::{Arc, RwLock};
 
 use futures::TryFutureExt as _;
-use nixrs_ssh_store::server::ServerConfig;
 use nixrs_ssh_store::StoreProvider;
+use nixrs_ssh_store::server::ServerConfig;
 use rstest::rstest;
 use serial_test::serial;
 use tokio::process::{ChildStdin, ChildStdout, Command};

@@ -1,5 +1,5 @@
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 use bytes::{BufMut, Bytes, BytesMut};
 use pin_project_lite::pin_project;

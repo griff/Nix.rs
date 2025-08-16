@@ -8,7 +8,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 use std::{collections::VecDeque, io};
 
 use bstr::{ByteSlice as _, ByteVec as _};
@@ -18,12 +18,12 @@ use pin_project_lite::pin_project;
 use tokio::fs;
 use tokio::io::{AsyncBufRead, AsyncRead, BufReader};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
-use tokio::task::{spawn_blocking, JoinHandle};
+use tokio::task::{JoinHandle, spawn_blocking};
 use tokio_util::sync::PollSemaphore;
 use tracing::debug;
 use walkdir::{DirEntry, IntoIter};
 
-use super::{NarEvent, CASE_HACK_SUFFIX};
+use super::{CASE_HACK_SUFFIX, NarEvent};
 
 pub struct DumpOptions {
     use_case_hack: bool,
@@ -260,11 +260,11 @@ impl State {
     fn poll_next(&mut self, cx: &mut Context<'_>) -> Poll<Option<io::Result<Entry>>> {
         loop {
             match self {
-                State::Idle(ref mut data) => {
-                    let (buf, _, ref remain) = data.as_mut().unwrap();
+                State::Idle(data) => {
+                    let (buf, _, remain) = data.as_mut().unwrap();
                     if let Some(entry) = buf.pop_front() {
                         return Poll::Ready(Some(entry));
-                    } else if !remain {
+                    } else if !*remain {
                         return Poll::Ready(None);
                     }
                     let (mut buf, mut walker, _) = data.take().unwrap();

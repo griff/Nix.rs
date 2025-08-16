@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 use std::fmt;
+use std::str::FromStr;
 #[cfg(feature = "nixrs-derive")]
 use std::str::from_utf8;
-use std::str::FromStr;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -13,7 +13,7 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 use proptest::arbitrary::any_with;
 #[cfg(any(test, feature = "test"))]
 use test_strategy::Arbitrary;
-use tracing::{debug_span, Span};
+use tracing::{Span, debug_span};
 
 #[cfg(any(test, feature = "test"))]
 use crate::daemon::ProtocolVersion;
@@ -34,8 +34,8 @@ use crate::daemon::de::{Error as _, NixDeserialize, NixRead};
 #[cfg(feature = "nixrs-derive")]
 use crate::daemon::ser::{NixSerialize, NixWrite};
 
-use super::types::Operation;
 use super::IgnoredZero;
+use super::types::Operation;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]

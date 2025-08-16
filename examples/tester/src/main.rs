@@ -7,14 +7,14 @@ use nixrs::daemon::client::DaemonClient;
 use nixrs::daemon::de::NixReader;
 use nixrs::daemon::ser::NixWriter;
 use nixrs::daemon::wire::{
-    parse_add_multiple_to_store, types2::ValidPathInfo, write_add_multiple_to_store_stream,
-    SizedStream,
+    SizedStream, parse_add_multiple_to_store, types2::ValidPathInfo,
+    write_add_multiple_to_store_stream,
 };
 use nixrs::daemon::{AddToStoreItem, DaemonError, DaemonResult, DaemonStore as _};
 use nixrs::hash::HashSink;
 use nixrs::io::DEFAULT_BUF_SIZE;
 use nixrs::store_path::StorePath;
-use tokio::io::{copy_buf, simplex, AsyncRead, AsyncWrite, AsyncWriteExt as _, BufReader};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt as _, BufReader, copy_buf, simplex};
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::try_join;
 use tracing::Level;

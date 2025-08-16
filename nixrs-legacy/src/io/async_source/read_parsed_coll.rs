@@ -9,9 +9,9 @@ use tokio::io::AsyncRead;
 
 use super::StateParse;
 
+use super::CollectionRead;
 use super::read_int::ReadUsize;
 use super::read_string::ReadString;
-use super::CollectionRead;
 
 pub enum ReadParsedColl<R, S, T, C> {
     Invalid(PhantomData<T>),

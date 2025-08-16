@@ -4,9 +4,9 @@ use std::fmt;
 use std::fmt::LowerHex;
 use std::str::FromStr;
 
+use data_encoding::BASE64;
 use data_encoding::DecodeError;
 use data_encoding::DecodeKind;
-use data_encoding::BASE64;
 use data_encoding::HEXLOWER_PERMISSIVE;
 use derive_more::Display;
 #[cfg(feature = "nixrs-derive")]
@@ -924,11 +924,21 @@ mod unittests {
 
     /// value taken from: https://tools.ietf.org/html/rfc4634
     static SHA512_ABC: Lazy<Hash> = Lazy::new(|| {
-        Hash::new(Algorithm::SHA512, &hex!("ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"))
+        Hash::new(
+            Algorithm::SHA512,
+            &hex!(
+                "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"
+            ),
+        )
     });
     /// value taken from: https://tools.ietf.org/html/rfc4634
     static SHA512_LONG: Lazy<Hash> = Lazy::new(|| {
-        Hash::new(Algorithm::SHA512, &hex!("8e959b75dae313da8cf4f72814fc143f8f7779c6eb9f7fa17299aeadb6889018501d289e4900f7e4331b99dec4b5433ac7d329eeb6dd26545e96e55b874be909"))
+        Hash::new(
+            Algorithm::SHA512,
+            &hex!(
+                "8e959b75dae313da8cf4f72814fc143f8f7779c6eb9f7fa17299aeadb6889018501d289e4900f7e4331b99dec4b5433ac7d329eeb6dd26545e96e55b874be909"
+            ),
+        )
     });
 
     #[rstest]

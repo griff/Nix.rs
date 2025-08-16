@@ -1,11 +1,11 @@
 use proc_macro2::{Span, TokenStream};
-use quote::{quote, quote_spanned, ToTokens};
+use quote::{ToTokens, quote, quote_spanned};
 use syn::spanned::Spanned;
 use syn::{DeriveInput, Generics, Path, Type};
 
 use crate::internal::attrs::Default;
 use crate::internal::inputs::RemoteInput;
-use crate::internal::{attrs, Container, Context, Data, Field, Remote, Style, Variant};
+use crate::internal::{Container, Context, Data, Field, Remote, Style, Variant, attrs};
 
 pub fn expand_nix_deserialize(
     crate_path: Path,

@@ -1,6 +1,6 @@
 use capnp::{
-    traits::{FromPointerBuilder as _, SetterInput},
     Error,
+    traits::{FromPointerBuilder as _, SetterInput},
 };
 use nixrs::{
     hash,

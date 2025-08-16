@@ -7,8 +7,8 @@ pub use content_address::{
     FixedOutputInfo, ParseContentAddressError, StoreReferences, TextInfo,
 };
 pub use path::{
-    is_name, ParseStorePathError, ReadStorePathError, StorePath, StorePathHash, StorePathName,
-    StorePathSet, StorePathSetExt, STORE_PATH_HASH_BYTES, STORE_PATH_HASH_CHARS,
+    ParseStorePathError, ReadStorePathError, STORE_PATH_HASH_BYTES, STORE_PATH_HASH_CHARS,
+    StorePath, StorePathHash, StorePathName, StorePathSet, StorePathSetExt, is_name,
 };
 pub use store_dir::{StoreDir, StoreDirProvider};
 

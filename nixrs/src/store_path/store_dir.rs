@@ -142,9 +142,9 @@ where
 
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
-    use std::path::{PathBuf, MAIN_SEPARATOR_STR};
+    use std::path::{MAIN_SEPARATOR_STR, PathBuf};
 
-    use proptest::prelude::{any, Arbitrary, BoxedStrategy, Strategy};
+    use proptest::prelude::{Arbitrary, BoxedStrategy, Strategy, any};
 
     use super::StoreDir;
 

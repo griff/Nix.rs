@@ -1,18 +1,19 @@
 use std::{
     io::{self, Cursor},
-    task::{ready, Poll},
+    task::{Poll, ready},
 };
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use futures::{stream::iter, FutureExt as _, Sink, SinkExt as _, StreamExt as _};
+use futures::{FutureExt as _, Sink, SinkExt as _, StreamExt as _, stream::iter};
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncBufRead, AsyncWrite};
 
 use crate::{io::DEFAULT_RESERVED_BUF_SIZE, wire::calc_padding};
 
 use super::{
+    NarEvent,
     read_nar::{TOK_DIR, TOK_ENTRY, TOK_FILE, TOK_FILE_E, TOK_NODE, TOK_PAR, TOK_ROOT, TOK_SYM},
-    test_data, NarEvent,
+    test_data,
 };
 
 enum State {
@@ -234,8 +235,8 @@ where
 
 #[cfg(test)]
 mod unittests {
-    use futures::stream::iter;
     use futures::StreamExt as _;
+    use futures::stream::iter;
     use rstest::rstest;
     use tempfile::tempdir;
     use tokio::fs::File;

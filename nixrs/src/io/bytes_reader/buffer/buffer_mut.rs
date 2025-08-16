@@ -325,7 +325,7 @@ impl BufferMut {
         // Updating the start of the view is setting `ptr` to point to the
         // new start and updating the `len` field to reflect the new length
         // of the view.
-        self.ptr = vptr(self.ptr.as_ptr().add(count));
+        self.ptr = unsafe { vptr(self.ptr.as_ptr().add(count)) };
         self.len = self.len.saturating_sub(count);
         self.cap -= count;
     }

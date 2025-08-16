@@ -11,11 +11,7 @@ impl Default for RLookup {
 }
 
 const fn min(v1: usize, v2: usize) -> usize {
-    if v1 <= v2 {
-        v1
-    } else {
-        v2
-    }
+    if v1 <= v2 { v1 } else { v2 }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

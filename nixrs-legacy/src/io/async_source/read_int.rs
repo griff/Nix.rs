@@ -3,7 +3,7 @@ use std::io;
 use std::io::ErrorKind::UnexpectedEof;
 use std::marker::PhantomData;
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 use std::time::{Duration, SystemTime};
 
 use bytes::Buf;

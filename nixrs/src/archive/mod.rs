@@ -8,15 +8,15 @@ mod restorer;
 pub mod test_data;
 mod writer;
 
-pub use dumper::{dump, DumpOptions, DumpedFile, NarDumper};
+pub use dumper::{DumpOptions, DumpedFile, NarDumper, dump};
 #[cfg(any(test, feature = "test"))]
 pub use parser::read_nar;
-pub use parser::{parse_nar, NarParser};
+pub use parser::{NarParser, parse_nar};
 pub use read_nar::{NarBytesReader, NarReader};
-pub use restorer::{restore, NarRestorer, NarWriteError, RestoreOptions};
+pub use restorer::{NarRestorer, NarWriteError, RestoreOptions, restore};
+pub use writer::NarWriter;
 #[cfg(any(test, feature = "test"))]
 pub use writer::write_nar;
-pub use writer::NarWriter;
 
 pub const CASE_HACK_SUFFIX: &str = "~nix~case~hack~";
 

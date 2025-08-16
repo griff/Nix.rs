@@ -1,6 +1,6 @@
+use syn::Token;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::Token;
 
 pub mod attrs;
 mod ctx;

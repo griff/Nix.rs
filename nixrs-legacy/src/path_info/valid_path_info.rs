@@ -5,6 +5,7 @@ use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tracing::{debug, trace};
 
+use crate::StringSet;
 use crate::hash::{Algorithm, Hash};
 use crate::io::{AsyncSink, AsyncSource};
 use crate::signature::{ParseSignatureError, SignatureSet};
@@ -13,7 +14,6 @@ use crate::store_path::{
     ContentAddress, ContentAddressMethod, ContentAddressWithReferences, FixedOutputInfo, StoreDir,
     StorePath, StorePathSet, StorePathSetExt, StoreReferences, TextInfo,
 };
-use crate::StringSet;
 
 #[derive(Debug, Eq, PartialOrd, Ord, Clone)]
 pub struct ValidPathInfo {

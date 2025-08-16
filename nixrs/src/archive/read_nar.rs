@@ -88,7 +88,7 @@ use std::cmp::min;
 use std::io;
 use std::ops::Range;
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 use bytes::Bytes;
 use pin_project_lite::pin_project;
@@ -97,7 +97,7 @@ use tracing::{error, trace};
 
 use super::radix_tree::{RLookup, RMatch, RTree};
 use crate::io::{AsyncBytesRead, DrainInto};
-use crate::wire::{calc_aligned, ZEROS};
+use crate::wire::{ZEROS, calc_aligned};
 
 // https://github.com/rust-lang/rust/issues/131415
 const fn copy_from_slice(dst: &mut [u8], src: &[u8]) {
@@ -891,7 +891,7 @@ mod proptests {
     use std::time::{Duration, Instant};
 
     use bytes::{BufMut as _, Bytes, BytesMut};
-    use proptest::prelude::{any, TestCaseError};
+    use proptest::prelude::{TestCaseError, any};
     use proptest::proptest;
     use tokio::io::{AsyncReadExt as _, BufReader};
     use tokio_test::io::Builder;
@@ -941,7 +941,7 @@ mod proptests {
                 buf_read.read_to_end(&mut rest).await.unwrap();
                 assert_eq!(rest, b"more");
 
-                Ok(()) as Result<_, TestCaseError>
+                Ok(()) as Result<(), TestCaseError>
             })?;
             info!("Completed test {}", now.elapsed().as_secs_f64());
         })

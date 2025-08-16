@@ -1,7 +1,7 @@
 use clap::Args as OtherArgs;
 use nixrs::daemon::wire::{FramedReader, FramedWriter};
 use nixrs::io::DEFAULT_BUF_SIZE;
-use tokio::io::{simplex, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, simplex};
 
 #[derive(Clone, OtherArgs)]
 pub struct Args {

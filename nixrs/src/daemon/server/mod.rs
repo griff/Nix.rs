@@ -2,22 +2,22 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
 use std::future::Future;
 use std::ops::Deref;
-use std::pin::{pin, Pin};
+use std::pin::{Pin, pin};
 
 use futures::future::TryFutureExt;
 use futures::{FutureExt, Stream, StreamExt as _};
-use tokio::io::{copy_buf, AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, copy_buf};
 use tokio::select;
-use tracing::{debug, error, info, instrument, trace, Instrument};
+use tracing::{Instrument, debug, error, info, instrument, trace};
 
 use crate::archive::NarReader;
+use crate::daemon::wire::IgnoredOne;
 use crate::daemon::wire::logger::RawLogMessage;
 use crate::daemon::wire::types::Operation;
 use crate::daemon::wire::types2::{
     AddToStoreRequest, BaseStorePath, CollectGarbageResponse, GCAction,
 };
-use crate::daemon::wire::IgnoredOne;
-use crate::daemon::wire::{parse_add_multiple_to_store, FramedReader, StderrReader};
+use crate::daemon::wire::{FramedReader, StderrReader, parse_add_multiple_to_store};
 use crate::daemon::{DaemonErrorKind, DaemonPath, DaemonResultExt, PROTOCOL_VERSION};
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
@@ -33,8 +33,8 @@ use super::types::AddToStoreItem;
 use super::wire::types2::{RegisterDrvOutputRequest, Request, ValidPathInfo};
 use super::wire::{CLIENT_MAGIC, SERVER_MAGIC};
 use super::{
-    DaemonError, DaemonResult, DaemonStore, HandshakeDaemonStore, ProtocolVersion, ResultLog,
-    TrustLevel, NIX_VERSION,
+    DaemonError, DaemonResult, DaemonStore, HandshakeDaemonStore, NIX_VERSION, ProtocolVersion,
+    ResultLog, TrustLevel,
 };
 
 mod local;
@@ -174,10 +174,7 @@ where
         LogMessage::Result(result) => {
             trace!(
                 id = result.id,
-                "log_result: {} {:?} {:?}",
-                result.id,
-                result.result_type,
-                result.fields,
+                "log_result: {} {:?} {:?}", result.id, result.result_type, result.fields,
             );
         }
     }

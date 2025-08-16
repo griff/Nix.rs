@@ -1,4 +1,4 @@
-use std::task::{ready, Poll};
+use std::task::{Poll, ready};
 
 use bytes::{Buf as _, Bytes};
 use pin_project_lite::pin_project;

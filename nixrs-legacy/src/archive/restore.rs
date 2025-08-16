@@ -2,7 +2,7 @@ use std::future::Future;
 use std::io;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 use bstr::ByteSlice;
 use futures::Sink;
@@ -10,10 +10,10 @@ use futures::Stream;
 use futures::StreamExt;
 use futures::TryFutureExt;
 use thiserror::Error;
-use tokio::fs::create_dir;
-use tokio::fs::symlink;
 use tokio::fs::File;
 use tokio::fs::OpenOptions;
+use tokio::fs::create_dir;
+use tokio::fs::symlink;
 use tokio::io::AsyncWriteExt;
 
 #[cfg(target_os = "macos")]
@@ -297,7 +297,7 @@ mod tests {
     use futures::{StreamExt, TryStreamExt};
     use pretty_assertions::assert_eq;
     use proptest::proptest;
-    use tempfile::{tempdir, Builder};
+    use tempfile::{Builder, tempdir};
 
     use crate::archive::proptest::arb_nar_events;
     use crate::archive::{dump, test_data};

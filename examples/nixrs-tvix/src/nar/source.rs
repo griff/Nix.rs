@@ -6,7 +6,7 @@ use async_stream::try_stream;
 use bytes::BytesMut;
 use futures::Stream;
 use log::trace;
-use nixrs_legacy::archive::{NAREvent, NAR_VERSION_MAGIC_1};
+use nixrs_legacy::archive::{NAR_VERSION_MAGIC_1, NAREvent};
 use tokio::io::AsyncReadExt;
 use tvix_castore::blobservice::BlobService;
 use tvix_castore::directoryservice::DirectoryService;
@@ -249,7 +249,7 @@ pub fn nar_source(
 
 #[cfg(test)]
 mod tests {
-    use futures::{stream::iter, StreamExt, TryStreamExt};
+    use futures::{StreamExt, TryStreamExt, stream::iter};
     use nixrs_legacy::{
         archive::{proptest::arb_nar_events, test_data as nixrs_test_data},
         pretty_prop_assert_eq,
@@ -259,7 +259,7 @@ mod tests {
     use tvix_castore::{blobservice::MemoryBlobService, directoryservice::MemoryDirectoryService};
 
     use super::*;
-    use crate::nar::{store_nar, NARStoreError};
+    use crate::nar::{NARStoreError, store_nar};
 
     macro_rules! test_source {
         ($events:expr) => {

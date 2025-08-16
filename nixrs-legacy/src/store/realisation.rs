@@ -6,9 +6,9 @@ use derive_more::Display;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::StringSet;
 use crate::hash;
 use crate::store_path::StorePath;
-use crate::StringSet;
 
 #[derive(Error, Debug, PartialEq, Clone)]
 pub enum ParseDrvOutputError {

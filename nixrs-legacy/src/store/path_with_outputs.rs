@@ -1,7 +1,7 @@
 use super::{DerivedPath, OutputSpec, SingleDerivedPath};
+use crate::StringSet;
 use crate::io::{StateParse, StatePrint};
 use crate::store_path::{ParseStorePathError, ReadStorePathError, StoreDir, StorePath};
-use crate::StringSet;
 
 /// This is a deprecated old type just for use by the old CLI, and older
 /// versions of the RPC protocols. In new code don't use it; you want

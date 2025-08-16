@@ -1,5 +1,5 @@
-use capnp::traits::{FromPointerBuilder as _, SetterInput};
 use capnp::Error;
+use capnp::traits::{FromPointerBuilder as _, SetterInput};
 use nixrs::derivation::{BasicDerivation, DerivationOutput};
 
 use crate::capnp::nix_daemon_capnp;

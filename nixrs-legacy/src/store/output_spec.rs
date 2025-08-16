@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use thiserror::Error;
 
-use crate::{store_path::is_name, StringSet};
+use crate::{StringSet, store_path::is_name};
 
 #[derive(Error, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum ParseOutputSpecError {

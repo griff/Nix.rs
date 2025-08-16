@@ -3,15 +3,15 @@ use std::path::Path;
 
 use capnp_rpc::rpc_twoparty_capnp::Side;
 use capnp_rpc::{
-    new_client, new_future_client, rpc_twoparty_capnp, twoparty, Disconnector, RpcSystem,
+    Disconnector, RpcSystem, new_client, new_future_client, rpc_twoparty_capnp, twoparty,
 };
 use futures::io as fio;
-use futures::{try_join, AsyncReadExt, TryFutureExt as _};
+use futures::{AsyncReadExt, TryFutureExt as _, try_join};
 use nixrs::daemon::client::DaemonClient;
-use nixrs::daemon::{server, DaemonError, DaemonResult, MutexHandshakeStore};
+use nixrs::daemon::{DaemonError, DaemonResult, MutexHandshakeStore, server};
 use nixrs_capnp::nix_daemon::{HandshakeLoggedCapnpServer, LoggedCapnpStore};
-use nixrs_capnp::{from_error, DEFAULT_BUF_SIZE};
-use tokio::io::{duplex, AsyncRead, AsyncWrite};
+use nixrs_capnp::{DEFAULT_BUF_SIZE, from_error};
+use tokio::io::{AsyncRead, AsyncWrite, duplex};
 use tokio::task::LocalSet;
 
 fn make_server<S>(client_stream: S) -> (impl Future<Output = DaemonResult<()>>, Disconnector<Side>)

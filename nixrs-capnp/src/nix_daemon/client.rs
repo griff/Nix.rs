@@ -2,10 +2,10 @@ use std::fmt;
 use std::future::ready;
 use std::pin::pin;
 
-use ::capnp::capability::Promise;
 use ::capnp::Error;
+use ::capnp::capability::Promise;
 use capnp_rpc::new_client;
-use capnp_rpc_tokio::stream::{from_cap_error, ByteStreamWrap, ByteStreamWriter};
+use capnp_rpc_tokio::stream::{ByteStreamWrap, ByteStreamWriter, from_cap_error};
 use futures::channel::{mpsc, oneshot};
 use futures::stream::TryStreamExt;
 use futures::{FutureExt as _, SinkExt, TryFutureExt as _};
@@ -17,11 +17,11 @@ use nixrs::daemon::{
 use nixrs::derived_path::DerivedPath;
 use nixrs::log::LogMessage;
 use nixrs::store_path::{StorePath, StorePathSet};
-use tokio::io::{copy_buf, simplex, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncWriteExt, BufReader, copy_buf, simplex};
 
 use crate::capnp::nix_daemon_capnp;
 use crate::convert::{BuildFrom, ReadInto};
-use crate::{from_error, DEFAULT_BUF_SIZE};
+use crate::{DEFAULT_BUF_SIZE, from_error};
 
 pub struct CapnpStore {
     store: nix_daemon_capnp::nix_daemon::Client,

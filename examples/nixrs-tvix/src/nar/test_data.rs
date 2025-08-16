@@ -1,6 +1,6 @@
 use bytes::Bytes;
-use tvix_castore::proto::{self, DirectoryNode, FileNode, SymlinkNode};
 use tvix_castore::B3Digest;
+use tvix_castore::proto::{self, DirectoryNode, FileNode, SymlinkNode};
 
 pub fn text_file() -> (proto::Node, (B3Digest, Bytes)) {
     let contents = Bytes::from_static(b"Hello world!");

@@ -2,8 +2,8 @@ use std::fmt;
 
 use nixrs::{
     daemon::ser::{
-        mock::{Builder, Error},
         NixWrite as _,
+        mock::{Builder, Error},
     },
     store_path::{StoreDir, StoreDirDisplay},
 };

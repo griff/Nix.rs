@@ -4,8 +4,8 @@ use std::ops::Deref;
 use std::pin::pin;
 
 use bytes::Bytes;
-use futures::stream::iter;
 use futures::StreamExt as _;
+use futures::stream::iter;
 use nixrs::archive::{read_nar, test_data, write_nar};
 use nixrs::daemon::wire::types::Operation;
 use nixrs::daemon::wire::types2::{
@@ -19,13 +19,13 @@ use nixrs::derived_path::{DerivedPath, OutputName};
 use nixrs::hash::NarHash;
 use nixrs::log::{Activity, ActivityResult, LogMessage};
 use nixrs::store_path::{StoreDir, StorePath, StorePathSet};
-use nixrs::{btree_set, ByteString};
+use nixrs::{ByteString, btree_set};
 use pretty_assertions::assert_eq;
 use rstest::rstest;
 use tokio::io::copy_buf;
 
 use crate::assert_result;
-use crate::{prepare_mock, process_logs, run_store_test, NixImpl as _, ENV_NIX_IMPL};
+use crate::{ENV_NIX_IMPL, NixImpl as _, prepare_mock, process_logs, run_store_test};
 
 #[tokio::test]
 #[should_panic(

@@ -3,7 +3,7 @@ use std::future::poll_fn;
 use std::io::{self, Cursor};
 use std::ops::RangeInclusive;
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 use bytes::Bytes;
 use pin_project_lite::pin_project;
@@ -11,8 +11,8 @@ use tokio::io::{AsyncRead, ReadBuf};
 
 use crate::daemon::ProtocolVersion;
 use crate::io::{
-    AsyncBytesRead, BytesReader, TryReadBytesLimited, TryReadU64, DEFAULT_MAX_BUF_SIZE,
-    DEFAULT_RESERVED_BUF_SIZE,
+    AsyncBytesRead, BytesReader, DEFAULT_MAX_BUF_SIZE, DEFAULT_RESERVED_BUF_SIZE,
+    TryReadBytesLimited, TryReadU64,
 };
 use crate::store_path::StoreDir;
 
@@ -212,7 +212,7 @@ mod unittests {
 
     use hex_literal::hex;
     use rstest::rstest;
-    use tokio::io::{simplex, AsyncReadExt as _, AsyncWriteExt as _};
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _, simplex};
     use tokio_test::io::Builder;
 
     use super::*;

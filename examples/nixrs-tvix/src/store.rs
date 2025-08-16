@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures::{SinkExt, TryStreamExt};
-use nixrs_legacy::archive::{parse_nar, NAREncoder};
+use nixrs_legacy::archive::{NAREncoder, parse_nar};
 use nixrs_legacy::path_info::ValidPathInfo;
 use nixrs_legacy::store::{CheckSignaturesFlag, Error, RepairFlag, Store};
 use nixrs_legacy::store_path::{StoreDir, StoreDirProvider, StorePath};

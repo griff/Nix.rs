@@ -47,7 +47,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use crate::flag_enum;
-    use crate::{string_set, StringSet};
+    use crate::{StringSet, string_set};
 
     use super::*;
 
