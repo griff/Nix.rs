@@ -5,12 +5,12 @@ error[E0277]: the trait bound `Test: FromStr` is not satisfied
   |       ^^^^^^^^ the trait `FromStr` is not implemented for `Test`
   |
   = help: the following other types implement trait `FromStr`:
+            Bare<F>
+            Base16<H>
+            Base32<H>
+            Base64<H>
             ByteString
             CString
             ContentAddress
             ContentAddressMethodAlgorithm
-            DrvOutput
-            IpAddr
-            Ipv4Addr
-            Ipv6Addr
           and $N others

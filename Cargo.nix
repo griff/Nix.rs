@@ -1551,7 +1551,7 @@ rec {
           }
           {
             name = "derive_more";
-            packageId = "derive_more";
+            packageId = "derive_more 0.99.20";
             usesDefaultFeatures = false;
             features = [ "display" "from" "error" ];
           }
@@ -2049,7 +2049,7 @@ rec {
         ];
 
       };
-      "derive_more" = rec {
+      "derive_more 0.99.20" = rec {
         crateName = "derive_more";
         version = "0.99.20";
         edition = "2018";
@@ -2103,6 +2103,99 @@ rec {
           "unwrap" = [ "convert_case" "rustc_version" ];
         };
         resolvedDefaultFeatures = [ "add" "add_assign" "as_mut" "as_ref" "constructor" "convert_case" "default" "deref" "deref_mut" "display" "error" "from" "from_str" "index" "index_mut" "into" "into_iterator" "is_variant" "iterator" "mul" "mul_assign" "not" "rustc_version" "sum" "try_into" "unwrap" ];
+      };
+      "derive_more 2.0.1" = rec {
+        crateName = "derive_more";
+        version = "2.0.1";
+        edition = "2021";
+        sha256 = "0y3n97cc7rsvgnj211p92y1ppzh6jzvq5kvk6340ghkhfp7l4ch9";
+        authors = [
+          "Jelte Fennema <github-tech@jeltef.nl>"
+        ];
+        dependencies = [
+          {
+            name = "derive_more-impl";
+            packageId = "derive_more-impl";
+          }
+        ];
+        features = {
+          "add" = [ "derive_more-impl/add" ];
+          "add_assign" = [ "derive_more-impl/add_assign" ];
+          "as_ref" = [ "derive_more-impl/as_ref" ];
+          "constructor" = [ "derive_more-impl/constructor" ];
+          "debug" = [ "derive_more-impl/debug" ];
+          "default" = [ "std" ];
+          "deref" = [ "derive_more-impl/deref" ];
+          "deref_mut" = [ "derive_more-impl/deref_mut" ];
+          "display" = [ "derive_more-impl/display" ];
+          "error" = [ "derive_more-impl/error" ];
+          "from" = [ "derive_more-impl/from" ];
+          "from_str" = [ "derive_more-impl/from_str" ];
+          "full" = [ "add" "add_assign" "as_ref" "constructor" "debug" "deref" "deref_mut" "display" "error" "from" "from_str" "index" "index_mut" "into" "into_iterator" "is_variant" "mul" "mul_assign" "not" "sum" "try_from" "try_into" "try_unwrap" "unwrap" ];
+          "index" = [ "derive_more-impl/index" ];
+          "index_mut" = [ "derive_more-impl/index_mut" ];
+          "into" = [ "derive_more-impl/into" ];
+          "into_iterator" = [ "derive_more-impl/into_iterator" ];
+          "is_variant" = [ "derive_more-impl/is_variant" ];
+          "mul" = [ "derive_more-impl/mul" ];
+          "mul_assign" = [ "derive_more-impl/mul_assign" ];
+          "not" = [ "derive_more-impl/not" ];
+          "sum" = [ "derive_more-impl/sum" ];
+          "testing-helpers" = [ "derive_more-impl/testing-helpers" "dep:rustc_version" ];
+          "try_from" = [ "derive_more-impl/try_from" ];
+          "try_into" = [ "derive_more-impl/try_into" ];
+          "try_unwrap" = [ "derive_more-impl/try_unwrap" ];
+          "unwrap" = [ "derive_more-impl/unwrap" ];
+        };
+        resolvedDefaultFeatures = [ "default" "display" "std" ];
+      };
+      "derive_more-impl" = rec {
+        crateName = "derive_more-impl";
+        version = "2.0.1";
+        edition = "2021";
+        sha256 = "1wqxcb7d5lzvpplz9szp4rwy1r23f5wmixz0zd2vcjscqknji9mx";
+        procMacro = true;
+        libName = "derive_more_impl";
+        authors = [
+          "Jelte Fennema <github-tech@jeltef.nl>"
+        ];
+        dependencies = [
+          {
+            name = "proc-macro2";
+            packageId = "proc-macro2";
+          }
+          {
+            name = "quote";
+            packageId = "quote";
+          }
+          {
+            name = "syn";
+            packageId = "syn";
+          }
+          {
+            name = "unicode-xid";
+            packageId = "unicode-xid";
+            optional = true;
+          }
+        ];
+        features = {
+          "as_ref" = [ "syn/extra-traits" "syn/visit" ];
+          "debug" = [ "syn/extra-traits" "dep:unicode-xid" ];
+          "display" = [ "syn/extra-traits" "dep:unicode-xid" ];
+          "error" = [ "syn/extra-traits" ];
+          "from" = [ "syn/extra-traits" ];
+          "full" = [ "add" "add_assign" "as_ref" "constructor" "debug" "deref" "deref_mut" "display" "error" "from" "from_str" "index" "index_mut" "into" "into_iterator" "is_variant" "mul" "mul_assign" "not" "sum" "try_from" "try_into" "try_unwrap" "unwrap" ];
+          "into" = [ "syn/extra-traits" ];
+          "is_variant" = [ "dep:convert_case" ];
+          "mul" = [ "syn/extra-traits" ];
+          "mul_assign" = [ "syn/extra-traits" ];
+          "not" = [ "syn/extra-traits" ];
+          "testing-helpers" = [ "dep:rustc_version" ];
+          "try_into" = [ "syn/extra-traits" ];
+          "try_unwrap" = [ "dep:convert_case" ];
+          "unwrap" = [ "dep:convert_case" ];
+        };
+        resolvedDefaultFeatures = [ "default" "display" ];
       };
       "diff" = rec {
         crateName = "diff";
@@ -4899,7 +4992,7 @@ rec {
           }
           {
             name = "derive_more";
-            packageId = "derive_more";
+            packageId = "derive_more 0.99.20";
           }
           {
             name = "env_logger";
@@ -4958,7 +5051,8 @@ rec {
           }
           {
             name = "derive_more";
-            packageId = "derive_more";
+            packageId = "derive_more 2.0.1";
+            features = [ "display" ];
           }
           {
             name = "futures";
@@ -5077,6 +5171,10 @@ rec {
           {
             name = "rstest";
             packageId = "rstest";
+          }
+          {
+            name = "rstest_reuse";
+            packageId = "rstest_reuse";
           }
           {
             name = "tempfile";
@@ -5451,7 +5549,7 @@ rec {
           }
           {
             name = "derive_more";
-            packageId = "derive_more";
+            packageId = "derive_more 0.99.20";
           }
           {
             name = "futures";
@@ -7592,6 +7690,32 @@ rec {
           "default" = [ "async-timeout" "crate-name" ];
         };
         resolvedDefaultFeatures = [ "async-timeout" "crate-name" ];
+      };
+      "rstest_reuse" = rec {
+        crateName = "rstest_reuse";
+        version = "0.7.0";
+        edition = "2021";
+        sha256 = "057y4v1rh9br58n2m3xqvm8xyx8k96jpgibgls3sah78f93gpa5k";
+        procMacro = true;
+        authors = [
+          "Michele d'Amico <michele.damico@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "quote";
+            packageId = "quote";
+          }
+          {
+            name = "rand";
+            packageId = "rand 0.8.5";
+          }
+          {
+            name = "syn";
+            packageId = "syn";
+            features = [ "full" "extra-traits" ];
+          }
+        ];
+
       };
       "rustc-demangle" = rec {
         crateName = "rustc-demangle";
@@ -11101,6 +11225,21 @@ rec {
           "David Tolnay <dtolnay@gmail.com>"
         ];
 
+      };
+      "unicode-xid" = rec {
+        crateName = "unicode-xid";
+        version = "0.2.6";
+        edition = "2015";
+        sha256 = "0lzqaky89fq0bcrh6jj6bhlz37scfd8c7dsj5dq7y32if56c1hgb";
+        libName = "unicode_xid";
+        authors = [
+          "erick.tryzelaar <erick.tryzelaar@gmail.com>"
+          "kwantam <kwantam@gmail.com>"
+          "Manish Goregaokar <manishsmail@gmail.com>"
+        ];
+        features = {
+        };
+        resolvedDefaultFeatures = [ "default" ];
       };
       "untrusted" = rec {
         crateName = "untrusted";

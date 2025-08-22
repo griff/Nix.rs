@@ -29,6 +29,13 @@ pub const fn decode_len(len: usize) -> usize {
     olen
 }
 
+pub fn encode_string(input: &[u8]) -> String {
+    let mut output = vec![0u8; encode_len(input.len())];
+    encode_mut(input, &mut output);
+    // SAFETY: Nix Base32 is a subset of ASCII, which guarantees valid UTF-8.
+    unsafe { String::from_utf8_unchecked(output) }
+}
+
 pub fn encode_mut(input: &[u8], output: &mut [u8]) {
     assert_eq!(output.len(), encode_len(input.len()));
     input

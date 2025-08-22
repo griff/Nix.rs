@@ -1,7 +1,10 @@
 use quote::ToTokens;
 use syn::meta::ParseNestedMeta;
 use syn::parse::Parse;
-use syn::{Attribute, Expr, ExprLit, ExprPath, Lit, Token, parse_quote};
+use syn::punctuated::Punctuated;
+use syn::{Attribute, Expr, ExprLit, ExprPath, Lit, Token, parse_quote, token};
+
+use crate::internal::symbol::{BOUND, DESERIALIZE, SERIALIZE};
 
 use super::Context;
 use super::symbol::{
@@ -124,6 +127,8 @@ pub struct Container {
     pub store_dir_display: Option<syn::Path>,
     pub crate_path: Option<syn::Path>,
     pub tag: Option<syn::Type>,
+    pub ser_bound: Option<Vec<syn::WherePredicate>>,
+    pub de_bound: Option<Vec<syn::WherePredicate>>,
 }
 
 impl Container {
@@ -138,6 +143,8 @@ impl Container {
         let mut display = Default::None;
         let mut store_dir_display = None;
         let mut tag = None;
+        let mut ser_bound = None;
+        let mut de_bound = None;
 
         for attr in attrs {
             if attr.path() != NIX {
@@ -170,9 +177,14 @@ impl Container {
                     tag = parse_lit(ctx, &meta, TAG)?;
                 } else if meta.path == CRATE {
                     crate_path = parse_lit(ctx, &meta, CRATE)?;
+                } else if meta.path == BOUND {
+                    (ser_bound, de_bound) =
+                        get_ser_and_de(ctx, BOUND, &meta, parse_lit_into_where)?;
                 } else {
                     let path = meta.path.to_token_stream().to_string();
-                    return Err(meta.error(format_args!("unknown nix variant attribute '{path}'")));
+                    return Err(
+                        meta.error(format_args!("unknown nix container attribute '{path}'"))
+                    );
                 }
                 Ok(())
             }) {
@@ -192,8 +204,68 @@ impl Container {
             store_dir_display,
             crate_path,
             tag,
+            ser_bound,
+            de_bound,
         }
     }
+}
+
+fn get_ser_and_de<T, F, R>(
+    ctx: &Context,
+    attr_name: Symbol,
+    meta: &ParseNestedMeta,
+    f: F,
+) -> syn::Result<(Option<T>, Option<T>)>
+where
+    T: Clone,
+    F: Fn(&Context, Symbol, Symbol, &ParseNestedMeta) -> syn::Result<R>,
+    R: Into<Option<T>>,
+{
+    let mut ser_meta = None;
+    let mut de_meta = None;
+
+    let lookahead = meta.input.lookahead1();
+    if lookahead.peek(Token![=]) {
+        if let Some(both) = f(ctx, attr_name, attr_name, meta)?.into() {
+            ser_meta = Some(both.clone());
+            de_meta = Some(both);
+        }
+    } else if lookahead.peek(token::Paren) {
+        meta.parse_nested_meta(|meta| {
+            if meta.path == SERIALIZE {
+                if let Some(v) = f(ctx, attr_name, SERIALIZE, &meta)?.into() {
+                    if ser_meta.is_some() {
+                        ctx.error_spanned(
+                            meta.path,
+                            format_args!("duplicate nix attribute '{SERIALIZE}'"),
+                        );
+                    } else {
+                        ser_meta = Some(v);
+                    }
+                }
+            } else if meta.path == DESERIALIZE {
+                if let Some(v) = f(ctx, attr_name, DESERIALIZE, &meta)?.into() {
+                    if de_meta.is_some() {
+                        ctx.error_spanned(
+                            meta.path,
+                            format_args!("duplicate nix attribute '{DESERIALIZE}'"),
+                        );
+                    } else {
+                        de_meta = Some(v);
+                    }
+                }
+            } else {
+                return Err(meta.error(format_args!(
+                    "malformed {attr_name} attribute, expected `{attr_name}(serialize = ..., deserialize = ...)`",
+                )));
+            }
+            Ok(())
+        })?;
+    } else {
+        return Err(lookahead.error());
+    }
+
+    Ok((ser_meta, de_meta))
 }
 
 pub fn get_lit_str(
@@ -218,6 +290,63 @@ pub fn get_lit_str(
         );
         Ok(None)
     }
+}
+
+fn get_lit_str2(
+    ctx: &Context,
+    attr_name: Symbol,
+    meta_item_name: Symbol,
+    meta: &ParseNestedMeta,
+) -> syn::Result<Option<syn::LitStr>> {
+    let expr: syn::Expr = meta.value()?.parse()?;
+    let mut value = &expr;
+    while let syn::Expr::Group(e) = value {
+        value = &e.expr;
+    }
+    if let syn::Expr::Lit(syn::ExprLit {
+        lit: syn::Lit::Str(lit),
+        ..
+    }) = value
+    {
+        let suffix = lit.suffix();
+        if !suffix.is_empty() {
+            ctx.error_spanned(
+                lit,
+                format!("unexpected suffix `{suffix}` on string literal"),
+            );
+        }
+        Ok(Some(lit.clone()))
+    } else {
+        ctx.error_spanned(
+            expr,
+            format!(
+                "expected serde {attr_name} attribute to be a string: `{meta_item_name} = \"...\"`",
+            ),
+        );
+        Ok(None)
+    }
+}
+
+fn parse_lit_into_where(
+    cx: &Context,
+    attr_name: Symbol,
+    meta_item_name: Symbol,
+    meta: &ParseNestedMeta,
+) -> syn::Result<Vec<syn::WherePredicate>> {
+    let string = match get_lit_str2(cx, attr_name, meta_item_name, meta)? {
+        Some(string) => string,
+        None => return Ok(Vec::new()),
+    };
+
+    Ok(
+        match string.parse_with(Punctuated::<syn::WherePredicate, Token![,]>::parse_terminated) {
+            Ok(predicates) => Vec::from_iter(predicates),
+            Err(err) => {
+                cx.error_spanned(string, err);
+                Vec::new()
+            }
+        },
+    )
 }
 
 pub fn parse_lit<T: Parse>(
@@ -432,6 +561,8 @@ mod test {
                 store_dir_display: None,
                 crate_path: None,
                 tag: None,
+                ser_bound: None,
+                de_bound: None,
             }
         );
     }
@@ -455,6 +586,8 @@ mod test {
                 store_dir_display: None,
                 crate_path: None,
                 tag: None,
+                ser_bound: None,
+                de_bound: None,
             }
         );
     }
@@ -478,6 +611,8 @@ mod test {
                 store_dir_display: None,
                 crate_path: None,
                 tag: None,
+                ser_bound: None,
+                de_bound: None,
             }
         );
     }
@@ -501,6 +636,8 @@ mod test {
                 store_dir_display: None,
                 crate_path: None,
                 tag: None,
+                ser_bound: None,
+                de_bound: None,
             }
         );
     }
@@ -524,6 +661,8 @@ mod test {
                 store_dir_display: None,
                 crate_path: None,
                 tag: None,
+                ser_bound: None,
+                de_bound: None,
             }
         );
     }
@@ -547,6 +686,8 @@ mod test {
                 store_dir_display: None,
                 crate_path: None,
                 tag: None,
+                ser_bound: None,
+                de_bound: None,
             }
         );
     }
@@ -570,6 +711,8 @@ mod test {
                 store_dir_display: None,
                 crate_path: None,
                 tag: None,
+                ser_bound: None,
+                de_bound: None,
             }
         );
     }
@@ -593,6 +736,8 @@ mod test {
                 store_dir_display: None,
                 crate_path: None,
                 tag: None,
+                ser_bound: None,
+                de_bound: None,
             }
         );
     }
@@ -616,6 +761,8 @@ mod test {
                 store_dir_display: Some(parse_quote!(store_dir_display)),
                 crate_path: None,
                 tag: None,
+                ser_bound: None,
+                de_bound: None,
             }
         );
     }
@@ -639,6 +786,8 @@ mod test {
                 store_dir_display: None,
                 crate_path: None,
                 tag: Some(parse_quote!(::test::Operation)),
+                ser_bound: None,
+                de_bound: None,
             }
         );
     }

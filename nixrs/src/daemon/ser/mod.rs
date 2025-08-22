@@ -8,7 +8,6 @@ use super::ProtocolVersion;
 
 mod bytes;
 mod collections;
-mod display;
 mod int;
 #[cfg(any(test, feature = "test"))]
 pub mod mock;

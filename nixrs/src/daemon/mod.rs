@@ -998,7 +998,7 @@ mod proptests {
                         let _ : test_data::TestNarEvents = read_nar(Cursor::new(Bytes::copy_from_slice(&out))).await?;
                         prop_assert_eq!(nar_content.len(), out.len());
                         let hash = NarHash::digest(&out);
-                        prop_assert_eq!(hash.as_ref(), nar_hash.as_ref());
+                        prop_assert_eq!(hash.digest_bytes(), nar_hash.digest_bytes());
                     }
                     Ok(client)
                 }).await?;

@@ -7,7 +7,7 @@ use nixrs_derive::{NixDeserialize, NixSerialize};
 use proptest_derive::Arbitrary;
 use thiserror::Error;
 
-use crate::hash::{Algorithm, Hash, ParseHashError, Sha256, UnknownAlgorithm};
+use crate::hash::{Algorithm, Hash, ParseHashError, Sha256, UnknownAlgorithm, fmt::NonSRI};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
@@ -22,11 +22,11 @@ pub enum ContentAddressMethod {
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
 pub enum ContentAddressMethodAlgorithm {
-    #[display(fmt = "text:sha256")]
+    #[display("text:sha256")]
     Text,
-    #[display(fmt = "{_0}")]
+    #[display("{_0}")]
     Flat(Algorithm),
-    #[display(fmt = "r:{_0}")]
+    #[display("r:{_0}")]
     Recursive(Algorithm),
 }
 
@@ -67,11 +67,11 @@ impl FromStr for ContentAddressMethodAlgorithm {
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
 pub enum ContentAddress {
-    #[display(fmt = "text:sha256:{_0}")]
+    #[display("text:{}", _0.as_base32())]
     Text(Sha256),
-    #[display(fmt = "fixed:{_0}")]
+    #[display("fixed:{}", _0.as_base32())]
     Flat(Hash),
-    #[display(fmt = "fixed:r:{_0}")]
+    #[display("fixed:r:{}", _0.as_base32())]
     Recursive(Hash),
 }
 
@@ -120,12 +120,12 @@ impl FromStr for ContentAddress {
     type Err = ParseContentAddressError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Some(hash) = s.strip_prefix("text:sha256:") {
-            Ok(Self::Text(hash.parse()?))
+        if let Some(hash) = s.strip_prefix("text:") {
+            Ok(Self::Text(hash.parse::<NonSRI<Sha256>>()?.into_hash()))
         } else if let Some(hash) = s.strip_prefix("fixed:r:") {
-            Ok(Self::Recursive(Hash::parse_non_sri_prefixed(hash)?))
+            Ok(Self::Recursive(hash.parse::<NonSRI<Hash>>()?.into_hash()))
         } else if let Some(hash) = s.strip_prefix("fixed:") {
-            Ok(Self::Flat(Hash::parse_non_sri_prefixed(hash)?))
+            Ok(Self::Flat(hash.parse::<NonSRI<Hash>>()?.into_hash()))
         } else {
             Err(ParseContentAddressError::InvalidForm(s.into()))
         }
@@ -219,7 +219,11 @@ mod unittests {
     )]
     #[case(
         "text:sha1:kpcd173cq987hw957sx6m0868wv3x6d9",
-        ParseContentAddressError::InvalidForm("text:sha1:kpcd173cq987hw957sx6m0868wv3x6d9".into())
+        ParseContentAddressError::InvalidHash(ParseHashError::TypeMismatch {
+            expected: Algorithm::SHA256,
+            actual: Algorithm::SHA1,
+            hash: "kpcd173cq987hw957sx6m0868wv3x6d9".into()
+        })
     )]
     fn test_content_address_error(#[case] value: &str, #[case] error: ParseContentAddressError) {
         assert_eq!(Err(error), value.parse::<ContentAddress>());

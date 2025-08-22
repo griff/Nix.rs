@@ -1,10 +1,6 @@
 use bytes::Bytes;
-#[cfg(feature = "nixrs-derive")]
-use nixrs_derive::nix_deserialize_remote;
 
 use super::{Error, NixDeserialize, NixRead};
-#[cfg(feature = "nixrs-derive")]
-use crate::hash;
 
 impl NixDeserialize for Bytes {
     async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
@@ -14,18 +10,6 @@ impl NixDeserialize for Bytes {
         reader.try_read_bytes().await
     }
 }
-
-#[cfg(feature = "nixrs-derive")]
-nix_deserialize_remote!(
-    #[nix(from_str)]
-    hash::Algorithm
-);
-
-#[cfg(feature = "nixrs-derive")]
-nix_deserialize_remote!(
-    #[nix(from_str)]
-    hash::Hash
-);
 
 impl NixDeserialize for String {
     async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>

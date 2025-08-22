@@ -19,7 +19,7 @@ bstr = { workspace = true }
 bytes = { workspace = true }
 caches = { workspace = true }
 compress-tools = { workspace = true, features = ["tokio_support"], optional = true }
-derive_more = { workspace = true }
+derive_more = "0.99.18"
 futures = { workspace = true }
 hex = { workspace = true }
 lazy_static = { workspace = true }

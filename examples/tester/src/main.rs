@@ -153,7 +153,7 @@ impl App {
                     }
                     if hash != expected_info.info.nar_hash.into() {
                         eprintln!(
-                            "{}: Unmatched hash {} != {}",
+                            "{}: Unmatched hash {:?} != {:?}",
                             idx, expected_info.info.nar_hash, hash
                         );
                     }

@@ -502,7 +502,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "521f83287bb884804de26b80fcf5fe11718e5e2e74c24877c5a6f52c307a1c38"
 dependencies = [
  "async-trait",
- "derive_more",
+ "derive_more 0.99.20",
  "futures-channel",
  "futures-core",
  "futures-executor",
@@ -683,6 +683,27 @@ dependencies = [
  "quote",
  "rustc_version",
  "syn",
+]
+
+[[package]]
+name = "derive_more"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "093242cf7570c207c83073cf82f79706fe7b8317e98620a47d5be7c3d8497678"
+dependencies = [
+ "derive_more-impl",
+]
+
+[[package]]
+name = "derive_more-impl"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bda628edc44c4bb645fbe0f758797143e4e07926f7ebf4e9bdfbd3d2ce621df3"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+ "unicode-xid",
 ]
 
 [[package]]
@@ -1574,7 +1595,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "byteorder",
- "derive_more",
+ "derive_more 0.99.20",
  "env_logger 0.7.1",
  "futures",
  "nixrs-legacy",
@@ -1591,7 +1612,7 @@ dependencies = [
  "bstr",
  "bytes",
  "data-encoding",
- "derive_more",
+ "derive_more 2.0.1",
  "futures",
  "hex-literal",
  "libc",
@@ -1606,6 +1627,7 @@ dependencies = [
  "proptest-derive",
  "ring",
  "rstest",
+ "rstest_reuse",
  "serde",
  "serde_json",
  "serde_with",
@@ -1706,7 +1728,7 @@ dependencies = [
  "bytes",
  "caches",
  "compress-tools",
- "derive_more",
+ "derive_more 0.99.20",
  "futures",
  "hex",
  "lazy_static",
@@ -2355,6 +2377,17 @@ dependencies = [
  "rustc_version",
  "syn",
  "unicode-ident",
+]
+
+[[package]]
+name = "rstest_reuse"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3a8fb4672e840a587a66fc577a5491375df51ddb88f2a2c2a792598c326fe14"
+dependencies = [
+ "quote",
+ "rand 0.8.5",
+ "syn",
 ]
 
 [[package]]
@@ -3384,6 +3417,12 @@ name = "unicode-ident"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a5f39404a5da50712a4c1eecf25e90dd62b613502b7e925fd4e4d19b5c96512"
+
+[[package]]
+name = "unicode-xid"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
 name = "untrusted"

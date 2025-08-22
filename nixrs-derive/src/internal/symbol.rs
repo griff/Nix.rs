@@ -19,6 +19,9 @@ pub const SKIP: Symbol = Symbol("skip");
 pub const STORE_DIR_DISPLAY: Symbol = Symbol("store_dir_display");
 pub const CRATE: Symbol = Symbol("crate");
 pub const TAG: Symbol = Symbol("tag");
+pub const BOUND: Symbol = Symbol("bound");
+pub const SERIALIZE: Symbol = Symbol("serialize");
+pub const DESERIALIZE: Symbol = Symbol("deserialize");
 
 impl PartialEq<Symbol> for Path {
     fn eq(&self, word: &Symbol) -> bool {

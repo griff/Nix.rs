@@ -325,7 +325,7 @@ impl<'b> BuildFrom<UnkeyedValidPathInfo>
         if let Some(deriver) = input.deriver.as_ref() {
             self.set_deriver(deriver)?;
         }
-        self.set_nar_hash(input.nar_hash.as_ref());
+        self.set_nar_hash(input.nar_hash.digest_bytes());
         self.reborrow()
             .init_references(input.references.len() as u32)
             .build_from(&input.references)?;
@@ -353,7 +353,7 @@ impl SetterInput<nix_daemon_capnp::unkeyed_valid_path_info::Owned> for &'_ Unkey
         if let Some(deriver) = input.deriver.as_ref() {
             builder.set_deriver(deriver)?;
         }
-        builder.set_nar_hash(input.nar_hash.as_ref());
+        builder.set_nar_hash(input.nar_hash.digest_bytes());
         builder
             .reborrow()
             .init_references(input.references.len() as u32)

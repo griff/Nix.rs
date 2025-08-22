@@ -38,7 +38,7 @@ impl SetterInput<nix_types_capnp::hash::Owned> for &'_ hash::Hash {
     ) -> capnp::Result<()> {
         let mut builder = nix_types_capnp::hash::Builder::init_pointer(builder, 0);
         builder.set_algo(input.algorithm().into());
-        builder.set_digest(input.data());
+        builder.set_digest(input.digest_bytes());
         Ok(())
     }
 }

@@ -296,7 +296,7 @@ mod daemon_serde {
                         ))
                     } else {
                         let hash =
-                            hash::Hash::parse_non_sri_unprefixed(&hash, hash_algo.algorithm())?;
+                            hash::fmt::NonSRI::<hash::Hash>::parse(hash_algo.algorithm(), &hash)?;
                         let hash = ContentAddress::from_hash(hash_algo.method(), hash)?;
                         Ok(DerivationOutput::CAFixed(hash))
                     }
@@ -348,7 +348,7 @@ mod daemon_serde {
                     let path = writer.store_dir().make_store_path_from_ca(name, *ca);
                     writer.write_value(&path).await?;
                     writer.write_value(&ca.method_algorithm()).await?;
-                    writer.write_display(ca.hash().bare()).await?;
+                    writer.write_display(ca.hash().base32().bare()).await?;
                 }
                 DerivationOutput::Deferred => {
                     writer.write_value("").await?;

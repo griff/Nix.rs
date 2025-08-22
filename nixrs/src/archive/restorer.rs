@@ -24,15 +24,15 @@ use super::{CASE_HACK_SUFFIX, NarEvent};
 
 #[derive(Display, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum NarWriteOperation {
-    #[display(fmt = "creating directory")]
+    #[display("creating directory")]
     CreateDirectory,
-    #[display(fmt = "creating symlink")]
+    #[display("creating symlink")]
     CreateSymlink,
-    #[display(fmt = "creating file")]
+    #[display("creating file")]
     CreateFile,
-    #[display(fmt = "path contains invalid UTF-8")]
+    #[display("path contains invalid UTF-8")]
     PathUTF8,
-    #[display(fmt = "Could not join state")]
+    #[display("Could not join state")]
     JoinError,
 }
 

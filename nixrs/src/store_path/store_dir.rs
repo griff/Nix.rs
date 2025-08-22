@@ -53,7 +53,7 @@ impl StoreDir {
         self.1.as_ref()
     }
 
-    /// Get [`path`] representation of this StoreDir.
+    /// Get [`Path`] representation of this StoreDir.
     ///
     /// ```
     /// # use std::path::Path;
@@ -171,7 +171,8 @@ pub mod proptest {
 
 #[cfg(test)]
 mod unittests {
-    use crate::hash;
+    use crate::hash::fmt::{Any, Bare, Base16};
+    use crate::hash::{self, Hash, Sha256};
     use crate::store_path::{ContentAddress, StorePath, StorePathName};
 
     use super::StoreDir;
@@ -197,28 +198,28 @@ mod unittests {
 
     #[rstest]
     #[case::text(
-        ContentAddress::Text("248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse().unwrap()),
+        ContentAddress::Text("248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse::<Bare<Base16<Sha256>>>().unwrap().into()),
         "konsole-18.12.3",
         None,
         "text:sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1:/nix/store:konsole-18.12.3",
         "aidi01pgcl6i79fkw737qzx06kjl930m-konsole-18.12.3"
     )]
     #[case::source(
-        ContentAddress::Recursive("sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse().unwrap()),
+        ContentAddress::Recursive("sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse::<Any<Hash>>().unwrap().into()),
         "konsole-18.12.3",
         None,
         "source:sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1:/nix/store:konsole-18.12.3",
         "1w01xxn8f7s9s4n65ry6rwd7x9awf04s-konsole-18.12.3"
     )]
     #[case::output(
-        ContentAddress::Recursive("sha1:84983e441c3bd26ebaae4aa1f95129e5e54670f1".parse().unwrap()),
+        ContentAddress::Recursive("sha1:84983e441c3bd26ebaae4aa1f95129e5e54670f1".parse::<Any<Hash>>().unwrap().into()),
         "konsole-18.12.3",
         Some("fixed:out:r:sha1:84983e441c3bd26ebaae4aa1f95129e5e54670f1"),
         "output:out:sha256:3519044ac96a4bc192ada46062b3554eada7ba1f3574a0cb90c1697c6c68f4c1:/nix/store:konsole-18.12.3",
         "ag0y7g6rci9zsdz9nxcq5l1qllx3r99x-konsole-18.12.3"
     )]
     #[case::flat_output(
-        ContentAddress::Flat("sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse().unwrap()),
+        ContentAddress::Flat("sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse::<Any<Hash>>().unwrap().into()),
         "konsole-18.12.3",
         Some("fixed:out:sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"),
         "output:out:sha256:646f2df192aa311e8b6920068dac2ab52d0ea87cedf864c034d30c19ccd17b7f:/nix/store:konsole-18.12.3",

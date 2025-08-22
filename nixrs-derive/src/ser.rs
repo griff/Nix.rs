@@ -20,6 +20,7 @@ pub fn expand_nix_serialize(crate_path: Path, input: &mut DeriveInput) -> syn::R
     Ok(nix_serialize_impl(
         crate_path,
         &ty,
+        &cont.attrs,
         &cont.original.generics,
         body,
     ))
@@ -49,17 +50,40 @@ pub fn expand_nix_serialize_remote(
     let crate_path = remote.crate_path();
     let body = nix_serialize_body_into(crate_path, &remote.attrs).expect("From tokenstream");
     let generics = Generics::default();
-    Ok(nix_serialize_impl(crate_path, remote.ty, &generics, body))
+    Ok(nix_serialize_impl(
+        crate_path,
+        remote.ty,
+        &remote.attrs,
+        &generics,
+        body,
+    ))
 }
 
 fn nix_serialize_impl(
     crate_path: &Path,
     ty: &Type,
+    attrs: &attrs::Container,
     generics: &Generics,
     body: TokenStream,
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
+    let where_clause = match (where_clause, &attrs.ser_bound) {
+        (None, None) => None,
+        (None, Some(bound)) => {
+            let mut where_bound = syn::WhereClause {
+                where_token: <syn::Token![where]>::default(),
+                predicates: syn::punctuated::Punctuated::new(),
+            };
+            where_bound.predicates.extend(bound.iter().cloned());
+            Some(where_bound)
+        }
+        (Some(generics_where), None) => Some(generics_where.clone()),
+        (Some(generics_where), Some(bound)) => {
+            let mut where_bound = generics_where.clone();
+            where_bound.predicates.extend(bound.iter().cloned());
+            Some(where_bound)
+        }
+    };
     quote! {
         #[automatically_derived]
         impl #impl_generics #crate_path::daemon::ser::NixSerialize for #ty #ty_generics

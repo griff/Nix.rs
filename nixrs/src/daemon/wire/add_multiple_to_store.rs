@@ -107,7 +107,7 @@ where
         stream: try_stream! {
             for idx in 0..count {
                 let info : ValidPathInfo = source.get_reader().await?.read_value().await?;
-                trace!(idx, count, %info.path, %info.info.nar_hash, %info.info.nar_size, "Reading {}", info.path);
+                trace!(idx, count, %info.path, ?info.info.nar_hash, %info.info.nar_size, "Reading {}", info.path);
                 let reader = source.lend(|r| {
                     NarBytesReader::new(r)
                 });

@@ -25,8 +25,6 @@ fn main() {
         .expect("compiling");
     let path = std::env::current_dir().unwrap();
     eprintln!("The current directory is {}", path.display());
-    println!("cargo:rerun-if-changed=schema");
-    println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:capnp_include={}/schema", path.display());
-    eprintln!("cargo:capnp_include={}/schema", path.display());
+    println!("cargo::rerun-if-changed=schema");
+    println!("cargo::rerun-if-changed=build.rs");
 }

@@ -11,7 +11,8 @@ use thiserror::Error;
 #[cfg(feature = "daemon-serde")]
 use crate::daemon::{de::NixDeserialize, ser::NixSerialize};
 use crate::derived_path::OutputName;
-use crate::hash;
+use crate::hash::fmt::Any;
+use crate::hash::{self, Hash};
 use crate::signature::Signature;
 use crate::store_path::{StorePath, StorePathNameError};
 
@@ -27,7 +28,7 @@ use crate::store_path::{StorePath, StorePathNameError};
     SerializeDisplay,
     DeserializeFromStr,
 )]
-#[display(fmt = "{drv_hash:x}!{output_name}")]
+#[display("{drv_hash:x}!{output_name}")]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
 pub struct DrvOutput {
@@ -59,7 +60,7 @@ impl FromStr for DrvOutput {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut it = s.splitn(2, '!');
         if let (Some(drv_hash_s), Some(output_name_s)) = (it.next(), it.next()) {
-            let drv_hash = drv_hash_s.parse()?;
+            let drv_hash = drv_hash_s.parse::<Any<Hash>>()?.into_hash();
             let output_name = output_name_s.parse()?;
             Ok(DrvOutput {
                 drv_hash,
@@ -188,7 +189,8 @@ mod unittests {
 
     use crate::btree_map;
     use crate::derived_path::OutputName;
-    use crate::hash;
+    use crate::hash::fmt::Any;
+    use crate::hash::{self, Hash};
     use crate::set;
     use crate::store_path::StorePathNameError;
 
@@ -196,11 +198,11 @@ mod unittests {
 
     #[rstest]
     #[case("sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1!out", Ok(DrvOutput {
-        drv_hash: "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse().unwrap(),
+        drv_hash: "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse::<Any<Hash>>().unwrap().into_hash(),
         output_name: OutputName::default(),
     }))]
     #[case("sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394!out_put", Ok(DrvOutput {
-        drv_hash: "sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394".parse().unwrap(),
+        drv_hash: "sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394".parse::<Any<Hash>>().unwrap().into_hash(),
         output_name: "out_put".parse().unwrap(),
     }))]
     #[case("sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394", Err(ParseDrvOutputError::InvalidDerivationOutputId("sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394".into())))]
@@ -219,15 +221,15 @@ mod unittests {
 
     #[rstest]
     #[case(DrvOutput {
-        drv_hash: "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse().unwrap(),
+        drv_hash: "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse::<Any<Hash>>().unwrap().into_hash(),
         output_name: OutputName::default(),
     }, "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1!out")]
     #[case(DrvOutput {
-        drv_hash: "sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394".parse().unwrap(),
+        drv_hash: "sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394".parse::<Any<Hash>>().unwrap().into_hash(),
         output_name: OutputName::default(),
     }, "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1!out")]
     #[case(DrvOutput {
-        drv_hash: "sha1:y5q4drg5558zk8aamsx6xliv3i23x644".parse().unwrap(),
+        drv_hash: "sha1:y5q4drg5558zk8aamsx6xliv3i23x644".parse::<Any<Hash>>().unwrap().into_hash(),
         output_name: "out_put".parse().unwrap(),
     }, "sha1:84983e441c3bd26ebaae4aa1f95129e5e54670f1!out_put")]
     fn display_drv_output(#[case] value: DrvOutput, #[case] expected: &str) {

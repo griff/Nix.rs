@@ -69,6 +69,7 @@ once_cell = { workspace = true }
 proptest = { workspace = true }
 proptest-derive = { workspace = true }
 rstest = { workspace = true }
+rstest_reuse.workspace = true
 tempfile = { workspace = true }
 test-log = { workspace = true, features = ["trace"] }
 test-strategy = { workspace = true }
