@@ -7,13 +7,17 @@ use nixrs_derive::{NixDeserialize, NixSerialize};
 use proptest_derive::Arbitrary;
 use thiserror::Error;
 
-use crate::hash::{Algorithm, Hash, ParseHashError, Sha256, UnknownAlgorithm, fmt::NonSRI};
+use crate::hash::fmt::{NonSRI, ParseHashError, ParseHashErrorKind};
+use crate::hash::{Algorithm, Hash, Sha256, UnknownAlgorithm};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 pub enum ContentAddressMethod {
+    #[display("text")]
     Text,
+    #[display("fixed")]
     Flat,
+    #[display("fixed:r")]
     Recursive,
 }
 
@@ -79,7 +83,7 @@ impl ContentAddress {
     pub fn from_hash(
         method: ContentAddressMethod,
         hash: Hash,
-    ) -> Result<ContentAddress, UnknownAlgorithm> {
+    ) -> Result<ContentAddress, ParseHashErrorKind> {
         Ok(match method {
             ContentAddressMethod::Text => ContentAddress::Text(hash.try_into()?),
             ContentAddressMethod::Flat => ContentAddress::Flat(hash),
@@ -120,12 +124,30 @@ impl FromStr for ContentAddress {
     type Err = ParseContentAddressError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Some(hash) = s.strip_prefix("text:") {
-            Ok(Self::Text(hash.parse::<NonSRI<Sha256>>()?.into_hash()))
-        } else if let Some(hash) = s.strip_prefix("fixed:r:") {
-            Ok(Self::Recursive(hash.parse::<NonSRI<Hash>>()?.into_hash()))
-        } else if let Some(hash) = s.strip_prefix("fixed:") {
-            Ok(Self::Flat(hash.parse::<NonSRI<Hash>>()?.into_hash()))
+        if let Some(hash_s) = s.strip_prefix("text:") {
+            let sha256 = hash_s
+                .parse::<NonSRI<Sha256>>()
+                .map_err(|err| {
+                    ParseContentAddressError::InvalidHash(ContentAddressMethod::Text, err)
+                })?
+                .into_hash();
+            Ok(Self::Text(sha256))
+        } else if let Some(hash_s) = s.strip_prefix("fixed:r:") {
+            let hash = hash_s
+                .parse::<NonSRI<Hash>>()
+                .map_err(|err| {
+                    ParseContentAddressError::InvalidHash(ContentAddressMethod::Recursive, err)
+                })?
+                .into_hash();
+            Ok(Self::Recursive(hash))
+        } else if let Some(hash_s) = s.strip_prefix("fixed:") {
+            let hash = hash_s
+                .parse::<NonSRI<Hash>>()
+                .map_err(|err| {
+                    ParseContentAddressError::InvalidHash(ContentAddressMethod::Flat, err)
+                })?
+                .into_hash();
+            Ok(Self::Flat(hash))
         } else {
             Err(ParseContentAddressError::InvalidForm(s.into()))
         }
@@ -134,23 +156,15 @@ impl FromStr for ContentAddress {
 
 #[derive(Error, Debug, PartialEq, Clone)]
 pub enum ParseContentAddressError {
-    #[error("content address hash was invalid {0}")]
-    InvalidHash(
-        #[from]
-        #[source]
-        ParseHashError,
-    ),
+    #[error("content address {0} {1}")]
+    InvalidHash(ContentAddressMethod, #[source] ParseHashError),
     #[error("{0} for content address")]
     UnknownAlgorithm(
         #[from]
         #[source]
         UnknownAlgorithm,
     ),
-    #[error(
-        "content address method '{0}' is unrecognized. Recogonized methods are 'text', 'fixed' or 'fixed:r'"
-    )]
-    InvalidMethod(String),
-    #[error("not a content address because it is not in the form '<prefix>:<rest>': {0}")]
+    #[error("'{0}' is not a content address because it is not in the form '<fixed | text>:<rest>'")]
     InvalidForm(String),
 }
 
@@ -159,7 +173,7 @@ mod unittests {
     use rstest::rstest;
 
     use super::*;
-    use crate::hash::{Algorithm, ParseHashError};
+    use crate::hash::Algorithm;
 
     #[rstest]
     #[case::text(
@@ -191,42 +205,21 @@ mod unittests {
     }
 
     #[rstest]
-    #[case(
-        "text:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5",
-        ParseContentAddressError::InvalidHash(
-            ParseHashError::WrongHashLength(
-                Algorithm::SHA256,
-                "1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5".into()
-            )
-        )
-    )]
-    #[case(
-        "fixed:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5",
-        ParseContentAddressError::InvalidHash(
-            ParseHashError::WrongHashLength(
-                Algorithm::SHA256,
-                "1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5".into()
-            )
-        )
-    )]
-    #[case(
-        "test:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s",
-        ParseContentAddressError::InvalidForm("test:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s".into())
-    )]
-    #[case(
-        "test-12345",
-        ParseContentAddressError::InvalidForm("test-12345".into())
-    )]
-    #[case(
-        "text:sha1:kpcd173cq987hw957sx6m0868wv3x6d9",
-        ParseContentAddressError::InvalidHash(ParseHashError::TypeMismatch {
-            expected: Algorithm::SHA256,
-            actual: Algorithm::SHA1,
-            hash: "kpcd173cq987hw957sx6m0868wv3x6d9".into()
-        })
-    )]
-    fn test_content_address_error(#[case] value: &str, #[case] error: ParseContentAddressError) {
-        assert_eq!(Err(error), value.parse::<ContentAddress>());
+    #[should_panic = "content address text hash 'sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5' has wrong length for hash type 'sha256'"]
+    #[case("text:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5")]
+    #[should_panic = "content address fixed hash 'sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5' has wrong length for hash type 'sha256'"]
+    #[case("fixed:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5")]
+    #[should_panic = "content address fixed:r hash 'sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5' has wrong length for hash type 'sha256'"]
+    #[case("fixed:r:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5")]
+    #[should_panic = "'test:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5' is not a content address because it is not in the form '<fixed | text>:<rest>'"]
+    #[case("test:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5")]
+    #[should_panic = "'test-12345' is not a content address because it is not in the form '<fixed | text>:<rest>'"]
+    #[case("test-12345")]
+    #[should_panic = "content address text hash 'sha1:kpcd173cq987hw957sx6m0868wv3x6d9' should have type 'sha256' but got 'sha1'"]
+    #[case("text:sha1:kpcd173cq987hw957sx6m0868wv3x6d9")]
+    fn test_content_address_error(#[case] value: &str) {
+        let actual = value.parse::<ContentAddress>().unwrap_err();
+        panic!("{actual}");
     }
 
     /*

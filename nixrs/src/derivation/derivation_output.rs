@@ -227,6 +227,7 @@ mod daemon_serde {
     use crate::daemon::ser::{Error, NixWrite};
     use crate::derived_path::OutputName;
     use crate::hash;
+    use crate::hash::fmt::ParseHashError;
     use crate::store_path::{
         ContentAddress, ContentAddressMethod, ContentAddressMethodAlgorithm, StorePath,
         StorePathName,
@@ -240,18 +241,12 @@ mod daemon_serde {
         Hash(
             #[from]
             #[source]
-            hash::ParseHashError,
+            hash::fmt::ParseHashError,
         ),
         #[error("{0}")]
         InvalidData(String),
         #[error("Missing experimental feature {0}")]
         MissingExperimentalFeature(String),
-    }
-
-    impl From<hash::UnknownAlgorithm> for ParseDerivationOutput {
-        fn from(value: hash::UnknownAlgorithm) -> Self {
-            Self::Hash(value.into())
-        }
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
@@ -272,8 +267,8 @@ mod daemon_serde {
                         "dynamic-derivations".into(),
                     ));
                 }
-                if let Some(hash) = value.hash {
-                    if hash == "impure" {
+                if let Some(hash_s) = value.hash {
+                    if hash_s == "impure" {
                         #[cfg(not(feature = "xp-impure-derivations"))]
                         {
                             Err(ParseDerivationOutput::MissingExperimentalFeature(
@@ -296,8 +291,10 @@ mod daemon_serde {
                         ))
                     } else {
                         let hash =
-                            hash::fmt::NonSRI::<hash::Hash>::parse(hash_algo.algorithm(), &hash)?;
-                        let hash = ContentAddress::from_hash(hash_algo.method(), hash)?;
+                            hash::fmt::NonSRI::<hash::Hash>::parse(hash_algo.algorithm(), &hash_s)?;
+                        let hash = ContentAddress::from_hash(hash_algo.method(), hash).map_err(
+                            |kind| ParseDerivationOutput::Hash(ParseHashError::new(hash_s, kind)),
+                        )?;
                         Ok(DerivationOutput::CAFixed(hash))
                     }
                 } else if value.path.is_some() {

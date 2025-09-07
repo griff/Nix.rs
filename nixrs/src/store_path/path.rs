@@ -420,7 +420,7 @@ impl StorePathError {
 pub enum StorePathNameError {
     #[error("invalid name length")]
     NameLength,
-    #[error("invalid name {ch} symbol at {0}", ch = char::from_u32(*.1 as u32).map(|c| c.to_string()).unwrap_or_else(|| .1.to_string()))]
+    #[error("invalid name symbol '{ch}' at position {0}", ch = char::from_u32(*.1 as u32).map(|c| c.to_string()).unwrap_or_else(|| .1.to_string()))]
     Symbol(u8, u8),
 }
 

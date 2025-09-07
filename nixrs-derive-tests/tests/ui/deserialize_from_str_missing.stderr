@@ -8,9 +8,9 @@ error[E0277]: the trait bound `Test: FromStr` is not satisfied
             Bare<F>
             Base16<H>
             Base32<H>
-            Base64<H>
             ByteString
             CString
             ContentAddress
             ContentAddressMethodAlgorithm
+            DrvOutput
           and $N others

@@ -38,19 +38,19 @@ pub struct DrvOutput {
 
 #[derive(Debug, PartialEq, Clone, Error)]
 pub enum ParseDrvOutputError {
-    #[error("hash error {0}")]
+    #[error("derivation output {0}")]
     Hash(
         #[from]
         #[source]
-        hash::ParseHashError,
+        hash::fmt::ParseHashError,
     ),
-    #[error("output name error {0}")]
+    #[error("derivation output has {0}")]
     OutputName(
         #[from]
         #[source]
         StorePathNameError,
     ),
-    #[error("invalid derivation output {0}")]
+    #[error("missing '!' in derivation output '{0}'")]
     InvalidDerivationOutputId(String),
 }
 
@@ -58,8 +58,7 @@ impl FromStr for DrvOutput {
     type Err = ParseDrvOutputError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut it = s.splitn(2, '!');
-        if let (Some(drv_hash_s), Some(output_name_s)) = (it.next(), it.next()) {
+        if let Some((drv_hash_s, output_name_s)) = s.split_once('!') {
             let drv_hash = drv_hash_s.parse::<Any<Hash>>()?.into_hash();
             let output_name = output_name_s.parse()?;
             Ok(DrvOutput {
@@ -189,34 +188,36 @@ mod unittests {
 
     use crate::btree_map;
     use crate::derived_path::OutputName;
+    use crate::hash::Hash;
     use crate::hash::fmt::Any;
-    use crate::hash::{self, Hash};
     use crate::set;
-    use crate::store_path::StorePathNameError;
 
-    use super::{DrvOutput, ParseDrvOutputError, Realisation};
+    use super::{DrvOutput, Realisation};
 
     #[rstest]
-    #[case("sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1!out", Ok(DrvOutput {
+    #[case("sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1!out", DrvOutput {
         drv_hash: "sha256:248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1".parse::<Any<Hash>>().unwrap().into_hash(),
         output_name: OutputName::default(),
-    }))]
-    #[case("sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394!out_put", Ok(DrvOutput {
+    })]
+    #[case("sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394!out_put", DrvOutput {
         drv_hash: "sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394".parse::<Any<Hash>>().unwrap().into_hash(),
         output_name: "out_put".parse().unwrap(),
-    }))]
-    #[case("sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394", Err(ParseDrvOutputError::InvalidDerivationOutputId("sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394".into())))]
-    #[case("sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm39!out", Err(ParseDrvOutputError::Hash(crate::hash::ParseHashError::WrongHashLength(hash::Algorithm::SHA256, "1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm39".into()))))]
-    #[case(
-        "sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394!out{put",
-        Err(ParseDrvOutputError::OutputName(StorePathNameError::Symbol(3, b'{')))
-    )]
-    fn parse_drv_output(
-        #[case] value: &str,
-        #[case] expected: Result<DrvOutput, ParseDrvOutputError>,
-    ) {
-        let actual: Result<DrvOutput, _> = value.parse();
+    })]
+    fn parse_drv_output(#[case] value: &str, #[case] expected: DrvOutput) {
+        let actual: DrvOutput = value.parse().unwrap();
         assert_eq!(actual, expected);
+    }
+
+    #[rstest]
+    #[should_panic = "missing '!' in derivation output 'sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394'"]
+    #[case("sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394")]
+    #[should_panic = "derivation output hash 'sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm39' has wrong length for hash type 'sha256'"]
+    #[case("sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm39!out")]
+    #[should_panic = "derivation output has invalid name symbol '{' at position 3"]
+    #[case("sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394!out{put")]
+    fn parse_drv_output_failure(#[case] value: &str) {
+        let actual = value.parse::<DrvOutput>().unwrap_err();
+        panic!("{actual}");
     }
 
     #[rstest]

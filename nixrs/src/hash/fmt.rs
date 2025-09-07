@@ -3,16 +3,113 @@ use std::{fmt as sfmt, str::FromStr};
 use data_encoding::{BASE64, DecodeError, DecodeKind, HEXLOWER_PERMISSIVE};
 #[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
+use thiserror::Error;
 
 use crate::base32;
 use crate::hash;
+use crate::hash::InvalidHashError;
+use crate::hash::UnknownAlgorithm;
 
 mod private {
     pub trait Sealed {}
 }
 
+#[derive(derive_more::Display, Debug, PartialEq, Clone)]
+pub enum Encoding {
+    #[display("hex")]
+    Hex,
+    #[display("nixbase32")]
+    NixBase32,
+    #[display("base64")]
+    Base64,
+    #[display("sri")]
+    Sri,
+}
+
+#[derive(derive_more::Display, Debug, PartialEq, Clone)]
+pub enum ParseHashErrorKind {
+    #[display("has {_0}")]
+    Algorithm(hash::UnknownAlgorithm),
+    #[display("is not SRI")]
+    NotSRI,
+    #[display("should have type '{expected}' but got '{actual}'")]
+    TypeMismatch {
+        expected: hash::Algorithm,
+        actual: hash::Algorithm,
+    },
+    #[display("does not include a type, nor is the type otherwise known from context")]
+    MissingType,
+    #[display("has {_1} when decoding as {_0}")]
+    BadEncoding(Encoding, data_encoding::DecodeError),
+    #[display("has wrong length for hash type '{_0}'")]
+    WrongHashLength(hash::Algorithm),
+    #[display("has wrong length {length} != {} for hash type '{algorithm}'", algorithm.size())]
+    WrongHashLength2 {
+        algorithm: hash::Algorithm,
+        length: usize,
+    },
+}
+
+impl ParseHashErrorKind {
+    fn adjust_position(&mut self, amt: usize) {
+        match self {
+            ParseHashErrorKind::BadEncoding(_, decode_error) => {
+                decode_error.position += amt;
+            }
+            ParseHashErrorKind::WrongHashLength2 {
+                algorithm: _,
+                length,
+            } => {
+                *length += amt;
+            }
+            _ => {}
+        }
+    }
+
+    fn adjust_encoding(&mut self, encoding: Encoding) {
+        if let ParseHashErrorKind::BadEncoding(old_encoding, _) = self {
+            *old_encoding = encoding;
+        }
+    }
+}
+
+#[derive(Error, Debug, PartialEq, Clone)]
+#[error("hash '{hash}' {kind}")]
+pub struct ParseHashError {
+    hash: String,
+    kind: ParseHashErrorKind,
+}
+
+impl ParseHashError {
+    pub(crate) fn new<S: Into<String>>(hash: S, kind: ParseHashErrorKind) -> Self {
+        ParseHashError {
+            kind,
+            hash: hash.into(),
+        }
+    }
+
+    pub fn kind(&self) -> &ParseHashErrorKind {
+        &self.kind
+    }
+}
+
+impl From<InvalidHashError> for ParseHashErrorKind {
+    fn from(value: InvalidHashError) -> Self {
+        ParseHashErrorKind::WrongHashLength2 {
+            algorithm: value.algorithm,
+            length: value.length,
+        }
+    }
+}
+
+impl From<UnknownAlgorithm> for ParseHashErrorKind {
+    fn from(value: UnknownAlgorithm) -> Self {
+        Self::Algorithm(value)
+    }
+}
+
 pub trait CommonHash: private::Sealed + Sized {
-    fn from_slice(algorithm: hash::Algorithm, hash: &[u8]) -> Result<Self, hash::ParseHashError>;
+    fn from_slice(algorithm: hash::Algorithm, hash: &[u8]) -> Result<Self, ParseHashErrorKind>;
     fn implied_algorithm() -> Option<hash::Algorithm>;
     fn algorithm(&self) -> hash::Algorithm;
     fn digest_bytes(&self) -> &[u8];
@@ -92,8 +189,8 @@ impl hash::Hash {
 impl private::Sealed for hash::Hash {}
 impl CommonHash for hash::Hash {
     #[inline]
-    fn from_slice(algorithm: hash::Algorithm, hash: &[u8]) -> Result<Self, hash::ParseHashError> {
-        hash::Hash::from_slice(algorithm, hash)
+    fn from_slice(algorithm: hash::Algorithm, hash: &[u8]) -> Result<Self, ParseHashErrorKind> {
+        Ok(hash::Hash::from_slice(algorithm, hash)?)
     }
 
     #[inline]
@@ -223,15 +320,14 @@ impl hash::Sha256 {
 impl private::Sealed for hash::Sha256 {}
 impl CommonHash for hash::Sha256 {
     #[inline]
-    fn from_slice(algorithm: hash::Algorithm, hash: &[u8]) -> Result<Self, hash::ParseHashError> {
+    fn from_slice(algorithm: hash::Algorithm, hash: &[u8]) -> Result<Self, ParseHashErrorKind> {
         if algorithm != hash::Algorithm::SHA256 {
-            return Err(hash::ParseHashError::TypeMismatch {
+            return Err(ParseHashErrorKind::TypeMismatch {
                 expected: hash::Algorithm::SHA256,
                 actual: algorithm,
-                hash: base32::encode_string(hash),
             });
         }
-        hash::Sha256::from_slice(hash)
+        hash::Sha256::from_slice(hash).map_err(From::from)
     }
 
     #[inline]
@@ -354,15 +450,14 @@ impl hash::NarHash {
 impl private::Sealed for hash::NarHash {}
 impl CommonHash for hash::NarHash {
     #[inline]
-    fn from_slice(algorithm: hash::Algorithm, hash: &[u8]) -> Result<Self, hash::ParseHashError> {
+    fn from_slice(algorithm: hash::Algorithm, hash: &[u8]) -> Result<Self, ParseHashErrorKind> {
         if algorithm != hash::Algorithm::SHA256 {
-            return Err(hash::ParseHashError::TypeMismatch {
+            return Err(ParseHashErrorKind::TypeMismatch {
                 expected: hash::Algorithm::SHA256,
                 actual: algorithm,
-                hash: base32::encode_string(hash),
             });
         }
-        hash::NarHash::from_slice(hash)
+        hash::NarHash::from_slice(hash).map_err(From::from)
     }
 
     #[inline]
@@ -449,7 +544,7 @@ impl sfmt::UpperHex for hash::NarHash {
 
 pub trait Format: private::Sealed {
     type Hash;
-    fn parse(algorithm: hash::Algorithm, s: &str) -> Result<Self::Hash, hash::ParseHashError>;
+    fn parse(algorithm: hash::Algorithm, s: &str) -> Result<Self::Hash, ParseHashError>;
     fn into_inner(self) -> Self::Hash;
     fn from_inner(inner: Self::Hash) -> Self;
 }
@@ -493,7 +588,7 @@ impl<H: CommonHash + Sized> Base16<H> {
     }
 }
 impl<H: CommonHash> Base16<H> {
-    pub fn parse(algorithm: hash::Algorithm, s: &str) -> Result<H, hash::ParseHashError> {
+    pub fn parse(algorithm: hash::Algorithm, s: &str) -> Result<H, ParseHashError> {
         <Self as Format>::parse(algorithm, s)
     }
 }
@@ -501,18 +596,21 @@ impl<H> private::Sealed for Base16<H> {}
 impl<H: CommonHash> Format for Base16<H> {
     type Hash = H;
 
-    fn parse(algorithm: hash::Algorithm, s: &str) -> Result<Self::Hash, hash::ParseHashError> {
+    fn parse(algorithm: hash::Algorithm, s: &str) -> Result<Self::Hash, ParseHashError> {
         if s.len() != algorithm.base16_len() {
-            return Err(hash::ParseHashError::WrongHashLength(
-                algorithm,
-                s.to_string(),
+            return Err(ParseHashError::new(
+                s,
+                ParseHashErrorKind::WrongHashLength(algorithm),
             ));
         }
         let mut hash = [0u8; hash::LARGEST_ALGORITHM.size()];
         HEXLOWER_PERMISSIVE
             .decode_mut(s.as_bytes(), &mut hash[..algorithm.size()])
-            .map_err(|err| hash::ParseHashError::BadEncoding(s.into(), "hex".into(), err.error))?;
+            .map_err(|err| {
+                ParseHashError::new(s, ParseHashErrorKind::BadEncoding(Encoding::Hex, err.error))
+            })?;
         H::from_slice(algorithm, &hash[..algorithm.size()])
+            .map_err(|kind| ParseHashError::new(s, kind))
     }
 
     fn into_inner(self) -> Self::Hash {
@@ -540,14 +638,20 @@ impl<H: CommonHash> sfmt::Display for Base16<H> {
 ///
 /// These have the format `<type>:<base16>`,
 impl<H: CommonHash> FromStr for Base16<H> {
-    type Err = hash::ParseHashError;
+    type Err = ParseHashError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some((prefix, rest)) = s.split_once(':') {
-            let algorithm: hash::Algorithm = prefix.parse()?;
-            Self::parse(algorithm, rest).map(Self)
+            let algorithm = prefix
+                .parse::<hash::Algorithm>()
+                .map_err(|err| ParseHashError::new(s, err.into()))?;
+            Self::parse(algorithm, rest).map(Self).map_err(|mut err| {
+                err.hash = s.into();
+                err.kind.adjust_position(prefix.len() + 1);
+                err
+            })
         } else {
-            Err(hash::ParseHashError::MissingType(s.to_string()))
+            Err(ParseHashError::new(s, ParseHashErrorKind::MissingType))
         }
     }
 }
@@ -596,7 +700,7 @@ impl<H: CommonHash + Sized> Base32<H> {
     }
 }
 impl<H: CommonHash> Base32<H> {
-    pub fn parse(algorithm: hash::Algorithm, s: &str) -> Result<H, hash::ParseHashError> {
+    pub fn parse(algorithm: hash::Algorithm, s: &str) -> Result<H, ParseHashError> {
         <Self as Format>::parse(algorithm, s)
     }
 }
@@ -604,18 +708,22 @@ impl<H> private::Sealed for Base32<H> {}
 impl<H: CommonHash> Format for Base32<H> {
     type Hash = H;
 
-    fn parse(algorithm: hash::Algorithm, s: &str) -> Result<Self::Hash, hash::ParseHashError> {
+    fn parse(algorithm: hash::Algorithm, s: &str) -> Result<Self::Hash, ParseHashError> {
         if s.len() != algorithm.base32_len() {
-            return Err(hash::ParseHashError::WrongHashLength(
-                algorithm,
-                s.to_string(),
+            return Err(ParseHashError::new(
+                s,
+                ParseHashErrorKind::WrongHashLength(algorithm),
             ));
         }
         let mut hash = [0u8; hash::LARGEST_ALGORITHM.size()];
         base32::decode_mut(s.as_bytes(), &mut hash[..algorithm.size()]).map_err(|err| {
-            hash::ParseHashError::BadEncoding(s.into(), "nixbase32".into(), err.error)
+            ParseHashError::new(
+                s,
+                ParseHashErrorKind::BadEncoding(Encoding::NixBase32, err.error),
+            )
         })?;
         H::from_slice(algorithm, &hash[..algorithm.size()])
+            .map_err(|kind| ParseHashError::new(s, kind))
     }
 
     fn into_inner(self) -> Self::Hash {
@@ -647,14 +755,20 @@ impl<H: CommonHash> sfmt::Display for Base32<H> {
 ///
 /// These have the format `<type>:<base32>`,
 impl<H: CommonHash> FromStr for Base32<H> {
-    type Err = hash::ParseHashError;
+    type Err = ParseHashError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some((prefix, rest)) = s.split_once(':') {
-            let algorithm: hash::Algorithm = prefix.parse()?;
-            Self::parse(algorithm, rest).map(Self)
+            let algorithm = prefix
+                .parse::<hash::Algorithm>()
+                .map_err(|err| ParseHashError::new(s, err.into()))?;
+            Self::parse(algorithm, rest).map(Self).map_err(|mut err| {
+                err.hash = s.into();
+                err.kind.adjust_position(prefix.len() + 1);
+                err
+            })
         } else {
-            Err(hash::ParseHashError::MissingType(s.to_string()))
+            Err(ParseHashError::new(s, ParseHashErrorKind::MissingType))
         }
     }
 }
@@ -697,7 +811,7 @@ impl<H: CommonHash> Base64<H> {
     }
 }
 impl<H: CommonHash> Base64<H> {
-    pub fn parse(algorithm: hash::Algorithm, s: &str) -> Result<H, hash::ParseHashError> {
+    pub fn parse(algorithm: hash::Algorithm, s: &str) -> Result<H, ParseHashError> {
         <Self as Format>::parse(algorithm, s)
     }
 }
@@ -705,30 +819,36 @@ impl<H: CommonHash> private::Sealed for Base64<H> {}
 impl<H: CommonHash> Format for Base64<H> {
     type Hash = H;
 
-    fn parse(algorithm: hash::Algorithm, s: &str) -> Result<Self::Hash, hash::ParseHashError> {
+    fn parse(algorithm: hash::Algorithm, s: &str) -> Result<Self::Hash, ParseHashError> {
         if s.len() != algorithm.base64_len() {
-            return Err(hash::ParseHashError::WrongHashLength(
-                algorithm,
-                s.to_string(),
+            return Err(ParseHashError::new(
+                s,
+                ParseHashErrorKind::WrongHashLength(algorithm),
             ));
         }
         let mut hash = [0u8; hash::LARGEST_ALGORITHM.base64_decoded()];
         let len = BASE64
             .decode_mut(s.as_bytes(), &mut hash[..algorithm.base64_decoded()])
             .map_err(|err| {
-                hash::ParseHashError::BadEncoding(s.into(), "base64".into(), err.error)
+                ParseHashError::new(
+                    s,
+                    ParseHashErrorKind::BadEncoding(Encoding::Base64, err.error),
+                )
             })?;
         if len != algorithm.size() {
-            Err(hash::ParseHashError::BadEncoding(
-                s.to_string(),
-                "base64".into(),
-                DecodeError {
-                    position: 0,
-                    kind: DecodeKind::Length,
-                },
+            Err(ParseHashError::new(
+                s,
+                ParseHashErrorKind::BadEncoding(
+                    Encoding::Base64,
+                    DecodeError {
+                        position: 0,
+                        kind: DecodeKind::Length,
+                    },
+                ),
             ))
         } else {
             H::from_slice(algorithm, &hash[..algorithm.size()])
+                .map_err(|kind| ParseHashError::new(s, kind))
         }
     }
 
@@ -762,14 +882,20 @@ impl<H: CommonHash> sfmt::Display for Base64<H> {
 ///
 /// These have the format `<type>:<base64>`,
 impl<H: CommonHash> FromStr for Base64<H> {
-    type Err = hash::ParseHashError;
+    type Err = ParseHashError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some((prefix, rest)) = s.split_once(':') {
-            let algorithm: hash::Algorithm = prefix.parse()?;
-            Self::parse(algorithm, rest).map(Self)
+            let algorithm = prefix
+                .parse::<hash::Algorithm>()
+                .map_err(|err| ParseHashError::new(s, err.into()))?;
+            Self::parse(algorithm, rest).map(Self).map_err(|mut err| {
+                err.hash = s.into();
+                err.kind.adjust_position(prefix.len() + 1);
+                err
+            })
         } else {
-            Err(hash::ParseHashError::MissingType(s.to_string()))
+            Err(ParseHashError::new(s, ParseHashErrorKind::MissingType))
         }
     }
 }
@@ -796,7 +922,7 @@ impl<H> Any<H> {
     }
 }
 impl<H: CommonHash> Any<H> {
-    pub fn parse(algorithm: hash::Algorithm, s: &str) -> Result<H, hash::ParseHashError> {
+    pub fn parse(algorithm: hash::Algorithm, s: &str) -> Result<H, ParseHashError> {
         <Self as Format>::parse(algorithm, s)
     }
 }
@@ -804,7 +930,7 @@ impl<H> private::Sealed for Any<H> {}
 impl<H: CommonHash> Format for Any<H> {
     type Hash = H;
 
-    fn parse(algorithm: hash::Algorithm, s: &str) -> Result<Self::Hash, hash::ParseHashError> {
+    fn parse(algorithm: hash::Algorithm, s: &str) -> Result<Self::Hash, ParseHashError> {
         if s.len() == algorithm.base16_len() {
             Ok(Base16::parse(algorithm, s)?)
         } else if s.len() == algorithm.base32_len() {
@@ -812,9 +938,9 @@ impl<H: CommonHash> Format for Any<H> {
         } else if s.len() == algorithm.base64_len() {
             Ok(Base64::parse(algorithm, s)?)
         } else {
-            Err(hash::ParseHashError::WrongHashLength(
-                algorithm,
-                s.to_string(),
+            Err(ParseHashError::new(
+                s,
+                ParseHashErrorKind::WrongHashLength(algorithm),
             ))
         }
     }
@@ -829,26 +955,41 @@ impl<H: CommonHash> Format for Any<H> {
 }
 
 impl<H: CommonHash> FromStr for Any<H> {
-    type Err = hash::ParseHashError;
+    type Err = ParseHashError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some((prefix, rest)) = s.split_once(':') {
-            let algorithm: hash::Algorithm = prefix.parse()?;
-            Ok(Self(Self::parse(algorithm, rest)?))
+            let algorithm = prefix
+                .parse::<hash::Algorithm>()
+                .map_err(|err| ParseHashError::new(s, err.into()))?;
+            let hash = Self::parse(algorithm, rest).map_err(|mut err| {
+                err.hash = s.into();
+                err.kind.adjust_position(prefix.len() + 1);
+                err
+            })?;
+            Ok(Self(hash))
         } else if let Some((prefix, rest)) = s.split_once('-') {
-            let algorithm: hash::Algorithm = prefix.parse()?;
+            let algorithm = prefix
+                .parse::<hash::Algorithm>()
+                .map_err(|err| ParseHashError::new(s, err.into()))?;
             if rest.len() == algorithm.base64_len() {
-                Ok(Self(Base64::parse(algorithm, rest)?))
+                let hash = Base64::parse(algorithm, rest).map_err(|mut err| {
+                    err.hash = s.into();
+                    err.kind.adjust_position(prefix.len() + 1);
+                    err.kind.adjust_encoding(Encoding::Sri);
+                    err
+                })?;
+                Ok(Self(hash))
             } else {
-                Err(hash::ParseHashError::WrongHashLength(
-                    algorithm,
-                    rest.to_string(),
+                Err(ParseHashError::new(
+                    s,
+                    ParseHashErrorKind::WrongHashLength(algorithm),
                 ))
             }
         } else if let Some(algorithm) = H::implied_algorithm() {
             Ok(Self(Self::parse(algorithm, s)?))
         } else {
-            Err(Self::Err::MissingType(s.to_string()))
+            Err(ParseHashError::new(s, ParseHashErrorKind::MissingType))
         }
     }
 }
@@ -893,14 +1034,21 @@ impl<H: CommonHash> sfmt::Display for SRI<H> {
 ///
 /// These have the format `<type>-<base64>`,
 impl<H: CommonHash> FromStr for SRI<H> {
-    type Err = hash::ParseHashError;
+    type Err = ParseHashError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some((prefix, rest)) = s.split_once('-') {
-            let algorithm: hash::Algorithm = prefix.parse()?;
-            Base64::parse(algorithm, rest).map(Self)
+            let algorithm = prefix
+                .parse::<hash::Algorithm>()
+                .map_err(|err| ParseHashError::new(s, err.into()))?;
+            Base64::parse(algorithm, rest).map(Self).map_err(|mut err| {
+                err.hash = s.into();
+                err.kind.adjust_position(prefix.len() + 1);
+                err.kind.adjust_encoding(Encoding::Sri);
+                err
+            })
         } else {
-            Err(hash::ParseHashError::NotSRI(s.to_owned()))
+            Err(ParseHashError::new(s, ParseHashErrorKind::NotSRI))
         }
     }
 }
@@ -917,7 +1065,7 @@ impl<H> NonSRI<H> {
     }
 }
 impl<H: CommonHash> NonSRI<H> {
-    pub fn parse(algorithm: hash::Algorithm, s: &str) -> Result<H, hash::ParseHashError> {
+    pub fn parse(algorithm: hash::Algorithm, s: &str) -> Result<H, ParseHashError> {
         <Self as Format>::parse(algorithm, s)
     }
 }
@@ -925,7 +1073,7 @@ impl<H> private::Sealed for NonSRI<H> {}
 impl<H: CommonHash> Format for NonSRI<H> {
     type Hash = H;
 
-    fn parse(algorithm: hash::Algorithm, s: &str) -> Result<Self::Hash, hash::ParseHashError> {
+    fn parse(algorithm: hash::Algorithm, s: &str) -> Result<Self::Hash, ParseHashError> {
         if s.len() == algorithm.base16_len() {
             Ok(Base16::parse(algorithm, s)?)
         } else if s.len() == algorithm.base32_len() {
@@ -933,9 +1081,9 @@ impl<H: CommonHash> Format for NonSRI<H> {
         } else if s.len() == algorithm.base64_len() {
             Ok(Base64::parse(algorithm, s)?)
         } else {
-            Err(hash::ParseHashError::WrongHashLength(
-                algorithm,
-                s.to_string(),
+            Err(ParseHashError::new(
+                s,
+                ParseHashErrorKind::WrongHashLength(algorithm),
             ))
         }
     }
@@ -950,16 +1098,23 @@ impl<H: CommonHash> Format for NonSRI<H> {
 }
 
 impl<H: CommonHash> FromStr for NonSRI<H> {
-    type Err = hash::ParseHashError;
+    type Err = ParseHashError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some((prefix, rest)) = s.split_once(':') {
-            let algorithm: hash::Algorithm = prefix.parse()?;
-            Ok(Self(Self::parse(algorithm, rest)?))
+            let algorithm = prefix
+                .parse::<hash::Algorithm>()
+                .map_err(|err| ParseHashError::new(s, err.into()))?;
+            let hash = Self::parse(algorithm, rest).map_err(|mut err| {
+                err.hash = s.into();
+                err.kind.adjust_position(prefix.len() + 1);
+                err
+            })?;
+            Ok(Self(hash))
         } else if let Some(algorithm) = H::implied_algorithm() {
             Ok(Self(Self::parse(algorithm, s)?))
         } else {
-            Err(Self::Err::MissingType(s.to_string()))
+            Err(ParseHashError::new(s, ParseHashErrorKind::MissingType))
         }
     }
 }
@@ -993,13 +1148,13 @@ where
     F: Format,
     <F as Format>::Hash: CommonHash,
 {
-    type Err = hash::ParseHashError;
+    type Err = ParseHashError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some(algorithm) = <<F as Format>::Hash as CommonHash>::implied_algorithm() {
             Ok(Bare(F::from_inner(F::parse(algorithm, s)?)))
         } else {
-            Err(Self::Err::MissingType(s.to_string()))
+            Err(ParseHashError::new(s, ParseHashErrorKind::MissingType))
         }
     }
 }
@@ -1119,7 +1274,7 @@ mod unittests {
     use hex_literal::hex;
 
     use super::*;
-    use crate::hash::{Algorithm, Hash};
+    use crate::hash::{Algorithm, Hash, NarHash};
 
     struct HashFormats {
         hash: Hash,
@@ -1127,6 +1282,21 @@ mod unittests {
         base16: &'static str,
         base32: &'static str,
         base64: &'static str,
+    }
+
+    impl HashFormats {
+        pub fn prefix_base16(&self) -> String {
+            format!("{}:{}", self.algorithm, self.base16)
+        }
+        pub fn prefix_base32(&self) -> String {
+            format!("{}:{}", self.algorithm, self.base32)
+        }
+        pub fn prefix_base64(&self) -> String {
+            format!("{}:{}", self.algorithm, self.base64)
+        }
+        pub fn sri(&self) -> String {
+            format!("{}-{}", self.algorithm, self.base64)
+        }
     }
 
     /// value taken from: https://tools.ietf.org/html/rfc1321
@@ -1237,60 +1407,102 @@ mod unittests {
 
     #[rstest_reuse::apply(hash_formats)]
     fn lower_hex(#[case] hash: HashFormats) {
-        assert_eq!(
-            format!("{}:{}", hash.algorithm, hash.base16),
-            format!("{:x}", hash.hash)
-        );
+        let actual = format!("{:x}", hash.hash);
+        assert_eq!(hash.prefix_base16(), actual);
     }
 
     #[rstest_reuse::apply(hash_formats)]
     fn lower_hex_alt(#[case] hash: HashFormats) {
-        assert_eq!(hash.base16, format!("{:#x}", hash.hash));
+        let actual = format!("{:#x}", hash.hash);
+        assert_eq!(hash.base16, actual);
     }
 
     #[rstest_reuse::apply(hash_formats)]
     fn upper_hex(#[case] hash: HashFormats) {
-        assert_eq!(
-            format!("{}:{}", hash.algorithm, hash.base16.to_uppercase()),
-            format!("{:X}", hash.hash)
-        );
+        let expected = format!("{}:{}", hash.algorithm, hash.base16.to_uppercase());
+        let actual = format!("{:X}", hash.hash);
+        assert_eq!(expected, actual);
     }
 
     #[rstest_reuse::apply(hash_formats)]
     fn upper_hex_alt(#[case] hash: HashFormats) {
-        assert_eq!(hash.base16.to_uppercase(), format!("{:#X}", hash.hash));
+        let actual = format!("{:#X}", hash.hash);
+        assert_eq!(hash.base16.to_uppercase(), actual);
     }
 
     mod base16 {
+        use rstest::rstest;
+
         use super::*;
 
         #[rstest_reuse::apply(hash_formats)]
+        fn hash_eq(#[case] hash: HashFormats) {
+            let actual = hash.hash.base16();
+            assert_eq!(*hash.hash.as_base16(), actual);
+        }
+
+        #[rstest_reuse::apply(hash_formats)]
+        fn hash_bare_eq(#[case] hash: HashFormats) {
+            let actual = hash.hash.base16().bare();
+            assert_eq!(*hash.hash.as_base16().as_bare(), actual);
+        }
+
+        #[rstest_reuse::apply(hash_formats)]
         fn hash_display(#[case] hash: HashFormats) {
-            assert_eq!(
-                format!("{}:{}", hash.algorithm, hash.base16),
-                hash.hash.base16().to_string()
-            );
+            let actual = hash.hash.base16().to_string();
+            assert_eq!(hash.prefix_base16(), actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_display_alt(#[case] hash: HashFormats) {
-            assert_eq!(hash.base16, format!("{:#}", hash.hash.base16()));
+            let actual = format!("{:#}", hash.hash.base16());
+            assert_eq!(hash.base16, actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_display_bare(#[case] hash: HashFormats) {
-            assert_eq!(hash.base16, hash.hash.base16().bare().to_string());
+            let actual = hash.hash.base16().bare().to_string();
+            assert_eq!(hash.base16, actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_display_bare_alt(#[case] hash: HashFormats) {
-            assert_eq!(hash.base16, format!("{:#}", hash.hash.base16().bare()));
+            let actual = format!("{:#}", hash.hash.base16().bare());
+            assert_eq!(hash.base16, actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_from_str(#[case] hash: HashFormats) {
-            let s = format!("{}:{}", hash.algorithm, hash.base16);
-            assert_eq!(*hash.hash.as_base16(), s.parse::<Base16<Hash>>().unwrap());
+            let s = hash.prefix_base16();
+            let actual = s.parse::<Base16<Hash>>().unwrap();
+            assert_eq!(*hash.hash.as_base16(), actual);
+        }
+
+        // UnknownAlgorithm
+        // Base16 bad symbol
+        // WrongHashLength
+        // MissingType
+        #[rstest]
+        #[should_panic = "hash 'sha25:a9993e364706816aba3e25717850c26c9cd0d89d' has unsupported digest algorithm 'sha25'"]
+        #[case::unknown_algorithm("sha25:a9993e364706816aba3e25717850c26c9cd0d89d")]
+        #[should_panic = "hash 'sha1:Ka9993e364706816aba3e25717850c26c9cd0d89' has invalid symbol at 5 when decoding as hex"]
+        #[case::bad_symbol("sha1:Ka9993e364706816aba3e25717850c26c9cd0d89")]
+        #[should_panic = "hash 'sha1:a9993e364706816aba3e25717850c26c9cd0d89' has wrong length for hash type 'sha1'"]
+        #[case::wrong_length("sha1:a9993e364706816aba3e25717850c26c9cd0d89")]
+        #[should_panic = "hash 'a9993e364706816aba3e25717850c26c9cd0d89d' does not include a type, nor is the type otherwise known from context"]
+        #[case::missing_type("a9993e364706816aba3e25717850c26c9cd0d89d")]
+        fn hash_from_str_error(#[case] input: &str) {
+            let actual = input.parse::<Base16<Hash>>().unwrap_err();
+            panic!("{actual}");
+        }
+
+        // TypeMismatch
+        #[rstest]
+        #[should_panic = "hash 'sha1:a9993e364706816aba3e25717850c26c9cd0d89d' should have type 'sha256' but got 'sha1'"]
+        #[case::type_mismatch("sha1:a9993e364706816aba3e25717850c26c9cd0d89d")]
+        fn nar_hash_from_str_error(#[case] input: &str) {
+            let actual = input.parse::<Base16<NarHash>>().unwrap_err();
+            panic!("{actual}");
         }
     }
 
@@ -1298,32 +1510,46 @@ mod unittests {
         use super::*;
 
         #[rstest_reuse::apply(hash_formats)]
+        fn hash_eq(#[case] hash: HashFormats) {
+            let actual = hash.hash.base32();
+            assert_eq!(*hash.hash.as_base32(), actual);
+        }
+
+        #[rstest_reuse::apply(hash_formats)]
+        fn hash_bare_eq(#[case] hash: HashFormats) {
+            let actual = hash.hash.base32().bare();
+            assert_eq!(*hash.hash.as_base32().as_bare(), actual);
+        }
+
+        #[rstest_reuse::apply(hash_formats)]
         fn hash_display(#[case] hash: HashFormats) {
-            assert_eq!(
-                format!("{}:{}", hash.algorithm, hash.base32),
-                hash.hash.base32().to_string()
-            );
+            let actual = hash.hash.base32().to_string();
+            assert_eq!(hash.prefix_base32(), actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_display_alt(#[case] hash: HashFormats) {
-            assert_eq!(hash.base32, format!("{:#}", hash.hash.base32()));
+            let actual = format!("{:#}", hash.hash.base32());
+            assert_eq!(hash.base32, actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_display_bare(#[case] hash: HashFormats) {
-            assert_eq!(hash.base32, hash.hash.base32().bare().to_string());
+            let actual = hash.hash.base32().bare().to_string();
+            assert_eq!(hash.base32, actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_display_bare_alt(#[case] hash: HashFormats) {
-            assert_eq!(hash.base32, format!("{:#}", hash.hash.base32().bare()));
+            let actual = format!("{:#}", hash.hash.base32().bare());
+            assert_eq!(hash.base32, actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_from_str(#[case] hash: HashFormats) {
-            let s = format!("{}:{}", hash.algorithm, hash.base32);
-            assert_eq!(*hash.hash.as_base32(), s.parse::<Base32<Hash>>().unwrap());
+            let s = hash.prefix_base32();
+            let actual = s.parse::<Base32<Hash>>().unwrap();
+            assert_eq!(*hash.hash.as_base32(), actual);
         }
     }
 
@@ -1331,82 +1557,171 @@ mod unittests {
         use super::*;
 
         #[rstest_reuse::apply(hash_formats)]
+        fn hash_eq(#[case] hash: HashFormats) {
+            let actual = hash.hash.base64();
+            assert_eq!(*hash.hash.as_base64(), actual);
+        }
+
+        #[rstest_reuse::apply(hash_formats)]
+        fn hash_bare_eq(#[case] hash: HashFormats) {
+            let actual = hash.hash.base64().bare();
+            assert_eq!(*hash.hash.as_base64().as_bare(), actual);
+        }
+
+        #[rstest_reuse::apply(hash_formats)]
         fn hash_display(#[case] hash: HashFormats) {
-            assert_eq!(
-                format!("{}:{}", hash.algorithm, hash.base64),
-                hash.hash.base64().to_string()
-            );
+            let actual = hash.hash.base64().to_string();
+            assert_eq!(hash.prefix_base64(), actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_display_alt(#[case] hash: HashFormats) {
-            assert_eq!(hash.base64, format!("{:#}", hash.hash.base64()));
+            let actual = format!("{:#}", hash.hash.base64());
+            assert_eq!(hash.base64, actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_display_bare(#[case] hash: HashFormats) {
-            assert_eq!(hash.base64, hash.hash.base64().bare().to_string());
+            let actual = hash.hash.base64().bare().to_string();
+            assert_eq!(hash.base64, actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_display_bare_alt(#[case] hash: HashFormats) {
-            assert_eq!(hash.base64, format!("{:#}", hash.hash.base64().bare()));
+            let actual = format!("{:#}", hash.hash.base64().bare());
+            assert_eq!(hash.base64, actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_from_str(#[case] hash: HashFormats) {
-            let s = format!("{}:{}", hash.algorithm, hash.base64);
-            assert_eq!(*hash.hash.as_base64(), s.parse::<Base64<Hash>>().unwrap());
+            let s = hash.prefix_base64();
+            let actual = s.parse::<Base64<Hash>>().unwrap();
+            assert_eq!(*hash.hash.as_base64(), actual);
         }
     }
 
     mod sri {
+        use rstest::rstest;
+
         use super::*;
 
         #[rstest_reuse::apply(hash_formats)]
+        fn hash_eq(#[case] hash: HashFormats) {
+            let actual = hash.hash.sri();
+            assert_eq!(*hash.hash.as_sri(), actual);
+        }
+
+        #[rstest_reuse::apply(hash_formats)]
         fn hash_display(#[case] hash: HashFormats) {
-            let s = format!("{}-{}", hash.algorithm, hash.base64);
-            assert_eq!(s, format!("{}", hash.hash.sri()));
+            let actual = format!("{}", hash.hash.sri());
+            assert_eq!(hash.sri(), actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_display_alt(#[case] hash: HashFormats) {
-            let s = format!("{}-{}", hash.algorithm, hash.base64);
-            assert_eq!(s, format!("{:#}", hash.hash.sri()));
+            let actual = format!("{:#}", hash.hash.sri());
+            assert_eq!(hash.sri(), actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_from_str(#[case] hash: HashFormats) {
-            let s = format!("{}-{}", hash.algorithm, hash.base64);
-            assert_eq!(*hash.hash.as_sri(), s.parse::<SRI<Hash>>().unwrap());
+            let s = hash.sri();
+            let actual = s.parse::<SRI<Hash>>().unwrap();
+            assert_eq!(*hash.hash.as_sri(), actual);
+        }
+
+        // UnknownAlgorithm
+        // Base16 bad symbol
+        // WrongHashLength
+        // MissingType
+        #[rstest]
+        #[should_panic = "hash 'sha1:qZk+NkcGgWq6PiVxeFDCbJzQ2J0=' is not SRI"]
+        #[case::not_sri("sha1:qZk+NkcGgWq6PiVxeFDCbJzQ2J0=")]
+        #[should_panic = "hash 'sha25-qZk+NkcGgWq6PiVxeFDCbJzQ2J0=' has unsupported digest algorithm 'sha25'"]
+        #[case::unknown_algorithm("sha25-qZk+NkcGgWq6PiVxeFDCbJzQ2J0=")]
+        #[should_panic = "hash 'sha1-qZk+NkcGgWq6PiVxeFDCbJzQ2Å=' has invalid symbol at 30 when decoding as sri"]
+        #[case::bad_symbol("sha1-qZk+NkcGgWq6PiVxeFDCbJzQ2Å=")]
+        #[should_panic = "hash 'sha1-qZk+NkcGgWq6PiVxeFDCbJzQ2JJ0=' has wrong length for hash type 'sha1'"]
+        #[case::wrong_length("sha1-qZk+NkcGgWq6PiVxeFDCbJzQ2JJ0=")]
+        #[should_panic = "hash 'sha1-qZk+NkcGgWq6PiVxeFDCbJzQ2J0a' has invalid length at 5 when decoding as sri"]
+        #[case::wrong_length2("sha1-qZk+NkcGgWq6PiVxeFDCbJzQ2J0a")]
+        #[should_panic = "hash 'qZk+NkcGgWq6PiVxeFDCbJzQ2J0=' is not SRI"]
+        #[case::missing_type("qZk+NkcGgWq6PiVxeFDCbJzQ2J0=")]
+        fn hash_from_str_error(#[case] input: &str) {
+            let actual = input.parse::<SRI<Hash>>().unwrap_err();
+            panic!("{actual}");
+        }
+
+        #[rstest]
+        #[should_panic = "hash 'sha1-qZk+NkcGgWq6PiVxeFDCbJzQ2J0=' should have type 'sha256' but got 'sha1'"]
+        #[case::type_mismatch("sha1-qZk+NkcGgWq6PiVxeFDCbJzQ2J0=")]
+        fn nar_hash_from_str_error(#[case] input: &str) {
+            let actual = input.parse::<SRI<NarHash>>().unwrap_err();
+            panic!("{actual}");
         }
     }
 
     mod any {
+        use rstest::rstest;
+
         use super::*;
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_from_str_base16(#[case] hash: HashFormats) {
-            let s = format!("{}:{}", hash.algorithm, hash.base16);
-            assert_eq!(hash.hash, s.parse::<Any<hash::Hash>>().unwrap().into_hash());
+            let s = hash.prefix_base16();
+            let actual = s.parse::<Any<hash::Hash>>().unwrap().into_hash();
+            assert_eq!(hash.hash, actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_from_str_base32(#[case] hash: HashFormats) {
-            let s = format!("{}:{}", hash.algorithm, hash.base32);
-            assert_eq!(hash.hash, s.parse::<Any<hash::Hash>>().unwrap().into_hash());
+            let s = hash.prefix_base32();
+            let actual = s.parse::<Any<hash::Hash>>().unwrap().into_hash();
+            assert_eq!(hash.hash, actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_from_str_base64(#[case] hash: HashFormats) {
-            let s = format!("{}:{}", hash.algorithm, hash.base64);
-            assert_eq!(hash.hash, s.parse::<Any<hash::Hash>>().unwrap().into_hash());
+            let s = hash.prefix_base64();
+            let actual = s.parse::<Any<hash::Hash>>().unwrap().into_hash();
+            assert_eq!(hash.hash, actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_from_str_sri(#[case] hash: HashFormats) {
-            let s = format!("{}-{}", hash.algorithm, hash.base64);
-            assert_eq!(hash.hash, s.parse::<Any<hash::Hash>>().unwrap().into_hash());
+            let s = hash.sri();
+            let actual = s.parse::<Any<hash::Hash>>().unwrap().into_hash();
+            assert_eq!(hash.hash, actual);
+        }
+
+        #[rstest]
+        #[should_panic = "hash 'sha1:k9993e364706816aba3e25717850c26c9cd0d89d' has invalid symbol at 5 when decoding as hex"]
+        #[case::bad_hex_symbol("sha1:k9993e364706816aba3e25717850c26c9cd0d89d")]
+        #[should_panic = "hash 'sha1:!pcd173cq987hw957sx6m0868wv3x6d9' has invalid symbol at 5 when decoding as nixbase32"]
+        #[case::bad_nixbase32_symbol("sha1:!pcd173cq987hw957sx6m0868wv3x6d9")]
+        #[should_panic = "hash 'sha1:!Zk+NkcGgWq6PiVxeFDCbJzQ2J0=' has invalid symbol at 5 when decoding as base64"]
+        #[case::bad_base64_symbol("sha1:!Zk+NkcGgWq6PiVxeFDCbJzQ2J0=")]
+        #[should_panic = "hash 'sha1:qZk+NkcGgWq6PiVxeFDCbJzQ2J0a' has invalid length at 5 when decoding as base64"]
+        #[case::bad_base64_length("sha1:qZk+NkcGgWq6PiVxeFDCbJzQ2J0a")]
+        #[should_panic = "hash 'sha1-qZk+NkcGgWq6PiVxeFDCbJzQ2J0a' has invalid length at 5 when decoding as sri"]
+        #[case::bad_sri_length("sha1-qZk+NkcGgWq6PiVxeFDCbJzQ2J0a")]
+        #[should_panic = "hash 'sha1:12345' has wrong length for hash type 'sha1'"]
+        #[case::wrong_length("sha1:12345")]
+        #[should_panic = "hash 'a9993e364706816aba3e25717850c26c9cd0d89d' does not include a type, nor is the type otherwise known from context"]
+        #[case::prefix_missing("a9993e364706816aba3e25717850c26c9cd0d89d")]
+        #[should_panic = "hash 'sha25:12345' has unsupported digest algorithm 'sha25'"]
+        #[case::unknown_algorithm("sha25:12345")]
+        fn hash_from_str_error(#[case] input: &str) {
+            let actual = input.parse::<Any<Hash>>().unwrap_err();
+            panic!("{actual}");
+        }
+
+        #[rstest]
+        #[should_panic = "hash 'sha1:kpcd173cq987hw957sx6m0868wv3x6d9' should have type 'sha256' but got 'sha1'"]
+        #[case::type_mismatch("sha1:kpcd173cq987hw957sx6m0868wv3x6d9")]
+        fn nar_hash_from_str_error(#[case] input: &str) {
+            let actual = input.parse::<Any<NarHash>>().unwrap_err();
+            panic!("{actual}");
         }
     }
 
@@ -1415,28 +1730,33 @@ mod unittests {
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_from_str_base16(#[case] hash: HashFormats) {
-            let s = format!("{}:{}", hash.algorithm, hash.base16);
-            assert_eq!(
-                hash.hash,
-                s.parse::<NonSRI<hash::Hash>>().unwrap().into_hash()
-            );
+            let s = hash.prefix_base16();
+            let actual = s.parse::<NonSRI<hash::Hash>>().unwrap().into_hash();
+            assert_eq!(hash.hash, actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_from_str_base32(#[case] hash: HashFormats) {
-            let s = format!("{}:{}", hash.algorithm, hash.base32);
-            assert_eq!(
-                hash.hash,
-                s.parse::<NonSRI<hash::Hash>>().unwrap().into_hash()
-            );
+            let s = hash.prefix_base32();
+            let actual = s.parse::<NonSRI<hash::Hash>>().unwrap().into_hash();
+            assert_eq!(hash.hash, actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn hash_from_str_base64(#[case] hash: HashFormats) {
-            let s = format!("{}:{}", hash.algorithm, hash.base64);
+            let s = hash.prefix_base64();
+            let actual = s.parse::<NonSRI<hash::Hash>>().unwrap().into_hash();
+            assert_eq!(hash.hash, actual);
+        }
+
+        #[test]
+        fn parse_non_sri_prefixed_missing() {
             assert_eq!(
-                hash.hash,
-                s.parse::<NonSRI<hash::Hash>>().unwrap().into_hash()
+                Err(ParseHashError::new(
+                    "12345",
+                    ParseHashErrorKind::MissingType
+                )),
+                "12345".parse::<NonSRI<Hash>>()
             );
         }
     }
@@ -1447,26 +1767,30 @@ mod unittests {
 
         #[rstest_reuse::apply(hash_formats)]
         fn base16(#[case] hash: HashFormats) {
-            let s = format!("{}:{}", hash.algorithm, hash.base16);
-            assert_eq!(hash.hash, s.parse().unwrap());
+            let s = hash.prefix_base16();
+            let actual = s.parse().unwrap();
+            assert_eq!(hash.hash, actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn base32(#[case] hash: HashFormats) {
-            let s = format!("{}:{}", hash.algorithm, hash.base32);
-            assert_eq!(hash.hash, s.parse().unwrap());
+            let s = hash.prefix_base32();
+            let actual = s.parse().unwrap();
+            assert_eq!(hash.hash, actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn base64(#[case] hash: HashFormats) {
-            let s = format!("{}:{}", hash.algorithm, hash.base64);
-            assert_eq!(hash.hash, s.parse().unwrap());
+            let s = hash.prefix_base64();
+            let actual = s.parse().unwrap();
+            assert_eq!(hash.hash, actual);
         }
 
         #[rstest_reuse::apply(hash_formats)]
         fn sri(#[case] hash: HashFormats) {
-            let s = format!("{}-{}", hash.algorithm, hash.base64);
-            assert_eq!(hash.hash, s.parse().unwrap());
+            let s = hash.sri();
+            let actual = s.parse().unwrap();
+            assert_eq!(hash.hash, actual);
         }
     }
      */
