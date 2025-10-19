@@ -6,13 +6,13 @@ use ::capnp::Error;
 use ::capnp::capability::Promise;
 use capnp_rpc::new_client;
 use capnp_rpc_tokio::stream::{ByteStreamWrap, ByteStreamWriter, from_cap_error};
-use futures::channel::{mpsc, oneshot};
+use futures::channel::mpsc;
 use futures::stream::TryStreamExt;
-use futures::{FutureExt as _, SinkExt, TryFutureExt as _};
+use futures::{SinkExt, TryFutureExt as _};
 use nixrs::daemon::wire::types2::BuildMode;
 use nixrs::daemon::{
     DaemonError, DaemonResult, DriveResult, FutureResultExt as _, LocalDaemonStore,
-    LocalHandshakeDaemonStore, ResultLog, ResultLogExt, UnkeyedValidPathInfo,
+    LocalHandshakeDaemonStore, ResultLog, UnkeyedValidPathInfo,
 };
 use nixrs::derived_path::DerivedPath;
 use nixrs::log::LogMessage;
@@ -392,24 +392,16 @@ impl LocalHandshakeDaemonStore for LoggedCapnpStore {
             eprintln!("Doing client handsshake");
             let capture_res = req.send();
             let capnp_store = capture_res.pipeline.get_daemon();
-            let (sender, res_receiver) = oneshot::channel();
-            let driver = async move {
+            Ok(async move {
                 let mut store = CapnpStore::new(capnp_store);
                 eprintln!("Shutting down client handsshake");
                 let end_res = store.shutdown().await;
-                let _ = capture_res.promise.await.map_err(DaemonError::custom);
-                eprintln!("Sending client handsshake result");
-                sender.send(end_res.map(|_| self)).map_err(|_| {
-                    DaemonError::custom(format_args!(
-                        "Internal error: Could not send result around"
-                    ))
-                })
-            };
-            Ok(res_receiver
-                .map_err(DaemonError::custom)
-                .map(|res| res.and_then(|s| s))
-                .with_logs(receiver)
-                .drive_result(driver))
+                let mres = capture_res.promise.await.map(|_| ());
+                eprintln!("Sending client handsshake result {end_res:?} {mres:?}");
+                end_res?;
+                Ok(self)
+            }
+            .with_logs(receiver))
         })
         .future_result()
     }
@@ -423,21 +415,17 @@ macro_rules! make_request {
             req.get().set_logger(new_client(sender));
             let capture_res = req.send();
             let capnp_store = capture_res.pipeline.get_daemon();
-            let (sender, res_receiver) = oneshot::channel();
-            let driver = async move {
+            Ok(async move {
                 let mut $store = CapnpStore::new(capnp_store);
                 let res = {
                     $($block)*
                 };
                 let end_res = $store.shutdown().await;
                 let _ = capture_res.promise.await.map_err(DaemonError::custom);
-                sender.send(res.and_then(|res| end_res.map(|_| res))).map_err(|_| DaemonError::custom(format_args!("Internal error: Could not send result around")))
-            };
-            Ok(res_receiver
-                .map_err(DaemonError::custom)
-                .map(|res| res.and_then(|s| s))
-                .with_logs(receiver)
-                .drive_result(driver))
+                let value = res.map_err(DaemonError::custom)?;
+                end_res?;
+                Ok(value)
+            }.with_logs(receiver))
         })
         .future_result()
     };

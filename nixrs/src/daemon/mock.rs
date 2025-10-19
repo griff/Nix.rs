@@ -13,7 +13,6 @@ use futures::Stream;
 use futures::StreamExt as _;
 use futures::channel::mpsc;
 use futures::future::Either;
-use futures::stream::empty;
 use futures::stream::{TryStreamExt, iter};
 use pin_project_lite::pin_project;
 #[cfg(any(test, feature = "test"))]
@@ -25,7 +24,7 @@ use test_strategy::Arbitrary;
 use tokio::io::{AsyncBufRead, AsyncReadExt as _};
 use tracing::trace;
 
-use super::logger::{FutureResult, ResultLogExt as _, ResultProcess};
+use super::logger::{FutureResult, ResultLogExt as _};
 use super::types::AddToStoreItem;
 use super::wire::types::Operation;
 use super::wire::types2::{
@@ -1356,17 +1355,15 @@ impl MockReporter for () {
         expected: MockOperation,
         actual: MockRequest,
     ) -> impl ResultLog<Output = DaemonResult<MockResponse>> {
-        ResultProcess {
-            stream: empty(),
-            result: ready(
-                Err(DaemonError::custom(format!(
-                    "Unexpected operation {} expected {}",
-                    actual.operation(),
-                    expected.operation()
-                )))
-                .with_operation(actual.operation()),
-            ),
-        }
+        ready(
+            Err(DaemonError::custom(format!(
+                "Unexpected operation {} expected {}",
+                actual.operation(),
+                expected.operation()
+            )))
+            .with_operation(actual.operation()),
+        )
+        .empty_logs()
     }
 
     fn invalid_operation(
@@ -1374,30 +1371,26 @@ impl MockReporter for () {
         expected: MockOperation,
         actual: MockRequest,
     ) -> impl ResultLog<Output = DaemonResult<MockResponse>> {
-        ResultProcess {
-            stream: empty(),
-            result: ready(
-                Err(DaemonError::custom(format!(
-                    "Invalid operation {:?} expected {:?}",
-                    actual,
-                    expected.request()
-                )))
-                .with_operation(actual.operation()),
-            ),
-        }
+        ready(
+            Err(DaemonError::custom(format!(
+                "Invalid operation {:?} expected {:?}",
+                actual,
+                expected.request()
+            )))
+            .with_operation(actual.operation()),
+        )
+        .empty_logs()
     }
 
     fn extra_operation(
         &mut self,
         actual: MockRequest,
     ) -> impl ResultLog<Output = DaemonResult<MockResponse>> {
-        ResultProcess {
-            stream: empty(),
-            result: ready(
-                Err(DaemonError::custom(format!("Extra operation {actual:?}")))
-                    .with_operation(actual.operation()),
-            ),
-        }
+        ready(
+            Err(DaemonError::custom(format!("Extra operation {actual:?}")))
+                .with_operation(actual.operation()),
+        )
+        .empty_logs()
     }
 
     fn unread_operation(&mut self, operation: LogOperation) -> DaemonResult<()> {
@@ -1460,10 +1453,7 @@ impl MockReporter for ChannelReporter {
         let report = ReporterError::Unexpected(expected, actual);
         let ret = Err(DaemonError::custom(&report)).with_operation(op);
         self.0.unbounded_send(report).unwrap();
-        ResultProcess {
-            stream: empty(),
-            result: ready(ret),
-        }
+        ready(ret).empty_logs()
     }
 
     fn invalid_operation(
@@ -1475,10 +1465,7 @@ impl MockReporter for ChannelReporter {
         let report = ReporterError::Invalid(expected, actual);
         let ret = Err(DaemonError::custom(&report)).with_operation(op);
         self.0.unbounded_send(report).unwrap();
-        ResultProcess {
-            stream: empty(),
-            result: ready(ret),
-        }
+        ready(ret).empty_logs()
     }
 
     fn extra_operation(
@@ -1489,10 +1476,7 @@ impl MockReporter for ChannelReporter {
         let report = ReporterError::Extra(actual);
         let ret = Err(DaemonError::custom(&report)).with_operation(op);
         self.0.unbounded_send(report).unwrap();
-        ResultProcess {
-            stream: empty(),
-            result: ready(ret),
-        }
+        ready(ret).empty_logs()
     }
 
     fn unread_operation(&mut self, operation: LogOperation) -> DaemonResult<()> {
@@ -2192,10 +2176,7 @@ where
 
     fn handshake(mut self) -> impl ResultLog<Output = DaemonResult<Self::Store>> {
         let logs = take(&mut self.handshake_logs);
-        ResultProcess {
-            stream: iter(logs),
-            result: ready(Ok(self)),
-        }
+        ready(Ok(self)).with_logs(iter(logs))
     }
 }
 

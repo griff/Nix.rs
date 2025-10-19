@@ -1,28 +1,66 @@
-use std::cmp::min;
-use std::fmt;
 use std::future::Future;
-use std::io::Cursor;
 use std::marker::PhantomData;
-use std::pin::Pin;
+use std::pin::{Pin, pin};
 use std::task::{Context, Poll, ready};
 
-use async_stream::stream;
-use futures::Stream;
+use futures::channel::mpsc;
+use futures::future::{MaybeDone, maybe_done};
 use futures::stream::{Empty, empty};
+use futures::{Sink, SinkExt, Stream, StreamExt};
 use pin_project_lite::pin_project;
-use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt as _};
-use tokio::sync::oneshot;
-use tracing::trace;
+use tokio::io::{AsyncBufRead, AsyncRead};
 
-use super::de::{NixDeserialize, NixRead};
-use super::ser::{NixWrite, NixWriter};
-use super::wire::logger::RawLogMessage;
-use super::{DaemonError, DaemonErrorKind, DaemonResult};
+use super::{DaemonError, DaemonResult};
 use crate::daemon::wire::types::Operation;
-use crate::log::{LogMessage, Message, Verbosity};
+use crate::log::LogMessage;
 
 pub trait ResultLog: Stream<Item = LogMessage> + Future {}
 impl<RL> ResultLog for RL where RL: Stream<Item = LogMessage> + Future {}
+
+pin_project! {
+    #[derive(Clone)]
+    pub struct LogSender {
+        #[pin]
+        inner: mpsc::Sender<LogMessage>,
+    }
+}
+impl Sink<LogMessage> for LogSender {
+    type Error = DaemonError;
+
+    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(ready!(self.project().inner.poll_ready(cx)).map_err(DaemonError::custom))
+    }
+
+    fn start_send(self: Pin<&mut Self>, item: LogMessage) -> Result<(), Self::Error> {
+        self.project()
+            .inner
+            .start_send(item)
+            .map_err(DaemonError::custom)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(ready!(self.project().inner.poll_flush(cx)).map_err(DaemonError::custom))
+    }
+
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(ready!(self.project().inner.poll_close(cx)).map_err(DaemonError::custom))
+    }
+}
+
+pub fn make_result<F, Fut, T>(f: F) -> impl ResultLog<Output = DaemonResult<T>>
+where
+    F: FnOnce(LogSender) -> Fut,
+    Fut: Future<Output = DaemonResult<T>>,
+{
+    let (inner, receiver) = mpsc::channel(1);
+    let mut sender = LogSender { inner };
+    let fut = f(sender.clone());
+    <Fut as futures::FutureExt>::then(fut, move |ret| async move {
+        let _ = sender.close().await;
+        ret
+    })
+    .with_logs(receiver)
+}
 
 pin_project! {
     struct MapOkResult<L, F, T> {
@@ -32,6 +70,7 @@ pin_project! {
         value: PhantomData<T>,
     }
 }
+
 impl<L, F, T> Stream for MapOkResult<L, F, T>
 where
     L: Stream<Item = LogMessage>,
@@ -42,6 +81,7 @@ where
         self.project().result.poll_next(cx)
     }
 }
+
 impl<L, F, T, T2, E> Future for MapOkResult<L, F, T>
 where
     L: Future<Output = Result<T, E>>,
@@ -169,16 +209,17 @@ pub trait ResultLogExt: ResultLog {
     fn fill_operation<T>(self, op: Operation) -> impl ResultLog<Output = Result<T, DaemonError>>
     where
         Self: ResultLog<Output = Result<T, DaemonError>>;
-    fn drive_result<D, T, E>(self, driver: D) -> DriveResult<Self, D, E>
-    where
-        Self: ResultLog<Output = Result<T, E>> + Sized,
-        D: Future<Output = Result<(), E>>;
     fn boxed_result<'a>(self) -> Pin<Box<dyn ResultLog<Output = Self::Output> + Send + 'a>>
     where
         Self: Send + 'a;
     fn boxed_local_result<'a>(self) -> Pin<Box<dyn ResultLog<Output = Self::Output> + 'a>>
     where
         Self: 'a;
+    fn forward_logs<S, T, E, E2>(self, sink: S) -> impl Future<Output = Self::Output>
+    where
+        Self: ResultLog<Output = Result<T, E>>,
+        S: Sink<LogMessage, Error = E2>,
+        E: From<E2>;
 }
 
 impl<L> ResultLogExt for L
@@ -224,18 +265,6 @@ where
             result: AndThenLogResult::First { mapper: Some(f) },
         }
     }
-    fn drive_result<D, T, E>(self, driver: D) -> DriveResult<Self, D, E>
-    where
-        Self: ResultLog<Output = Result<T, E>> + Sized,
-        D: Future<Output = Result<(), E>>,
-    {
-        DriveResult {
-            result: self,
-            driver,
-            driving: true,
-            drive_err: None,
-        }
-    }
 
     fn fill_operation<T>(self, op: Operation) -> impl ResultLog<Output = Result<T, DaemonError>>
     where
@@ -254,6 +283,19 @@ where
         Self: 'a,
     {
         Box::pin(self)
+    }
+
+    async fn forward_logs<S, T, E, E2>(self, sink: S) -> Self::Output
+    where
+        Self: ResultLog<Output = Result<T, E>>,
+        S: Sink<LogMessage, Error = E2>,
+        E: From<E2>,
+    {
+        let mut res = pin!(self);
+        let mut try_res = (&mut res).map(Ok);
+        let mut sink = pin!(sink);
+        sink.send_all(&mut try_res).await?;
+        res.await
     }
 }
 
@@ -416,7 +458,7 @@ where
     {
         ResultProcess {
             stream: logs,
-            result: self,
+            result: maybe_done(self),
         }
     }
 
@@ -429,180 +471,25 @@ where
     }
 }
 
-pub trait ReadResult<R, W, SR, SW, T>: Sized {
-    fn read_result(
-        self,
-        result: Result<(), DaemonError>,
-        reader: R,
-        writer: Option<W>,
-        source: Option<SR>,
-        sink: Option<SW>,
-    ) -> impl Future<Output = DaemonResult<T>> + Send;
-}
-
-impl<R, W, SR, SW, T> ReadResult<R, W, SR, SW, T> for ()
-where
-    T: NixDeserialize,
-    R: NixRead + AsyncRead + fmt::Debug + Unpin + Send,
-    DaemonError: From<<R as NixRead>::Error>,
-    W: Send,
-    SR: Send,
-    SW: Send,
-{
-    async fn read_result(
-        self,
-        result: Result<(), DaemonError>,
-        mut reader: R,
-        _writer: Option<W>,
-        _source: Option<SR>,
-        _sink: Option<SW>,
-    ) -> DaemonResult<T> {
-        match result {
-            Err(err) => Err(err),
-            Ok(_) => Ok(reader.read_value().await?),
-        }
-    }
-}
-
-pub struct ResultFn<F, FFut> {
-    f: F,
-    _res: PhantomData<fn(FFut)>,
-}
-
-impl<R, W, SR, SW, T, F, FFut> ReadResult<R, W, SR, SW, T> for ResultFn<F, FFut>
-where
-    F: FnOnce(Result<(), DaemonError>, R, Option<W>, Option<SR>, Option<SW>) -> FFut + Send,
-    FFut: Future<Output = DaemonResult<T>> + Send,
-    R: Send,
-    W: Send,
-    SR: Send,
-    SW: Send,
-{
-    async fn read_result(
-        self,
-        result: Result<(), DaemonError>,
-        reader: R,
-        writer: Option<W>,
-        source: Option<SR>,
-        sink: Option<SW>,
-    ) -> DaemonResult<T> {
-        (self.f)(result, reader, writer, source, sink).await
-    }
-}
-
-pub struct ProcessStderr<R, W, SR, SW, T, TFut> {
-    result: Option<Result<(), DaemonError>>,
-    reader: R,
-    writer: Option<W>,
-    source: Option<SR>,
-    sink: Option<SW>,
-    read_result: TFut,
-    _result_type: PhantomData<T>,
-}
-
-impl<R, T> ProcessStderr<R, NixWriter<Cursor<Vec<u8>>>, Cursor<Vec<u8>>, Cursor<Vec<u8>>, T, ()> {
-    pub fn new(reader: R) -> Self {
-        ProcessStderr {
-            reader,
-            writer: None,
-            source: None,
-            sink: None,
-            result: None,
-            read_result: (),
-            _result_type: PhantomData,
-        }
-    }
-}
-
-impl<R, W, SR, SW, T, TFut> ProcessStderr<R, W, SR, SW, T, TFut> {
-    pub fn with_source<NW, NSR>(
-        self,
-        writer: NW,
-        source: NSR,
-    ) -> ProcessStderr<R, NW, NSR, SW, T, TFut> {
-        ProcessStderr {
-            result: self.result,
-            reader: self.reader,
-            writer: Some(writer),
-            source: Some(source),
-            sink: self.sink,
-            read_result: self.read_result,
-            _result_type: PhantomData,
-        }
-    }
-    /*
-    pub fn with_sink<NSW>(self, sink: NSW) -> ProcessStderr<R, W, SR, NSW, T, TFut> {
-        ProcessStderr {
-            result: self.result,
-            reader: self.reader,
-            writer: self.writer,
-            source: self.source,
-            sink: Some(sink),
-            read_result: self.read_result,
-            _result_type: PhantomData,
-        }
-    }
-     */
-
-    pub fn result_fn<F, FFut>(self, f: F) -> ProcessStderr<R, W, SR, SW, T, ResultFn<F, FFut>>
-    where
-        F: FnOnce(Result<(), DaemonError>, R, Option<W>, Option<SR>, Option<SW>) -> FFut,
-        FFut: Future<Output = DaemonResult<T>>,
-    {
-        ProcessStderr {
-            result: self.result,
-            reader: self.reader,
-            writer: self.writer,
-            source: self.source,
-            sink: self.sink,
-            read_result: ResultFn {
-                f,
-                _res: PhantomData,
-            },
-            _result_type: PhantomData,
-        }
-    }
-}
-
-impl<R, W, SR, SW, T, TFut> ProcessStderr<R, W, SR, SW, T, TFut>
-where
-    W: NixWrite + AsyncWrite + fmt::Debug + Unpin + Send,
-    DaemonError: From<<W as NixWrite>::Error>,
-    SR: AsyncBufRead + Unpin + Send,
-{
-    async fn process_read(&mut self, len: usize) -> Result<(), DaemonError> {
-        if let Some(source) = self.source.as_mut() {
-            let buf = source.fill_buf().await?;
-            let writer = self.writer.as_mut().unwrap();
-            let len = min(len, buf.len());
-            writer.write_slice(&buf[..len]).await?;
-            writer.flush().await?;
-            source.consume(len);
-            Ok(())
-        } else {
-            Err(DaemonErrorKind::NoSourceForLoggerRead.into())
-        }
-    }
-}
-
 pin_project! {
-    pub struct ResultProcess<S, R> {
+    pub struct ResultProcess<S, R: Future> {
         #[pin]
         pub stream: S,
         #[pin]
-        pub result: R,
+        pub result: MaybeDone<R>,
     }
 }
-impl<R> ResultProcess<Empty<LogMessage>, R> {
+
+impl<R: Future> ResultProcess<Empty<LogMessage>, R> {
     pub fn empty(result: R) -> Self {
         Self {
             stream: empty(),
-            result,
+            result: maybe_done(result),
         }
     }
 }
 
-impl<S, R> Stream for ResultProcess<S, R>
+impl<S, R: Future> Stream for ResultProcess<S, R>
 where
     S: Stream<Item = LogMessage>,
 {
@@ -612,7 +499,9 @@ where
         self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<Option<Self::Item>> {
-        self.project().stream.poll_next(cx)
+        let me = self.project();
+        let _ = me.result.poll(cx);
+        me.stream.poll_next(cx)
     }
 }
 
@@ -625,8 +514,14 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
         let mut me = self.project();
-        while ready!(me.stream.as_mut().poll_next(cx)).is_some() {}
-        me.result.poll(cx)
+        loop {
+            let _ = me.result.as_mut().poll(cx);
+            if ready!(me.stream.as_mut().poll_next(cx)).is_none() {
+                break;
+            }
+        }
+        ready!(me.result.as_mut().poll(cx));
+        Poll::Ready(me.result.take_output().unwrap())
     }
 }
 
@@ -737,89 +632,5 @@ where
 
     fn consume(self: Pin<&mut Self>, amt: usize) {
         self.project().result.consume(amt);
-    }
-}
-
-impl<R, W, SR, SW, T, TFut> ProcessStderr<R, W, SR, SW, T, TFut>
-where
-    R: NixRead + AsyncRead + fmt::Debug + Unpin + Send,
-    W: NixWrite + AsyncWrite + fmt::Debug + Unpin + Send,
-    DaemonError: From<<W as NixWrite>::Error> + From<<R as NixRead>::Error>,
-    SR: AsyncBufRead + Unpin + Send,
-    SW: AsyncWrite + fmt::Debug + Unpin + Send,
-    TFut: ReadResult<R, W, SR, SW, T> + Send,
-    T: Send,
-{
-    pub fn stream(mut self) -> impl Stream<Item = LogMessage> + Future<Output = DaemonResult<T>> {
-        let (sender, receiver) = oneshot::channel();
-        ResultProcess {
-            stream: stream! {
-                loop {
-                    trace!("Reading log message");
-                    let msg = self.reader.read_value::<RawLogMessage>().await;
-                    trace!(?msg, "Got log message");
-                    match msg {
-                        Ok(RawLogMessage::Next(text)) => {
-                            yield LogMessage::Message(Message {
-                                text,
-                                level: Verbosity::Error,
-                            });
-                        }
-                        Ok(RawLogMessage::Result(result)) => {
-                            yield LogMessage::Result(result);
-                        }
-                        Ok(RawLogMessage::StartActivity(act)) => {
-                            yield LogMessage::StartActivity(act);
-                        }
-                        Ok(RawLogMessage::StopActivity(act)) => {
-                            yield LogMessage::StopActivity(act);
-                        }
-                        Ok(RawLogMessage::Read(len)) => {
-                            if let Err(err) = self.process_read(len).await {
-                                self.result = Some(Err(err));
-                                break;
-                            }
-                        }
-                        Ok(RawLogMessage::Write(buf)) => {
-                            if let Some(sink) = self.sink.as_mut() {
-                                if let Err(err) = sink.write_all(&buf).await {
-                                    self.result = Some(Err(DaemonError::from(err)));
-                                    break;
-                                }
-                            }
-                        }
-                        Ok(RawLogMessage::Last) => {
-                            trace!("Reading result");
-                            let value = self.reader.read_value().await;
-                            trace!("Read result");
-                            self.result = Some(value.map_err(|err| err.into()));
-                            break;
-                        }
-                        Ok(RawLogMessage::Error(err)) => {
-                            self.result = Some(Err(err.into()));
-                            break;
-                        }
-                        Err(err) => {
-                            self.result = Some(Err(DaemonError::from(err)));
-                            break;
-                        }
-                    }
-                }
-                let _ = sender.send(self);
-            },
-            result: async {
-                let process = receiver.await.unwrap();
-                process
-                    .read_result
-                    .read_result(
-                        process.result.unwrap(),
-                        process.reader,
-                        process.writer,
-                        process.source,
-                        process.sink,
-                    )
-                    .await
-            },
-        }
     }
 }

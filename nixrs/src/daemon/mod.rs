@@ -25,7 +25,7 @@ pub use fail_store::FailStore;
 #[cfg(feature = "nixrs-derive")]
 pub use local::{LocalDaemonStore, LocalHandshakeDaemonStore};
 #[cfg(feature = "nixrs-derive")]
-pub use logger::{DriveResult, FutureResultExt, ResultLog, ResultLogExt, ResultProcess};
+pub use logger::{DriveResult, FutureResultExt, LogSender, ResultLog, ResultLogExt, make_result};
 #[cfg(feature = "nixrs-derive")]
 pub use mutex::{MutexHandshakeStore, MutexStore};
 #[cfg(feature = "nixrs-derive")]

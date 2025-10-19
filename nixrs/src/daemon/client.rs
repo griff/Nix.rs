@@ -12,10 +12,11 @@ use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, AsyncWriteExt as _, copy_bu
 use tokio::net::UnixStream;
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::oneshot;
+use tokio::try_join;
 use tracing::{debug, info, trace};
 
 use super::de::{NixDeserialize, NixRead as _, NixReader, NixReaderBuilder};
-use super::logger::{ProcessStderr, ResultLog, ResultLogExt};
+use super::logger::{ResultLog, ResultLogExt};
 use super::ser::{NixWrite, NixWriter, NixWriterBuilder};
 use super::types::AddToStoreItem;
 use super::wire::logger::RawLogMessage;
@@ -29,7 +30,8 @@ use super::{
     HandshakeDaemonStore, ProtocolVersion, TrustLevel,
 };
 use crate::archive::{NarBytesReader, NarReader};
-use crate::daemon::FutureResultExt;
+use crate::daemon::client::process_stderr::{ProcessStderr, read_logs};
+use crate::daemon::{FutureResultExt, make_result};
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
 use crate::io::{AsyncBufReadCompat, BytesReader, Lending};
@@ -39,6 +41,8 @@ use crate::signature::Signature;
 use crate::store_path::{
     ContentAddressMethodAlgorithm, HasStoreDir, StoreDir, StorePath, StorePathHash, StorePathSet,
 };
+
+mod process_stderr;
 
 pub struct DaemonClientBuilder {
     store_dir: StoreDir,
@@ -265,21 +269,18 @@ where
             writer.flush().await?;
 
             let host = self.host;
-
-            Ok(ProcessStderr::new(reader)
-                .result_fn(move |result, reader, _, _, _| async move {
-                    result?;
-                    let id = CLIENT_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    Ok(DaemonClient {
-                        id,
-                        host,
-                        reader,
-                        writer,
-                        daemon_nix_version,
-                        remote_trusts_us,
-                    })
+            Ok(make_result(move |sender| async move {
+                read_logs(&mut reader, sender).await?;
+                let id = CLIENT_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(DaemonClient {
+                    id,
+                    host,
+                    reader,
+                    writer,
+                    daemon_nix_version,
+                    remote_trusts_us,
                 })
-                .stream())
+            }))
         }
         .future_result()
     }
@@ -341,25 +342,14 @@ where
     {
         async {
             self.writer.flush().await?;
-            Ok(ProcessStderr::new(&mut self.reader).stream())
+            Ok(make_result(move |sender| async move {
+                read_logs(&mut self.reader, sender).await?;
+                let value = self.reader.read_value().await?;
+                Ok(value)
+            }))
         }
         .future_result()
     }
-
-    /*
-    async fn process_stderr_source<SR>(&mut self, source: SR) -> Result<(), DaemonError>
-    where
-        SR: AsyncBufRead + fmt::Debug + Unpin + Send,
-    {
-        self.writer.flush().await?;
-        ProcessStderr::new(
-            &mut self.reader,
-        )
-        .with_source(&mut self.writer, source)
-        .result()
-        .await
-    }
-     */
 }
 
 impl<R, W> HasStoreDir for DaemonClient<R, W> {
@@ -582,10 +572,9 @@ where
             self.writer.write_value(&dont_check_sigs).await?;
             self.writer.flush().await?;
             if self.writer.version().minor() >= 23 {
-                Ok(Either::Left(Either::Left(Box::pin(
-                    ProcessStderr::new(&mut self.reader)
-                        .stream()
-                        .drive_result(async {
+                Ok(Either::Left(Either::Left(Box::pin(make_result(
+                    move |sender| async move {
+                        try_join!(read_logs(&mut self.reader, sender), async {
                             let mut source = source;
                             let mut framed = FramedWriter::new(&mut self.writer);
                             trace!("client:add_to_store_nar:driver: copy_buf");
@@ -595,25 +584,31 @@ where
                             self.writer.flush().await?;
                             trace!("client:add_to_store_nar:driver: done");
                             Ok(()) as DaemonResult<()>
-                        }),
-                ))))
+                        })?;
+                        Ok(())
+                    },
+                )))))
             } else if self.writer.version().minor() >= 21 {
-                Ok(Either::Left(Either::Right(Box::pin(
-                    ProcessStderr::new(&mut self.reader)
-                        .with_source(&mut self.writer, source)
-                        .stream(),
-                ))))
+                Ok(Either::Left(Either::Right(Box::pin(make_result(
+                    move |sender| async move {
+                        ProcessStderr::new(&mut self.reader)
+                            .with_source(&mut self.writer, source)
+                            .forward_logs(sender)
+                            .await
+                    },
+                )))))
             } else {
-                Ok(Either::Right(Box::pin(
-                    ProcessStderr::new(&mut self.reader)
-                        .stream()
-                        .drive_result(async {
+                Ok(Either::Right(Box::pin(make_result(
+                    move |sender| async move {
+                        try_join!(read_logs(&mut self.reader, sender), async {
                             let mut reader = NarReader::new(source);
                             copy_buf(&mut reader, &mut self.writer).await?;
                             self.writer.flush().await?;
                             Ok(()) as DaemonResult<()>
-                        }),
-                )))
+                        })?;
+                        Ok(())
+                    },
+                ))))
             }
         }
         .future_result()
@@ -641,25 +636,26 @@ where
             self.writer.write_value(&dont_check_sigs).await?;
 
             info!(self.id, "add_multiple_to_store {}", self.id);
-            let driver = async {
-                let id = self.id;
-                let version = self.writer.version();
-                let mut writer = NixWriter::builder()
-                    .set_version(version)
-                    .build(FramedWriter::new(&mut self.writer));
 
-                debug!(id, "Write write stream");
-                write_add_multiple_to_store_stream(&mut writer, stream).await?;
-                debug!(id, "Write writer shutdown");
-                writer.shutdown().await?;
-                debug!(id, "Write self.writer flush");
-                self.writer.flush().await?;
-                debug!(id, "Write done");
-                Ok(()) as DaemonResult<()>
-            };
-            Ok(ProcessStderr::new(&mut self.reader)
-                .stream()
-                .drive_result(driver))
+            Ok(make_result(move |sender| async move {
+                try_join!(read_logs(&mut self.reader, sender), async {
+                    let id = self.id;
+                    let version = self.writer.version();
+                    let mut writer = NixWriter::builder()
+                        .set_version(version)
+                        .build(FramedWriter::new(&mut self.writer));
+
+                    debug!(id, "Write write stream");
+                    write_add_multiple_to_store_stream(&mut writer, stream).await?;
+                    debug!(id, "Write writer shutdown");
+                    writer.shutdown().await?;
+                    debug!(id, "Write self.writer flush");
+                    self.writer.flush().await?;
+                    debug!(id, "Write done");
+                    Ok(()) as DaemonResult<()>
+                })?;
+                Ok(())
+            }))
         }
         .future_result()
         .fill_operation(Operation::AddMultipleToStore)
@@ -905,16 +901,17 @@ where
             self.writer.write_value(&Operation::AddBuildLog).await?;
             self.writer.write_value(path).await?;
             self.writer.flush().await?;
-            Ok(ProcessStderr::new(&mut self.reader)
-                .stream()
-                .drive_result(async {
+            Ok(make_result(move |sender| async move {
+                try_join!(read_logs(&mut self.reader, sender), async {
                     let mut source = source;
                     let mut framed = FramedWriter::new(&mut self.writer);
                     copy_buf(&mut source, &mut framed).await?;
                     framed.shutdown().await?;
                     self.writer.flush().await?;
                     Ok(()) as DaemonResult<()>
-                }))
+                })?;
+                Ok(())
+            }))
         }
         .future_result()
         .fill_operation(Operation::AddBuildLog)
@@ -994,16 +991,18 @@ where
             self.writer.write_value(refs).await?;
             self.writer.write_value(&repair).await?;
             self.writer.flush().await?;
-            Ok(ProcessStderr::new(&mut self.reader)
-                .stream()
-                .drive_result(async {
+            Ok(make_result(move |sender| async move {
+                try_join!(read_logs(&mut self.reader, sender), async {
                     let mut source = source;
                     let mut framed = FramedWriter::new(&mut self.writer);
                     copy_buf(&mut source, &mut framed).await?;
                     framed.shutdown().await?;
                     self.writer.flush().await?;
                     Ok(()) as DaemonResult<()>
-                }))
+                })?;
+                let value = self.reader.read_value().await?;
+                Ok(value)
+            }))
         }
         .future_result()
         .fill_operation(Operation::AddToStore)

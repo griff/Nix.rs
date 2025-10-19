@@ -1,9 +1,8 @@
 use std::future::ready;
 
-use futures::stream::empty;
+use crate::daemon::FutureResultExt;
 use crate::store_path::{HasStoreDir, StoreDir};
 
-use super::logger::ResultProcess;
 use super::{DaemonResult, DaemonStore, HandshakeDaemonStore, ResultLog};
 
 #[derive(Debug)]
@@ -18,10 +17,7 @@ impl HandshakeDaemonStore for FailStore {
     type Store = Self;
 
     fn handshake(self) -> impl ResultLog<Output = DaemonResult<Self::Store>> {
-        ResultProcess {
-            stream: empty(),
-            result: ready(Ok(self)),
-        }
+        ready(Ok(self)).empty_logs()
     }
 }
 
