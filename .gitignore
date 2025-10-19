@@ -2,7 +2,10 @@
 /examples/nix-docker-build/ssh/resolved
 /examples/nix-docker-build/ssh/test-store
 /.direnv
+/.lsp/
+/.vscode/
 target
+.DS_Store
 
 # Ignore Nix result symlinks
 result
