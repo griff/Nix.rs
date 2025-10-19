@@ -17,6 +17,8 @@ use clap::Parser;
 use nixrs::daemon::DaemonStore;
 use nixrs::daemon::HandshakeDaemonStore;
 use nixrs::daemon::{FutureResultExt, LocalDaemonStore, wire::types2::BuildMode};
+use nixrs::store_path::HasStoreDir;
+use nixrs::store_path::StoreDir;
 use nixrs_capnp::capnp::nix_daemon_capnp;
 use nixrs_capnp::nix_daemon::HandshakeLoggedCapnpServer;
 use nixrs_capnp::nix_daemon::LoggedCapnpStore;
@@ -34,7 +36,23 @@ use tracing::{error, info, level_filters::LevelFilter};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 #[derive(Debug)]
-struct SleepStore(Duration);
+struct SleepStore {
+    store_dir: StoreDir,
+    duration: Duration,
+}
+impl SleepStore {
+    pub fn new(duration: Duration) -> Self {
+        Self {
+            store_dir: Default::default(),
+            duration,
+        }
+    }
+}
+impl HasStoreDir for SleepStore {
+    fn store_dir(&self) -> &StoreDir {
+        &self.store_dir
+    }
+}
 impl HandshakeDaemonStore for SleepStore {
     type Store = Self;
 
@@ -59,7 +77,7 @@ impl DaemonStore for SleepStore {
         _drvs: &'a [nixrs::derived_path::DerivedPath],
         _mode: nixrs::daemon::wire::types2::BuildMode,
     ) -> impl nixrs::daemon::ResultLog<Output = nixrs::daemon::DaemonResult<()>> + 'a {
-        let duration = self.0;
+        let duration = self.duration;
         async move {
             info!(?duration, "Sleeping build");
             sleep(duration).await;
@@ -73,7 +91,10 @@ impl DaemonStore for SleepStore {
 impl Clone for SleepStore {
     fn clone(&self) -> Self {
         eprintln!("Cloning SleepStore");
-        Self(self.0)
+        Self {
+            store_dir: self.store_dir.clone(),
+            duration: self.duration,
+        }
     }
 }
 
@@ -206,7 +227,7 @@ async fn run_server(listener: UnixListener, sleep: Duration) {
     });
     let reader = InterruptedReader::new(reader, signal_tx);
     let client: nix_daemon_capnp::logged_nix_daemon::Client =
-        new_client(HandshakeLoggedCapnpServer::new(SleepStore(sleep)));
+        new_client(HandshakeLoggedCapnpServer::new(SleepStore::new(sleep)));
     let mut conn = RpcSystemBuilder::new()
         .bootstrap(client)
         .serve_connection(join(reader, writer));

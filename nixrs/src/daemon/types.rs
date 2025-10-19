@@ -26,7 +26,8 @@ use crate::signature::Signature;
 #[cfg(any(test, feature = "test"))]
 use crate::signature::proptests::arb_signatures;
 use crate::store_path::{
-    ContentAddress, ContentAddressMethodAlgorithm, StorePath, StorePathHash, StorePathSet,
+    ContentAddress, ContentAddressMethodAlgorithm, HasStoreDir, StorePath, StorePathHash,
+    StorePathSet,
 };
 
 use super::ProtocolVersion;
@@ -288,13 +289,13 @@ pub struct AddToStoreItem<R> {
     pub reader: R,
 }
 
-pub trait HandshakeDaemonStore {
+pub trait HandshakeDaemonStore: HasStoreDir {
     type Store: DaemonStore + Send;
     fn handshake(self) -> impl ResultLog<Output = DaemonResult<Self::Store>> + Send;
 }
 
 #[allow(unused_variables)]
-pub trait DaemonStore: Send {
+pub trait DaemonStore: HasStoreDir + Send {
     fn trust_level(&self) -> TrustLevel;
 
     /// Sets options on server.

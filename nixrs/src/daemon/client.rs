@@ -37,7 +37,7 @@ use crate::log::{LogMessage, Message, Verbosity};
 use crate::realisation::{DrvOutput, Realisation};
 use crate::signature::Signature;
 use crate::store_path::{
-    ContentAddressMethodAlgorithm, StoreDir, StorePath, StorePathHash, StorePathSet,
+    ContentAddressMethodAlgorithm, HasStoreDir, StoreDir, StorePath, StorePathHash, StorePathSet,
 };
 
 pub struct DaemonClientBuilder {
@@ -183,6 +183,12 @@ pub struct DaemonHandshakeClient<R, W> {
     max_version: ProtocolVersion,
     reader: NixReader<Lending<BytesReader<R>, NarBytesReader<BytesReader<R>>>>,
     writer: NixWriter<W>,
+}
+
+impl<R, W> HasStoreDir for DaemonHandshakeClient<R, W> {
+    fn store_dir(&self) -> &StoreDir {
+        self.reader.store_dir()
+    }
 }
 
 impl<R, W> HandshakeDaemonStore for DaemonHandshakeClient<R, W>
@@ -354,6 +360,12 @@ where
         .await
     }
      */
+}
+
+impl<R, W> HasStoreDir for DaemonClient<R, W> {
+    fn store_dir(&self) -> &StoreDir {
+        self.reader.store_dir()
+    }
 }
 
 impl<R, W> DaemonStore for DaemonClient<R, W>

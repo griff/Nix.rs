@@ -5,6 +5,7 @@ use std::{pin::pin, sync::Arc};
 use crate::daemon::{
     DaemonStore, FutureResultExt as _, HandshakeDaemonStore, ResultLog, ResultLogExt,
 };
+use crate::store_path::{HasStoreDir, StoreDir};
 use async_stream::stream;
 use futures::channel::oneshot;
 use futures::{FutureExt as _, StreamExt as _};
@@ -22,6 +23,11 @@ impl<HS> MutexHandshakeStore<HS> {
     }
 }
 
+impl<HS: HasStoreDir> HasStoreDir for MutexHandshakeStore<HS> {
+    fn store_dir(&self) -> &StoreDir {
+        self.inner.store_dir()
+    }
+}
 impl<HS, S> HandshakeDaemonStore for MutexHandshakeStore<HS>
 where
     HS: HandshakeDaemonStore<Store = S>,
@@ -37,14 +43,17 @@ where
 #[derive(Debug)]
 pub struct MutexStore<S> {
     trust: super::TrustLevel,
+    store_dir: StoreDir,
     m: Arc<Mutex<S>>,
 }
 
 impl<S: DaemonStore + Send> MutexStore<S> {
     pub fn new(store: S) -> Self {
         let trust = store.trust_level();
+        let store_dir = store.store_dir().clone();
         Self {
             trust,
+            store_dir,
             m: Arc::new(Mutex::new(store)),
         }
     }
@@ -54,6 +63,7 @@ impl<S> Clone for MutexStore<S> {
     fn clone(&self) -> Self {
         Self {
             trust: self.trust,
+            store_dir: self.store_dir.clone(),
             m: self.m.clone(),
         }
     }
@@ -76,6 +86,12 @@ macro_rules! mutex_result {
             let _ = sender.send(ret);
         })
     }};
+}
+
+impl<S: HasStoreDir> HasStoreDir for MutexStore<S> {
+    fn store_dir(&self) -> &crate::store_path::StoreDir {
+        &self.store_dir
+    }
 }
 
 impl<S> DaemonStore for MutexStore<S>

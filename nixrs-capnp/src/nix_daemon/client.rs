@@ -16,7 +16,7 @@ use nixrs::daemon::{
 };
 use nixrs::derived_path::DerivedPath;
 use nixrs::log::LogMessage;
-use nixrs::store_path::{StorePath, StorePathSet};
+use nixrs::store_path::{HasStoreDir, StoreDir, StorePath, StorePathSet};
 use tokio::io::{AsyncWriteExt, BufReader, copy_buf, simplex};
 
 use crate::capnp::nix_daemon_capnp;
@@ -24,18 +24,32 @@ use crate::convert::{BuildFrom, ReadInto};
 use crate::{DEFAULT_BUF_SIZE, from_error};
 
 pub struct CapnpStore {
+    store_dir: StoreDir,
     store: nix_daemon_capnp::nix_daemon::Client,
 }
 
 impl CapnpStore {
-    pub fn new(client: nix_daemon_capnp::nix_daemon::Client) -> Self {
-        Self { store: client }
+    pub fn new(store: nix_daemon_capnp::nix_daemon::Client) -> Self {
+        Self::with_store_dir(store, StoreDir::default())
+    }
+
+    pub fn with_store_dir(
+        store: nix_daemon_capnp::nix_daemon::Client,
+        store_dir: StoreDir,
+    ) -> Self {
+        Self { store, store_dir }
     }
 }
 
 impl fmt::Debug for CapnpStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CapnpStore").finish()
+    }
+}
+
+impl HasStoreDir for CapnpStore {
+    fn store_dir(&self) -> &StoreDir {
+        &self.store_dir
     }
 }
 
@@ -338,18 +352,32 @@ impl nix_daemon_capnp::logger::Server for LoggerStream {
 }
 
 pub struct LoggedCapnpStore {
+    store_dir: StoreDir,
     store: nix_daemon_capnp::logged_nix_daemon::Client,
 }
 
 impl LoggedCapnpStore {
-    pub fn new(client: nix_daemon_capnp::logged_nix_daemon::Client) -> Self {
-        Self { store: client }
+    pub fn new(store: nix_daemon_capnp::logged_nix_daemon::Client) -> Self {
+        Self::with_store_dir(store, Default::default())
+    }
+
+    pub fn with_store_dir(
+        store: nix_daemon_capnp::logged_nix_daemon::Client,
+        store_dir: StoreDir,
+    ) -> Self {
+        Self { store, store_dir }
     }
 }
 
 impl fmt::Debug for LoggedCapnpStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("LoggedCapnpStore").finish()
+    }
+}
+
+impl HasStoreDir for LoggedCapnpStore {
+    fn store_dir(&self) -> &StoreDir {
+        &self.store_dir
     }
 }
 

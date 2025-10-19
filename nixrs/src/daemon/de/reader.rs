@@ -14,7 +14,7 @@ use crate::io::{
     AsyncBytesRead, BytesReader, DEFAULT_MAX_BUF_SIZE, DEFAULT_RESERVED_BUF_SIZE,
     TryReadBytesLimited, TryReadU64,
 };
-use crate::store_path::StoreDir;
+use crate::store_path::{HasStoreDir, StoreDir};
 
 use super::NixRead;
 
@@ -121,6 +121,11 @@ impl<R> NixReader<R> {
         &mut self.inner
     }
 }
+impl<R> HasStoreDir for NixReader<R> {
+    fn store_dir(&self) -> &StoreDir {
+        &self.store_dir
+    }
+}
 
 impl<R> NixReader<R>
 where
@@ -141,10 +146,6 @@ where
 
     fn version(&self) -> ProtocolVersion {
         self.version
-    }
-
-    fn store_dir(&self) -> &StoreDir {
-        &self.store_dir
     }
 
     async fn try_read_number(&mut self) -> Result<Option<u64>, Self::Error> {

@@ -5,7 +5,7 @@ use std::{fmt, io};
 
 use ::bytes::Bytes;
 
-use crate::store_path::StoreDir;
+use crate::store_path::HasStoreDir;
 
 use super::ProtocolVersion;
 
@@ -61,13 +61,12 @@ impl Error for io::Error {
 /// Basically there are two basic types in the Nix daemon protocol
 /// u64 and a bytes buffer. Everything else is more or less built on
 /// top of these two types.
-pub trait NixRead: Send {
+pub trait NixRead: HasStoreDir + Send {
     type Error: Error + Send;
 
     /// Some types are serialized differently depending on the version
     /// of the protocol and so this can be used for implementing that.
     fn version(&self) -> ProtocolVersion;
-    fn store_dir(&self) -> &StoreDir;
 
     /// Read a single u64 from the protocol.
     /// This returns an Option to support gracefull shutdown.
@@ -154,10 +153,6 @@ impl<T: ?Sized + NixRead> NixRead for &mut T {
 
     fn version(&self) -> ProtocolVersion {
         (**self).version()
-    }
-
-    fn store_dir(&self) -> &StoreDir {
-        (**self).store_dir()
     }
 
     fn try_read_number(

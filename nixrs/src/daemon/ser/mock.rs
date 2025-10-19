@@ -8,6 +8,7 @@ use ::proptest::prelude::TestCaseError;
 use thiserror::Error;
 
 use crate::daemon::ProtocolVersion;
+use crate::store_path::HasStoreDir;
 use crate::store_path::StoreDir;
 
 use super::NixWrite;
@@ -303,15 +304,17 @@ impl Mock {
     }
 }
 
+impl HasStoreDir for Mock {
+    fn store_dir(&self) -> &StoreDir {
+        &self.store_dir
+    }
+}
+
 impl NixWrite for Mock {
     type Error = Error;
 
     fn version(&self) -> ProtocolVersion {
         self.version
-    }
-
-    fn store_dir(&self) -> &StoreDir {
-        &self.store_dir
     }
 
     async fn write_number(&mut self, value: u64) -> Result<(), Self::Error> {

@@ -16,17 +16,19 @@ use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
 use crate::realisation::{DrvOutput, Realisation};
 use crate::signature::Signature;
-use crate::store_path::{ContentAddressMethodAlgorithm, StorePath, StorePathHash, StorePathSet};
+use crate::store_path::{
+    ContentAddressMethodAlgorithm, HasStoreDir, StorePath, StorePathHash, StorePathSet,
+};
 
 use super::wire::types::Operation;
 
-pub trait LocalHandshakeDaemonStore {
+pub trait LocalHandshakeDaemonStore: HasStoreDir {
     type Store: LocalDaemonStore;
     fn handshake(self) -> impl ResultLog<Output = DaemonResult<Self::Store>>;
 }
 
 #[allow(unused_variables)]
-pub trait LocalDaemonStore {
+pub trait LocalDaemonStore: HasStoreDir {
     fn trust_level(&self) -> TrustLevel;
 
     /// Sets options on server.

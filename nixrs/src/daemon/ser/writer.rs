@@ -11,7 +11,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::daemon::ProtocolVersion;
 use crate::io::{DEFAULT_BUF_SIZE, RESERVED_BUF_SIZE};
-use crate::store_path::StoreDir;
+use crate::store_path::{HasStoreDir, StoreDir};
 use crate::wire::{ZEROS, calc_padding};
 
 use super::{Error, NixWrite};
@@ -285,6 +285,12 @@ unsafe impl BufMut for LimitBuffer {
     }
 }
 
+impl<W> HasStoreDir for NixWriter<W> {
+    fn store_dir(&self) -> &StoreDir {
+        &self.store_dir
+    }
+}
+
 impl<W> NixWrite for NixWriter<W>
 where
     W: AsyncWrite + Send + Unpin,
@@ -293,10 +299,6 @@ where
 
     fn version(&self) -> ProtocolVersion {
         self.version
-    }
-
-    fn store_dir(&self) -> &StoreDir {
-        &self.store_dir
     }
 
     async fn write_number(&mut self, value: u64) -> Result<(), Self::Error> {

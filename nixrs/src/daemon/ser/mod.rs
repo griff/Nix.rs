@@ -2,7 +2,7 @@ use std::error::Error as StdError;
 use std::future::Future;
 use std::{fmt, io};
 
-use crate::store_path::StoreDir;
+use crate::store_path::HasStoreDir;
 
 use super::ProtocolVersion;
 
@@ -50,13 +50,12 @@ impl Error for io::Error {
     }
 }
 
-pub trait NixWrite: Send {
+pub trait NixWrite: HasStoreDir + Send {
     type Error: Error;
 
     /// Some types are serialized differently depending on the version
     /// of the protocol and so this can be used for implementing that.
     fn version(&self) -> ProtocolVersion;
-    fn store_dir(&self) -> &StoreDir;
 
     fn write_number(&mut self, value: u64) -> impl Future<Output = Result<(), Self::Error>> + Send;
     fn write_slice(&mut self, buf: &[u8]) -> impl Future<Output = Result<(), Self::Error>> + Send;
@@ -87,10 +86,6 @@ impl<T: NixWrite> NixWrite for &mut T {
 
     fn version(&self) -> ProtocolVersion {
         (**self).version()
-    }
-
-    fn store_dir(&self) -> &StoreDir {
-        (**self).store_dir()
     }
 
     fn write_number(&mut self, value: u64) -> impl Future<Output = Result<(), Self::Error>> + Send {

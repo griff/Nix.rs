@@ -140,6 +140,16 @@ where
     }
 }
 
+pub trait HasStoreDir {
+    fn store_dir(&self) -> &StoreDir;
+}
+
+impl<T: ?Sized + HasStoreDir> HasStoreDir for &mut T {
+    fn store_dir(&self) -> &StoreDir {
+        (**self).store_dir()
+    }
+}
+
 #[cfg(any(test, feature = "test"))]
 pub mod proptest {
     use std::path::{MAIN_SEPARATOR_STR, PathBuf};

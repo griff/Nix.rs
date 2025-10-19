@@ -7,6 +7,7 @@ use bytes::Bytes;
 use thiserror::Error;
 
 use crate::daemon::ProtocolVersion;
+use crate::store_path::HasStoreDir;
 use crate::store_path::StoreDir;
 
 use super::NixRead;
@@ -155,15 +156,17 @@ pub struct Mock {
     ops: VecDeque<Operation>,
 }
 
+impl HasStoreDir for Mock {
+    fn store_dir(&self) -> &StoreDir {
+        &self.store_dir
+    }
+}
+
 impl NixRead for Mock {
     type Error = Error;
 
     fn version(&self) -> ProtocolVersion {
         self.version
-    }
-
-    fn store_dir(&self) -> &StoreDir {
-        &self.store_dir
     }
 
     async fn try_read_number(&mut self) -> Result<Option<u64>, Self::Error> {

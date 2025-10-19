@@ -25,7 +25,9 @@ use crate::io::{AsyncBufReadCompat, BytesReader};
 use crate::log::LogMessage;
 use crate::realisation::{DrvOutput, Realisation};
 use crate::signature::Signature;
-use crate::store_path::{ContentAddressMethodAlgorithm, StorePath, StorePathHash, StorePathSet};
+use crate::store_path::{
+    ContentAddressMethodAlgorithm, HasStoreDir, StorePath, StorePathHash, StorePathSet,
+};
 
 use super::de::{NixRead, NixReader};
 use super::ser::{NixWrite, NixWriter};
@@ -208,6 +210,12 @@ where
 }
 
 struct BoxedStore<S>(S);
+
+impl<S: HasStoreDir> HasStoreDir for BoxedStore<S> {
+    fn store_dir(&self) -> &crate::store_path::StoreDir {
+        self.0.store_dir()
+    }
+}
 
 #[warn(clippy::missing_trait_methods)]
 impl<S> DaemonStore for BoxedStore<S>

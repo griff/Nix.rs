@@ -46,7 +46,9 @@ use crate::log::{Activity, ActivityResult, LogMessage, Message, StopActivity};
 use crate::pretty_prop_assert_eq;
 use crate::realisation::{DrvOutput, Realisation};
 use crate::signature::Signature;
-use crate::store_path::{ContentAddressMethodAlgorithm, StorePath, StorePathHash, StorePathSet};
+use crate::store_path::{
+    ContentAddressMethodAlgorithm, HasStoreDir, StoreDir, StorePath, StorePathHash, StorePathSet,
+};
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
@@ -1644,6 +1646,7 @@ impl<'b, R: Clone, O: LogBuild> LogBuilder<'b, R, O> {
 
 pub struct Builder<R> {
     trusted_client: TrustLevel,
+    store_dir: StoreDir,
     handshake_logs: VecDeque<LogMessage>,
     ops: VecDeque<LogOperation>,
     reporter: R,
@@ -2048,6 +2051,7 @@ impl<R> Builder<R> {
     pub fn set_reporter<R2>(&self, reporter: R2) -> Builder<R2> {
         Builder {
             trusted_client: self.trusted_client,
+            store_dir: self.store_dir.clone(),
             handshake_logs: self.handshake_logs.clone(),
             ops: self.ops.clone(),
             reporter,
@@ -2062,6 +2066,7 @@ where
     pub fn build(&self) -> MockStore<R> {
         MockStore {
             trusted_client: self.trusted_client,
+            store_dir: self.store_dir.clone(),
             handshake_logs: self.handshake_logs.clone(),
             ops: self.ops.clone(),
             reporter: self.reporter.clone(),
@@ -2073,6 +2078,7 @@ impl Builder<()> {
     pub fn new() -> Self {
         Builder {
             trusted_client: TrustLevel::Unknown,
+            store_dir: Default::default(),
             ops: Default::default(),
             handshake_logs: Default::default(),
             reporter: (),
@@ -2092,6 +2098,7 @@ where
     R: MockReporter,
 {
     trusted_client: TrustLevel,
+    store_dir: StoreDir,
     handshake_logs: VecDeque<LogMessage>,
     ops: VecDeque<LogOperation>,
     reporter: R,
@@ -2165,6 +2172,15 @@ where
         for op in self.ops.drain(..) {
             self.reporter.unread_operation(op).unwrap();
         }
+    }
+}
+
+impl<R> HasStoreDir for MockStore<R>
+where
+    R: MockReporter,
+{
+    fn store_dir(&self) -> &StoreDir {
+        &self.store_dir
     }
 }
 
