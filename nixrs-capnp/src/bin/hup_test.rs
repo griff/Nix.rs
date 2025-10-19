@@ -20,6 +20,7 @@ use nixrs::daemon::{FutureResultExt, LocalDaemonStore, wire::types2::BuildMode};
 use nixrs::store_path::HasStoreDir;
 use nixrs::store_path::StoreDir;
 use nixrs_capnp::capnp::nix_daemon_capnp;
+use nixrs_capnp::capnp::nix_daemon_capnp::logged_nix_daemon;
 use nixrs_capnp::nix_daemon::HandshakeLoggedCapnpServer;
 use nixrs_capnp::nix_daemon::LoggedCapnpStore;
 use pin_project_lite::pin_project;
@@ -345,11 +346,11 @@ async fn run_main(args: Args) {
         run_server(listener, args.server_sleep).await;
     });
 
-    let client: nixrs_capnp::capnp::nix_daemon_capnp::logged_nix_daemon::Client =
-        ClientBuilder::default()
-            .connect_unix(args.bind)
-            .await
-            .unwrap();
+    let client = ClientBuilder::default()
+        .connect_unix::<logged_nix_daemon::Client, _>(args.bind)
+        .await
+        .unwrap()
+        .into_client();
     let mut store = LoggedCapnpStore::new(client);
 
     /*

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use capnp_rpc_tokio::client::ClientBuilder;
 use clap::Parser;
 use nixrs::daemon::server;
+use nixrs_capnp::capnp::nix_daemon_capnp::logged_nix_daemon;
 use nixrs_capnp::nix_daemon::LoggedCapnpStore;
 use tokio::net::UnixListener;
 use tokio::task::LocalSet;
@@ -73,11 +74,11 @@ async fn shutdown_signal() {
 }
 
 async fn run_main(args: Args) {
-    let client: nixrs_capnp::capnp::nix_daemon_capnp::logged_nix_daemon::Client =
-        ClientBuilder::default()
-            .connect_unix(args.socket)
-            .await
-            .unwrap();
+    let client = ClientBuilder::default()
+        .connect_unix::<logged_nix_daemon::Client, _>(args.socket)
+        .await
+        .unwrap()
+        .into_client();
     let mut signal = std::pin::pin!(shutdown_signal());
 
     if args.stdio {

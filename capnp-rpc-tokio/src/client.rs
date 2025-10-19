@@ -1,4 +1,4 @@
-use std::{path::Path, rc::Rc};
+use std::{ops::Deref, path::Path, rc::Rc};
 
 use capnp::{
     capability::{FromClientHook, Promise},
@@ -42,14 +42,14 @@ impl ClientBuilder {
         self
     }
 
-    pub async fn connect_io<C, IO>(self, io: IO) -> capnp::Result<C>
+    pub async fn connect_io<C, IO>(self, io: IO) -> capnp::Result<ShutdownClient<C>>
     where
         C: FromClientHook,
         IO: AsyncRead + AsyncWrite + Unpin + 'static,
     {
         let shutdown = GracefulShutdown::new();
         let mut conn = self.inner.connect(io);
-        let client: capnp::capability::Client = conn.server_bootstrap();
+        let client: C = conn.server_bootstrap();
         let watcher = shutdown.watcher();
 
         tokio::task::spawn_local(async move {
@@ -57,16 +57,15 @@ impl ClientBuilder {
                 error!("Failed to run RPC system: {err:#}");
             }
         });
-        let hook = Box::new(ShutdownHook {
-            inner: client.hook,
-            shutdown: Rc::new(ShutdownInner {
+        Ok(ShutdownClient::new(
+            client,
+            Rc::new(ShutdownInner {
                 actual: Some(shutdown),
             }),
-        });
-        Ok(C::new(hook))
+        ))
     }
 
-    pub async fn connect_unix<C, P>(self, path: P) -> capnp::Result<C>
+    pub async fn connect_unix<C, P>(self, path: P) -> capnp::Result<ShutdownClient<C>>
     where
         C: FromClientHook,
         P: AsRef<Path>,
@@ -75,7 +74,7 @@ impl ClientBuilder {
         self.connect_io(stream).await
     }
 
-    pub async fn connect_tcp<C, A>(self, addr: A) -> capnp::Result<C>
+    pub async fn connect_tcp<C, A>(self, addr: A) -> capnp::Result<ShutdownClient<C>>
     where
         C: FromClientHook,
         A: ToSocketAddrs,
@@ -94,6 +93,58 @@ impl Drop for ShutdownInner {
         if let Some(actual) = self.actual.take() {
             actual.shutdown_background();
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct ShutdownClient<C> {
+    client: C,
+    shutdown: Rc<ShutdownInner>,
+}
+
+impl<C> ShutdownClient<C>
+where
+    C: FromClientHook,
+{
+    fn new(client: C, shutdown: Rc<ShutdownInner>) -> Self {
+        Self { client, shutdown }
+    }
+
+    pub fn wrap<NC>(self, client: NC) -> ShutdownClient<NC> {
+        ShutdownClient {
+            client,
+            shutdown: self.shutdown,
+        }
+    }
+
+    pub fn inner(&self) -> &C {
+        &self.client
+    }
+
+    pub fn into_inner(self) -> C {
+        self.client
+    }
+
+    pub fn into_client(self) -> C {
+        let hook = Box::new(ShutdownHook {
+            inner: self.client.into_client_hook(),
+            shutdown: self.shutdown,
+        });
+        C::new(hook)
+    }
+}
+
+impl<C> Deref for ShutdownClient<C> {
+    type Target = C;
+
+    fn deref(&self) -> &Self::Target {
+        &self.client
+    }
+}
+
+impl<C> AsRef<C> for ShutdownClient<C> {
+    fn as_ref(&self) -> &C {
+        &self.client
     }
 }
 
