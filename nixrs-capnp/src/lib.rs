@@ -1,5 +1,5 @@
 pub mod capnp;
-mod convert;
+pub mod convert;
 pub mod lookup;
 pub mod nix_daemon;
 
