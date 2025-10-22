@@ -27,7 +27,7 @@ use tokio::io::copy_buf;
 use crate::assert_result;
 use crate::{ENV_NIX_IMPL, NixImpl as _, prepare_mock, process_logs, run_store_test};
 
-#[tokio::test]
+#[test_log::test(tokio::test)]
 #[should_panic(
     expected = "store dropped with LogOperation { operation: IsValidPath(StorePath(00000000000000000000000000000000-_), Ok(true)), logs: [] } operation still unread"
 )]
@@ -55,6 +55,7 @@ async fn check_unread_fails() {
     .unwrap();
 }
 
+#[test_log::test(tokio::test)]
 #[rstest]
 #[case::message(vec![LogMessage::message("Hello")])]
 #[case::message_cr(vec![LogMessage::message("Hello\r")])]
@@ -75,7 +76,6 @@ async fn check_unread_fails() {
     fields: vec![nixrs::log::Field::Int(44), nixrs::log::Field::String("More path".into())],
 })])]
 #[case::multiple(vec![LogMessage::message("Hello"), LogMessage::message("World")])]
-#[tokio::test]
 async fn op_logs(#[case] mut logs: Vec<LogMessage>) {
     let nix = ENV_NIX_IMPL.deref();
     if nix.is_skipped("unittests::op_logs") {
@@ -110,12 +110,12 @@ async fn op_logs(#[case] mut logs: Vec<LogMessage>) {
     .unwrap();
 }
 
+#[test_log::test(tokio::test)]
 #[rstest]
 #[case::single(vec![LogMessage::message("Hello")])]
 #[case::empty(vec![LogMessage::message("")])]
 #[case::whitespace(vec![LogMessage::message("Lines\n  More\n   ")])]
 #[case::multiple(vec![LogMessage::message("Hello"), LogMessage::message("World")])]
-#[tokio::test]
 async fn handshake_logs(#[case] logs: Vec<LogMessage>) {
     let nix = ENV_NIX_IMPL.deref();
     if nix.is_skipped("unittests::handshake_logs") {
@@ -141,7 +141,7 @@ async fn handshake_logs(#[case] logs: Vec<LogMessage>) {
 }
 
 /*
-#[nixrs_test]
+#[test_log::test(tokio::test)]
 #[rstest]
 #[case(ClientOptions::default(), Ok(()), Ok(()))]
 #[case(ClientOptions::default(), Err(DaemonError::custom("bad input path")), Err("remote error: bad input path".into()))]
@@ -171,11 +171,11 @@ async fn set_options(
 }
 */
 
+#[test_log::test(tokio::test)]
 #[rstest]
 #[case::valid("00000000000000000000000000000000-_", Ok(true), Ok(true))]
 #[case::invalid("00000000000000000000000000000000-_", Ok(false), Ok(false))]
 #[case::error("00000000000000000000000000000000-_", Err(DaemonError::custom("bad input path")), Err("IsValidPath: bad input path".into()))]
-#[tokio::test]
 async fn is_valid_path(
     #[case] store_path: StorePath,
     #[case] response: DaemonResult<bool>,
@@ -207,7 +207,7 @@ async fn is_valid_path(
     .unwrap();
 }
 
-#[tokio::test]
+#[test_log::test(tokio::test)]
 #[rstest]
 //#[case::substitute_all_valid(&["00000000000000000000000000000000-_"][..], true, Ok(&["10000000000000000000000000000000-_"][..]), Ok(&["10000000000000000000000000000000-_"][..]))]
 //#[case::substilute_empty_return(&["00000000000000000000000000000000-_"][..], true, Ok(&[][..]), Ok(&[][..]))]
@@ -252,7 +252,7 @@ async fn query_valid_paths(
     .unwrap();
 }
 
-#[tokio::test]
+#[test_log::test(tokio::test)]
 #[rstest]
 #[case::found_info("00000000000000000000000000000000-_", Ok(Some(UnkeyedValidPathInfo {
     deriver: Some("00000000000000000000000000000000-_.drv".parse().unwrap()),
@@ -351,7 +351,7 @@ async fn nar_from_path(#[case] store_path: StorePath, #[case] events: test_data:
 }
 
 /*
-#[tokio::test]
+#[test_log::test(tokio::test)]
 #[rstest]
 #[case("00000000000000000000000000000000-_", DaemonError::custom("bad input path"), "remote error: bad input path".into())]
 async fn nar_from_path_err(#[case] store_path: StorePath, #[case] response: DaemonError, #[case] expected: String) {
