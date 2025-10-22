@@ -431,6 +431,7 @@ macro_rules! make_request {
     };
 }
 
+#[forbid(clippy::missing_trait_methods)]
 impl LocalDaemonStore for LoggedCapnpStore {
     fn trust_level(&self) -> nixrs::daemon::TrustLevel {
         nixrs::daemon::TrustLevel::Trusted

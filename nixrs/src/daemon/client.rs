@@ -358,6 +358,7 @@ impl<R, W> HasStoreDir for DaemonClient<R, W> {
     }
 }
 
+#[forbid(clippy::missing_trait_methods)]
 impl<R, W> DaemonStore for DaemonClient<R, W>
 where
     R: AsyncRead + fmt::Debug + Unpin + Send + 'static,

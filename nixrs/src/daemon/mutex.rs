@@ -94,6 +94,7 @@ impl<S: HasStoreDir> HasStoreDir for MutexStore<S> {
     }
 }
 
+#[forbid(clippy::missing_trait_methods)]
 impl<S> DaemonStore for MutexStore<S>
 where
     S: DaemonStore + Send,

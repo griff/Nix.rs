@@ -217,7 +217,7 @@ impl<S: HasStoreDir> HasStoreDir for BoxedStore<S> {
     }
 }
 
-#[warn(clippy::missing_trait_methods)]
+#[forbid(clippy::missing_trait_methods)]
 impl<S> DaemonStore for BoxedStore<S>
 where
     S: DaemonStore,
