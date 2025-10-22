@@ -547,6 +547,203 @@ impl LocalDaemonStore for LoggedCapnpStore {
         })
     }
 
+    fn query_all_valid_paths(
+        &mut self,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + '_ {
+        make_request!(self, |store| store.query_all_valid_paths().await)
+    }
+
+    fn query_referrers<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + 'a {
+        make_request!(self, |store| store.query_referrers(path).await)
+    }
+
+    fn ensure_path<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
+        make_request!(self, |store| store.ensure_path(path).await)
+    }
+
+    fn add_temp_root<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
+        make_request!(self, |store| store.add_temp_root(path).await)
+    }
+
+    fn add_indirect_root<'a>(
+        &'a mut self,
+        path: &'a nixrs::daemon::DaemonPath,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
+        make_request!(self, |store| store.add_indirect_root(path).await)
+    }
+
+    fn find_roots(
+        &mut self,
+    ) -> impl ResultLog<
+        Output = DaemonResult<std::collections::BTreeMap<nixrs::daemon::DaemonPath, StorePath>>,
+    > + '_ {
+        make_request!(self, |store| store.find_roots().await)
+    }
+
+    fn collect_garbage<'a>(
+        &'a mut self,
+        action: nixrs::daemon::wire::types2::GCAction,
+        paths_to_delete: &'a StorePathSet,
+        ignore_liveness: bool,
+        max_freed: u64,
+    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::wire::types2::CollectGarbageResponse>> + 'a
+    {
+        make_request!(self, |store| {
+            store
+                .collect_garbage(action, paths_to_delete, ignore_liveness, max_freed)
+                .await
+        })
+    }
+
+    fn query_path_from_hash_part<'a>(
+        &'a mut self,
+        hash: &'a nixrs::store_path::StorePathHash,
+    ) -> impl ResultLog<Output = DaemonResult<Option<StorePath>>> + 'a {
+        make_request!(self, |store| {
+            store.query_path_from_hash_part(hash).await
+        })
+    }
+
+    fn query_substitutable_paths<'a>(
+        &'a mut self,
+        paths: &'a StorePathSet,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + 'a {
+        make_request!(self, |store| {
+            store.query_substitutable_paths(paths).await
+        })
+    }
+
+    fn query_valid_derivers<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + 'a {
+        make_request!(self, |store| store.query_valid_derivers(path).await)
+    }
+
+    fn optimise_store(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + '_ {
+        make_request!(self, |store| store.optimise_store().await)
+    }
+
+    fn verify_store(
+        &mut self,
+        check_contents: bool,
+        repair: bool,
+    ) -> impl ResultLog<Output = DaemonResult<bool>> + '_ {
+        make_request!(self, |store| {
+            store.verify_store(check_contents, repair).await
+        })
+    }
+
+    fn add_signatures<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+        signatures: &'a [nixrs::signature::Signature],
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
+        make_request!(self, |store| {
+            store.add_signatures(path, signatures).await
+        })
+    }
+
+    fn query_derivation_output_map<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<
+        Output = DaemonResult<
+            std::collections::BTreeMap<nixrs::derived_path::OutputName, Option<StorePath>>,
+        >,
+    > + 'a {
+        make_request!(self, |store| {
+            store.query_derivation_output_map(path).await
+        })
+    }
+
+    fn register_drv_output<'a>(
+        &'a mut self,
+        realisation: &'a nixrs::realisation::Realisation,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
+        make_request!(self, |store| {
+            store.register_drv_output(realisation).await
+        })
+    }
+
+    fn query_realisation<'a>(
+        &'a mut self,
+        output_id: &'a nixrs::realisation::DrvOutput,
+    ) -> impl ResultLog<
+        Output = DaemonResult<std::collections::BTreeSet<nixrs::realisation::Realisation>>,
+    > + 'a {
+        make_request!(self, |store| store.query_realisation(output_id).await)
+    }
+
+    fn add_build_log<'s, 'r, 'p, R>(
+        &'s mut self,
+        path: &'p StorePath,
+        source: R,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'r
+    where
+        R: tokio::io::AsyncBufRead + Unpin + 'r,
+        's: 'r,
+        'p: 'r,
+    {
+        make_request!(self, |store| store.add_build_log(path, source).await)
+    }
+
+    fn add_perm_root<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+        gc_root: &'a nixrs::daemon::DaemonPath,
+    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::DaemonPath>> + 'a {
+        make_request!(self, |store| store.add_perm_root(path, gc_root).await)
+    }
+
+    fn sync_with_gc(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + '_ {
+        make_request!(self, |store| store.sync_with_gc().await)
+    }
+
+    fn query_derivation_outputs<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + 'a {
+        make_request!(self, |store| store.query_derivation_outputs(path).await)
+    }
+
+    fn query_derivation_output_names<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<
+        Output = DaemonResult<std::collections::BTreeSet<nixrs::derived_path::OutputName>>,
+    > + 'a {
+        make_request!(self, |store| {
+            store.query_derivation_output_names(path).await
+        })
+    }
+
+    fn add_ca_to_store<'a, 'r, R>(
+        &'a mut self,
+        name: &'a str,
+        cam: nixrs::store_path::ContentAddressMethodAlgorithm,
+        refs: &'a StorePathSet,
+        repair: bool,
+        source: R,
+    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::wire::types2::ValidPathInfo>> + 'r
+    where
+        R: tokio::io::AsyncBufRead + Unpin + 'r,
+        'a: 'r,
+    {
+        make_request!(self, |store| {
+            store.add_ca_to_store(name, cam, refs, repair, source).await
+        })
+    }
+
     async fn shutdown(&mut self) -> DaemonResult<()> {
         Ok(())
     }
