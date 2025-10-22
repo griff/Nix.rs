@@ -811,6 +811,7 @@ mod unittests {
 
     use super::NarReader;
 
+    // FUTUREWORK: I have seen case_8_dir_example::postfix_2_Ok__b__more_______::chunk_size_07_7 not finishing
     #[test_log::test(tokio::test)]
     #[rstest]
     #[case::text_file(text_file())]
