@@ -12,14 +12,24 @@ use tokio::task::LocalSet;
 use tracing::{error, level_filters::LevelFilter};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
+/// Proxy from Cap'n Proto to Nix Daemon protocol.
+///
+/// This will start a daemon with the Cap'n Proto interfaces and transform and
+/// proxy them to a Nix Daemon protocol typically running on a unix socket.
+///
+/// It can also be run as a single connection variant where it reads and writes
+/// cap'n proto on stdin and stdout.
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
+#[command(version)]
 struct Args {
-    /// Nix Daemon Store to connect to
+    /// Nix Daemon Store to connect to.
+    ///
+    /// The format of this is the same as for a Nix store but right now only `daemon` and
+    /// `unix://` are supported.
     #[arg(short, long, default_value = "daemon")]
     store: String,
 
-    /// Socket to bind to
+    /// Path to unix socket to listen on.
     #[arg(
         short,
         long,
@@ -27,10 +37,12 @@ struct Args {
     )]
     bind: PathBuf,
 
-    /// Mode to set on socket
+    /// Mode to set on socket path specified in `bind`.
     #[arg(short = 'm', long, default_value_t = 0o666)]
     bind_mode: u32,
 
+    /// Don't setup a listener and instead use stdin and stdout to run a single
+    /// cap'n proto connection on.
     #[arg(long, default_value_t = false)]
     stdio: bool,
 }

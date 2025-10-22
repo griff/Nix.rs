@@ -16,9 +16,9 @@ use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
+#[command(version)]
 struct Args {
-    /// Path to Cap'n'proto unix socket
+    /// Path to Cap'n Proto unix socket to connect to.
     #[arg(
         short,
         long,
@@ -26,7 +26,25 @@ struct Args {
     )]
     socket: PathBuf,
 
-    /// Socket to bind to
+    /// Reconnect flag.
+    ///
+    /// Should we try and reconnect to the socket if it disconnects?
+    #[arg(short = 'r', long, default_value_t = true)]
+    reconnect: bool,
+
+    /// Reconnect interval in seconds.
+    ///
+    /// How long to sleep between each reconnect attempt
+    #[arg(short = 'i', long, default_value_t = 10)]
+    reconnect_interval: u16,
+
+    /// Reconnect timeout in seconds.
+    ///
+    /// How long to attempt reconnection until finally giving up.
+    #[arg(short = 'i', long, default_value_t = 60)]
+    reconnect_timeout: u16,
+
+    /// Path to unix socket to listen on.
     #[arg(
         short,
         long,
@@ -34,10 +52,15 @@ struct Args {
     )]
     bind: PathBuf,
 
-    /// Mode to set on socket
+    /// Mode to set on socket path specified in `bind`.
     #[arg(short = 'm', long, default_value_t = 0o666)]
     bind_mode: u32,
 
+    /// Don't setup a listener and instead use stdin and stdout to run a single
+    /// Nix daemon connection on.
+    ///
+    /// With this flag this command can be used in an SSH authorized_keys file to
+    /// provide compability with Nix or Lix.
     #[arg(long, default_value_t = false)]
     stdio: bool,
 }
