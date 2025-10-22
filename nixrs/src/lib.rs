@@ -21,6 +21,7 @@ pub mod io;
 #[allow(unused_imports, dead_code)]
 pub(crate) mod io;
 pub mod log;
+pub mod profile;
 pub mod realisation;
 pub mod signature;
 pub mod store_path;
