@@ -5244,6 +5244,10 @@ rec {
         ];
         dependencies = [
           {
+            name = "bstr";
+            packageId = "bstr";
+          }
+          {
             name = "bytes";
             packageId = "bytes";
           }
@@ -5280,6 +5284,11 @@ rec {
           {
             name = "pin-project-lite";
             packageId = "pin-project-lite";
+          }
+          {
+            name = "serde";
+            packageId = "serde";
+            features = [ "derive" ];
           }
           {
             name = "tokio";

@@ -30,10 +30,12 @@ xp-impure-derivations = ["nixrs/xp-impure-derivations"]
 
 [dependencies]
 bytes.workspace = true
+bstr.workspace = true
 clap.workspace = true
 capnp.workspace = true
 capnp-rpc.workspace = true
 futures.workspace = true
+serde = { workspace = true, features = ["derive"] }
 nixrs = { path = "../nixrs", features = [ "daemon" ] }
 capnp-rpc-tokio.path = "../capnp-rpc-tokio"
 pin-project-lite.workspace = true

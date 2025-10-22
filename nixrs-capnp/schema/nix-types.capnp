@@ -41,3 +41,7 @@ struct ContentAddress {
         recursive @2 :Hash;
     }
 }
+
+using Path = Data;
+using String = Data;
+using FileName = Data;

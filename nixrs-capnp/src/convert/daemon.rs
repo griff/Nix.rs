@@ -7,6 +7,7 @@ use nixrs::daemon::wire::types2::{
 use nixrs::daemon::{ClientOptions, UnkeyedValidPathInfo};
 
 use crate::capnp::nix_daemon_capnp;
+use crate::capnp::nixrs_capnp::store_path_info;
 use crate::convert::{BuildFrom, ReadFrom, ReadInto as _};
 
 impl From<nix_daemon_capnp::BuildStatus> for BuildStatus {
@@ -430,6 +431,45 @@ impl<'r> ReadFrom<nix_daemon_capnp::valid_path_info::Reader<'r>> for ValidPathIn
     fn read_from(reader: nix_daemon_capnp::valid_path_info::Reader<'r>) -> Result<Self, Error> {
         let path = reader.get_path()?.read_into()?;
         let info = reader.get_info()?.read_into()?;
+        Ok(ValidPathInfo { path, info })
+    }
+}
+
+impl<'r> ReadFrom<store_path_info::Reader<'r>> for UnkeyedValidPathInfo {
+    fn read_from(reader: store_path_info::Reader<'r>) -> Result<Self, Error> {
+        let deriver = if reader.has_deriver() {
+            Some(reader.get_deriver()?.read_into()?)
+        } else {
+            None
+        };
+        let nar_hash = reader.get_nar_hash()?.read_into()?;
+        let references = reader.get_references()?.read_into()?;
+        let registration_time = reader.get_registration_time();
+        let nar_size = reader.get_nar_size();
+        let ultimate = reader.get_ultimate();
+        let signatures = reader.get_signatures()?.read_into()?;
+        let ca = if reader.has_ca() {
+            Some(reader.get_ca()?.read_into()?)
+        } else {
+            None
+        };
+        Ok(UnkeyedValidPathInfo {
+            deriver,
+            nar_hash,
+            references,
+            registration_time,
+            nar_size,
+            ultimate,
+            signatures,
+            ca,
+        })
+    }
+}
+
+impl<'r> ReadFrom<store_path_info::Reader<'r>> for ValidPathInfo {
+    fn read_from(reader: store_path_info::Reader<'r>) -> Result<Self, Error> {
+        let path = reader.get_store_path()?.read_into()?;
+        let info = reader.read_into()?;
         Ok(ValidPathInfo { path, info })
     }
 }

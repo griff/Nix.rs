@@ -38,6 +38,36 @@ where
     }
 }
 
+impl<'b, T> BuildFrom<Vec<T>> for capnp::text_list::Builder<'b>
+where
+    T: AsRef<str>,
+{
+    fn build_from(&mut self, input: &Vec<T>) -> capnp::Result<()> {
+        for (index, name) in input.iter().enumerate() {
+            self.set(index as u32, name.as_ref());
+        }
+        Ok(())
+    }
+}
+
+impl<'r, T> ReadFrom<capnp::text_list::Reader<'r>> for Vec<T>
+where
+    T: FromStr + Ord,
+    <T as FromStr>::Err: fmt::Display,
+{
+    fn read_from(reader: capnp::text_list::Reader<'r>) -> Result<Self, Error> {
+        let mut ret = Vec::with_capacity(reader.len() as usize);
+        for item_r in reader.iter() {
+            let item = item_r?
+                .to_str()?
+                .parse::<T>()
+                .map_err(|err| Error::failed(err.to_string()))?;
+            ret.push(item);
+        }
+        Ok(ret)
+    }
+}
+
 impl<'b, T> BuildFrom<Vec<T>> for capnp::data_list::Builder<'b>
 where
     T: AsRef<[u8]>,

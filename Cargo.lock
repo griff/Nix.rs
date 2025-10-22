@@ -1647,6 +1647,7 @@ dependencies = [
 name = "nixrs-capnp"
 version = "0.1.0"
 dependencies = [
+ "bstr",
  "bytes",
  "capnp",
  "capnp-rpc",
@@ -1657,6 +1658,7 @@ dependencies = [
  "mio",
  "nixrs",
  "pin-project-lite",
+ "serde",
  "tokio",
  "tokio-util",
  "tracing",

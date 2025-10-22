@@ -10,18 +10,16 @@ struct Extra {
 }
 
 struct Node {
+    name @0 :Types.FileName;
+    extra @1 :List(Extra);
     union {
-        directory :group {
-            size @0 :UInt64;
-            extra @1 :List(Extra);
-        }
+        directory @2 :Void;
         file :group {
-            size @2 :UInt64;
-            extra @3 :List(Extra);
+            size @3 :UInt64;
             executable @4 :Bool;
         }
         symlink :group {
-            target @5 :Data;
+            target @5 :Types.Path;
         }
     }
 }
@@ -49,24 +47,38 @@ interface FileAccess extends(Blob) {
 
 interface NodeAccess {
     node @0 () -> (node :Node);
-    getName @3 () -> (name :Data);
+    getName @3 () -> (name :Types.FileName);
     asDirectory @1 () -> (directory :DirectoryAccess);
     asFile @2 () -> (file :FileAccess);
+    stream @4 (handler :NodeHandler);
+}
+
+interface NodeHandler {
+    symlink @0 (name :Types.FileName, target :Types.Path) -> stream;
+    file @1 (name :Types.FileName, size :UInt64, executable :Bool) -> (writeTo :ByteStream);
+    startDirectory @2 (name :Types.FileName) -> stream;
+    finishDirectory @3 () -> stream;
+    end @4 ();
+}
+
+interface NarCache {
+    lookup @0 (nar :Nar) -> (nar :Nar);
 }
 
 interface Nar {
     writeTo @0 (stream :ByteStream);
     content @1 () -> (node :NodeAccess);
+    stream @4 (handler :NodeHandler);
     narHash @2 () -> (hash :Types.NarHash);
     narSize @3 () -> (size :UInt64);
 }
 
-struct PathInfo {
+struct StorePathInfo {
     storePath @0 :Types.StorePath;
-    deriver @1 :PathAccess;
+    deriver @1 :RemoteStorePath;
     narHash @2 :Types.NarHash;
     narSize @3 :UInt64;
-    references @4 :List(PathAccess);
+    references @4 :List(RemoteStorePath);
     registrationTime @5 :Types.Time;
     ultimate @6 :Bool;
     signatures @7 :List(Types.Signature);
@@ -74,27 +86,34 @@ struct PathInfo {
     nar @9 :Nar;
 }
 
-interface PathAccess {
+interface StorePathAccess {
     getStorePath @0 () -> (path :Types.StorePath);
-    getDeriver @1 () -> (deriver :PathAccess);
-    getReferences @2 () -> (references :List(PathAccess));
+    getDeriver @1 () -> (deriver :RemoteStorePath);
+    getReferences @2 () -> (references :List(RemoteStorePath));
     getRegistrationTime @3 () -> (time :Types.Time);
     getSize @4 () -> (size :UInt64);
     isUltimate @5 () -> (trusted :Bool);
     getSignatures @6 () -> (signatures :List(Types.Signature));
-    info @7 () -> (info :PathInfo);
+    info @7 () -> (info :StorePathInfo);
+    getReferrers @9 () -> (referrers :List(RemoteStorePath));
     nar @8 () -> (nar :Nar);
 }
 
+struct RemoteStorePath {
+    storePath @0 :Types.StorePath;
+    access @1 :StorePathAccess;
+}
+
 struct LookupParams {
+    substitute @2 :Bool = false;
     union {
         byStorePath @0 :Types.StorePath;
         byHash @1 :Types.StorePathHash;
     }
 }
 
-interface PathStore {
-    list @0 () -> (paths :List(PathAccess));
-    lookup @1 (params :LookupParams) -> (path :PathAccess);
-    add @2 (path :PathAccess);
+interface StorePathStore {
+    list @0 () -> (paths :List(RemoteStorePath));
+    lookup @1 (params :LookupParams) -> (path :RemoteStorePath);
+    add @2 (path :RemoteStorePath, repair :Bool = false, dontCheckSigs :Bool = false, substitute :Bool = false);
 }

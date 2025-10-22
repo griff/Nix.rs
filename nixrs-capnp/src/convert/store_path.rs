@@ -11,7 +11,7 @@ use nixrs::{
 };
 
 use crate::{
-    capnp::{nix_daemon_capnp, nix_types_capnp},
+    capnp::{nix_daemon_capnp, nix_types_capnp, nixrs_capnp},
     convert::{BuildFrom, ReadFrom, ReadInto as _},
 };
 
@@ -47,6 +47,12 @@ impl<'r> ReadFrom<nix_types_capnp::store_path::Reader<'r>> for StorePath {
             .try_into()
             .map_err(|err: StorePathError| Error::failed(err.to_string()))?;
         Ok((hash, name).into())
+    }
+}
+
+impl<'r> ReadFrom<nixrs_capnp::remote_store_path::Reader<'r>> for StorePath {
+    fn read_from(value: nixrs_capnp::remote_store_path::Reader<'r>) -> Result<Self, Error> {
+        value.get_store_path()?.read_into()
     }
 }
 
