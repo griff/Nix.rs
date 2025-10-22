@@ -17,19 +17,7 @@ use pin_project_lite::pin_project;
 use tokio::io::{AsyncWriteExt as _, BufReader, ReadHalf, SimplexStream, copy_buf, simplex};
 use tracing::trace;
 
-use crate::capnp::nix_daemon_capnp;
-use crate::capnp::nix_daemon_capnp::add_multiple_stream::{AddParams, AddResults};
-use crate::capnp::nix_daemon_capnp::logger;
-use crate::capnp::nix_daemon_capnp::nix_daemon::{
-    AddMultipleToStoreParams, AddMultipleToStoreResults, AddToStoreNarParams, AddToStoreNarResults,
-    BuildDerivationParams, BuildDerivationResults, BuildPathsParams, BuildPathsResults,
-    BuildPathsWithResultsParams, BuildPathsWithResultsResults, EndParams, EndResults,
-    IsValidPathParams, IsValidPathResults, NarFromPathParams, NarFromPathResults,
-    QueryAllValidPathsParams, QueryAllValidPathsResults, QueryMissingParams, QueryMissingResults,
-    QueryPathFromHashPartParams, QueryPathFromHashPartResults, QueryPathInfoParams,
-    QueryPathInfoResults, QueryValidPathsParams, QueryValidPathsResults, SetOptionsParams,
-    SetOptionsResults,
-};
+use crate::capnp::nix_daemon_capnp::{add_multiple_stream, logged_nix_daemon, logger, nix_daemon};
 use crate::convert::{BuildFrom, ReadInto};
 use crate::{DEFAULT_BUF_SIZE, from_error};
 
@@ -88,11 +76,11 @@ impl<S> CapnpServer<S> {
     }
 }
 
-impl<S> nix_daemon_capnp::nix_daemon::Server for CapnpServer<S>
+impl<S> nix_daemon::Server for CapnpServer<S>
 where
     S: DaemonStore + Clone + 'static,
 {
-    fn end(&mut self, _: EndParams, _: EndResults) -> Promise<(), Error> {
+    fn end(&mut self, _: nix_daemon::EndParams, _: nix_daemon::EndResults) -> Promise<(), Error> {
         let mut this = self.clone();
         Promise::from_future(async move {
             this.logger.end().await?;
@@ -105,8 +93,8 @@ where
 
     fn set_options(
         &mut self,
-        params: SetOptionsParams,
-        _: SetOptionsResults,
+        params: nix_daemon::SetOptionsParams,
+        _: nix_daemon::SetOptionsResults,
     ) -> Promise<(), Error> {
         let mut this = self.clone();
         Promise::from_future(async move {
@@ -119,8 +107,8 @@ where
 
     fn is_valid_path(
         &mut self,
-        params: IsValidPathParams,
-        mut result: IsValidPathResults,
+        params: nix_daemon::IsValidPathParams,
+        mut result: nix_daemon::IsValidPathResults,
     ) -> Promise<(), Error> {
         let mut this = self.clone();
         Promise::from_future(async move {
@@ -136,8 +124,8 @@ where
 
     fn query_valid_paths(
         &mut self,
-        params: QueryValidPathsParams,
-        mut result: QueryValidPathsResults,
+        params: nix_daemon::QueryValidPathsParams,
+        mut result: nix_daemon::QueryValidPathsResults,
     ) -> Promise<(), Error> {
         let mut this = self.clone();
         Promise::from_future(async move {
@@ -158,8 +146,8 @@ where
 
     fn query_path_info(
         &mut self,
-        params: QueryPathInfoParams,
-        mut result: QueryPathInfoResults,
+        params: nix_daemon::QueryPathInfoParams,
+        mut result: nix_daemon::QueryPathInfoResults,
     ) -> Promise<(), Error> {
         let mut this = self.clone();
         Promise::from_future(async move {
@@ -177,8 +165,8 @@ where
 
     fn nar_from_path(
         &mut self,
-        params: NarFromPathParams,
-        _: NarFromPathResults,
+        params: nix_daemon::NarFromPathParams,
+        _: nix_daemon::NarFromPathResults,
     ) -> Promise<(), Error> {
         let mut this = self.clone();
         Promise::from_future(async move {
@@ -200,8 +188,8 @@ where
 
     fn build_paths(
         &mut self,
-        params: BuildPathsParams,
-        _: BuildPathsResults,
+        params: nix_daemon::BuildPathsParams,
+        _: nix_daemon::BuildPathsResults,
     ) -> Promise<(), Error> {
         let mut this = self.clone();
         Promise::from_future(async move {
@@ -217,8 +205,8 @@ where
 
     fn build_paths_with_results(
         &mut self,
-        params: BuildPathsWithResultsParams,
-        mut result: BuildPathsWithResultsResults,
+        params: nix_daemon::BuildPathsWithResultsParams,
+        mut result: nix_daemon::BuildPathsWithResultsResults,
     ) -> Promise<(), Error> {
         let mut this = self.clone();
         Promise::from_future(async move {
@@ -239,8 +227,8 @@ where
 
     fn build_derivation(
         &mut self,
-        params: BuildDerivationParams,
-        mut result: BuildDerivationResults,
+        params: nix_daemon::BuildDerivationParams,
+        mut result: nix_daemon::BuildDerivationResults,
     ) -> Promise<(), Error> {
         let mut this = self.clone();
         Promise::from_future(async move {
@@ -258,8 +246,8 @@ where
 
     fn query_missing(
         &mut self,
-        params: QueryMissingParams,
-        mut result: QueryMissingResults,
+        params: nix_daemon::QueryMissingParams,
+        mut result: nix_daemon::QueryMissingResults,
     ) -> Promise<(), Error> {
         let mut this = self.clone();
         Promise::from_future(async move {
@@ -276,8 +264,8 @@ where
 
     fn add_to_store_nar(
         &mut self,
-        params: AddToStoreNarParams,
-        mut result: AddToStoreNarResults,
+        params: nix_daemon::AddToStoreNarParams,
+        mut result: nix_daemon::AddToStoreNarResults,
     ) -> Promise<(), Error> {
         let mut this = self.clone();
         Promise::from_future(async move {
@@ -305,8 +293,8 @@ where
 
     fn add_multiple_to_store(
         &mut self,
-        params: AddMultipleToStoreParams,
-        mut result: AddMultipleToStoreResults,
+        params: nix_daemon::AddMultipleToStoreParams,
+        mut result: nix_daemon::AddMultipleToStoreResults,
     ) -> Promise<(), Error> {
         let mut this = self.clone();
         Promise::from_future(async move {
@@ -338,8 +326,8 @@ where
 
     fn query_all_valid_paths(
         &mut self,
-        _params: QueryAllValidPathsParams,
-        mut result: QueryAllValidPathsResults,
+        _params: nix_daemon::QueryAllValidPathsParams,
+        mut result: nix_daemon::QueryAllValidPathsResults,
     ) -> Promise<(), Error> {
         let mut this = self.clone();
         Promise::from_future(async move {
@@ -357,8 +345,8 @@ where
 
     fn query_path_from_hash_part(
         &mut self,
-        params: QueryPathFromHashPartParams,
-        mut result: QueryPathFromHashPartResults,
+        params: nix_daemon::QueryPathFromHashPartParams,
+        mut result: nix_daemon::QueryPathFromHashPartResults,
     ) -> Promise<(), Error> {
         let mut this = self.clone();
         Promise::from_future(async move {
@@ -380,8 +368,12 @@ struct AddMultipleStreamServer {
     remaining: u16,
     sender: mpsc::Sender<DaemonResult<AddToStoreItem<BufReader<ReadHalf<SimplexStream>>>>>,
 }
-impl nix_daemon_capnp::add_multiple_stream::Server for AddMultipleStreamServer {
-    fn add(&mut self, params: AddParams, mut result: AddResults) -> Promise<(), Error> {
+impl add_multiple_stream::Server for AddMultipleStreamServer {
+    fn add(
+        &mut self,
+        params: add_multiple_stream::AddParams,
+        mut result: add_multiple_stream::AddResults,
+    ) -> Promise<(), Error> {
         if self.remaining == 0 {
             return Promise::err(Error::failed(
                 "Sending more items than specified in addMultipleToStore call".into(),
@@ -461,7 +453,7 @@ where
     fn poll_handshake(
         &mut self,
         cx: &mut Context<'_>,
-        logger: nix_daemon_capnp::logger::Client,
+        logger: logger::Client,
     ) -> Poll<::capnp::Result<S>> {
         loop {
             match std::mem::replace(self, Self::Invalid) {
@@ -512,15 +504,15 @@ where
     }
 }
 
-impl<HS, S> nix_daemon_capnp::logged_nix_daemon::Server for HandshakeLoggedCapnpServer<HS, S>
+impl<HS, S> logged_nix_daemon::Server for HandshakeLoggedCapnpServer<HS, S>
 where
     HS: HandshakeDaemonStore<Store = S> + 'static,
     S: DaemonStore + Clone + 'static,
 {
     fn capture_logs(
         &mut self,
-        params: nix_daemon_capnp::logged_nix_daemon::CaptureLogsParams,
-        mut result: nix_daemon_capnp::logged_nix_daemon::CaptureLogsResults,
+        params: logged_nix_daemon::CaptureLogsParams,
+        mut result: logged_nix_daemon::CaptureLogsResults,
     ) -> Promise<(), ::capnp::Error> {
         let inner = self.inner.clone();
         Promise::from_future(async move {
@@ -530,7 +522,7 @@ where
                 client: logger,
                 sender: Some(sender),
             };
-            let client: nix_daemon_capnp::logger::Client = new_client(captures);
+            let client: logger::Client = new_client(captures);
             let store = poll_fn(|cx| {
                 let logger = client.clone();
                 let mut guard = inner.lock().unwrap();
@@ -563,15 +555,12 @@ impl<S> LoggedCapnpServer<S> {
 }
 
 struct Captures {
-    client: nix_daemon_capnp::logger::Client,
+    client: logger::Client,
     sender: Option<oneshot::Sender<()>>,
 }
 
-impl nix_daemon_capnp::logger::Server for Captures {
-    fn write(
-        &mut self,
-        params: nix_daemon_capnp::logger::WriteParams,
-    ) -> Promise<(), ::capnp::Error> {
+impl logger::Server for Captures {
+    fn write(&mut self, params: logger::WriteParams) -> Promise<(), ::capnp::Error> {
         let client = self.client.clone();
         Promise::from_future(async move {
             let mut req = client.write_request();
@@ -580,11 +569,7 @@ impl nix_daemon_capnp::logger::Server for Captures {
         })
     }
 
-    fn end(
-        &mut self,
-        _: nix_daemon_capnp::logger::EndParams,
-        _: nix_daemon_capnp::logger::EndResults,
-    ) -> Promise<(), ::capnp::Error> {
+    fn end(&mut self, _: logger::EndParams, _: logger::EndResults) -> Promise<(), ::capnp::Error> {
         let client = self.client.clone();
         let sender = self.sender.take();
         Promise::from_future(async move {
@@ -598,14 +583,14 @@ impl nix_daemon_capnp::logger::Server for Captures {
     }
 }
 
-impl<S> nix_daemon_capnp::logged_nix_daemon::Server for LoggedCapnpServer<S>
+impl<S> logged_nix_daemon::Server for LoggedCapnpServer<S>
 where
     S: DaemonStore + Clone + 'static,
 {
     fn capture_logs(
         &mut self,
-        params: nix_daemon_capnp::logged_nix_daemon::CaptureLogsParams,
-        mut result: nix_daemon_capnp::logged_nix_daemon::CaptureLogsResults,
+        params: logged_nix_daemon::CaptureLogsParams,
+        mut result: logged_nix_daemon::CaptureLogsResults,
     ) -> Promise<(), ::capnp::Error> {
         let store = self.store.clone();
         Promise::from_future(async move {
