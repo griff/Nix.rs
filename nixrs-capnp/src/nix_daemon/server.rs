@@ -12,6 +12,7 @@ use futures::stream::StreamExt;
 use futures::{SinkExt as _, Stream, TryFutureExt};
 use nixrs::daemon::{AddToStoreItem, DaemonResult, DaemonStore, HandshakeDaemonStore, ResultLog};
 use nixrs::derived_path::DerivedPath;
+use nixrs::store_path::StorePathHash;
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncWriteExt as _, BufReader, ReadHalf, SimplexStream, copy_buf, simplex};
 use tracing::trace;
@@ -24,8 +25,10 @@ use crate::capnp::nix_daemon_capnp::nix_daemon::{
     BuildDerivationParams, BuildDerivationResults, BuildPathsParams, BuildPathsResults,
     BuildPathsWithResultsParams, BuildPathsWithResultsResults, EndParams, EndResults,
     IsValidPathParams, IsValidPathResults, NarFromPathParams, NarFromPathResults,
-    QueryMissingParams, QueryMissingResults, QueryPathInfoParams, QueryPathInfoResults,
-    QueryValidPathsParams, QueryValidPathsResults, SetOptionsParams, SetOptionsResults,
+    QueryAllValidPathsParams, QueryAllValidPathsResults, QueryMissingParams, QueryMissingResults,
+    QueryPathFromHashPartParams, QueryPathFromHashPartResults, QueryPathInfoParams,
+    QueryPathInfoResults, QueryValidPathsParams, QueryValidPathsResults, SetOptionsParams,
+    SetOptionsResults,
 };
 use crate::convert::{BuildFrom, ReadInto};
 use crate::{DEFAULT_BUF_SIZE, from_error};
@@ -329,6 +332,45 @@ where
                 )
                 .await?;
             trace!(count = remaining, "add_multiple_to_store Done");
+            Ok(())
+        })
+    }
+
+    fn query_all_valid_paths(
+        &mut self,
+        _params: QueryAllValidPathsParams,
+        mut result: QueryAllValidPathsResults,
+    ) -> Promise<(), Error> {
+        let mut this = self.clone();
+        Promise::from_future(async move {
+            let paths = this
+                .logger
+                .process_logs(this.store.query_all_valid_paths())
+                .await?;
+            result
+                .get()
+                .init_paths(paths.len() as u32)
+                .build_from(&paths)?;
+            Ok(())
+        })
+    }
+
+    fn query_path_from_hash_part(
+        &mut self,
+        params: QueryPathFromHashPartParams,
+        mut result: QueryPathFromHashPartResults,
+    ) -> Promise<(), Error> {
+        let mut this = self.clone();
+        Promise::from_future(async move {
+            let p = params.get()?;
+            let hash: StorePathHash = p.get_hash()?.read_into()?;
+            let res = this
+                .logger
+                .process_logs(this.store.query_path_from_hash_part(&hash))
+                .await?;
+            if let Some(path) = res {
+                result.get().set_path(&path)?;
+            }
             Ok(())
         })
     }

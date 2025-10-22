@@ -150,6 +150,8 @@ interface NixDaemon {
     isValidPath @2 (path :Types.StorePath) -> (valid :Bool);
     queryValidPaths @3 (paths :List(Types.StorePath), substitute :Bool) -> (validSet :List(Types.StorePath));
     queryPathInfo @4 (path :Types.StorePath) -> (info :UnkeyedValidPathInfo);
+    queryAllValidPaths @12 () -> (paths :List(Types.StorePath));
+    queryPathFromHashPart @13 (hash :Types.StorePathHash) -> (path :Types.StorePath);
     narFromPath @5 (path :Types.StorePath, stream :ByteStream);
     buildPaths @6 (drvs :List(DerivedPath), mode :BuildMode);
     buildPathsWithResults @7 (drvs :List(DerivedPath), mode :BuildMode) -> (results :List(KeyedBuildResult));

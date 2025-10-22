@@ -317,6 +317,39 @@ impl LocalDaemonStore for CapnpStore {
         })
         .empty_logs()
     }
+
+    fn query_all_valid_paths(
+        &mut self,
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + '_ {
+        (async move {
+            let req = self.store.query_all_valid_paths_request();
+            let resp = req.send().promise.await?;
+            resp.get()?.get_paths()?.read_into()
+        })
+        .map_err(DaemonError::custom)
+        .empty_logs()
+    }
+
+    fn query_path_from_hash_part<'a>(
+        &'a mut self,
+        hash: &'a nixrs::store_path::StorePathHash,
+    ) -> impl ResultLog<Output = DaemonResult<Option<StorePath>>> + 'a {
+        (async move {
+            let mut req = self.store.query_path_from_hash_part_request();
+            let mut params = req.get();
+            params.set_hash(hash.as_ref());
+            let resp = req.send().promise.await?;
+            let r = resp.get()?;
+            if r.has_path() {
+                let store_path: StorePath = r.get_path()?.read_into()?;
+                Ok(Some(store_path)) as Result<_, Error>
+            } else {
+                Ok(None) as Result<_, Error>
+            }
+        })
+        .map_err(DaemonError::custom)
+        .empty_logs()
+    }
 }
 
 pub struct LoggerStream {

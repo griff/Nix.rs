@@ -50,6 +50,15 @@ impl<'r> ReadFrom<nix_types_capnp::store_path::Reader<'r>> for StorePath {
     }
 }
 
+impl<'r> ReadFrom<capnp::data::Reader<'r>> for StorePathHash {
+    fn read_from(value: capnp::data::Reader<'r>) -> Result<Self, Error> {
+        let hash: StorePathHash = value
+            .try_into()
+            .map_err(|err: StorePathError| Error::failed(err.to_string()))?;
+        Ok(hash)
+    }
+}
+
 impl<'b> BuildFrom<ContentAddress> for nix_types_capnp::content_address::Builder<'b> {
     fn build_from(&mut self, input: &ContentAddress) -> Result<(), Error> {
         match input {
