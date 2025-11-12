@@ -185,6 +185,16 @@ impl<R> Profile<R> {
         Ok(None)
     }
 
+    pub async fn get_generation(&self, number: u64) -> io::Result<Generation<'_, R>> {
+        let path = make_name(self.profile.clone(), number);
+        let creation_time = symlink_metadata(&path).await?.modified()?;
+        Ok(Generation {
+            number,
+            creation_time,
+            profile: self,
+        })
+    }
+
     pub async fn list_generations(&self) -> io::Result<Vec<Generation<'_, R>>> {
         let mut ret = Vec::new();
         let profile_name = self.profile_name();

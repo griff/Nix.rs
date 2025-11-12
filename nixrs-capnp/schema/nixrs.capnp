@@ -112,3 +112,30 @@ interface StorePathStore {
     lookup @1 (params :LookupParams) -> (path :RemoteStorePath);
     add @2 (path :RemoteStorePath, repair :Bool = false, dontCheckSigs :Bool = false, substitute :Bool = false);
 }
+
+struct GenerationInfo {
+    number @0 :UInt64;
+    creationTime @1 :Types.Time;
+    storePath @2 :RemoteStorePath;
+}
+
+interface GenerationCap {
+    info @0 () -> (info :GenerationInfo);
+    switch @1 ();
+    delete @2 ();
+}
+
+struct Generation {
+    info @0 :GenerationInfo;
+    cap @1 :GenerationCap;
+}
+
+interface Profile {
+    struct LookupParams {
+        path @0 :Types.Path;
+    }
+
+    currentGeneration @0 () -> (generation :Generation);
+    listGenerations @1 () -> (generations :List(Generation));
+    createGeneration @2 (store_path :Types.StorePath) -> (generation :Generation);
+}
