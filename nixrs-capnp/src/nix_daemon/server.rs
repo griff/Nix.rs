@@ -15,7 +15,7 @@ use nixrs::derived_path::DerivedPath;
 use nixrs::store_path::{HasStoreDir, StoreDir, StorePathHash};
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncWriteExt as _, BufReader, ReadHalf, SimplexStream, copy_buf, simplex};
-use tracing::trace;
+use tracing::{debug, trace};
 
 use crate::capnp::nix_daemon_capnp::{
     add_multiple_stream, has_store_dir, logged_nix_daemon, logger, nix_daemon,
@@ -48,6 +48,7 @@ impl Logger {
     ) -> Result<R, Error> {
         let mut logs = pin!(logs);
         while let Some(msg) = logs.next().await {
+            debug!("Sending log msg {msg:#?}");
             let mut req = self.client.write_request();
             let params = req.get();
             params.init_event().build_from(&msg)?;
@@ -133,11 +134,14 @@ where
     ) -> Promise<(), Error> {
         let mut this = self.clone();
         Promise::from_future(async move {
+            debug!("is_valid_path");
             let path = params.get()?.get_path()?.read_into()?;
+            debug!("is_valid_path {path}");
             let valid = this
                 .logger
                 .process_logs(this.store.is_valid_path(&path))
                 .await?;
+            debug!("is_valid_path {path} result {valid}");
             result.get().set_valid(valid);
             Ok(())
         })
@@ -534,6 +538,7 @@ where
                     let fut = Box::pin(async move {
                         let logger = Logger { client: logger };
                         let logs = hs.handshake();
+                        debug!("Handshake");
                         logger.process_logs(logs).await
                     });
                     *self = Inner::Progress(fut);

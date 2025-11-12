@@ -14,10 +14,10 @@ use futures::TryFutureExt as _;
 use futures::future::{select_all, try_join, try_join_all};
 use nixrs::daemon::UnkeyedValidPathInfo;
 use nixrs::daemon::wire::types2::ValidPathInfo;
-use nixrs::store_path::StorePath;
+use nixrs::store_path::{StorePath, StorePathHash};
 use tokio::sync::watch;
 use tokio::task::spawn_local;
-use tracing::warn;
+use tracing::{debug, warn};
 
 use crate::capnp::nix_daemon_capnp::nix_daemon;
 use crate::capnp::nix_types_capnp;
@@ -411,6 +411,7 @@ impl store_path_access::Server for DaemonStorePathAccess {
         mut result: store_path_access::GetReferencesResults,
     ) -> Promise<(), CapError> {
         let store = self.store.clone();
+        debug!("Store path {} references", self.store_path);
         self.with_info(move |info| {
             let mut b = result.get().init_references(info.references.len() as u32);
             for (index, store_path) in info.references.iter().enumerate() {
@@ -479,6 +480,7 @@ impl store_path_access::Server for DaemonStorePathAccess {
         mut result: store_path_access::InfoResults,
     ) -> Promise<(), CapError> {
         let store = self.store.clone();
+        debug!("Store path {} info", self.store_path);
         self.with_info(move |info| {
             let b = result.get();
             let mut builder = b.init_info();
@@ -574,17 +576,23 @@ impl store_path_store::Server for DaemonStorePathStore {
             match params.get()?.get_params()?.which()? {
                 lookup_params::Which::ByStorePath(store_path) => {
                     let store_path = store_path?.read_into()?;
+                    debug!("Lookup store path {store_path}");
                     let mut req = store.is_valid_path_request();
                     req.get().set_path(&store_path)?;
                     let resp = req.send().promise.await?;
                     if resp.get()?.get_valid() {
+                        debug!("Store path {store_path} is valid");
                         let remote_store_path = RemoteStorePath::daemon_path(store, store_path);
                         result.get().set_path(&remote_store_path)?;
+                    } else {
+                        debug!("Store path {store_path} is invalid");
                     }
                 }
                 lookup_params::Which::ByHash(hash) => {
+                    let store_hash: StorePathHash = hash?.read_into()?;
+                    debug!("Lookup store hash {store_hash}");
                     let mut req = store.query_path_from_hash_part_request();
-                    req.get().set_hash(hash?);
+                    req.get().set_hash(&*store_hash);
                     let resp = req.send().promise.await?;
                     let r = resp.get()?;
                     if r.has_path() {
@@ -608,10 +616,12 @@ impl store_path_store::Server for DaemonStorePathStore {
             let rp = params.get()?;
             let remote_store_path: RemoteStorePath = rp.get_path()?.read_into()?;
             // ComputeFSClosure
+            debug!("Compute closure of {}", remote_store_path.store_path);
             let mut closure = RemoteStorePathSet::new();
             closure.insert_closure(remote_store_path).await?;
 
             // Remove already valid
+            debug!("Check validity of {} paths", closure.len());
             let mut req = store.query_valid_paths_request();
             let mut b = req.get();
             b.reborrow()
@@ -629,9 +639,11 @@ impl store_path_store::Server for DaemonStorePathStore {
             }
 
             // Toposort missing
+            debug!("Topssort {} paths", closure.len());
             let sorted = closure.toposort().await?;
 
             // AddMultipleToStore
+            debug!("AddMultipleToStore {} paths", closure.len());
             let mut req = store.add_multiple_to_store_request();
             let mut b = req.get();
             b.set_count(sorted.len() as u16);
