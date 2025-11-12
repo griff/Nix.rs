@@ -550,7 +550,11 @@ where
         let inner = self.inner.clone();
         Promise::from_future(async move {
             let (sender, receiver) = oneshot::channel();
-            let logger = params.get()?.get_logger()?;
+            let logger = if params.get()?.has_logger() {
+                params.get()?.get_logger()?
+            } else {
+                new_client(NoopLogger)
+            };
             let captures = Captures {
                 client: logger,
                 sender: Some(sender),
@@ -642,7 +646,11 @@ where
         let store = self.store.clone();
         Promise::from_future(async move {
             let (sender, receiver) = oneshot::channel();
-            let client = params.get()?.get_logger()?;
+            let client = if params.get()?.has_logger() {
+                params.get()?.get_logger()?
+            } else {
+                new_client(NoopLogger)
+            };
             let captures = Captures {
                 client,
                 sender: Some(sender),
