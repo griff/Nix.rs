@@ -624,6 +624,10 @@ impl store_path_store::Server for DaemonStorePathStore {
                 closure.remove(&store_path);
             }
 
+            if closure.is_empty() {
+                return Ok(());
+            }
+
             // Toposort missing
             let sorted = closure.toposort().await?;
 
