@@ -2,12 +2,7 @@
 
 using ByteStream = import "byte-stream.capnp".ByteStream;
 using Types = import "nix-types.capnp";
-
-
-struct Extra {
-    id @0 :UInt64;
-    value @1 :AnyPointer;
-}
+using Extra = import "lookup.capnp".Extra;
 
 struct Node {
     name @0 :Types.FileName;

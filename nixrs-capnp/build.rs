@@ -16,6 +16,7 @@ fn main() {
         .file("schema/nix-daemon.capnp")
         .file("schema/nix-types.capnp")
         .file("schema/nixrs.capnp")
+        .file("schema/ip.capnp")
         .file("schema/lookup.capnp")
         .default_parent_module(vec!["capnp".into()])
         //.import_path(&capnp_include)

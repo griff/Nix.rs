@@ -12,6 +12,7 @@ mod derivation;
 mod derived_path;
 mod hash;
 mod log;
+mod net;
 mod realisation;
 mod store_path;
 
