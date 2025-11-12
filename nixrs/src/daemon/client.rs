@@ -30,6 +30,7 @@ use super::{
     HandshakeDaemonStore, ProtocolVersion, TrustLevel,
 };
 use crate::archive::{NarBytesReader, NarReader};
+use crate::daemon::client::compat::CompatAddPermRoot;
 use crate::daemon::client::process_stderr::{ProcessStderr, read_logs};
 use crate::daemon::{FutureResultExt, make_result};
 use crate::derivation::BasicDerivation;
@@ -42,18 +43,20 @@ use crate::store_path::{
     ContentAddressMethodAlgorithm, HasStoreDir, StoreDir, StorePath, StorePathHash, StorePathSet,
 };
 
+pub mod compat;
 mod process_stderr;
 
-pub struct DaemonClientBuilder {
+pub struct DaemonClientBuilder<CP = ()> {
     store_dir: StoreDir,
     host: Option<String>,
     min_version: ProtocolVersion,
     max_version: ProtocolVersion,
     reader_builder: NixReaderBuilder,
     writer_builder: NixWriterBuilder,
+    compat_perm_root: CP,
 }
 
-impl Default for DaemonClientBuilder {
+impl Default for DaemonClientBuilder<()> {
     fn default() -> Self {
         Self {
             store_dir: Default::default(),
@@ -62,15 +65,21 @@ impl Default for DaemonClientBuilder {
             max_version: ProtocolVersion::max(),
             reader_builder: Default::default(),
             writer_builder: Default::default(),
+            compat_perm_root: (),
         }
     }
 }
 
-impl DaemonClientBuilder {
+impl DaemonClientBuilder<()> {
     pub fn new() -> Self {
         Default::default()
     }
+}
 
+impl<CP> DaemonClientBuilder<CP>
+where
+    CP: Clone + Send,
+{
     pub fn set_store_dir(mut self, store_dir: &StoreDir) -> Self {
         self.store_dir = store_dir.clone();
         self
@@ -108,7 +117,7 @@ impl DaemonClientBuilder {
         self
     }
 
-    pub fn build<R, W>(self, reader: R, writer: W) -> DaemonHandshakeClient<R, W>
+    pub fn build<R, W>(self, reader: R, writer: W) -> DaemonHandshakeClient<R, W, CP>
     where
         R: AsyncRead + Unpin,
     {
@@ -130,13 +139,14 @@ impl DaemonClientBuilder {
             writer,
             min_version,
             max_version,
+            compat_perm_root: self.compat_perm_root,
         }
     }
 
     pub async fn build_unix<P>(
         self,
         path: P,
-    ) -> DaemonResult<DaemonHandshakeClient<OwnedReadHalf, OwnedWriteHalf>>
+    ) -> DaemonResult<DaemonHandshakeClient<OwnedReadHalf, OwnedWriteHalf, CP>>
     where
         P: AsRef<Path>,
     {
@@ -147,7 +157,7 @@ impl DaemonClientBuilder {
 
     pub async fn build_daemon(
         self,
-    ) -> DaemonResult<DaemonHandshakeClient<OwnedReadHalf, OwnedWriteHalf>> {
+    ) -> DaemonResult<DaemonHandshakeClient<OwnedReadHalf, OwnedWriteHalf, CP>> {
         self.build_unix("/nix/var/nix/daemon-socket/socket").await
     }
 
@@ -155,10 +165,11 @@ impl DaemonClientBuilder {
         self,
         reader: R,
         writer: W,
-    ) -> impl ResultLog<Output = DaemonResult<DaemonClient<R, W>>>
+    ) -> impl ResultLog<Output = DaemonResult<DaemonClient<R, W, CP>>>
     where
         R: AsyncRead + fmt::Debug + Unpin + Send + 'static,
         W: AsyncWrite + fmt::Debug + Unpin + Send + 'static,
+        CP: CompatAddPermRoot<DaemonClient<R, W, CP>>,
     {
         self.build(reader, writer).handshake()
     }
@@ -166,41 +177,47 @@ impl DaemonClientBuilder {
     pub fn connect_unix<P>(
         self,
         path: P,
-    ) -> impl ResultLog<Output = DaemonResult<DaemonClient<OwnedReadHalf, OwnedWriteHalf>>>
+    ) -> impl ResultLog<Output = DaemonResult<DaemonClient<OwnedReadHalf, OwnedWriteHalf, CP>>>
     where
         P: AsRef<Path> + Send,
+        CP: CompatAddPermRoot<DaemonClient<OwnedReadHalf, OwnedWriteHalf, CP>>,
     {
         async move { Ok(self.build_unix(path).await?.handshake()) }.future_result()
     }
 
     pub fn connect_daemon(
         self,
-    ) -> impl ResultLog<Output = DaemonResult<DaemonClient<OwnedReadHalf, OwnedWriteHalf>>> {
+    ) -> impl ResultLog<Output = DaemonResult<DaemonClient<OwnedReadHalf, OwnedWriteHalf, CP>>>
+    where
+        CP: CompatAddPermRoot<DaemonClient<OwnedReadHalf, OwnedWriteHalf, CP>>,
+    {
         async move { Ok(self.build_daemon().await?.handshake()) }.future_result()
     }
 }
 
 #[derive(Debug)]
-pub struct DaemonHandshakeClient<R, W> {
+pub struct DaemonHandshakeClient<R, W, CP = ()> {
     host: String,
     min_version: ProtocolVersion,
     max_version: ProtocolVersion,
     reader: NixReader<Lending<BytesReader<R>, NarBytesReader<BytesReader<R>>>>,
     writer: NixWriter<W>,
+    compat_perm_root: CP,
 }
 
-impl<R, W> HasStoreDir for DaemonHandshakeClient<R, W> {
+impl<R, W, CP> HasStoreDir for DaemonHandshakeClient<R, W, CP> {
     fn store_dir(&self) -> &StoreDir {
         self.reader.store_dir()
     }
 }
 
-impl<R, W> HandshakeDaemonStore for DaemonHandshakeClient<R, W>
+impl<R, W, CP> HandshakeDaemonStore for DaemonHandshakeClient<R, W, CP>
 where
     R: AsyncRead + fmt::Debug + Unpin + Send + 'static,
     W: AsyncWrite + fmt::Debug + Unpin + Send + 'static,
+    CP: CompatAddPermRoot<DaemonClient<R, W, CP>> + Clone + Send,
 {
-    type Store = DaemonClient<R, W>;
+    type Store = DaemonClient<R, W, CP>;
 
     fn handshake(self) -> impl ResultLog<Output = DaemonResult<Self::Store>> {
         async move {
@@ -279,6 +296,7 @@ where
                     writer,
                     daemon_nix_version,
                     remote_trusts_us,
+                    compat_perm_root: self.compat_perm_root,
                 })
             }))
         }
@@ -289,13 +307,14 @@ where
 static CLIENT_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug)]
-pub struct DaemonClient<R, W> {
+pub struct DaemonClient<R, W, CP = ()> {
     id: u64,
     host: String,
     reader: NixReader<Lending<BytesReader<R>, NarBytesReader<BytesReader<R>>>>,
     writer: NixWriter<W>,
     daemon_nix_version: Option<String>,
     remote_trusts_us: TrustLevel,
+    compat_perm_root: CP,
 }
 
 impl DaemonClient<Cursor<Vec<u8>>, Cursor<Vec<u8>>> {
@@ -304,7 +323,7 @@ impl DaemonClient<Cursor<Vec<u8>>, Cursor<Vec<u8>>> {
     }
 }
 
-impl<R, W> DaemonClient<R, W> {
+impl<R, W, CP> DaemonClient<R, W, CP> {
     pub fn host(&self) -> &str {
         &self.host
     }
@@ -331,7 +350,13 @@ where
             .build(reader, writer)
             .handshake()
     }
+}
 
+impl<R, W, CP> DaemonClient<R, W, CP>
+where
+    R: AsyncRead + fmt::Debug + Unpin + Send + 'static,
+    W: AsyncWrite + fmt::Debug + Unpin + Send + 'static,
+{
     pub fn version(&self) -> ProtocolVersion {
         self.writer.version()
     }
@@ -352,17 +377,18 @@ where
     }
 }
 
-impl<R, W> HasStoreDir for DaemonClient<R, W> {
+impl<R, W, CP> HasStoreDir for DaemonClient<R, W, CP> {
     fn store_dir(&self) -> &StoreDir {
         self.reader.store_dir()
     }
 }
 
 #[forbid(clippy::missing_trait_methods)]
-impl<R, W> DaemonStore for DaemonClient<R, W>
+impl<R, W, CP> DaemonStore for DaemonClient<R, W, CP>
 where
     R: AsyncRead + fmt::Debug + Unpin + Send + 'static,
     W: AsyncWrite + fmt::Debug + Unpin + Send + 'static,
+    CP: CompatAddPermRoot<Self> + Clone + Send,
 {
     fn trust_level(&self) -> TrustLevel {
         self.remote_trusts_us
@@ -427,7 +453,7 @@ where
     fn nar_from_path<'s>(
         &'s mut self,
         path: &'s StorePath,
-    ) -> impl ResultLog<Output = DaemonResult<impl AsyncBufRead + use<R, W>>> + Send + 's {
+    ) -> impl ResultLog<Output = DaemonResult<impl AsyncBufRead + use<R, W, CP>>> + Send + 's {
         let reader = &mut self.reader;
         let writer = &mut self.writer;
         let (sender, receiver) = oneshot::channel();
@@ -924,14 +950,21 @@ where
         path: &'a StorePath,
         gc_root: &'a DaemonPath,
     ) -> impl ResultLog<Output = DaemonResult<DaemonPath>> + Send + 'a {
-        async move {
-            self.writer.write_value(&Operation::AddPermRoot).await?;
-            self.writer.write_value(path).await?;
-            self.writer.write_value(gc_root).await?;
-            Ok(self.process_stderr())
+        if self.version().minor() < 36 {
+            let compat_perm_root = self.compat_perm_root.clone();
+            Either::Left(compat_perm_root.add_perm_root(self, path, gc_root))
+        } else {
+            Either::Right(
+                async move {
+                    self.writer.write_value(&Operation::AddPermRoot).await?;
+                    self.writer.write_value(path).await?;
+                    self.writer.write_value(gc_root).await?;
+                    Ok(self.process_stderr())
+                }
+                .future_result()
+                .fill_operation(Operation::AddPermRoot),
+            )
         }
-        .future_result()
-        .fill_operation(Operation::AddPermRoot)
     }
 
     fn sync_with_gc(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + Send + '_ {
