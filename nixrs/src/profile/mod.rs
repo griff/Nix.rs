@@ -6,7 +6,7 @@ use std::time::SystemTime;
 
 use tokio::fs::{read_dir, read_link, rename, symlink, symlink_metadata};
 
-use crate::store_path::{StoreDir, StorePath};
+use crate::store_path::{HasStoreDir, StorePath};
 
 /// Parse profile link base name of the format `<profile name>-<number>-link`
 pub fn parse_name(profile_name: &str, name: &str) -> Option<u64> {
@@ -248,8 +248,7 @@ impl<R> PartialEq for Profile<R> {
 
 impl<R> Eq for Profile<R> {}
 
-pub trait ProfileRoots {
-    fn store_dir(&self) -> &StoreDir;
+pub trait ProfileRoots: HasStoreDir {
     fn make_gc_symlink(
         &self,
         link: &Path,
@@ -261,16 +260,19 @@ pub trait ProfileRoots {
 mod unittests {
     use std::fs::create_dir_all;
 
+    use nixrs::store_path::StoreDir;
     use tempfile::Builder;
 
     use super::*;
 
     struct DummyRoots(StoreDir);
-    impl ProfileRoots for DummyRoots {
+    impl HasStoreDir for DummyRoots {
         fn store_dir(&self) -> &StoreDir {
             &self.0
         }
+    }
 
+    impl ProfileRoots for DummyRoots {
         async fn make_gc_symlink(&self, link: &Path, target: &StorePath) -> io::Result<()> {
             let original = self.0.display(target).to_string();
             replace_link(original, link).await
