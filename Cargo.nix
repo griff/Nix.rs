@@ -1081,6 +1081,22 @@ rec {
         };
         resolvedDefaultFeatures = [ "default" "rand" "std" ];
       };
+      "camino" = rec {
+        crateName = "camino";
+        version = "1.2.1";
+        edition = "2021";
+        sha256 = "0296bpl9smby45fc2583cgb7ybdiqpqcjh4k2f47g5ic5fzmjsi7";
+        authors = [
+          "Without Boats <saoirse@without.boats>"
+          "Ashley Williams <ashley666ashley@gmail.com>"
+          "Steve Klabnik <steve@steveklabnik.com>"
+          "Rain <rain@sunshowers.io>"
+        ];
+        features = {
+          "proptest1" = [ "dep:proptest" ];
+          "serde1" = [ "dep:serde_core" ];
+        };
+      };
       "capnp" = rec {
         crateName = "capnp";
         version = "0.21.4";
@@ -5248,8 +5264,16 @@ rec {
             packageId = "bstr";
           }
           {
+            name = "byteorder";
+            packageId = "byteorder";
+          }
+          {
             name = "bytes";
             packageId = "bytes";
+          }
+          {
+            name = "camino";
+            packageId = "camino";
           }
           {
             name = "capnp";

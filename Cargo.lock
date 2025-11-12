@@ -350,6 +350,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "camino"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "276a59bf2b2c967788139340c9f0c5b12d7fd6630315c15c217e559de85d2609"
+
+[[package]]
 name = "capnp"
 version = "0.21.4"
 source = "git+https://github.com/griff/capnproto-rust.git?branch=feat%2Fsetter-input-everywhere#083b39c90ae1e48194bb9645a6ff812ef6b3a08d"
@@ -1648,7 +1654,9 @@ name = "nixrs-capnp"
 version = "0.1.0"
 dependencies = [
  "bstr",
+ "byteorder",
  "bytes",
+ "camino",
  "capnp",
  "capnp-rpc",
  "capnp-rpc-tokio",

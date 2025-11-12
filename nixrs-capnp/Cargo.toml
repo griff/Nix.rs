@@ -29,6 +29,7 @@ xp-ca-derivations = ["nixrs/xp-ca-derivations"]
 xp-impure-derivations = ["nixrs/xp-impure-derivations"]
 
 [dependencies]
+byteorder.workspace = true
 bytes.workspace = true
 bstr.workspace = true
 clap.workspace = true
@@ -42,6 +43,7 @@ pin-project-lite.workspace = true
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 mio = "1.0.4"
+camino = "1.2.1"
 
 [dependencies.tokio-util]
 workspace = true
