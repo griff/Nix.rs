@@ -1,10 +1,10 @@
+use std::future::ready;
 use std::pin::{Pin, pin};
 use std::task;
 
 use capnp::capability::{Client, FromClientHook};
 use capnp::message::ReaderOptions;
-use capnp_rpc::{Disconnector, RpcSystem, rpc_twoparty_capnp, twoparty};
-use futures::AsyncReadExt as _;
+use capnp_rpc::{Disconnector, RpcSystem, new_future_client, rpc_twoparty_capnp, twoparty};
 use futures::io as fio;
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -93,7 +93,7 @@ impl RpcSystemBuilder {
         let rpc_system = RpcSystem::new(Box::new(network), self.bootstrap);
         let disconnector = rpc_system.get_disconnector();
         ClientConnection {
-            rpc_system,
+            rpc_system: Some(rpc_system),
             disconnector,
         }
     }
@@ -114,7 +114,7 @@ impl Clone for RpcSystemBuilder {
 pin_project! {
     pub struct ServerConnection {
         #[pin]
-        rpc_system: RpcSystem<rpc_twoparty_capnp::Side>,
+        rpc_system: Option<RpcSystem<rpc_twoparty_capnp::Side>>,
         #[pin]
         disconnector: Disconnector<rpc_twoparty_capnp::Side>,
     }
@@ -123,7 +123,16 @@ pin_project! {
 impl ServerConnection {
     /// Return the client bootstrap interface
     pub fn client_bootstrap<T: FromClientHook>(&mut self) -> T {
-        self.rpc_system.bootstrap(rpc_twoparty_capnp::Side::Client)
+        if let Some(rpc_system) = self.rpc_system.as_mut() {
+            rpc_system.bootstrap(rpc_twoparty_capnp::Side::Client)
+        } else {
+            let c = new_future_client::<capnp::capability::Client>(ready(Err(
+                capnp::Error::disconnected(
+                    "can't get bootstrap interface after RPC system has been shut down".into(),
+                ),
+            )));
+            c.cast_to()
+        }
     }
 
     pub async fn with_graceful_shutdown<S>(self, signal: S)
@@ -161,14 +170,23 @@ impl GracefulConnection for ServerConnection {
 impl Future for ServerConnection {
     type Output = Result<(), capnp::Error>;
     fn poll(self: Pin<&mut Self>, cx: &mut task::Context) -> task::Poll<Self::Output> {
-        self.project().rpc_system.poll(cx)
+        let mut me = self.project();
+        if let Some(rpc) = me.rpc_system.as_mut().as_pin_mut() {
+            let ret = rpc.poll(cx);
+            if ret.is_ready() {
+                me.rpc_system.set(None);
+            }
+            ret
+        } else {
+            task::Poll::Ready(Ok(()))
+        }
     }
 }
 
 pin_project! {
     pub struct ClientConnection {
         #[pin]
-        rpc_system: RpcSystem<rpc_twoparty_capnp::Side>,
+        rpc_system: Option<RpcSystem<rpc_twoparty_capnp::Side>>,
         #[pin]
         disconnector: Disconnector<rpc_twoparty_capnp::Side>,
     }
@@ -177,7 +195,16 @@ pin_project! {
 impl ClientConnection {
     /// Return the server bootstrap interface
     pub fn server_bootstrap<T: FromClientHook>(&mut self) -> T {
-        self.rpc_system.bootstrap(rpc_twoparty_capnp::Side::Server)
+        if let Some(rpc_system) = self.rpc_system.as_mut() {
+            rpc_system.bootstrap(rpc_twoparty_capnp::Side::Server)
+        } else {
+            let c = new_future_client::<capnp::capability::Client>(ready(Err(
+                capnp::Error::disconnected(
+                    "can't get bootstrap interface after RPC system has been shut down".into(),
+                ),
+            )));
+            c.cast_to()
+        }
     }
 }
 impl crate::private::Sealed for ClientConnection {}
@@ -194,6 +221,15 @@ impl GracefulConnection for ClientConnection {
 impl Future for ClientConnection {
     type Output = Result<(), capnp::Error>;
     fn poll(self: Pin<&mut Self>, cx: &mut task::Context) -> task::Poll<Self::Output> {
-        self.project().rpc_system.poll(cx)
+        let mut me = self.project();
+        if let Some(rpc) = me.rpc_system.as_mut().as_pin_mut() {
+            let ret = rpc.poll(cx);
+            if ret.is_ready() {
+                me.rpc_system.set(None);
+            }
+            ret
+        } else {
+            task::Poll::Ready(Ok(()))
+        }
     }
 }

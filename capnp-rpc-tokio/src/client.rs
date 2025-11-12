@@ -46,7 +46,7 @@ impl ClientBuilder {
         self,
         reader: R,
         writer: W,
-    ) -> capnp::Result<ShutdownClient<C>>
+    ) -> capnp::Result<GuardedClient<C, ShutdownDropGuard>>
     where
         C: FromClientHook,
         R: AsyncRead + Unpin + 'static,
@@ -62,15 +62,18 @@ impl ClientBuilder {
                 error!("Failed to run RPC system: {err:#}");
             }
         });
-        Ok(ShutdownClient::new(
+        Ok(GuardedClient::new(
             client,
-            Rc::new(ShutdownInner {
+            Rc::new(ShutdownDropGuard {
                 actual: Some(shutdown),
             }),
         ))
     }
 
-    pub async fn connect_unix<C, P>(self, path: P) -> capnp::Result<ShutdownClient<C>>
+    pub async fn connect_unix<C, P>(
+        self,
+        path: P,
+    ) -> capnp::Result<GuardedClient<C, ShutdownDropGuard>>
     where
         C: FromClientHook,
         P: AsRef<Path>,
@@ -80,7 +83,10 @@ impl ClientBuilder {
         self.connect_io(reader, writer).await
     }
 
-    pub async fn connect_tcp<C, A>(self, addr: A) -> capnp::Result<ShutdownClient<C>>
+    pub async fn connect_tcp<C, A>(
+        self,
+        addr: A,
+    ) -> capnp::Result<GuardedClient<C, ShutdownDropGuard>>
     where
         C: FromClientHook,
         A: ToSocketAddrs,
@@ -91,36 +97,48 @@ impl ClientBuilder {
     }
 }
 
-struct ShutdownInner {
+pub struct ShutdownDropGuard {
     actual: Option<GracefulShutdown>,
 }
 
-impl Drop for ShutdownInner {
+impl Drop for ShutdownDropGuard {
     fn drop(&mut self) {
         if let Some(actual) = self.actual.take() {
+            eprintln!("Starting rpc shutdown");
             actual.shutdown_background();
         }
     }
 }
 
-#[derive(Clone)]
-pub struct ShutdownClient<C> {
+pub struct GuardedClient<C, I> {
     client: C,
-    shutdown: Rc<ShutdownInner>,
+    guard: Rc<I>,
+}
+impl<C, I> Clone for GuardedClient<C, I>
+where
+    C: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client.clone(),
+            guard: self.guard.clone(),
+        }
+    }
 }
 
-impl<C> ShutdownClient<C>
+impl<C, I> GuardedClient<C, I>
 where
     C: FromClientHook,
+    I: 'static,
 {
-    fn new(client: C, shutdown: Rc<ShutdownInner>) -> Self {
-        Self { client, shutdown }
+    pub fn new(client: C, guard: Rc<I>) -> Self {
+        Self { client, guard }
     }
 
-    pub fn wrap<NC>(self, client: NC) -> ShutdownClient<NC> {
-        ShutdownClient {
+    pub fn wrap<NC>(self, client: NC) -> GuardedClient<NC, I> {
+        GuardedClient {
             client,
-            shutdown: self.shutdown,
+            guard: self.guard,
         }
     }
 
@@ -128,20 +146,20 @@ where
         &self.client
     }
 
-    pub fn into_inner(self) -> C {
-        self.client
+    pub fn into_inner(self) -> (C, Rc<I>) {
+        (self.client, self.guard)
     }
 
     pub fn into_client(self) -> C {
-        let hook = Box::new(ShutdownHook {
+        let hook = Box::new(DropGuardHook {
             inner: self.client.into_client_hook(),
-            shutdown: self.shutdown,
+            guard: self.guard,
         });
         C::new(hook)
     }
 }
 
-impl<C> Deref for ShutdownClient<C> {
+impl<C, I> Deref for GuardedClient<C, I> {
     type Target = C;
 
     fn deref(&self) -> &Self::Target {
@@ -149,22 +167,22 @@ impl<C> Deref for ShutdownClient<C> {
     }
 }
 
-impl<C> AsRef<C> for ShutdownClient<C> {
+impl<C, I> AsRef<C> for GuardedClient<C, I> {
     fn as_ref(&self) -> &C {
         &self.client
     }
 }
 
-struct ShutdownHook {
+struct DropGuardHook<I> {
     inner: Box<dyn ClientHook>,
-    shutdown: Rc<ShutdownInner>,
+    guard: Rc<I>,
 }
 
-impl ClientHook for ShutdownHook {
+impl<I: 'static> ClientHook for DropGuardHook<I> {
     fn add_ref(&self) -> Box<dyn ClientHook> {
         Box::new(Self {
             inner: self.inner.add_ref(),
-            shutdown: self.shutdown.clone(),
+            guard: self.guard.clone(),
         })
     }
 
@@ -200,7 +218,7 @@ impl ClientHook for ShutdownHook {
         inner.map(|inner| {
             Box::new(Self {
                 inner,
-                shutdown: self.shutdown.clone(),
+                guard: self.guard.clone(),
             }) as Box<dyn ClientHook>
         })
     }
@@ -210,10 +228,13 @@ impl ClientHook for ShutdownHook {
     ) -> Option<capnp::capability::Promise<Box<dyn ClientHook>, capnp::Error>> {
         let inner = self.inner.when_more_resolved();
         inner.map(|inner| {
-            let shutdown = self.shutdown.clone();
-            Promise::from_future(
-                inner.map_ok(|inner| Box::new(Self { inner, shutdown }) as Box<dyn ClientHook>),
-            )
+            let shutdown = self.guard.clone();
+            Promise::from_future(inner.map_ok(|inner| {
+                Box::new(Self {
+                    inner,
+                    guard: shutdown,
+                }) as Box<dyn ClientHook>
+            }))
         })
     }
 
