@@ -42,13 +42,18 @@ impl ClientBuilder {
         self
     }
 
-    pub async fn connect_io<C, IO>(self, io: IO) -> capnp::Result<ShutdownClient<C>>
+    pub async fn connect_io<C, R, W>(
+        self,
+        reader: R,
+        writer: W,
+    ) -> capnp::Result<ShutdownClient<C>>
     where
         C: FromClientHook,
-        IO: AsyncRead + AsyncWrite + Unpin + 'static,
+        R: AsyncRead + Unpin + 'static,
+        W: AsyncWrite + Unpin + 'static,
     {
         let shutdown = GracefulShutdown::new();
-        let mut conn = self.inner.connect(io);
+        let mut conn = self.inner.connect(reader, writer);
         let client: C = conn.server_bootstrap();
         let watcher = shutdown.watcher();
 
@@ -71,7 +76,8 @@ impl ClientBuilder {
         P: AsRef<Path>,
     {
         let stream = UnixStream::connect(path).await?;
-        self.connect_io(stream).await
+        let (reader, writer) = stream.into_split();
+        self.connect_io(reader, writer).await
     }
 
     pub async fn connect_tcp<C, A>(self, addr: A) -> capnp::Result<ShutdownClient<C>>
@@ -80,7 +86,8 @@ impl ClientBuilder {
         A: ToSocketAddrs,
     {
         let stream = TcpStream::connect(addr).await?;
-        self.connect_io(stream).await
+        let (reader, writer) = stream.into_split();
+        self.connect_io(reader, writer).await
     }
 }
 

@@ -6,7 +6,6 @@ use capnp_rpc_tokio::serve::{make_client, serve};
 use clap::Parser;
 use nixrs::daemon::{MutexHandshakeStore, client::DaemonClient};
 use nixrs_capnp::{from_error, nix_daemon::HandshakeLoggedCapnpServer};
-use tokio::io::join;
 use tokio::net::UnixListener;
 use tokio::task::LocalSet;
 use tracing::{error, level_filters::LevelFilter};
@@ -93,10 +92,9 @@ async fn run_main(args: Args) {
         });
 
     if args.stdio {
-        let io = join(tokio::io::stdin(), tokio::io::stdout());
         RpcSystemBuilder::new()
             .bootstrap(client)
-            .serve_connection(io)
+            .serve_connection(tokio::io::stdin(), tokio::io::stdout())
             .with_graceful_shutdown(shutdown_signal())
             .await;
     } else {

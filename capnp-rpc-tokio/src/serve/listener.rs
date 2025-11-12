@@ -1,15 +1,17 @@
 use std::{fmt, future::Future, time::Duration};
 
-use tokio::{
-    io::{self, AsyncRead, AsyncWrite},
-    net::{TcpListener, TcpStream},
-};
+use tokio::io::{self, AsyncRead, AsyncWrite};
+#[cfg(unix)]
+use tokio::net::unix;
+use tokio::net::{TcpListener, tcp};
 use tracing::error;
 
 /// Types that can listen for connections.
 pub trait Listener: Send + 'static {
-    /// The listener's IO type.
-    type Io: AsyncRead + AsyncWrite + Unpin + Send + 'static;
+    /// The listener's Reader type.
+    type Reader: AsyncRead + Unpin + Send + 'static;
+    /// The listener's Writer type.
+    type Writer: AsyncWrite + Unpin + Send + 'static;
 
     /// The listener's address type.
     type Addr: Send;
@@ -18,20 +20,24 @@ pub trait Listener: Send + 'static {
     ///
     /// If the underlying accept call can return an error, this function must
     /// take care of logging and retrying.
-    fn accept(&mut self) -> impl Future<Output = (Self::Io, Self::Addr)> + Send;
+    fn accept(&mut self) -> impl Future<Output = (Self::Reader, Self::Writer, Self::Addr)> + Send;
 
     /// Returns the local address that this listener is bound to.
     fn local_addr(&self) -> io::Result<Self::Addr>;
 }
 
 impl Listener for TcpListener {
-    type Io = TcpStream;
+    type Reader = tcp::OwnedReadHalf;
+    type Writer = tcp::OwnedWriteHalf;
     type Addr = std::net::SocketAddr;
 
-    async fn accept(&mut self) -> (Self::Io, Self::Addr) {
+    async fn accept(&mut self) -> (Self::Reader, Self::Writer, Self::Addr) {
         loop {
             match Self::accept(self).await {
-                Ok(tup) => return tup,
+                Ok((io, addr)) => {
+                    let (reader, writer) = io.into_split();
+                    return (reader, writer, addr);
+                }
                 Err(e) => handle_accept_error(e).await,
             }
         }
@@ -45,13 +51,17 @@ impl Listener for TcpListener {
 
 #[cfg(unix)]
 impl Listener for tokio::net::UnixListener {
-    type Io = tokio::net::UnixStream;
+    type Reader = unix::OwnedReadHalf;
+    type Writer = unix::OwnedWriteHalf;
     type Addr = tokio::net::unix::SocketAddr;
 
-    async fn accept(&mut self) -> (Self::Io, Self::Addr) {
+    async fn accept(&mut self) -> (Self::Reader, Self::Writer, Self::Addr) {
         loop {
             match Self::accept(self).await {
-                Ok(tup) => return tup,
+                Ok((io, addr)) => {
+                    let (reader, writer) = io.into_split();
+                    return (reader, writer, addr);
+                }
                 Err(e) => handle_accept_error(e).await,
             }
         }
@@ -68,7 +78,7 @@ pub trait ListenerExt: Listener + Sized {
     /// Run a mutable closure on every accepted `Io`.
     fn tap_io<F>(self, tap_fn: F) -> TapIo<Self, F>
     where
-        F: FnMut(&mut Self::Io) + Send + 'static,
+        F: FnMut(&mut Self::Reader, &mut Self::Writer) + Send + 'static,
     {
         TapIo {
             listener: self,
@@ -101,15 +111,16 @@ where
 impl<L, F> Listener for TapIo<L, F>
 where
     L: Listener,
-    F: FnMut(&mut L::Io) + Send + 'static,
+    F: FnMut(&mut L::Reader, &mut L::Writer) + Send + 'static,
 {
-    type Io = L::Io;
+    type Reader = L::Reader;
+    type Writer = L::Writer;
     type Addr = L::Addr;
 
-    async fn accept(&mut self) -> (Self::Io, Self::Addr) {
-        let (mut io, addr) = self.listener.accept().await;
-        (self.tap_fn)(&mut io);
-        (io, addr)
+    async fn accept(&mut self) -> (Self::Reader, Self::Writer, Self::Addr) {
+        let (mut reader, mut writer, addr) = self.listener.accept().await;
+        (self.tap_fn)(&mut reader, &mut writer);
+        (reader, writer, addr)
     }
 
     fn local_addr(&self) -> io::Result<Self::Addr> {

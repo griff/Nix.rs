@@ -24,7 +24,6 @@ use nixrs_capnp::capnp::nix_daemon_capnp::logged_nix_daemon;
 use nixrs_capnp::nix_daemon::HandshakeLoggedCapnpServer;
 use nixrs_capnp::nix_daemon::LoggedCapnpStore;
 use pin_project_lite::pin_project;
-use tokio::io::join;
 use tokio::io::{Interest, Ready};
 use tokio::sync::{mpsc, watch};
 use tokio::{
@@ -231,7 +230,7 @@ async fn run_server(listener: UnixListener, sleep: Duration) {
         new_client(HandshakeLoggedCapnpServer::new(SleepStore::new(sleep)));
     let mut conn = RpcSystemBuilder::new()
         .bootstrap(client)
-        .serve_connection(join(reader, writer));
+        .serve_connection(reader, writer);
     //let b = server::Builder::new();
     tokio::select! {
         res = &mut conn => {

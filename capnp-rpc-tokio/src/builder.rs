@@ -53,11 +53,13 @@ impl RpcSystemBuilder {
     }
 
     /// Serve a given io stream as a server connection
-    pub fn serve_connection<IO>(self, io: IO) -> ServerConnection
+    pub fn serve_connection<R, W>(self, reader: R, writer: W) -> ServerConnection
     where
-        IO: AsyncRead + AsyncWrite + Unpin + 'static,
+        R: AsyncRead + Unpin + 'static,
+        W: AsyncWrite + Unpin + 'static,
     {
-        let (reader, writer) = tokio_util::compat::TokioAsyncReadCompatExt::compat(io).split();
+        let reader = tokio_util::compat::TokioAsyncReadCompatExt::compat(reader);
+        let writer = tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(writer);
         let network = twoparty::VatNetwork::new(
             fio::BufReader::new(reader),
             fio::BufWriter::new(writer),
@@ -68,17 +70,19 @@ impl RpcSystemBuilder {
         let rpc_system = RpcSystem::new(Box::new(network), self.bootstrap);
         let disconnector = rpc_system.get_disconnector();
         ServerConnection {
-            rpc_system,
+            rpc_system: Some(rpc_system),
             disconnector,
         }
     }
 
     /// Connect to a given io stream as a client
-    pub fn connect<IO>(self, io: IO) -> ClientConnection
+    pub fn connect<R, W>(self, reader: R, writer: W) -> ClientConnection
     where
-        IO: AsyncRead + AsyncWrite + Unpin + 'static,
+        R: AsyncRead + Unpin + 'static,
+        W: AsyncWrite + Unpin + 'static,
     {
-        let (reader, writer) = tokio_util::compat::TokioAsyncReadCompatExt::compat(io).split();
+        let reader = tokio_util::compat::TokioAsyncReadCompatExt::compat(reader);
+        let writer = tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(writer);
         let network = twoparty::VatNetwork::new(
             fio::BufReader::new(reader),
             fio::BufWriter::new(writer),

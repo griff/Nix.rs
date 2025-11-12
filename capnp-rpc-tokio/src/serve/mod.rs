@@ -66,21 +66,22 @@ where
             mut make_service,
         } = self;
         loop {
-            let (io, remote_addr) = listener.accept().await;
+            let (reader, writer, remote_addr) = listener.accept().await;
             let mut mr = Pin::new(&mut make_service);
             poll_fn(move |cx| mr.as_mut().poll_ready(cx))
                 .await
                 .unwrap_or_else(|err| match err {});
             let client = make_service
                 .call(IncomingStream {
-                    io: &io,
+                    reader: &reader,
+                    writer: &writer,
                     remote_addr,
                 })
                 .await
                 .unwrap_or_else(|err| match err {});
             let server = RpcSystemBuilder::new()
                 .bootstrap(client)
-                .serve_connection(io);
+                .serve_connection(reader, writer);
             tokio::task::spawn_local(server);
         }
     }
@@ -137,7 +138,7 @@ where
         let mut signal = pin!(signal);
 
         loop {
-            let (io, remote_addr) = tokio::select! {
+            let (reader, writer, remote_addr) = tokio::select! {
                 conn = listener.accept() => conn,
                 _ = &mut signal => {
                     drop(listener);
@@ -152,14 +153,15 @@ where
                 .unwrap_or_else(|err| match err {});
             let client = make_service
                 .call(IncomingStream {
-                    io: &io,
+                    reader: &reader,
+                    writer: &writer,
                     remote_addr,
                 })
                 .await
                 .unwrap_or_else(|err| match err {});
             let conn = RpcSystemBuilder::new()
                 .bootstrap(client)
-                .serve_connection(io);
+                .serve_connection(reader, writer);
             let watcher = shutdown.watcher();
             tokio::task::spawn_local(async move {
                 if let Err(err) = watcher.watch(conn).await {
@@ -196,7 +198,8 @@ pub struct IncomingStream<'a, L>
 where
     L: Listener,
 {
-    io: &'a L::Io,
+    reader: &'a L::Reader,
+    writer: &'a L::Writer,
     remote_addr: L::Addr,
 }
 
@@ -204,8 +207,12 @@ impl<'a, L> IncomingStream<'a, L>
 where
     L: Listener,
 {
-    pub fn io(&self) -> &L::Io {
-        self.io
+    pub fn reader(&self) -> &L::Reader {
+        self.reader
+    }
+
+    pub fn writer(&self) -> &L::Writer {
+        self.writer
     }
 
     pub fn remote_addr(&self) -> &L::Addr {
