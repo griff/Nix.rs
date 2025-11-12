@@ -24,6 +24,8 @@ use crate::convert::{BuildFrom, ReadInto};
 use crate::{DEFAULT_BUF_SIZE, from_error};
 
 pub struct NoopLogger;
+
+#[forbid(clippy::missing_trait_methods)]
 impl logger::Server for NoopLogger {
     fn write(&mut self, _: logger::WriteParams) -> Promise<(), Error> {
         Promise::ok(())
@@ -78,6 +80,7 @@ impl<S> CapnpServer<S> {
     }
 }
 
+#[forbid(clippy::missing_trait_methods)]
 impl<S> has_store_dir::Server for CapnpServer<S>
 where
     S: HasStoreDir + Clone + 'static,
@@ -93,6 +96,7 @@ where
     }
 }
 
+#[forbid(clippy::missing_trait_methods)]
 impl<S> nix_daemon::Server for CapnpServer<S>
 where
     S: DaemonStore + Clone + 'static,
@@ -434,6 +438,8 @@ struct AddMultipleStreamServer {
     remaining: u16,
     sender: mpsc::Sender<DaemonResult<AddToStoreItem<BufReader<ReadHalf<SimplexStream>>>>>,
 }
+
+#[forbid(clippy::missing_trait_methods)]
 impl add_multiple_stream::Server for AddMultipleStreamServer {
     fn add(
         &mut self,
@@ -572,6 +578,7 @@ where
     }
 }
 
+#[forbid(clippy::missing_trait_methods)]
 impl<HS, S> has_store_dir::Server for HandshakeLoggedCapnpServer<HS, S>
 where
     HS: HasStoreDir + 'static,
@@ -586,6 +593,7 @@ where
     }
 }
 
+#[forbid(clippy::missing_trait_methods)]
 impl<HS, S> logged_nix_daemon::Server for HandshakeLoggedCapnpServer<HS, S>
 where
     HS: HandshakeDaemonStore<Store = S> + 'static,
@@ -645,6 +653,7 @@ struct Captures {
     sender: Option<oneshot::Sender<()>>,
 }
 
+#[forbid(clippy::missing_trait_methods)]
 impl logger::Server for Captures {
     fn write(&mut self, params: logger::WriteParams) -> Promise<(), ::capnp::Error> {
         let client = self.client.clone();
@@ -669,6 +678,7 @@ impl logger::Server for Captures {
     }
 }
 
+#[forbid(clippy::missing_trait_methods)]
 impl<S> has_store_dir::Server for LoggedCapnpServer<S>
 where
     S: HasStoreDir + 'static,
@@ -683,6 +693,7 @@ where
     }
 }
 
+#[forbid(clippy::missing_trait_methods)]
 impl<S> logged_nix_daemon::Server for LoggedCapnpServer<S>
 where
     S: DaemonStore + Clone + 'static,

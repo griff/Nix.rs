@@ -607,7 +607,7 @@ pub trait DaemonStore: HasStoreDir + Send {
     fn shutdown(&mut self) -> impl Future<Output = DaemonResult<()>> + Send + '_;
 }
 
-#[warn(clippy::missing_trait_methods)]
+#[forbid(clippy::missing_trait_methods)]
 impl<'os, S> DaemonStore for &'os mut S
 where
     S: DaemonStore,
