@@ -1,10 +1,15 @@
 use capnp::{
     capability::{FromClientHook, Promise},
-    traits::HasTypeId,
+    traits::{HasTypeId, SetterInput},
 };
 use capnp_rpc::pry;
 
 use crate::capnp::lookup_capnp;
+
+pub trait LookupParams: SetterInput<Self::Params> {
+    type Params: capnp::traits::Owned;
+    type Return: FromClientHook + HasTypeId;
+}
 
 pub struct CapLookup {
     client: lookup_capnp::cap_lookup::Client,
@@ -13,6 +18,50 @@ pub struct CapLookup {
 impl CapLookup {
     pub fn new(client: lookup_capnp::cap_lookup::Client) -> Self {
         Self { client }
+    }
+
+    pub fn into_client(self) -> lookup_capnp::cap_lookup::Client {
+        self.client
+    }
+
+    pub async fn lookup_params<P>(&self, params: P) -> capnp::Result<Option<P::Return>>
+    where
+        P: LookupParams,
+    {
+        let mut req = self.client.lookup_request();
+        let mut b = req.get().init_priority(1).get(0);
+        b.reborrow().init_params().set_as::<P::Params>(params)?;
+        b.set_cap_type(P::Return::TYPE_ID);
+        let res = req.send().promise.await?;
+        let r = res.get()?;
+        if r.has_selected() {
+            let cap_type = r.get_selected()?.get_cap_type();
+            if cap_type != P::Return::TYPE_ID {
+                return Err(capnp::Error::failed(format!(
+                    "Returned capability 0x{cap_type:x} does not match requested 0x{:x}",
+                    P::Return::TYPE_ID
+                )));
+            }
+            Ok(Some(
+                r.get_selected()?
+                    .get_cap()
+                    .get_as_capability::<P::Return>()?,
+            ))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn required_lookup_params<P>(&self, params: P) -> capnp::Result<P::Return>
+    where
+        P: LookupParams,
+    {
+        self.lookup_params::<P>(params).await?.ok_or_else(|| {
+            capnp::Error::failed(format!(
+                "Missing required capability 0x{:x}",
+                P::Return::TYPE_ID
+            ))
+        })
     }
 
     pub async fn lookup<C>(&self) -> capnp::Result<Option<C>>
