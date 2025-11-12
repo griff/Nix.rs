@@ -148,6 +148,23 @@ impl RemoteStorePath {
         Ok(RemoteStorePath { store_path, client })
     }
 
+    pub async fn load_from_store_path(
+        store_path: StorePath,
+        client: &store_path_store::Client,
+    ) -> capnp::Result<Option<Self>> {
+        let mut req = client.lookup_request();
+        req.get().init_params().set_by_store_path(&store_path)?;
+        let res = req.send().promise.await?;
+        let r = res.get()?.get_path()?;
+        if r.has_access() {
+            let client = r.get_access()?;
+            let store_path = Rc::new(store_path);
+            Ok(Some(RemoteStorePath { store_path, client }))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub async fn load(client: store_path_access::Client) -> Result<Self, CapError> {
         let res = client.get_store_path_request().send().promise.await?;
         let store_path = Rc::new(res.get()?.get_path()?.read_into()?);
