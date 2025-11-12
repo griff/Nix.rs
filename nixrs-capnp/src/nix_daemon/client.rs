@@ -4,6 +4,7 @@ use std::pin::pin;
 
 use ::capnp::Error;
 use ::capnp::capability::Promise;
+use bytes::Bytes;
 use capnp::capability::FromClientHook;
 use capnp_rpc::new_client;
 use capnp_rpc_tokio::stream::{ByteStreamWrap, ByteStreamWriter, from_cap_error};
@@ -347,6 +348,54 @@ impl LocalDaemonStore for CapnpStore {
             } else {
                 Ok(None) as Result<_, Error>
             }
+        })
+        .map_err(DaemonError::custom)
+        .empty_logs()
+    }
+
+    fn add_temp_root<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
+        (async move {
+            let mut req = self.store.add_temp_root_request();
+            let mut params = req.get();
+            params.set_path(path)?;
+            req.send().promise.await?;
+            Ok(()) as Result<_, Error>
+        })
+        .map_err(DaemonError::custom)
+        .empty_logs()
+    }
+
+    fn add_indirect_root<'a>(
+        &'a mut self,
+        path: &'a nixrs::daemon::DaemonPath,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
+        (async move {
+            let mut req = self.store.add_indirect_root_request();
+            let mut params = req.get();
+            params.set_path(&**path);
+            req.send().promise.await?;
+            Ok(()) as Result<_, Error>
+        })
+        .map_err(DaemonError::custom)
+        .empty_logs()
+    }
+
+    fn add_perm_root<'a>(
+        &'a mut self,
+        path: &'a StorePath,
+        gc_root: &'a nixrs::daemon::DaemonPath,
+    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::DaemonPath>> + 'a {
+        (async move {
+            let mut req = self.store.add_perm_root_request();
+            let mut params = req.get();
+            params.set_path(path)?;
+            params.set_gc_root(&**gc_root);
+            let resp = req.send().promise.await?;
+            let ret_path = Bytes::copy_from_slice(resp.get()?.get_path()?);
+            Ok(ret_path) as Result<_, Error>
         })
         .map_err(DaemonError::custom)
         .empty_logs()

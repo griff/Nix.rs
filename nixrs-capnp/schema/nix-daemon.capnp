@@ -163,6 +163,10 @@ interface NixDaemon extends(HasStoreDir) {
     queryMissing @9 (paths :List(DerivedPath)) -> (missing :QueryMissingResult);
     addToStoreNar @10 (info :ValidPathInfo, repair :Bool, dontCheckSigs :Bool) -> (stream :ByteStream);
     addMultipleToStore @11 (repair :Bool, dontCheckSigs :Bool, count :UInt16) -> (stream :AddMultipleStream);
+
+    addTempRoot @14 (path :Types.StorePath);
+    addIndirectRoot @15 (path :Types.Path);
+    addPermRoot @16 (path :Types.StorePath, gc_root :Types.Path) -> (path :Types.Path);
 }
 
 enum ResultType {

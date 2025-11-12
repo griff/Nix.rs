@@ -379,6 +379,55 @@ where
             Ok(())
         })
     }
+
+    fn add_temp_root(
+        &mut self,
+        params: nix_daemon::AddTempRootParams,
+        _result: nix_daemon::AddTempRootResults,
+    ) -> Promise<(), Error> {
+        let mut this = self.clone();
+        Promise::from_future(async move {
+            let p = params.get()?;
+            let path = p.get_path()?.read_into()?;
+            this.logger
+                .process_logs(this.store.add_temp_root(&path))
+                .await
+        })
+    }
+
+    fn add_indirect_root(
+        &mut self,
+        params: nix_daemon::AddIndirectRootParams,
+        _result: nix_daemon::AddIndirectRootResults,
+    ) -> Promise<(), Error> {
+        let mut this = self.clone();
+        Promise::from_future(async move {
+            let p = params.get()?;
+            let path = p.get_path()?.read_into()?;
+            this.logger
+                .process_logs(this.store.add_indirect_root(&path))
+                .await
+        })
+    }
+
+    fn add_perm_root(
+        &mut self,
+        params: nix_daemon::AddPermRootParams,
+        mut result: nix_daemon::AddPermRootResults,
+    ) -> Promise<(), Error> {
+        let mut this = self.clone();
+        Promise::from_future(async move {
+            let p = params.get()?;
+            let path = p.get_path()?.read_into()?;
+            let gc_root = p.get_gc_root()?.read_into()?;
+            let res = this
+                .logger
+                .process_logs(this.store.add_perm_root(&path, &gc_root))
+                .await?;
+            result.get().set_path(&*res);
+            Ok(())
+        })
+    }
 }
 
 struct AddMultipleStreamServer {
