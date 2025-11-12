@@ -12,12 +12,14 @@ use futures::stream::StreamExt;
 use futures::{SinkExt as _, Stream, TryFutureExt};
 use nixrs::daemon::{AddToStoreItem, DaemonResult, DaemonStore, HandshakeDaemonStore, ResultLog};
 use nixrs::derived_path::DerivedPath;
-use nixrs::store_path::StorePathHash;
+use nixrs::store_path::{HasStoreDir, StoreDir, StorePathHash};
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncWriteExt as _, BufReader, ReadHalf, SimplexStream, copy_buf, simplex};
 use tracing::trace;
 
-use crate::capnp::nix_daemon_capnp::{add_multiple_stream, logged_nix_daemon, logger, nix_daemon};
+use crate::capnp::nix_daemon_capnp::{
+    add_multiple_stream, has_store_dir, logged_nix_daemon, logger, nix_daemon,
+};
 use crate::convert::{BuildFrom, ReadInto};
 use crate::{DEFAULT_BUF_SIZE, from_error};
 
@@ -73,6 +75,21 @@ impl<S> CapnpServer<S> {
             shutdown: false,
             store,
         }
+    }
+}
+
+impl<S> has_store_dir::Server for CapnpServer<S>
+where
+    S: HasStoreDir + Clone + 'static,
+{
+    fn store_dir(
+        &mut self,
+        _: has_store_dir::StoreDirParams,
+        mut result: has_store_dir::StoreDirResults,
+    ) -> Promise<(), capnp::Error> {
+        let dir = self.store.store_dir();
+        result.get().set_store_dir(dir.to_str());
+        Promise::ok(())
     }
 }
 
@@ -489,6 +506,7 @@ where
 
 #[derive(Clone)]
 pub struct HandshakeLoggedCapnpServer<HS, S> {
+    store_dir: StoreDir,
     inner: Arc<Mutex<Inner<HS, S>>>,
 }
 
@@ -499,8 +517,23 @@ where
 {
     pub fn new(store: HS) -> Self {
         Self {
+            store_dir: store.store_dir().clone(),
             inner: Arc::new(Mutex::new(Inner::Handshake(store))),
         }
+    }
+}
+
+impl<HS, S> has_store_dir::Server for HandshakeLoggedCapnpServer<HS, S>
+where
+    HS: HasStoreDir + 'static,
+{
+    fn store_dir(
+        &mut self,
+        _: has_store_dir::StoreDirParams,
+        mut result: has_store_dir::StoreDirResults,
+    ) -> Promise<(), capnp::Error> {
+        result.get().set_store_dir(self.store_dir.to_str());
+        Promise::ok(())
     }
 }
 
@@ -580,6 +613,20 @@ impl logger::Server for Captures {
             }
             Ok(())
         })
+    }
+}
+
+impl<S> has_store_dir::Server for LoggedCapnpServer<S>
+where
+    S: HasStoreDir + 'static,
+{
+    fn store_dir(
+        &mut self,
+        _: has_store_dir::StoreDirParams,
+        mut result: has_store_dir::StoreDirResults,
+    ) -> Promise<(), capnp::Error> {
+        result.get().set_store_dir(self.store.store_dir().to_str());
+        Promise::ok(())
     }
 }
 

@@ -144,7 +144,11 @@ enum BuildMode {
     check @2;
 }
 
-interface NixDaemon {
+interface HasStoreDir {
+    storeDir @0 () -> (storeDir :Text);
+}
+
+interface NixDaemon extends(HasStoreDir) {
     end @0 ();
     setOptions @1 (options :ClientOptions);
     isValidPath @2 (path :Types.StorePath) -> (valid :Bool);
@@ -238,6 +242,6 @@ interface Logger {
     end @1 ();
 }
 
-interface LoggedNixDaemon {
+interface LoggedNixDaemon extends(HasStoreDir) {
     captureLogs @0 (logger :Logger) -> (daemon :NixDaemon);
 }

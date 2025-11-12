@@ -32,8 +32,10 @@ where
     let client: nixrs_capnp::capnp::nix_daemon_capnp::logged_nix_daemon::Client =
         rpc_system.bootstrap(rpc_twoparty_capnp::Side::Server);
     tokio::task::spawn_local(rpc_system);
-    let store = LoggedCapnpStore::new(client);
     let ret = async move {
+        let store = LoggedCapnpStore::load(client)
+            .await
+            .map_err(DaemonError::custom)?;
         let b = server::Builder::new();
         let server = b.local_serve_connection(tokio::io::stdin(), tokio::io::stdout(), store);
         server.await

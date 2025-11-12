@@ -105,7 +105,7 @@ async fn run_main(args: Args) {
     let mut signal = std::pin::pin!(shutdown_signal());
 
     if args.stdio {
-        let store = LoggedCapnpStore::new(client);
+        let store = LoggedCapnpStore::load(client).await.unwrap();
         let b = server::Builder::new();
         tokio::select! {
             res = b.local_serve_connection(tokio::io::stdin(), tokio::io::stdout(), store) => {
@@ -163,8 +163,8 @@ async fn run_main(args: Args) {
             };
             */
             let client = client.clone();
+            let store = LoggedCapnpStore::load(client).await.unwrap();
             tokio::task::spawn_local(async move {
-                let store = LoggedCapnpStore::new(client);
                 let b = server::Builder::new();
                 let (reader, writer) = io.split();
                 if let Err(err) = b.local_serve_connection(reader, writer, store).await {

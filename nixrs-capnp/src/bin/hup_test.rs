@@ -350,7 +350,7 @@ async fn run_main(args: Args) {
         .await
         .unwrap()
         .into_client();
-    let mut store = LoggedCapnpStore::new(client);
+    let mut store = LoggedCapnpStore::load(client).await.unwrap();
 
     /*
     let mut store = DaemonClient::builder()

@@ -4,6 +4,7 @@ use std::pin::pin;
 
 use ::capnp::Error;
 use ::capnp::capability::Promise;
+use capnp::capability::FromClientHook;
 use capnp_rpc::new_client;
 use capnp_rpc_tokio::stream::{ByteStreamWrap, ByteStreamWriter, from_cap_error};
 use futures::channel::mpsc;
@@ -19,7 +20,7 @@ use nixrs::log::LogMessage;
 use nixrs::store_path::{HasStoreDir, StoreDir, StorePath, StorePathSet};
 use tokio::io::{AsyncWriteExt, BufReader, copy_buf, simplex};
 
-use crate::capnp::nix_daemon_capnp;
+use crate::capnp::nix_daemon_capnp::{self, has_store_dir};
 use crate::convert::{BuildFrom, ReadInto};
 use crate::{DEFAULT_BUF_SIZE, from_error};
 
@@ -390,7 +391,19 @@ pub struct LoggedCapnpStore {
 }
 
 impl LoggedCapnpStore {
-    pub fn new(store: nix_daemon_capnp::logged_nix_daemon::Client) -> Self {
+    pub async fn load(store: nix_daemon_capnp::logged_nix_daemon::Client) -> capnp::Result<Self> {
+        let store_dir_res = store
+            .clone()
+            .cast_to::<has_store_dir::Client>()
+            .store_dir_request()
+            .send()
+            .promise
+            .await?;
+        let store_dir = StoreDir::new(store_dir_res.get()?.get_store_dir()?.to_string()?)
+            .map_err(|err| capnp::Error::failed(err.to_string()))?;
+        Ok(Self::with_store_dir(store, store_dir))
+    }
+    pub fn with_default(store: nix_daemon_capnp::logged_nix_daemon::Client) -> Self {
         Self::with_store_dir(store, Default::default())
     }
 
