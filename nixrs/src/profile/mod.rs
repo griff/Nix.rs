@@ -75,7 +75,7 @@ impl<R> Generation<'_, R> {
         Ok(())
     }
 
-    pub fn delete(&self) -> io::Result<()> {
+    pub async fn delete(&self) -> io::Result<()> {
         Ok(())
     }
 }
