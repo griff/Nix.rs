@@ -668,8 +668,7 @@ impl logger::Server for Captures {
         let client = self.client.clone();
         let sender = self.sender.take();
         Promise::from_future(async move {
-            let req = client.end_request();
-            req.send().promise.await?;
+            client.end_request().send().promise.await?;
             if let Some(sender) = sender {
                 let _ = sender.send(());
             }

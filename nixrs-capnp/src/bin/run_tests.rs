@@ -37,8 +37,8 @@ where
             .await
             .map_err(DaemonError::custom)?;
         let b = server::Builder::new();
-        let server = b.local_serve_connection(tokio::io::stdin(), tokio::io::stdout(), store);
-        server.await
+        b.local_serve_connection(tokio::io::stdin(), tokio::io::stdout(), store)
+            .await
     };
     (ret, disconnector)
 }

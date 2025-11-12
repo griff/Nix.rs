@@ -371,7 +371,10 @@ impl Stream for NarDumper {
             }
             if let Some(entry) = self.next.take() {
                 let name = if self.level > 0 {
-                    let filename = entry.path().file_name().unwrap();
+                    let filename = entry
+                        .path()
+                        .file_name()
+                        .expect("directory entries must have file names");
                     let n = <[u8]>::from_os_str(filename).ok_or_else(|| {
                         io::Error::other(format!("filename {filename:?} not valid UTF-8"))
                     })?;
