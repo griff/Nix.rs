@@ -10,14 +10,16 @@ fn main() {
         .canonicalize()
         .unwrap();
     eprintln!("Capnp include {}", capnp_include.display());
+    let path = std::env::current_dir().unwrap();
     capnpc::CompilerCommand::new()
+        .import_path(path.join("schema"))
         .crate_provides("capnp_rpc_tokio", [0x8f5d14e1c273738d])
-        .src_prefix("schema")
-        .file("schema/nix-daemon.capnp")
-        .file("schema/nix-types.capnp")
-        .file("schema/nixrs.capnp")
-        .file("schema/ip.capnp")
-        .file("schema/lookup.capnp")
+        .src_prefix("schema/nixrs")
+        .file("schema/nixrs/nix-daemon.capnp")
+        .file("schema/nixrs/nix-types.capnp")
+        .file("schema/nixrs/nixrs.capnp")
+        .file("schema/nixrs/ip.capnp")
+        .file("schema/nixrs/lookup.capnp")
         .default_parent_module(vec!["capnp".into()])
         //.import_path(&capnp_include)
         //.src_prefix(&capnp_include)

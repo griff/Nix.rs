@@ -1,6 +1,6 @@
 @0xb83d96947a7e4ccb;
 
-using ByteStream = import "byte-stream.capnp".ByteStream;
+using ByteStream = import "/byte-stream.capnp".ByteStream;
 using Types = import "nix-types.capnp";
 
 using DaemonInt = UInt32;

@@ -1,6 +1,6 @@
 @0xd1110b8bb62d8737;
 
-using ByteStream = import "byte-stream.capnp".ByteStream;
+using ByteStream = import "/byte-stream.capnp".ByteStream;
 using Types = import "nix-types.capnp";
 using Extra = import "lookup.capnp".Extra;
 
