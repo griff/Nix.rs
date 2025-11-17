@@ -50,6 +50,10 @@ impl<T: Strategy> Union<T> {
     /// Panics if `options` is empty or any element has a weight of 0.
     ///
     /// Panics if the sum of the weights overflows a `u32`.
+    #[cfg_attr(
+        not(any(feature = "internal", feature = "nixrs-derive")),
+        expect(dead_code)
+    )]
     pub fn new_weighted(options: Vec<W<T>>) -> Self {
         assert!(!options.is_empty());
         assert!(
@@ -65,11 +69,19 @@ impl<T: Strategy> Union<T> {
     }
 
     /// Add `other` as an additional alternate strategy with weight 1.
+    #[cfg_attr(
+        not(any(feature = "internal", feature = "nixrs-derive")),
+        expect(dead_code)
+    )]
     pub fn or(mut self, other: T) -> Self {
         self.options.push((1, Arc::new(other)));
         self
     }
 
+    #[cfg_attr(
+        not(any(feature = "internal", feature = "nixrs-derive")),
+        expect(dead_code)
+    )]
     pub fn shrinked(mut self, idx: usize) -> Self {
         self.options.swap(0, idx);
         self

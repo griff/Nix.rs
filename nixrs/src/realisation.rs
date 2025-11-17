@@ -275,6 +275,7 @@ mod unittests {
         pretty_assertions::assert_eq!(actual, expected);
     }
 
+    #[cfg(feature = "daemon-serde")]
     #[tokio::test]
     #[rstest]
     #[case(
@@ -299,6 +300,7 @@ mod unittests {
         mock.write_value(&value).await.unwrap();
     }
 
+    #[cfg(feature = "daemon-serde")]
     #[tokio::test]
     #[rstest]
     #[case(

@@ -5177,6 +5177,10 @@ rec {
             packageId = "once_cell";
           }
           {
+            name = "pretty_assertions";
+            packageId = "pretty_assertions";
+          }
+          {
             name = "proptest";
             packageId = "proptest";
           }
@@ -5216,12 +5220,11 @@ rec {
           }
         ];
         features = {
-          "archive" = [ "dep:walkdir" ];
-          "daemon" = [ "nixrs-derive" "archive" "tokio/rt" ];
-          "default" = [ "test" "daemon" ];
+          "archive" = [ "dep:walkdir" "dep:bstr" ];
+          "daemon" = [ "nixrs-derive" "tokio/rt" ];
           "full" = [ "test" "daemon" ];
           "md5" = [ "dep:md5" ];
-          "nixrs-derive" = [ "daemon-serde" "dep:nixrs-derive" "dep:libc" "dep:bstr" ];
+          "nixrs-derive" = [ "archive" "daemon-serde" "dep:nixrs-derive" "dep:libc" "dep:bstr" ];
           "proptest" = [ "dep:proptest" ];
           "test" = [ "proptest" "dep:proptest-derive" "dep:test-strategy" "dep:pretty_assertions" ];
         };

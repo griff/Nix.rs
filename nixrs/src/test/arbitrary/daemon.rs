@@ -1,17 +1,17 @@
 use std::fmt::Debug;
 
-#[cfg(feature = "daemon")]
+#[cfg(feature = "nixrs-derive")]
 use crate::daemon::wire::types2::ValidPathInfo;
-#[cfg(feature = "daemon")]
+#[cfg(feature = "nixrs-derive")]
 use bytes::Bytes;
 use proptest::prelude::*;
-#[cfg(feature = "daemon")]
+#[cfg(feature = "nixrs-derive")]
 use proptest::sample::SizeRange;
 
-#[cfg(feature = "daemon")]
+#[cfg(feature = "nixrs-derive")]
 use crate::archive::test_data;
 use crate::daemon::ProtocolVersion;
-#[cfg(feature = "daemon")]
+#[cfg(feature = "nixrs-derive")]
 use crate::test::arbitrary::archive::{arb_nar_contents, arb_nar_events};
 
 pub fn version_cut_off<B, A, V>(
@@ -39,22 +39,22 @@ where
     version_cut_off(version, cut_off, Just(V::default()), after)
 }
 
-#[cfg(feature = "daemon")]
+#[cfg(feature = "nixrs-derive")]
 pub fn arb_nar_item() -> impl Strategy<Value = (ValidPathInfo, test_data::TestNarEvents)> {
     (any::<ValidPathInfo>(), arb_nar_events(20, 20, 5))
 }
 
-#[cfg(feature = "daemon")]
+#[cfg(feature = "nixrs-derive")]
 pub fn arb_nar_contents_item() -> impl Strategy<Value = (ValidPathInfo, Bytes)> {
     (any::<ValidPathInfo>(), arb_nar_contents(20, 20, 5))
 }
 
-#[cfg(feature = "daemon")]
+#[cfg(feature = "nixrs-derive")]
 pub fn arb_nar_items() -> impl Strategy<Value = Vec<(ValidPathInfo, test_data::TestNarEvents)>> {
     proptest::collection::vec(arb_nar_item(), SizeRange::default())
 }
 
-#[cfg(feature = "daemon")]
+#[cfg(feature = "nixrs-derive")]
 pub fn arb_nar_contents_items() -> impl Strategy<Value = Vec<(ValidPathInfo, Bytes)>> {
     proptest::collection::vec(arb_nar_contents_item(), SizeRange::default())
 }

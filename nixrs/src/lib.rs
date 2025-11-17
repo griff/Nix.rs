@@ -29,11 +29,7 @@ pub mod store_path;
 pub mod test;
 #[cfg(feature = "internal")]
 pub mod wire;
-#[cfg(all(
-    not(feature = "internal"),
-    any(feature = "archive", feature = "daemon", feature = "daemon-serde")
-))]
-#[allow(dead_code)]
+#[cfg(not(feature = "internal"))]
 pub(crate) mod wire;
 
 pub type ByteString = bytes::Bytes;

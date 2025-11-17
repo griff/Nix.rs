@@ -1,5 +1,6 @@
 use std::ops::Deref as _;
 
+#[cfg(any(test, feature = "test"))]
 use proptest::prelude::{Arbitrary, BoxedStrategy};
 #[cfg(any(test, feature = "test"))]
 use test_strategy::Arbitrary;

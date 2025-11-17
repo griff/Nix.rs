@@ -11,10 +11,10 @@ license = "EUPL-1.2 OR MIT"
 
 [features]
 test = ["proptest", "dep:proptest-derive", "dep:test-strategy", "dep:pretty_assertions"]
-archive = ["dep:walkdir"]
-daemon = ["nixrs-derive", "archive", "tokio/rt"]
+archive = ["dep:walkdir", "dep:bstr"]
+daemon = ["nixrs-derive", "tokio/rt"]
 daemon-serde = []
-nixrs-derive = ["daemon-serde", "dep:nixrs-derive", "dep:libc", "dep:bstr"]
+nixrs-derive = ["archive", "daemon-serde", "dep:nixrs-derive", "dep:libc", "dep:bstr"]
 internal = []
 full = ["test", "daemon"]
 
@@ -24,7 +24,7 @@ xp-ca-derivations = []
 xp-impure-derivations = []
 
 # Enable all features by default.
-default = ["test", "daemon"]
+default = []
 
 [dependencies]
 async-stream = { workspace = true }
@@ -66,6 +66,7 @@ optional = true
 # criterion = { workspace = true, features = ["html_reports"] }
 hex-literal = { workspace = true }
 once_cell = { workspace = true }
+pretty_assertions.workspace = true
 proptest = { workspace = true }
 proptest-derive = { workspace = true }
 rstest = { workspace = true }

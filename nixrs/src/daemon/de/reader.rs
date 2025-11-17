@@ -209,22 +209,25 @@ impl<R: AsyncBytesRead> AsyncBytesRead for NixReader<R> {
 
 #[cfg(test)]
 mod unittests {
-    use std::{collections::BTreeSet, time::Duration};
+    #[cfg(feature = "nixrs-derive")]
+    use std::collections::BTreeSet;
+    use std::time::Duration;
 
     use hex_literal::hex;
     use rstest::rstest;
-    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _, simplex};
+    use tokio::io::AsyncReadExt as _;
+    #[cfg(feature = "nixrs-derive")]
+    use tokio::io::{AsyncWriteExt as _, simplex};
     use tokio_test::io::Builder;
 
     use super::*;
+    use crate::daemon::de::NixRead;
+    use crate::io::BytesReader;
+    #[cfg(feature = "nixrs-derive")]
     use crate::{
         btree_set,
-        daemon::{
-            de::NixRead,
-            ser::{NixWrite, NixWriter},
-        },
+        daemon::ser::{NixWrite, NixWriter},
         hash::NarHash,
-        io::BytesReader,
     };
 
     #[tokio::test]
@@ -459,6 +462,7 @@ mod unittests {
         );
     }
 
+    #[cfg(feature = "nixrs-derive")]
     #[tokio::test]
     async fn test_query_info() {
         let (reader, writer) = simplex(DEFAULT_RESERVED_BUF_SIZE);

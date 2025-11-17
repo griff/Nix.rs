@@ -3,6 +3,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use derive_more::Display;
+#[cfg(any(test, feature = "test"))]
 use proptest::collection::btree_set;
 #[cfg(any(test, feature = "test"))]
 use proptest::prelude::*;

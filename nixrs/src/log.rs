@@ -1,18 +1,20 @@
 #[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{FromPrimitive, IntoPrimitive, TryFromPrimitive};
-#[cfg(any(test, feature = "test"))]
+#[cfg(all(feature = "daemon-serde", any(test, feature = "test")))]
 use proptest::prelude::{Arbitrary, BoxedStrategy};
 use serde::{Deserialize, Serialize};
+#[cfg(any(test, feature = "test"))]
 use test_strategy::Arbitrary;
 
 use crate::ByteString;
-#[cfg(any(test, feature = "test"))]
+#[cfg(all(feature = "daemon-serde", any(test, feature = "test")))]
 use crate::daemon::ProtocolVersion;
 #[cfg(feature = "nixrs-derive")]
 use crate::daemon::ser::{NixSerialize, NixWrite};
 #[cfg(feature = "nixrs-derive")]
 use crate::daemon::wire::logger::RawLogMessageType;
+#[cfg(any(test, feature = "test"))]
 use crate::test::arbitrary::arb_byte_string;
 
 #[derive(
@@ -176,7 +178,7 @@ impl NixSerialize for LogMessage {
     }
 }
 
-#[cfg(any(test, feature = "test"))]
+#[cfg(all(feature = "daemon-serde", any(test, feature = "test")))]
 impl Arbitrary for LogMessage {
     type Parameters = ProtocolVersion;
     type Strategy = BoxedStrategy<Self>;
@@ -203,7 +205,7 @@ impl Arbitrary for LogMessage {
 pub struct Message {
     #[cfg_attr(feature = "nixrs-derive", nix(skip))]
     pub level: Verbosity,
-    #[strategy(arb_byte_string())]
+    #[cfg_attr(any(test, feature = "test"), strategy(arb_byte_string()))]
     #[serde(rename = "msg", serialize_with = "crate::serialize_byte_string")]
     pub text: ByteString,
 }
@@ -216,7 +218,7 @@ pub struct Activity {
     pub id: u64,
     pub level: Verbosity,
     pub parent: u64,
-    #[strategy(arb_byte_string())]
+    #[cfg_attr(any(test, feature = "test"), strategy(arb_byte_string()))]
     #[serde(serialize_with = "crate::serialize_byte_string")]
     pub text: ByteString, // If logger is JSON, invalid UTF-8 is replaced with U+FFFD
     #[serde(rename = "type")]

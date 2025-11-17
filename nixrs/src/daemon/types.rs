@@ -92,7 +92,7 @@ pub struct UnkeyedValidPathInfo {
     pub registration_time: DaemonTime,
     pub nar_size: u64,
     pub ultimate: bool,
-    #[strategy(arb_signatures())]
+    #[cfg_attr(any(test, feature = "test"), strategy(arb_signatures()))]
     pub signatures: BTreeSet<Signature>,
     pub ca: Option<ContentAddress>,
 }

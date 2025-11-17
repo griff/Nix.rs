@@ -30,6 +30,10 @@ pin_project! {
 }
 
 impl<R> PaddedReader<R> {
+    #[cfg_attr(
+        not(any(feature = "internal", feature = "archive", test)),
+        expect(dead_code)
+    )]
     pub fn new(reader: R, len: u64) -> Self {
         let content = len & !7;
         let trailer_size = (len - content) as u8;

@@ -12,8 +12,10 @@ use crate::ByteString;
 use crate::io::{AsyncBufReadCompat, AsyncBytesRead, BytesReader, Lending, LentReader};
 use crate::wire::PaddedReader;
 
+use super::NarEvent;
 use super::read_nar::{Inner, InnerState, NodeType};
-use super::{NarEvent, test_data};
+#[cfg(any(test, feature = "test"))]
+use super::test_data;
 
 pin_project! {
     pub struct NarParser<R> {

@@ -1,19 +1,24 @@
-use std::{
-    io::{self, Cursor},
-    task::{Poll, ready},
-};
+use std::io;
+#[cfg(any(test, feature = "test"))]
+use std::io::Cursor;
+use std::task::{Poll, ready};
 
-use bytes::{Buf, BufMut, Bytes, BytesMut};
-use futures::{FutureExt as _, Sink, SinkExt as _, StreamExt as _, stream::iter};
+#[cfg(any(test, feature = "test"))]
+use bytes::Bytes;
+use bytes::{Buf, BufMut, BytesMut};
+use futures::Sink;
+#[cfg(any(test, feature = "test"))]
+use futures::{FutureExt as _, SinkExt as _, StreamExt as _, stream::iter};
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncBufRead, AsyncWrite};
 
 use crate::{io::DEFAULT_RESERVED_BUF_SIZE, wire::calc_padding};
 
+#[cfg(any(test, feature = "test"))]
+use super::test_data;
 use super::{
     NarEvent,
     read_nar::{TOK_DIR, TOK_ENTRY, TOK_FILE, TOK_FILE_E, TOK_NODE, TOK_PAR, TOK_ROOT, TOK_SYM},
-    test_data,
 };
 
 enum State {
@@ -213,6 +218,7 @@ where
     }
 }
 
+#[cfg(any(test, feature = "test"))]
 pub fn write_nar<'e, E>(events: E) -> Bytes
 where
     E: IntoIterator<Item = &'e test_data::TestNarEvent>,

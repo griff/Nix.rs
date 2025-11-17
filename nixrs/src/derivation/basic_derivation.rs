@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 #[cfg(feature = "nixrs-derive")]
 use nixrs_derive::NixDeserialize;
+#[cfg(any(test, feature = "test"))]
 use proptest::prelude::{Arbitrary, BoxedStrategy};
 
 use crate::ByteString;

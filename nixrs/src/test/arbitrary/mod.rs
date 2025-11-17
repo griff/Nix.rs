@@ -6,12 +6,11 @@ use crate::ByteString;
 
 #[cfg(feature = "archive")]
 pub mod archive;
-#[cfg(feature = "daemon")]
+#[cfg(any(feature = "daemon", feature = "daemon-serde"))]
 pub mod daemon;
 #[cfg(feature = "internal")]
 pub mod helpers;
 #[cfg(not(feature = "internal"))]
-#[allow(dead_code)]
 pub(crate) mod helpers;
 
 pub fn arb_filename() -> impl Strategy<Value = String> {
