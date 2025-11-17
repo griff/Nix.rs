@@ -138,13 +138,13 @@ mod unittests {
     use tokio_test::io::Builder;
 
     use super::*;
-    use crate::archive::{test_data, write_nar};
     use crate::btree_set;
     use crate::daemon::de::NixReader;
     use crate::daemon::ser::NixWriter;
     use crate::daemon::{DaemonResult, UnkeyedValidPathInfo};
     use crate::hash::NarHash;
     use crate::io::DEFAULT_BUF_SIZE;
+    use crate::test::archive::{test_data, write_nar};
 
     #[tokio::test]
     async fn write_empty() {
@@ -251,7 +251,7 @@ mod unittests {
         use futures::FutureExt as _;
         use tokio::io::simplex;
 
-        use crate::{archive::read_nar, io::BytesReader};
+        use crate::{io::BytesReader, test::archive::read_nar};
 
         let stream = info_stream(infos.clone());
         let (reader, writer) = simplex(DEFAULT_BUF_SIZE);

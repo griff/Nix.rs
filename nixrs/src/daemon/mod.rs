@@ -67,13 +67,13 @@ pub(crate) mod unittests {
         ClientOptions, DaemonError, DaemonResult, DaemonStore, DaemonString, ProtocolVersion,
         UnkeyedValidPathInfo,
     };
-    use crate::archive::{test_data, write_nar};
     use crate::btree_set;
     use crate::daemon::server;
     use crate::derivation::{BasicDerivation, DerivationOutput};
     use crate::derived_path::{DerivedPath, OutputName};
     use crate::hash::NarHash;
     use crate::store_path::{StoreDir, StorePath, StorePathSet};
+    use crate::test::archive::{test_data, write_nar};
     use crate::test::derived_path::parse_path;
 
     macro_rules! btree_map {
@@ -357,11 +357,13 @@ pub(crate) mod unittests {
             .build();
         run_store_test(mock, |mut client| async move {
             {
+                use crate::test::archive::read_nar;
+
                 let mut reader = client.nar_from_path(&store_path).await.unwrap();
                 let mut out = Vec::new();
                 copy_buf(&mut reader, &mut out).await?;
                 let nar: test_data::TestNarEvents =
-                    crate::archive::read_nar(Cursor::new(Bytes::copy_from_slice(&out))).await?;
+                    read_nar(Cursor::new(Bytes::copy_from_slice(&out))).await?;
                 assert_eq!(events, nar);
                 assert_eq!(size, out.len());
                 assert_eq!(NarHash::digest(&out), hash);
@@ -852,7 +854,6 @@ mod proptests {
     use super::unittests::run_store_test;
     use super::wire::types2::{BuildMode, BuildResult, KeyedBuildResult, QueryMissingResult};
     use super::{ClientOptions, UnkeyedValidPathInfo};
-    use crate::archive::{read_nar, test_data};
     use crate::daemon::wire::types2::ValidPathInfo;
     use crate::daemon::{AddToStoreItem, DaemonStore as _};
     use crate::derivation::BasicDerivation;
@@ -862,6 +863,7 @@ mod proptests {
     use crate::store_path::{StorePath, StorePathSet};
     use crate::test::arbitrary::archive::arb_nar_contents;
     use crate::test::arbitrary::daemon::arb_nar_contents_items;
+    use crate::test::archive::{read_nar, test_data};
 
     // TODO: proptest handshake
 

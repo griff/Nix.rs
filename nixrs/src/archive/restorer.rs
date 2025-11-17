@@ -374,7 +374,8 @@ where
 #[cfg(test)]
 mod unittests {
     use super::*;
-    use crate::archive::{NarEvent, dump, test_data};
+    use crate::archive::{NarEvent, dump};
+    use crate::test::archive::test_data;
     use futures::stream::{StreamExt as _, TryStreamExt as _, iter};
     use rstest::rstest;
     use tempfile::Builder;
@@ -414,9 +415,10 @@ mod proptests {
     use proptest::proptest;
     use tempfile::tempdir;
 
-    use crate::archive::{NarEvent, NarWriteError, dump, restore, test_data};
+    use crate::archive::{NarEvent, NarWriteError, dump, restore};
     use crate::pretty_prop_assert_eq;
     use crate::test::arbitrary::archive::arb_nar_events;
+    use crate::test::archive::test_data;
 
     #[test]
     fn proptest_restore_dump() {

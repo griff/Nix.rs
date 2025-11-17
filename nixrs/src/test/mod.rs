@@ -1,4 +1,6 @@
 pub mod arbitrary;
+#[cfg(feature = "archive")]
+pub mod archive;
 pub mod derived_path;
 
 #[macro_export]

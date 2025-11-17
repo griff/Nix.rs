@@ -806,8 +806,8 @@ mod unittests {
     use tokio_test::io::Builder;
     use tracing::trace;
 
-    use crate::archive::test_data::*;
-    use crate::archive::write_nar;
+    use crate::test::archive::test_data::*;
+    use crate::test::archive::write_nar;
 
     use super::NarReader;
 

@@ -443,8 +443,9 @@ mod unittests {
     use pretty_assertions::assert_eq;
     use tempfile::Builder;
 
+    use crate::test::archive::test_data;
+
     use super::*;
-    use crate::archive::test_data;
 
     #[tokio::test]
     async fn test_dump_dir() {

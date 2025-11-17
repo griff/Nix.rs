@@ -5,7 +5,7 @@ use std::path::Path;
 
 use bytes::Bytes;
 
-use super::CASE_HACK_SUFFIX;
+use crate::archive::CASE_HACK_SUFFIX;
 
 use super::NarEvent;
 

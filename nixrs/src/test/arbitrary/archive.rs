@@ -4,8 +4,9 @@ use std::io::Cursor;
 use ::proptest::prelude::*;
 use bytes::Bytes;
 
-use crate::archive::{NarEvent, write_nar};
+use crate::archive::NarEvent;
 use crate::test::arbitrary::{arb_filename, arb_path};
+use crate::test::archive::write_nar;
 
 #[derive(Clone, Debug)]
 enum NarTree {

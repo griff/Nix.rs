@@ -8,11 +8,11 @@ use proptest::prelude::*;
 #[cfg(feature = "nixrs-derive")]
 use proptest::sample::SizeRange;
 
-#[cfg(feature = "nixrs-derive")]
-use crate::archive::test_data;
 use crate::daemon::ProtocolVersion;
 #[cfg(feature = "nixrs-derive")]
 use crate::test::arbitrary::archive::{arb_nar_contents, arb_nar_events};
+#[cfg(feature = "nixrs-derive")]
+use crate::test::archive::test_data;
 
 pub fn version_cut_off<B, A, V>(
     version: ProtocolVersion,

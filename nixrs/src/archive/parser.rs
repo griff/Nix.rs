@@ -14,8 +14,6 @@ use crate::wire::PaddedReader;
 
 use super::NarEvent;
 use super::read_nar::{Inner, InnerState, NodeType};
-#[cfg(any(test, feature = "test"))]
-use super::test_data;
 
 pin_project! {
     pub struct NarParser<R> {
@@ -149,18 +147,6 @@ where
     NarParser::new(reader)
 }
 
-#[cfg(any(test, feature = "test"))]
-pub async fn read_nar<R>(source: R) -> io::Result<test_data::TestNarEvents>
-where
-    R: AsyncRead + Unpin,
-{
-    use futures::stream::TryStreamExt as _;
-    parse_nar(source)
-        .and_then(NarEvent::read_file)
-        .try_collect()
-        .await
-}
-
 #[cfg(test)]
 mod unittests {
     use std::io::Cursor;
@@ -172,9 +158,8 @@ mod unittests {
     use tokio::fs::File;
     use tokio::io::AsyncReadExt as _;
 
-    use crate::archive::{test_data, write_nar};
-
     use super::*;
+    use crate::test::archive::{read_nar, test_data, write_nar};
 
     #[test_log::test(tokio::test)]
     #[rstest]

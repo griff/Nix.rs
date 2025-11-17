@@ -1,21 +1,13 @@
 use std::io;
-#[cfg(any(test, feature = "test"))]
-use std::io::Cursor;
 use std::task::{Poll, ready};
 
-#[cfg(any(test, feature = "test"))]
-use bytes::Bytes;
 use bytes::{Buf, BufMut, BytesMut};
 use futures::Sink;
-#[cfg(any(test, feature = "test"))]
-use futures::{FutureExt as _, SinkExt as _, StreamExt as _, stream::iter};
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncBufRead, AsyncWrite};
 
 use crate::{io::DEFAULT_RESERVED_BUF_SIZE, wire::calc_padding};
 
-#[cfg(any(test, feature = "test"))]
-use super::test_data;
 use super::{
     NarEvent,
     read_nar::{TOK_DIR, TOK_ENTRY, TOK_FILE, TOK_FILE_E, TOK_NODE, TOK_PAR, TOK_ROOT, TOK_SYM},
@@ -218,27 +210,6 @@ where
     }
 }
 
-#[cfg(any(test, feature = "test"))]
-pub fn write_nar<'e, E>(events: E) -> Bytes
-where
-    E: IntoIterator<Item = &'e test_data::TestNarEvent>,
-{
-    let mut buf = Vec::new();
-    let mut writer = NarWriter::new(Cursor::new(&mut buf));
-    let mut stream = iter(events).map(Clone::clone).map(Ok);
-    writer
-        .send_all(&mut stream)
-        .now_or_never()
-        .expect("BUG: NarWriter blocks")
-        .expect("BUG: NarWriter returned error");
-    writer
-        .close()
-        .now_or_never()
-        .expect("BUG: NarWriter close blocks")
-        .expect("BUG: NarWriter close errors");
-    buf.into()
-}
-
 #[cfg(test)]
 mod unittests {
     use futures::StreamExt as _;
@@ -247,8 +218,8 @@ mod unittests {
     use tempfile::tempdir;
     use tokio::fs::File;
 
-    use crate::archive::{read_nar, test_data};
     use crate::io::BytesReader;
+    use crate::test::archive::{read_nar, test_data};
 
     use super::NarWriter;
 
