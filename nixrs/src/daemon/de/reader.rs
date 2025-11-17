@@ -161,7 +161,7 @@ where
             "The limit must be smaller than {}",
             self.max_buf_size
         );
-        TryReadBytesLimited::new(limit.clone()).read(self).await
+        TryReadBytesLimited::new(limit).read(self).await
     }
 
     async fn try_read_bytes(&mut self) -> Result<Option<Bytes>, Self::Error> {
