@@ -42,6 +42,7 @@ pub struct LentReader<R> {
 }
 
 impl<R> LentReader<R> {
+    #[cfg_attr(not(any(feature = "internal", feature = "archive")), expect(dead_code))]
     pub fn new(reader: R) -> (Returner<R>, LentReader<R>) {
         let (returner, receiver) = oneshot::channel();
         (
@@ -177,6 +178,7 @@ where
     R: Unpin,
     W: DrainInto<R> + Unpin,
 {
+    #[cfg_attr(not(any(feature = "internal", feature = "daemon")), expect(dead_code))]
     pub fn new(reader: R) -> Self {
         Self::Available(reader)
     }
@@ -217,12 +219,14 @@ where
         }
     }
 
+    #[cfg_attr(not(any(feature = "internal", feature = "daemon")), expect(dead_code))]
     pub async fn get_reader(&mut self) -> io::Result<&mut R> {
         let mut r = Pin::new(self);
         poll_fn(|cx| r.as_mut().poll_ready(cx)).await?;
         Ok(r.available_reader().unwrap().get_mut())
     }
 
+    #[cfg_attr(not(any(feature = "internal", feature = "daemon")), expect(dead_code))]
     pub fn lend<F>(&mut self, f: F) -> LentReader<W>
     where
         F: FnOnce(R) -> W,

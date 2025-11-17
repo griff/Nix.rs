@@ -8,9 +8,19 @@ mod try_read_bytes_limited;
 
 pub use async_bytes_read::AsyncBytesRead;
 pub use bytes_reader::{BytesReader, DEFAULT_MAX_BUF_SIZE, DEFAULT_RESERVED_BUF_SIZE};
+#[cfg_attr(
+    not(any(feature = "internal", feature = "archive")),
+    expect(unused_imports)
+)]
 pub use compat::AsyncBufReadCompat;
-pub use lending::{DrainInto, Lending, LentReader};
+pub use lending::DrainInto;
+#[cfg_attr(
+    not(any(feature = "internal", feature = "daemon")),
+    expect(unused_imports)
+)]
+pub use lending::{Lending, LentReader};
 pub use read_u64::TryReadU64;
+#[cfg_attr(not(feature = "internal"), expect(unused_imports))]
 pub use tee::TeeWriter;
 pub use try_read_bytes_limited::TryReadBytesLimited;
 

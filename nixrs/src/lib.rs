@@ -18,7 +18,6 @@ pub mod hash;
 #[cfg(feature = "internal")]
 pub mod io;
 #[cfg(not(feature = "internal"))]
-#[allow(unused_imports, dead_code)]
 pub(crate) mod io;
 pub mod log;
 pub mod profile;

@@ -19,6 +19,7 @@ impl<R> AsyncBufReadCompat<R>
 where
     R: AsyncBytesRead,
 {
+    #[cfg_attr(not(any(feature = "internal", feature = "archive")), expect(dead_code))]
     pub fn new(reader: R) -> Self {
         Self {
             reader,
