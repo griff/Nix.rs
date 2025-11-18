@@ -9,8 +9,6 @@ use super::ProtocolVersion;
 mod bytes;
 mod collections;
 mod int;
-#[cfg(any(test, feature = "test"))]
-pub mod mock;
 mod writer;
 
 pub use writer::{NixWriter, NixWriterBuilder};

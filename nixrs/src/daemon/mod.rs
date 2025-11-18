@@ -7,8 +7,6 @@ mod fail_store;
 pub mod local;
 #[cfg(feature = "nixrs-derive")]
 mod logger;
-#[cfg(all(feature = "nixrs-derive", any(test, feature = "test")))]
-pub mod mock;
 #[cfg(feature = "nixrs-derive")]
 mod mutex;
 pub mod ser;
@@ -38,9 +36,6 @@ pub use version::{
     NIX_VERSION, PROTOCOL_VERSION, PROTOCOL_VERSION_MIN, ProtocolRange, ProtocolVersion,
 };
 
-#[cfg(any(test, feature = "test"))]
-pub mod arbitrary {}
-
 #[cfg(all(test, feature = "daemon"))]
 pub(crate) mod unittests {
     use std::collections::BTreeSet;
@@ -57,7 +52,6 @@ pub(crate) mod unittests {
     use tracing::trace;
 
     use super::client::DaemonClient;
-    use super::mock::{MockReporter, MockStore};
     use super::types::AddToStoreItem;
     use super::wire::types2::{
         BuildMode, BuildResult, BuildStatus, KeyedBuildResult, KeyedBuildResults,
@@ -74,6 +68,7 @@ pub(crate) mod unittests {
     use crate::hash::NarHash;
     use crate::store_path::{StoreDir, StorePath, StorePathSet};
     use crate::test::archive::{test_data, write_nar};
+    use crate::test::daemon::mock::{MockReporter, MockStore};
     use crate::test::derived_path::parse_path;
 
     macro_rules! btree_map {
@@ -850,7 +845,6 @@ mod proptests {
     use tracing::info;
 
     use super::DaemonResult;
-    use super::mock::MockStore;
     use super::unittests::run_store_test;
     use super::wire::types2::{BuildMode, BuildResult, KeyedBuildResult, QueryMissingResult};
     use super::{ClientOptions, UnkeyedValidPathInfo};
@@ -864,6 +858,7 @@ mod proptests {
     use crate::test::arbitrary::archive::arb_nar_contents;
     use crate::test::arbitrary::daemon::arb_nar_contents_items;
     use crate::test::archive::{read_nar, test_data};
+    use crate::test::daemon::mock::MockStore;
 
     // TODO: proptest handshake
 

@@ -112,76 +112,6 @@ impl NixDeserialize for Realisation {
 
 pub type DrvOutputs = BTreeMap<DrvOutput, Realisation>;
 
-#[cfg(any(test, feature = "test"))]
-pub mod arbitrary {
-    use crate::signature::proptests::arb_signatures;
-
-    use super::*;
-    use ::proptest::prelude::*;
-    use ::proptest::sample::SizeRange;
-
-    impl Arbitrary for DrvOutput {
-        type Parameters = ();
-        type Strategy = BoxedStrategy<DrvOutput>;
-
-        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-            arb_drv_output().boxed()
-        }
-    }
-
-    prop_compose! {
-        pub fn arb_drv_output()
-        (
-            drv_hash in any::<hash::Hash>(),
-            output_name in any::<OutputName>(),
-        ) -> DrvOutput
-        {
-            DrvOutput { drv_hash, output_name }
-        }
-    }
-
-    pub fn arb_drv_outputs(size: impl Into<SizeRange>) -> impl Strategy<Value = DrvOutputs> {
-        let size = size.into();
-        let min_size = size.start();
-        prop::collection::vec(arb_realisation(), size)
-            .prop_map(|r| {
-                let mut ret = BTreeMap::new();
-                for value in r {
-                    ret.insert(value.id.clone(), value);
-                }
-                ret
-            })
-            .prop_filter("BTreeMap minimum size", move |m| m.len() >= min_size)
-    }
-
-    impl Arbitrary for Realisation {
-        type Parameters = ();
-        type Strategy = BoxedStrategy<Realisation>;
-
-        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-            arb_realisation().boxed()
-        }
-    }
-
-    prop_compose! {
-        pub fn arb_realisation()
-        (
-            id in any::<DrvOutput>(),
-            out_path in any::<StorePath>(),
-            signatures in arb_signatures(),
-            dependent_realisations in  prop::collection::btree_map(
-                arb_drv_output(),
-                any::<StorePath>(),
-                0..50),
-        ) -> Realisation
-        {
-            Realisation {
-                id, out_path, signatures, dependent_realisations,
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod unittests {
     use rstest::rstest;
@@ -294,7 +224,7 @@ mod unittests {
     async fn nix_write_realisation(#[case] value: Realisation, #[case] expected: &str) {
         use crate::daemon::ser::NixWrite as _;
 
-        let mut mock = crate::daemon::ser::mock::Builder::new()
+        let mut mock = crate::test::daemon::ser::Builder::new()
             .write_slice(expected.as_bytes())
             .build();
         mock.write_value(&value).await.unwrap();
@@ -319,7 +249,7 @@ mod unittests {
     async fn nix_read_realisation(#[case] expected: Realisation, #[case] value: &str) {
         use crate::daemon::de::NixRead as _;
 
-        let mut mock = crate::daemon::de::mock::Builder::new()
+        let mut mock = crate::test::daemon::de::Builder::new()
             .read_slice(value.as_bytes())
             .build();
         let actual: Realisation = mock.read_value().await.unwrap();

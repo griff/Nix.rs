@@ -23,12 +23,12 @@ use crate::hash::NarHash;
 use crate::log::Verbosity;
 use crate::realisation::{DrvOutput, Realisation};
 use crate::signature::Signature;
-#[cfg(any(test, feature = "test"))]
-use crate::signature::proptests::arb_signatures;
 use crate::store_path::{
     ContentAddress, ContentAddressMethodAlgorithm, HasStoreDir, StorePath, StorePathHash,
     StorePathSet,
 };
+#[cfg(any(test, feature = "test"))]
+use crate::test::arbitrary::signature::arb_signatures;
 
 use super::ProtocolVersion;
 use super::logger::ResultLog;

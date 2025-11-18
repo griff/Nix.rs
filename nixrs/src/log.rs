@@ -1,21 +1,13 @@
 #[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{FromPrimitive, IntoPrimitive, TryFromPrimitive};
-#[cfg(all(feature = "daemon-serde", any(test, feature = "test")))]
-use proptest::prelude::{Arbitrary, BoxedStrategy};
 use serde::{Deserialize, Serialize};
-#[cfg(any(test, feature = "test"))]
-use test_strategy::Arbitrary;
 
 use crate::ByteString;
-#[cfg(all(feature = "daemon-serde", any(test, feature = "test")))]
-use crate::daemon::ProtocolVersion;
 #[cfg(feature = "nixrs-derive")]
 use crate::daemon::ser::{NixSerialize, NixWrite};
 #[cfg(feature = "nixrs-derive")]
 use crate::daemon::wire::logger::RawLogMessageType;
-#[cfg(any(test, feature = "test"))]
-use crate::test::arbitrary::arb_byte_string;
 
 #[derive(
     Debug,
@@ -33,7 +25,6 @@ use crate::test::arbitrary::arb_byte_string;
     Deserialize,
 )]
 #[serde(try_from = "u16", into = "u16")]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(from = "u16", into = "u16"))]
 #[repr(u16)]
@@ -65,7 +56,6 @@ pub enum Verbosity {
     Deserialize,
 )]
 #[serde(try_from = "u16", into = "u16")]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
 #[repr(u16)]
@@ -101,7 +91,6 @@ pub enum ActivityType {
     Deserialize,
 )]
 #[serde(try_from = "u16", into = "u16")]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
 #[repr(u16)]
@@ -178,47 +167,22 @@ impl NixSerialize for LogMessage {
     }
 }
 
-#[cfg(all(feature = "daemon-serde", any(test, feature = "test")))]
-impl Arbitrary for LogMessage {
-    type Parameters = ProtocolVersion;
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-        use proptest::prelude::*;
-        if args.minor() >= 20 {
-            prop_oneof![
-                any::<Message>().prop_map(LogMessage::Message),
-                any::<Activity>().prop_map(LogMessage::StartActivity),
-                any::<ActivityResult>().prop_map(LogMessage::Result),
-                any::<StopActivity>().prop_map(LogMessage::StopActivity)
-            ]
-            .boxed()
-        } else {
-            any::<Message>().prop_map(LogMessage::Message).boxed()
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct Message {
     #[cfg_attr(feature = "nixrs-derive", nix(skip))]
     pub level: Verbosity,
-    #[cfg_attr(any(test, feature = "test"), strategy(arb_byte_string()))]
     #[serde(rename = "msg", serialize_with = "crate::serialize_byte_string")]
     pub text: ByteString,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 pub struct Activity {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fields: Vec<Field>,
     pub id: u64,
     pub level: Verbosity,
     pub parent: u64,
-    #[cfg_attr(any(test, feature = "test"), strategy(arb_byte_string()))]
     #[serde(serialize_with = "crate::serialize_byte_string")]
     pub text: ByteString, // If logger is JSON, invalid UTF-8 is replaced with U+FFFD
     #[serde(rename = "type")]
@@ -268,14 +232,12 @@ impl crate::daemon::de::NixDeserialize for Activity {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct StopActivity {
     pub id: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 pub struct ActivityResult {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fields: Vec<Field>,
@@ -340,17 +302,12 @@ pub enum FieldType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(tag = "FieldType"))]
 #[serde(untagged)]
 pub enum Field {
     Int(u64),
-    String(
-        #[cfg_attr(any(test, feature = "test"), strategy(arb_byte_string()))]
-        #[serde(serialize_with = "crate::serialize_byte_string")]
-        ByteString,
-    ),
+    String(#[serde(serialize_with = "crate::serialize_byte_string")] ByteString),
 }
 
 #[cfg(test)]

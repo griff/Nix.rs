@@ -1,3 +1,5 @@
+pub mod ser;
+
 use std::fmt::Debug;
 
 #[cfg(feature = "nixrs-derive")]

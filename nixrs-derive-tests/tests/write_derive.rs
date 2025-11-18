@@ -1,12 +1,8 @@
 use std::fmt;
 
-use nixrs::{
-    daemon::ser::{
-        NixWrite as _,
-        mock::{Builder, Error},
-    },
-    store_path::{StoreDir, StoreDirDisplay},
-};
+use nixrs::daemon::ser::NixWrite as _;
+use nixrs::store_path::{StoreDir, StoreDirDisplay};
+use nixrs::test::daemon::ser::{Builder, Error};
 use nixrs_derive::NixSerialize;
 use num_enum::IntoPrimitive;
 

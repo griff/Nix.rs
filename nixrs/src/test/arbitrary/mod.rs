@@ -8,10 +8,17 @@ use crate::ByteString;
 pub mod archive;
 #[cfg(any(feature = "daemon", feature = "daemon-serde"))]
 pub mod daemon;
+pub mod derivation;
+mod derived_path;
+mod hash;
 #[cfg(feature = "internal")]
 pub mod helpers;
 #[cfg(not(feature = "internal"))]
 pub(crate) mod helpers;
+mod log;
+pub mod realisation;
+pub mod signature;
+pub mod store_path;
 
 pub fn arb_filename() -> impl Strategy<Value = String> {
     "[a-zA-Z 0-9.?=+]+".prop_filter("Not cur and parent dir", |s| s != "." && s != "..")

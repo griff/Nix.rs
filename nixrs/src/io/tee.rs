@@ -25,7 +25,6 @@ where
     W1: AsyncWrite,
     W2: AsyncWrite,
 {
-    #[cfg_attr(not(feature = "internal"), expect(dead_code))]
     pub fn new(writer1: W1, writer2: W2) -> Self {
         Self {
             buf: Vec::with_capacity(DEFAULT_BUF_SIZE),

@@ -3,10 +3,6 @@ use std::fmt;
 use std::str::FromStr;
 
 use derive_more::Display;
-#[cfg(any(test, feature = "test"))]
-use proptest::collection::btree_set;
-#[cfg(any(test, feature = "test"))]
-use proptest::prelude::*;
 
 #[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
@@ -16,7 +12,7 @@ use crate::store_path::{StorePathNameError, into_name};
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
-pub struct OutputName(String);
+pub struct OutputName(pub(crate) String);
 
 impl OutputName {
     pub fn is_default(&self) -> bool {
@@ -36,17 +32,6 @@ impl Default for OutputName {
     }
 }
 
-#[cfg(any(test, feature = "test"))]
-impl Arbitrary for OutputName {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        use crate::store_path::proptest::arb_output_name;
-        arb_output_name().prop_map(OutputName).boxed()
-    }
-}
-
 impl FromStr for OutputName {
     type Err = StorePathNameError;
 
@@ -60,20 +45,6 @@ impl FromStr for OutputName {
 pub enum OutputSpec {
     All,
     Named(BTreeSet<OutputName>),
-}
-
-#[cfg(any(test, feature = "test"))]
-impl Arbitrary for OutputSpec {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        prop_oneof![
-            Just(OutputSpec::All),
-            btree_set(any::<OutputName>(), 1..10).prop_map(OutputSpec::Named),
-        ]
-        .boxed()
-    }
 }
 
 impl fmt::Display for OutputSpec {

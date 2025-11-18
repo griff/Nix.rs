@@ -1,6 +1,8 @@
 pub mod arbitrary;
 #[cfg(feature = "archive")]
 pub mod archive;
+#[cfg(any(feature = "daemon", feature = "daemon-serde"))]
+pub mod daemon;
 pub mod derived_path;
 
 #[macro_export]

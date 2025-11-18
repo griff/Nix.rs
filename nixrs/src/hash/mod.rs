@@ -6,8 +6,6 @@ use std::str::FromStr;
 use derive_more::Display;
 #[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
-#[cfg(any(test, feature = "test"))]
-use proptest_derive::Arbitrary;
 use ring::digest;
 use thiserror::Error;
 
@@ -207,7 +205,6 @@ impl TryFrom<digest::Digest> for Hash {
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq, PartialOrd, Ord)]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(
     feature = "nixrs-derive",
@@ -253,7 +250,6 @@ impl TryFrom<Hash> for NarHash {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 pub struct Sha256([u8; Algorithm::SHA256.size()]);
 impl Sha256 {
     pub const fn new(digest: &[u8]) -> Self {
@@ -293,6 +289,12 @@ impl Sha256 {
 impl AsRef<[u8]> for Sha256 {
     fn as_ref(&self) -> &[u8] {
         self.digest_bytes()
+    }
+}
+
+impl From<[u8; Algorithm::SHA256.size()]> for Sha256 {
+    fn from(digest: [u8; Algorithm::SHA256.size()]) -> Self {
+        Sha256(digest)
     }
 }
 
@@ -458,43 +460,6 @@ impl tokio::io::AsyncWrite for HashSink {
         _cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Result<(), std::io::Error>> {
         std::task::Poll::Ready(Ok(()))
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-mod proptests {
-    use super::*;
-    use ::proptest::prelude::*;
-
-    impl Arbitrary for Algorithm {
-        type Parameters = ();
-        type Strategy = BoxedStrategy<Algorithm>;
-        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-            prop_oneof![
-                1 => Just(Algorithm::MD5),
-                2 => Just(Algorithm::SHA1),
-                5 => Just(Algorithm::SHA256),
-                2 => Just(Algorithm::SHA512)
-            ]
-            .boxed()
-        }
-    }
-
-    impl Arbitrary for Hash {
-        type Parameters = Algorithm;
-        type Strategy = BoxedStrategy<Hash>;
-
-        fn arbitrary_with(algorithm: Self::Parameters) -> Self::Strategy {
-            any_hash(algorithm).boxed()
-        }
-    }
-
-    prop_compose! {
-        fn any_hash(algorithm: Algorithm)
-                   (data in any::<Vec<u8>>()) -> Hash
-        {
-            algorithm.digest(data)
-        }
     }
 }
 

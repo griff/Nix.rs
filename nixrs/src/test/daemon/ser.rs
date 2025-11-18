@@ -3,15 +3,14 @@ use std::fmt;
 use std::io;
 use std::thread;
 
-#[cfg(test)]
-use ::proptest::prelude::TestCaseError;
+use proptest::prelude::TestCaseError;
 use thiserror::Error;
 
 use crate::daemon::ProtocolVersion;
 use crate::store_path::HasStoreDir;
 use crate::store_path::StoreDir;
 
-use super::NixWrite;
+use crate::daemon::ser::NixWrite;
 
 #[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum Error {
@@ -53,7 +52,7 @@ impl Error {
     }
 }
 
-impl super::Error for Error {
+impl crate::daemon::ser::Error for Error {
     fn custom<T: fmt::Display>(msg: T) -> Self {
         Self::Custom(msg.to_string())
     }
@@ -89,7 +88,7 @@ impl fmt::Display for OperationType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Operation {
+pub enum Operation {
     Number(u64, Result<(), Error>),
     Slice(Vec<u8>, Result<(), Error>),
     Display(String, Result<(), Error>),
@@ -169,8 +168,7 @@ impl Builder {
         self
     }
 
-    #[cfg(test)]
-    fn write_operation_type(&mut self, op: OperationType) -> &mut Self {
+    pub fn write_operation_type(&mut self, op: OperationType) -> &mut Self {
         match op {
             OperationType::WriteNumber => self.write_number(10),
             OperationType::WriteSlice => self.write_slice(b"testing"),
@@ -178,8 +176,7 @@ impl Builder {
         }
     }
 
-    #[cfg(test)]
-    fn write_operation(&mut self, op: &Operation) -> &mut Self {
+    pub fn write_operation(&mut self, op: &Operation) -> &mut Self {
         match op {
             Operation::Number(value, Ok(_)) => self.write_number(*value),
             Operation::Number(value, Err(Error::UnexpectedNumber(_))) => self.write_number(*value),
@@ -273,8 +270,7 @@ impl Mock {
         }
     }
 
-    #[cfg(test)]
-    async fn prop_assert_operation(&mut self, op: Operation) -> Result<(), TestCaseError> {
+    pub async fn prop_assert_operation(&mut self, op: Operation) -> Result<(), TestCaseError> {
         use ::proptest::prop_assert_eq;
 
         match op {
@@ -374,134 +370,13 @@ impl Drop for Mock {
     }
 }
 
-mod proptest {
-    use std::io;
-
-    use proptest::{
-        prelude::{Arbitrary, BoxedStrategy, Just, Strategy, any},
-        prop_oneof,
-    };
-
-    use super::{Error, Operation, OperationType};
-
-    pub fn arb_write_number_operation() -> impl Strategy<Value = Operation> {
-        (
-            any::<u64>(),
-            prop_oneof![
-                Just(Ok(())),
-                any::<u64>().prop_map(|v| Err(Error::UnexpectedNumber(v))),
-                Just(Err(Error::WrongWrite(
-                    OperationType::WriteSlice,
-                    OperationType::WriteNumber
-                ))),
-                Just(Err(Error::WrongWrite(
-                    OperationType::WriteDisplay,
-                    OperationType::WriteNumber
-                ))),
-                any::<String>().prop_map(|s| Err(Error::Custom(s))),
-                (any::<io::ErrorKind>(), any::<String>())
-                    .prop_map(|(kind, msg)| Err(Error::IO(kind, msg))),
-            ],
-        )
-            .prop_filter("same number", |(v, res)| match res {
-                Err(Error::UnexpectedNumber(exp_v)) => v != exp_v,
-                _ => true,
-            })
-            .prop_map(|(v, res)| Operation::Number(v, res))
-    }
-
-    pub fn arb_write_slice_operation() -> impl Strategy<Value = Operation> {
-        (
-            any::<Vec<u8>>(),
-            prop_oneof![
-                Just(Ok(())),
-                any::<Vec<u8>>().prop_map(|v| Err(Error::UnexpectedSlice(v))),
-                Just(Err(Error::WrongWrite(
-                    OperationType::WriteNumber,
-                    OperationType::WriteSlice
-                ))),
-                Just(Err(Error::WrongWrite(
-                    OperationType::WriteDisplay,
-                    OperationType::WriteSlice
-                ))),
-                any::<String>().prop_map(|s| Err(Error::Custom(s))),
-                (any::<io::ErrorKind>(), any::<String>())
-                    .prop_map(|(kind, msg)| Err(Error::IO(kind, msg))),
-            ],
-        )
-            .prop_filter("same slice", |(v, res)| match res {
-                Err(Error::UnexpectedSlice(exp_v)) => v != exp_v,
-                _ => true,
-            })
-            .prop_map(|(v, res)| Operation::Slice(v, res))
-    }
-
-    #[allow(dead_code)]
-    pub fn arb_extra_write() -> impl Strategy<Value = Operation> {
-        prop_oneof![
-            any::<u64>().prop_map(|msg| {
-                Operation::Number(msg, Err(Error::ExtraWrite(OperationType::WriteNumber)))
-            }),
-            any::<Vec<u8>>().prop_map(|msg| {
-                Operation::Slice(msg, Err(Error::ExtraWrite(OperationType::WriteSlice)))
-            }),
-            any::<String>().prop_map(|msg| {
-                Operation::Display(msg, Err(Error::ExtraWrite(OperationType::WriteDisplay)))
-            }),
-        ]
-    }
-
-    pub fn arb_write_display_operation() -> impl Strategy<Value = Operation> {
-        (
-            any::<String>(),
-            prop_oneof![
-                Just(Ok(())),
-                any::<String>().prop_map(|v| Err(Error::UnexpectedDisplay(v))),
-                Just(Err(Error::WrongWrite(
-                    OperationType::WriteNumber,
-                    OperationType::WriteDisplay
-                ))),
-                Just(Err(Error::WrongWrite(
-                    OperationType::WriteSlice,
-                    OperationType::WriteDisplay
-                ))),
-                any::<String>().prop_map(|s| Err(Error::Custom(s))),
-                (any::<io::ErrorKind>(), any::<String>())
-                    .prop_map(|(kind, msg)| Err(Error::IO(kind, msg))),
-            ],
-        )
-            .prop_filter("same string", |(v, res)| match res {
-                Err(Error::UnexpectedDisplay(exp_v)) => v != exp_v,
-                _ => true,
-            })
-            .prop_map(|(v, res)| Operation::Display(v, res))
-    }
-
-    pub fn arb_operation() -> impl Strategy<Value = Operation> {
-        prop_oneof![
-            arb_write_number_operation(),
-            arb_write_slice_operation(),
-            arb_write_display_operation(),
-        ]
-    }
-
-    impl Arbitrary for Operation {
-        type Parameters = ();
-        type Strategy = BoxedStrategy<Operation>;
-
-        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-            arb_operation().boxed()
-        }
-    }
-}
-
 #[cfg(test)]
 mod unittests {
     use hex_literal::hex;
 
     use crate::daemon::ser::Error as _;
     use crate::daemon::ser::NixWrite;
-    use crate::daemon::ser::mock::OperationType;
+    use crate::test::daemon::ser::OperationType;
 
     use super::{Builder, Error};
 
@@ -652,8 +527,8 @@ mod proptests {
     use proptest::prelude::{TestCaseError, any};
     use proptest::proptest;
 
-    use crate::daemon::ser::mock::proptest::arb_extra_write;
-    use crate::daemon::ser::mock::{Builder, Operation};
+    use crate::test::arbitrary::daemon::ser::arb_extra_write;
+    use crate::test::daemon::ser::{Builder, Operation};
 
     #[test]
     fn proptest_mock() {

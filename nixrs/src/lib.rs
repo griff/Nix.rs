@@ -17,7 +17,11 @@ pub mod derived_path;
 pub mod hash;
 #[cfg(feature = "internal")]
 pub mod io;
-#[cfg(not(feature = "internal"))]
+#[cfg(all(
+    not(feature = "internal"),
+    any(feature = "archive", feature = "daemon-serde")
+))]
+#[allow(unused_imports, dead_code)]
 pub(crate) mod io;
 pub mod log;
 pub mod profile;

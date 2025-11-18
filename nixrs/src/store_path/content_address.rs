@@ -3,15 +3,12 @@ use std::str::FromStr;
 use derive_more::Display;
 #[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
-#[cfg(any(test, feature = "test"))]
-use proptest_derive::Arbitrary;
 use thiserror::Error;
 
 use crate::hash::fmt::{NonSRI, ParseHashError, ParseHashErrorKind};
 use crate::hash::{Algorithm, Hash, Sha256, UnknownAlgorithm};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 pub enum ContentAddressMethod {
     #[display("text")]
     Text,
@@ -22,7 +19,6 @@ pub enum ContentAddressMethod {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
 pub enum ContentAddressMethodAlgorithm {
@@ -67,7 +63,6 @@ impl FromStr for ContentAddressMethodAlgorithm {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
 pub enum ContentAddress {

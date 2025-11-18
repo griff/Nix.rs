@@ -24,20 +24,18 @@ use test_strategy::Arbitrary;
 use tokio::io::{AsyncBufRead, AsyncReadExt as _};
 use tracing::trace;
 
-use super::logger::{FutureResult, ResultLogExt as _};
-use super::types::AddToStoreItem;
-use super::wire::types::Operation;
-use super::wire::types2::{
+use crate::daemon::wire::types::Operation;
+use crate::daemon::wire::types2::{
     AddMultipleToStoreRequest, AddPermRootRequest, AddSignaturesRequest, AddToStoreNarRequest,
     AddToStoreRequest25, BuildDerivationRequest, BuildMode, BuildPathsRequest, BuildResult,
-    CollectGarbageRequest, CollectGarbageResponse, GCAction, KeyedBuildResults, QueryMissingResult,
-    QueryValidPathsRequest, ValidPathInfo, VerifyStoreRequest,
+    CollectGarbageRequest, CollectGarbageResponse, GCAction, KeyedBuildResult, KeyedBuildResults,
+    QueryMissingResult, QueryValidPathsRequest, ValidPathInfo, VerifyStoreRequest,
 };
-use super::{
-    ClientOptions, DaemonError, DaemonPath, DaemonResult, DaemonResultExt, DaemonStore,
-    HandshakeDaemonStore, ResultLog, TrustLevel, UnkeyedValidPathInfo,
+use crate::daemon::{
+    AddToStoreItem, ClientOptions, DaemonError, DaemonPath, DaemonResult, DaemonResultExt,
+    DaemonStore, FutureResultExt, HandshakeDaemonStore, ResultLog, ResultLogExt as _, TrustLevel,
+    UnkeyedValidPathInfo,
 };
-use crate::daemon::FutureResultExt;
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
 use crate::log::{Activity, ActivityResult, LogMessage, Message, StopActivity};
@@ -1651,7 +1649,7 @@ impl<R> Builder<R> {
 
     pub fn set_options(
         &mut self,
-        options: &super::ClientOptions,
+        options: &ClientOptions,
         response: DaemonResult<()>,
     ) -> LogBuilder<R, MockOperation> {
         self.build_operation(MockOperation::SetOptions(options.clone(), response))
@@ -2190,8 +2188,8 @@ where
 
     fn set_options<'a>(
         &'a mut self,
-        options: &'a super::ClientOptions,
-    ) -> impl super::ResultLog<Output = DaemonResult<()>> + 'a {
+        options: &'a ClientOptions,
+    ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
         let actual = MockRequest::SetOptions(options.clone());
         self.check_operation(actual)
     }
@@ -2199,7 +2197,7 @@ where
     fn is_valid_path<'a>(
         &'a mut self,
         path: &'a StorePath,
-    ) -> impl super::ResultLog<Output = DaemonResult<bool>> + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<bool>> + 'a {
         let actual = MockRequest::IsValidPath(path.clone());
         self.check_operation(actual)
     }
@@ -2208,7 +2206,7 @@ where
         &'a mut self,
         paths: &'a StorePathSet,
         substitute: bool,
-    ) -> impl super::ResultLog<Output = DaemonResult<StorePathSet>> + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<StorePathSet>> + 'a {
         let actual = MockRequest::QueryValidPaths(QueryValidPathsRequest {
             paths: paths.clone(),
             substitute,
@@ -2219,8 +2217,7 @@ where
     fn query_path_info<'a>(
         &'a mut self,
         path: &'a StorePath,
-    ) -> impl super::logger::ResultLog<Output = DaemonResult<Option<UnkeyedValidPathInfo>>> + 'a
-    {
+    ) -> impl ResultLog<Output = DaemonResult<Option<UnkeyedValidPathInfo>>> + 'a {
         let actual = MockRequest::QueryPathInfo(path.clone());
         self.check_operation(actual)
     }
@@ -2228,7 +2225,7 @@ where
     fn nar_from_path<'a>(
         &'a mut self,
         path: &'a StorePath,
-    ) -> impl super::logger::ResultLog<Output = DaemonResult<impl AsyncBufRead + use<R>>> + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<impl AsyncBufRead + use<R>>> + 'a {
         let actual = MockRequest::NarFromPath(path.clone());
         self.check_operation(actual)
             .and_then(move |bytes: Bytes| async move { Ok(Cursor::new(bytes)) })
@@ -2250,8 +2247,7 @@ where
         &'a mut self,
         drvs: &'a [DerivedPath],
         mode: BuildMode,
-    ) -> impl ResultLog<Output = DaemonResult<Vec<super::wire::types2::KeyedBuildResult>>> + Send + 'a
-    {
+    ) -> impl ResultLog<Output = DaemonResult<Vec<KeyedBuildResult>>> + Send + 'a {
         let actual = MockRequest::BuildPathsWithResults(BuildPathsRequest {
             paths: drvs.to_vec(),
             mode,
@@ -2291,7 +2287,7 @@ where
         's: 'r,
         'i: 'r,
     {
-        Box::pin(FutureResult::new(async move {
+        async move {
             let actual_req = AddToStoreNarRequest {
                 path_info: info.clone(),
                 repair,
@@ -2301,7 +2297,9 @@ where
             source.read_to_end(&mut actual_nar).await?;
             let actual = MockRequest::AddToStoreNar(actual_req.clone(), actual_nar.clone().into());
             Ok(self.check_operation(actual))
-        }))
+        }
+        .future_result()
+        .boxed_result()
     }
 
     fn add_multiple_to_store<'s, 'i, 'r, S, SR>(

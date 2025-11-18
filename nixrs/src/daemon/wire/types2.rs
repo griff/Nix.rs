@@ -731,9 +731,9 @@ impl NixSerialize for Option<Microseconds> {
 pub mod arbitrary {
     use super::*;
     use crate::daemon::ProtocolVersion;
-    use crate::realisation::arbitrary::arb_drv_outputs;
     use crate::test::arbitrary::arb_byte_string;
     use crate::test::arbitrary::daemon::field_after;
+    use crate::test::arbitrary::realisation::arb_drv_outputs;
     use ::proptest::prelude::*;
 
     impl Arbitrary for BuildMode {

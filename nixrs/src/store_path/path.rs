@@ -175,7 +175,7 @@ const STORE_PATH_HASH_ENCODED_SIZE: usize = base32::encode_len(STORE_PATH_HASH_S
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
-pub struct StorePathHash([u8; STORE_PATH_HASH_SIZE]);
+pub struct StorePathHash([u8; StorePathHash::len()]);
 
 impl StorePathHash {
     pub const fn len() -> usize {
@@ -329,7 +329,7 @@ const NAME_LOOKUP: [bool; 256] = {
     }
     ret
 };
-pub(crate) const MAX_NAME_LEN: usize = 211;
+pub const MAX_NAME_LEN: usize = 211;
 
 pub(crate) fn into_name<V: AsRef<[u8]>>(s: &V) -> Result<&str, StorePathNameError> {
     let s = s.as_ref();
@@ -429,75 +429,6 @@ impl From<StorePathNameError> for StorePathError {
         match value {
             StorePathNameError::NameLength => StorePathError::NameLength,
             StorePathNameError::Symbol(idx, ch) => StorePathError::Symbol(idx, ch),
-        }
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-pub mod proptest {
-    use super::*;
-    use ::proptest::{arbitrary::Arbitrary, prelude::*};
-
-    pub fn arb_output_name() -> impl Strategy<Value = String> {
-        "[a-zA-Z0-9+\\-_?=][a-zA-Z0-9+\\-_?=.]{0,13}"
-    }
-
-    impl Arbitrary for StorePathHash {
-        type Parameters = ();
-        type Strategy = BoxedStrategy<StorePathHash>;
-
-        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-            any::<[u8; STORE_PATH_HASH_SIZE]>()
-                .prop_map(StorePathHash)
-                .boxed()
-        }
-    }
-
-    pub fn arb_store_path_name(
-        max: u8,
-        extension: Option<String>,
-    ) -> impl Strategy<Value = StorePathName> {
-        "[a-zA-Z0-9+\\-_?=][a-zA-Z0-9+\\-_?=.]{0,210}".prop_map(move |mut s| {
-            let mut max = max;
-            let len = extension.as_ref().map(|e| e.len() + 1).unwrap_or(0) as u8;
-            if max > MAX_NAME_LEN as u8 - len {
-                max = MAX_NAME_LEN as u8 - len;
-            }
-            max -= 1;
-            if s.len() > max as usize {
-                s.truncate(max as usize);
-            }
-            if let Some(ext) = extension.as_ref() {
-                s.push('.');
-                s.push_str(ext);
-            }
-            s.parse().unwrap()
-        })
-    }
-
-    impl Arbitrary for StorePathName {
-        type Parameters = Option<String>;
-        type Strategy = BoxedStrategy<StorePathName>;
-
-        fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-            arb_store_path_name(MAX_NAME_LEN as u8, args).boxed()
-        }
-    }
-
-    pub fn arb_store_path(max: u8, extension: Option<String>) -> impl Strategy<Value = StorePath> {
-        (any::<StorePathHash>(), arb_store_path_name(max, extension))
-            .prop_map(|(hash, name)| StorePath { hash, name })
-    }
-
-    pub fn arb_drv_store_path() -> impl Strategy<Value = StorePath> {
-        arb_store_path(MAX_NAME_LEN as u8 - 4 - 15, Some("drv".into()))
-    }
-
-    impl Arbitrary for StorePath {
-        type Parameters = Option<String>;
-        type Strategy = BoxedStrategy<StorePath>;
-        fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-            arb_store_path(MAX_NAME_LEN as u8, args).boxed()
         }
     }
 }

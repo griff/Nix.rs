@@ -150,35 +150,6 @@ impl<T: ?Sized + HasStoreDir> HasStoreDir for &mut T {
     }
 }
 
-#[cfg(any(test, feature = "test"))]
-pub mod proptest {
-    use std::path::{MAIN_SEPARATOR_STR, PathBuf};
-
-    use proptest::prelude::{Arbitrary, BoxedStrategy, Strategy, any};
-
-    use super::StoreDir;
-
-    pub fn arb_store_dir() -> impl Strategy<Value = StoreDir> {
-        (any::<PathBuf>()).prop_map(|mut path| {
-            if !path.is_absolute() {
-                let mut out = PathBuf::new();
-                out.push(MAIN_SEPARATOR_STR);
-                out.push(path);
-                path = out;
-            }
-            StoreDir::new(path).unwrap()
-        })
-    }
-
-    impl Arbitrary for StoreDir {
-        type Parameters = ();
-        type Strategy = BoxedStrategy<StoreDir>;
-        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-            arb_store_dir().boxed()
-        }
-    }
-}
-
 #[cfg(test)]
 mod unittests {
     use crate::hash::fmt::{Any, Bare, Base16};

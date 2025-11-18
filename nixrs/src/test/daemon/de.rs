@@ -10,7 +10,7 @@ use crate::daemon::ProtocolVersion;
 use crate::store_path::HasStoreDir;
 use crate::store_path::StoreDir;
 
-use super::NixRead;
+use crate::daemon::de::NixRead;
 
 #[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum Error {
@@ -36,7 +36,7 @@ impl Error {
     }
 }
 
-impl super::Error for Error {
+impl crate::daemon::de::Error for Error {
     fn custom<T: fmt::Display>(msg: T) -> Self {
         Self::Custom(msg.to_string())
     }

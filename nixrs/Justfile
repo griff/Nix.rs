@@ -1,0 +1,47 @@
+set export
+
+RUSTFLAGS := "-Dwarnings"
+
+check-features:
+    cargo check
+    cargo check --tests
+    cargo check --features archive
+    cargo check --features archive --tests
+    cargo check --features archive,test
+    cargo check --features daemon-serde
+    cargo check --features daemon-serde --tests
+    cargo check --features daemon-serde,test
+    cargo check --features nixrs-derive
+    cargo check --features nixrs-derive --tests
+    cargo check --features nixrs-derive,test
+    cargo check --features daemon
+    cargo check --features daemon --tests
+    cargo check --features daemon,test
+    cargo check --features internal
+    cargo check --features internal --tests
+
+clippy-features:
+    cargo clippy
+    cargo clippy --tests
+    cargo clippy --features archive
+    cargo clippy --features archive --tests
+    cargo clippy --features archive,test
+    cargo clippy --features daemon-serde
+    cargo clippy --features daemon-serde --tests
+    cargo clippy --features daemon-serde,test
+    cargo clippy --features nixrs-derive
+    cargo clippy --features nixrs-derive --tests
+    cargo clippy --features nixrs-derive,test
+    cargo clippy --features daemon
+    cargo clippy --features daemon --tests
+    cargo clippy --features daemon,test
+    cargo clippy --features internal
+    cargo clippy --features internal --tests
+
+test-features:
+    cargo test
+    cargo test --features archive
+    cargo test --features daemon-serde
+    cargo test --features nixrs-derive
+    cargo test --features daemon
+    cargo test --features internal
