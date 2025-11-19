@@ -8,6 +8,7 @@
         "repo": "nixpkgs"
       },
       "branch": "nixpkgs-unstable",
+      "submodules": false,
       "revision": "8679b16e11becd487b45d568358ddf9d5640d860",
       "url": "https://github.com/NixOS/nixpkgs/archive/8679b16e11becd487b45d568358ddf9d5640d860.tar.gz",
       "hash": "0c3qlwczi042df9vyaych7n4spi20h8g4l3d65dqxl33h2c8akhv"
@@ -20,10 +21,11 @@
         "repo": "nixpkgs"
       },
       "branch": "nixrs-fixes",
+      "submodules": false,
       "revision": "34baf724e06ff1383c626932b7192fe430159197",
       "url": "https://github.com/griff/nixpkgs/archive/34baf724e06ff1383c626932b7192fe430159197.tar.gz",
       "hash": "0vnklq49d5dv2ja43wpyigf39bz5hlpk6909b8liys571vym1qki"
     }
   },
-  "version": 3
+  "version": 5
 }
