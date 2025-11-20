@@ -244,14 +244,14 @@ impl Hash {
     /// in the `algorithm` argument.
     pub fn parse_any(s: &str, algorithm: Option<Algorithm>) -> Result<Hash, ParseHashError> {
         if let Some((a, is_sri, rest)) = parse_prefix(s)? {
-            if let Some(expected) = algorithm {
-                if expected != a {
-                    return Err(ParseHashError::TypeMismatch {
-                        expected,
-                        actual: a,
-                        hash: s.to_string(),
-                    });
-                }
+            if let Some(expected) = algorithm
+                && expected != a
+            {
+                return Err(ParseHashError::TypeMismatch {
+                    expected,
+                    actual: a,
+                    hash: s.to_string(),
+                });
             }
             Hash::from_str(rest, a, is_sri)
         } else if let Some(a) = algorithm {

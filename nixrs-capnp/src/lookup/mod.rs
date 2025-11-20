@@ -191,13 +191,13 @@ impl lookup_capnp::cap_lookup::Server for CapRegistry {
         let rl = pry!(pry!(params.get()).get_priority());
         for r in rl.iter() {
             let ty = r.get_cap_type();
-            if let Some(cap) = self.caps.iter().find(|cap| ty == cap.cap_type()) {
-                if let Some(client) = pry!(cap.make_cap(r)) {
-                    let mut b = result.get().init_selected();
-                    b.set_cap_type(cap.cap_type());
-                    b.init_cap().set_as_capability(client.hook);
-                    return Promise::ok(());
-                }
+            if let Some(cap) = self.caps.iter().find(|cap| ty == cap.cap_type())
+                && let Some(client) = pry!(cap.make_cap(r))
+            {
+                let mut b = result.get().init_selected();
+                b.set_cap_type(cap.cap_type());
+                b.init_cap().set_as_capability(client.hook);
+                return Promise::ok(());
             }
         }
         Promise::ok(())

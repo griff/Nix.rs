@@ -168,15 +168,15 @@ impl<R> Profile<R> {
         let profile_name = self.profile_name();
         match read_link(&self.profile).await {
             Ok(path) => {
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if let Some(number) = parse_name(profile_name, name) {
-                        let creation_time = symlink_metadata(&path).await?.modified()?;
-                        return Ok(Some(Generation {
-                            number,
-                            creation_time,
-                            profile: self,
-                        }));
-                    }
+                if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                    && let Some(number) = parse_name(profile_name, name)
+                {
+                    let creation_time = symlink_metadata(&path).await?.modified()?;
+                    return Ok(Some(Generation {
+                        number,
+                        creation_time,
+                        profile: self,
+                    }));
                 }
             }
             Err(err) if err.kind() == io::ErrorKind::NotFound => {}

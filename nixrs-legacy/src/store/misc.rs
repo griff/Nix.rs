@@ -107,12 +107,11 @@ where
                     res.insert(reference);
                 }
             }
-            if include_derivers {
-                if let Some(deriver) = info.deriver {
-                    if store.query_path_info(&deriver).await?.is_some() {
-                        res.insert(deriver);
-                    }
-                }
+            if include_derivers
+                && let Some(deriver) = info.deriver
+                && store.query_path_info(&deriver).await?.is_some()
+            {
+                res.insert(deriver);
             }
             Ok(res)
         })
@@ -141,12 +140,11 @@ where
                 edges.insert(reference);
             }
         }
-        if include_derivers {
-            if let Some(deriver) = info.deriver {
-                if store.query_path_info(&deriver).await?.is_some() {
-                    edges.insert(deriver);
-                }
-            }
+        if include_derivers
+            && let Some(deriver) = info.deriver
+            && store.query_path_info(&deriver).await?.is_some()
+        {
+            edges.insert(deriver);
         }
         pending.push(edges);
         res.insert(path.clone());
@@ -164,12 +162,11 @@ where
                         edges.insert(reference);
                     }
                 }
-                if include_derivers {
-                    if let Some(deriver) = info.deriver {
-                        if store.query_path_info(&deriver).await?.is_some() {
-                            edges.insert(deriver);
-                        }
-                    }
+                if include_derivers
+                    && let Some(deriver) = info.deriver
+                    && store.query_path_info(&deriver).await?.is_some()
+                {
+                    edges.insert(deriver);
                 }
                 pending.push(edges);
             }

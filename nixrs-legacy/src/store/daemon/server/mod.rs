@@ -505,23 +505,21 @@ where
             } else {
                 eprintln!("Activity result was missing fields")
             }
-        } else if let Some(cmd) = format_event(self.level.clone(), event) {
-            if let Err(err) = self.sender.try_send(cmd) {
-                eprintln!("Event dropped {err}")
-            }
+        } else if let Some(cmd) = format_event(self.level.clone(), event)
+            && let Err(err) = self.sender.try_send(cmd)
+        {
+            eprintln!("Event dropped {err}")
         }
     }
 
     fn on_close(&self, id: span::Id, ctx: layer::Context<'_, S>) {
-        if let Some(meta) = ctx.metadata(&id) {
-            if meta.name() == crate::store::activity::ACTIVITY_NAME {
-                if let Err(err) = self
-                    .sender
-                    .try_send(TunnelCommand::StopActivity(id.into_u64()))
-                {
-                    eprintln!("Activity stop was dropped {err}")
-                }
-            }
+        if let Some(meta) = ctx.metadata(&id)
+            && meta.name() == crate::store::activity::ACTIVITY_NAME
+            && let Err(err) = self
+                .sender
+                .try_send(TunnelCommand::StopActivity(id.into_u64()))
+        {
+            eprintln!("Activity stop was dropped {err}")
         }
     }
 }

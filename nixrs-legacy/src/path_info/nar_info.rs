@@ -13,9 +13,10 @@ use crate::store_path::{
     StorePathSet,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Compression {
     None,
+    #[default]
     BZip2,
     Compress,
     GRZip,
@@ -52,12 +53,6 @@ impl Compression {
             Self::BR => "br",
             Self::Unknown(s) => s,
         }
-    }
-}
-
-impl Default for Compression {
-    fn default() -> Self {
-        Self::BZip2
     }
 }
 

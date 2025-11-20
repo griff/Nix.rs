@@ -92,10 +92,10 @@ where
 {
     fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
         let this = self.get_mut();
-        if let Some(inner) = this.inner.as_mut() {
-            if ready!(Pin::new(&mut inner.reader).poll_fill_buf(cx))?.is_empty() {
-                this.return_reader();
-            }
+        if let Some(inner) = this.inner.as_mut()
+            && ready!(Pin::new(&mut inner.reader).poll_fill_buf(cx))?.is_empty()
+        {
+            this.return_reader();
         }
         if let Some(inner) = this.inner.as_mut() {
             let buf = ready!(Pin::new(&mut inner.reader).poll_fill_buf(cx))?;

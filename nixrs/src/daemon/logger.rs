@@ -551,11 +551,11 @@ where
 
     fn drive(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) {
         let me = self.project();
-        if *me.driving {
-            if let Poll::Ready(res) = me.driver.poll(cx) {
-                *me.driving = false;
-                *me.drive_err = res.err();
-            }
+        if *me.driving
+            && let Poll::Ready(res) = me.driver.poll(cx)
+        {
+            *me.driving = false;
+            *me.drive_err = res.err();
         }
     }
     fn take_drive(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Result<(), E> {

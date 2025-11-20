@@ -1635,7 +1635,7 @@ pub struct Builder<R> {
 }
 
 impl<R> Builder<R> {
-    pub fn handshake(&mut self) -> LogBuilder<R, ()> {
+    pub fn handshake(&mut self) -> LogBuilder<'_, R, ()> {
         LogBuilder {
             owner: self,
             operation: (),
@@ -1651,7 +1651,7 @@ impl<R> Builder<R> {
         &mut self,
         options: &ClientOptions,
         response: DaemonResult<()>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::SetOptions(options.clone(), response))
     }
 
@@ -1659,7 +1659,7 @@ impl<R> Builder<R> {
         &mut self,
         path: &StorePath,
         response: DaemonResult<bool>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::IsValidPath(path.clone(), response))
     }
 
@@ -1668,7 +1668,7 @@ impl<R> Builder<R> {
         paths: &StorePathSet,
         substitute: bool,
         response: DaemonResult<StorePathSet>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::QueryValidPaths(
             QueryValidPathsRequest {
                 paths: paths.clone(),
@@ -1682,7 +1682,7 @@ impl<R> Builder<R> {
         &mut self,
         path: &StorePath,
         response: DaemonResult<Option<UnkeyedValidPathInfo>>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::QueryPathInfo(path.clone(), response))
     }
 
@@ -1690,7 +1690,7 @@ impl<R> Builder<R> {
         &mut self,
         path: &StorePath,
         response: DaemonResult<Bytes>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::NarFromPath(path.clone(), response))
     }
 
@@ -1699,7 +1699,7 @@ impl<R> Builder<R> {
         paths: &[DerivedPath],
         mode: BuildMode,
         response: DaemonResult<()>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::BuildPaths(
             BuildPathsRequest {
                 paths: paths.to_vec(),
@@ -1714,7 +1714,7 @@ impl<R> Builder<R> {
         paths: &[DerivedPath],
         mode: BuildMode,
         response: DaemonResult<KeyedBuildResults>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::BuildPathsWithResults(
             BuildPathsRequest {
                 paths: paths.to_vec(),
@@ -1729,7 +1729,7 @@ impl<R> Builder<R> {
         drv: &BasicDerivation,
         mode: BuildMode,
         response: DaemonResult<BuildResult>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::BuildDerivation(
             BuildDerivationRequest {
                 drv: drv.clone(),
@@ -1743,7 +1743,7 @@ impl<R> Builder<R> {
         &mut self,
         paths: &[DerivedPath],
         response: DaemonResult<QueryMissingResult>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::QueryMissing(paths.to_vec(), response))
     }
 
@@ -1754,7 +1754,7 @@ impl<R> Builder<R> {
         dont_check_sigs: bool,
         contents: Bytes,
         response: DaemonResult<()>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::AddToStoreNar(
             AddToStoreNarRequest {
                 path_info: info.clone(),
@@ -1772,7 +1772,7 @@ impl<R> Builder<R> {
         dont_check_sigs: bool,
         contents: Vec<(ValidPathInfo, Bytes)>,
         response: DaemonResult<()>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::AddMultipleToStore(
             AddMultipleToStoreRequest {
                 repair,
@@ -1786,7 +1786,7 @@ impl<R> Builder<R> {
     pub fn query_all_valid_paths(
         &mut self,
         response: DaemonResult<StorePathSet>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::QueryAllValidPaths(response))
     }
 
@@ -1794,7 +1794,7 @@ impl<R> Builder<R> {
         &mut self,
         path: &StorePath,
         response: DaemonResult<StorePathSet>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::QueryReferrers(path.clone(), response))
     }
 
@@ -1802,7 +1802,7 @@ impl<R> Builder<R> {
         &mut self,
         path: &StorePath,
         response: DaemonResult<()>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::EnsurePath(path.clone(), response))
     }
 
@@ -1810,7 +1810,7 @@ impl<R> Builder<R> {
         &mut self,
         path: &StorePath,
         response: DaemonResult<()>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::AddTempRoot(path.clone(), response))
     }
 
@@ -1818,14 +1818,14 @@ impl<R> Builder<R> {
         &mut self,
         path: &DaemonPath,
         response: DaemonResult<()>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::AddIndirectRoot(path.clone(), response))
     }
 
     pub fn find_roots(
         &mut self,
         response: DaemonResult<BTreeMap<DaemonPath, StorePath>>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::FindRoots(response))
     }
 
@@ -1836,7 +1836,7 @@ impl<R> Builder<R> {
         ignore_liveness: bool,
         max_freed: u64,
         response: DaemonResult<CollectGarbageResponse>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         let mut actual_req = CollectGarbageRequest::default();
         actual_req.action = action;
         actual_req.paths_to_delete = paths_to_delete.clone();
@@ -1849,7 +1849,7 @@ impl<R> Builder<R> {
         &mut self,
         hash: &StorePathHash,
         response: DaemonResult<Option<StorePath>>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::QueryPathFromHashPart(*hash, response))
     }
 
@@ -1857,7 +1857,7 @@ impl<R> Builder<R> {
         &mut self,
         paths: &StorePathSet,
         response: DaemonResult<StorePathSet>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::QuerySubstitutablePaths(
             paths.clone(),
             response,
@@ -1868,11 +1868,14 @@ impl<R> Builder<R> {
         &mut self,
         path: &StorePath,
         response: DaemonResult<StorePathSet>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::QueryValidDerivers(path.clone(), response))
     }
 
-    pub fn optimise_store(&mut self, response: DaemonResult<()>) -> LogBuilder<R, MockOperation> {
+    pub fn optimise_store(
+        &mut self,
+        response: DaemonResult<()>,
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::OptimiseStore(response))
     }
 
@@ -1881,7 +1884,7 @@ impl<R> Builder<R> {
         check_contents: bool,
         repair: bool,
         response: DaemonResult<bool>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::VerifyStore(
             VerifyStoreRequest {
                 check_contents,
@@ -1896,7 +1899,7 @@ impl<R> Builder<R> {
         path: &StorePath,
         signatures: &[Signature],
         response: DaemonResult<()>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::AddSignatures(
             AddSignaturesRequest {
                 path: path.clone(),
@@ -1910,7 +1913,7 @@ impl<R> Builder<R> {
         &mut self,
         path: &StorePath,
         response: DaemonResult<BTreeMap<OutputName, Option<StorePath>>>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::QueryDerivationOutputMap(
             path.clone(),
             response,
@@ -1921,7 +1924,7 @@ impl<R> Builder<R> {
         &mut self,
         realisation: &Realisation,
         response: DaemonResult<()>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::RegisterDrvOutput(
             realisation.clone(),
             response,
@@ -1932,7 +1935,7 @@ impl<R> Builder<R> {
         &mut self,
         output_id: &DrvOutput,
         response: DaemonResult<BTreeSet<Realisation>>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::QueryRealisation(output_id.clone(), response))
     }
 
@@ -1941,7 +1944,7 @@ impl<R> Builder<R> {
         path: &StorePath,
         log: Bytes,
         response: DaemonResult<()>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::AddBuildLog(path.clone(), log, response))
     }
 
@@ -1950,7 +1953,7 @@ impl<R> Builder<R> {
         path: &StorePath,
         gc_root: &DaemonPath,
         response: DaemonResult<DaemonPath>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::AddPermRoot(
             AddPermRootRequest {
                 store_path: path.clone(),
@@ -1960,7 +1963,7 @@ impl<R> Builder<R> {
         ))
     }
 
-    pub fn sync_with_gc(&mut self, response: DaemonResult<()>) -> LogBuilder<R, MockOperation> {
+    pub fn sync_with_gc(&mut self, response: DaemonResult<()>) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::SyncWithGC(response))
     }
 
@@ -1968,7 +1971,7 @@ impl<R> Builder<R> {
         &mut self,
         path: &StorePath,
         response: DaemonResult<StorePathSet>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::QueryDerivationOutputs(
             path.clone(),
             response,
@@ -1979,7 +1982,7 @@ impl<R> Builder<R> {
         &mut self,
         path: &StorePath,
         response: DaemonResult<BTreeSet<OutputName>>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::QueryDerivationOutputNames(
             path.clone(),
             response,
@@ -1994,7 +1997,7 @@ impl<R> Builder<R> {
         repair: bool,
         content: Bytes,
         response: DaemonResult<ValidPathInfo>,
-    ) -> LogBuilder<R, MockOperation> {
+    ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::AddToStore(
             AddToStoreRequest25 {
                 name: name.to_string(),
@@ -2007,7 +2010,7 @@ impl<R> Builder<R> {
         ))
     }
 
-    fn build_operation(&mut self, operation: MockOperation) -> LogBuilder<R, MockOperation> {
+    fn build_operation(&mut self, operation: MockOperation) -> LogBuilder<'_, R, MockOperation> {
         LogBuilder {
             owner: self,
             operation,
@@ -2560,10 +2563,10 @@ where
     async fn shutdown(&mut self) -> DaemonResult<()> {
         let mut res = Ok(());
         for op in self.ops.drain(..) {
-            if let Err(err) = self.reporter.unread_operation(op) {
-                if res.is_ok() {
-                    res = Err(err);
-                }
+            if let Err(err) = self.reporter.unread_operation(op)
+                && res.is_ok()
+            {
+                res = Err(err);
             }
         }
         res

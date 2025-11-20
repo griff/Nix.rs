@@ -111,10 +111,10 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> task::Poll<Self::Output> {
         let mut this = self.project();
-        if this.cancelled_guard.is_none() {
-            if let task::Poll::Ready(guard) = this.cancel.poll(cx) {
-                *this.cancelled_guard = Some(guard);
-            }
+        if this.cancelled_guard.is_none()
+            && let task::Poll::Ready(guard) = this.cancel.poll(cx)
+        {
+            *this.cancelled_guard = Some(guard);
         }
         if this.cancelled_guard.is_some() {
             match (

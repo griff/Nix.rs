@@ -274,10 +274,10 @@ where
 {
     CURRENT_STATE
         .try_with(|state| {
-            if let Some(settings) = state.default.borrow().as_ref() {
-                if let Ok(inner) = settings.0.lock() {
-                    return f(&inner);
-                }
+            if let Some(settings) = state.default.borrow().as_ref()
+                && let Ok(inner) = settings.0.lock()
+            {
+                return f(&inner);
             }
             f(&NONE)
         })
@@ -290,10 +290,10 @@ where
 {
     CURRENT_STATE
         .try_with(|state| {
-            if let Some(settings) = state.default.borrow().as_ref() {
-                if let Ok(mut inner) = settings.0.lock() {
-                    return f(Some(&mut inner));
-                }
+            if let Some(settings) = state.default.borrow().as_ref()
+                && let Ok(mut inner) = settings.0.lock()
+            {
+                return f(Some(&mut inner));
             }
             f(None)
         })

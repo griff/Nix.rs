@@ -218,13 +218,13 @@ where
                                 format!("NAR contains invalid file name '{}'", bstr::BStr::new(&n))))?;
                             return;
                         }
-                        if let Some(p_name) = prev_name.as_ref() {
-                            if n <= p_name {
-                                Err(io::Error::new(
-                                    io::ErrorKind::InvalidData,
-                                    "NAR directory is not sorted"))?;
-                                return;
-                            }
+                        if let Some(p_name) = prev_name.as_ref()
+                            && n <= p_name
+                        {
+                            Err(io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "NAR directory is not sorted"))?;
+                            return;
                         }
                         prev_name = Some(n.clone());
                         name = Some(n);

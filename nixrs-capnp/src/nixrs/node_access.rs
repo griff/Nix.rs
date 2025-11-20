@@ -290,22 +290,22 @@ impl directory_access::Server for PathNodeAccess {
                         let mut rd = read_dir(path.parent().unwrap()).await?;
                         let p_name = OsStr::from_bytes(params.get()?.get_name()?);
                         while let Some(entry) = rd.next_entry().await? {
-                            if let Some(name) = remove_case_hack_osstr(&entry.file_name()) {
-                                if name == p_name {
-                                    let name = name.to_os_string();
-                                    let path = entry.path();
-                                    let metadata = entry.metadata().await?;
-                                    let client = new_client(PathNodeAccess {
-                                        inner: Rc::new(InnerPathNodeAccess {
-                                            path,
-                                            metadata,
-                                            name,
-                                            use_case_hack,
-                                        }),
-                                    });
-                                    result.get().set_node(client);
-                                    break;
-                                }
+                            if let Some(name) = remove_case_hack_osstr(&entry.file_name())
+                                && name == p_name
+                            {
+                                let name = name.to_os_string();
+                                let path = entry.path();
+                                let metadata = entry.metadata().await?;
+                                let client = new_client(PathNodeAccess {
+                                    inner: Rc::new(InnerPathNodeAccess {
+                                        path,
+                                        metadata,
+                                        name,
+                                        use_case_hack,
+                                    }),
+                                });
+                                result.get().set_node(client);
+                                break;
                             }
                         }
                     }
@@ -408,10 +408,10 @@ impl file_access::Server for PathFileAccess {
 }
 
 fn remove_case_hack_osstr(name: &OsStr) -> Option<&OsStr> {
-    if let Some(n) = <[u8]>::from_os_str(name) {
-        if let Some(pos) = n.rfind(CASE_HACK_SUFFIX) {
-            return Some(OsStr::from_bytes(&n[..pos]));
-        }
+    if let Some(n) = <[u8]>::from_os_str(name)
+        && let Some(pos) = n.rfind(CASE_HACK_SUFFIX)
+    {
+        return Some(OsStr::from_bytes(&n[..pos]));
     }
     None
 }

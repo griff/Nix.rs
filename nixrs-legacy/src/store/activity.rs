@@ -185,30 +185,30 @@ impl Visit for StartActivityVisitor {
 
     fn record_str(&mut self, field: &Field, value: &str) {
         let field_name = field.name();
-        if let Some(idx_s) = field_name.strip_prefix("field") {
-            if let Ok(idx) = idx_s.parse::<usize>() {
-                eprintln!("Insert field {}>={}", idx, self.fields.len());
-                if idx >= self.fields.len() {
-                    eprintln!("Extend {:?}", (self.fields.len()..=idx).map(|_| 0));
-                    self.fields.extend((self.fields.len()..=idx).map(|_| None));
-                }
-                self.fields[idx] = Some(LoggerField::String(value.to_string()));
+        if let Some(idx_s) = field_name.strip_prefix("field")
+            && let Ok(idx) = idx_s.parse::<usize>()
+        {
+            eprintln!("Insert field {}>={}", idx, self.fields.len());
+            if idx >= self.fields.len() {
+                eprintln!("Extend {:?}", (self.fields.len()..=idx).map(|_| 0));
+                self.fields.extend((self.fields.len()..=idx).map(|_| None));
             }
+            self.fields[idx] = Some(LoggerField::String(value.to_string()));
         } else if field_name == "text" || field_name == "message" {
             self.text = Some(value.to_string());
         }
     }
 
     fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        if let Some(idx_s) = field.name().strip_prefix("field") {
-            if let Ok(idx) = idx_s.parse::<usize>() {
-                eprintln!("Insert field {}>={}", idx, self.fields.len());
-                if idx >= self.fields.len() {
-                    eprintln!("Extend {:?}", (self.fields.len()..=idx).map(|_| 0));
-                    self.fields.extend((self.fields.len()..=idx).map(|_| None));
-                }
-                self.fields[idx] = Some(LoggerField::String(format!("{value:?}")));
+        if let Some(idx_s) = field.name().strip_prefix("field")
+            && let Ok(idx) = idx_s.parse::<usize>()
+        {
+            eprintln!("Insert field {}>={}", idx, self.fields.len());
+            if idx >= self.fields.len() {
+                eprintln!("Extend {:?}", (self.fields.len()..=idx).map(|_| 0));
+                self.fields.extend((self.fields.len()..=idx).map(|_| None));
             }
+            self.fields[idx] = Some(LoggerField::String(format!("{value:?}")));
         }
     }
 }
@@ -283,28 +283,28 @@ impl Visit for ActivityResultVisitor {
     }
 
     fn record_str(&mut self, field: &Field, value: &str) {
-        if let Some(idx_s) = field.name().strip_prefix("field") {
-            if let Ok(idx) = idx_s.parse::<usize>() {
-                eprintln!("Insert field {}>={}", idx, self.fields.len());
-                if idx >= self.fields.len() {
-                    eprintln!("Extend {:?}", (self.fields.len()..=idx).map(|_| 0));
-                    self.fields.extend((self.fields.len()..=idx).map(|_| None));
-                }
-                self.fields[idx] = Some(LoggerField::String(value.to_string()));
+        if let Some(idx_s) = field.name().strip_prefix("field")
+            && let Ok(idx) = idx_s.parse::<usize>()
+        {
+            eprintln!("Insert field {}>={}", idx, self.fields.len());
+            if idx >= self.fields.len() {
+                eprintln!("Extend {:?}", (self.fields.len()..=idx).map(|_| 0));
+                self.fields.extend((self.fields.len()..=idx).map(|_| None));
             }
+            self.fields[idx] = Some(LoggerField::String(value.to_string()));
         }
     }
 
     fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        if let Some(idx_s) = field.name().strip_prefix("field") {
-            if let Ok(idx) = idx_s.parse::<usize>() {
-                eprintln!("Insert field {}>={}", idx, self.fields.len());
-                if idx >= self.fields.len() {
-                    eprintln!("Extend {:?}", (self.fields.len()..=idx).map(|_| 0));
-                    self.fields.extend((self.fields.len()..=idx).map(|_| None));
-                }
-                self.fields[idx] = Some(LoggerField::String(format!("{value:?}")));
+        if let Some(idx_s) = field.name().strip_prefix("field")
+            && let Ok(idx) = idx_s.parse::<usize>()
+        {
+            eprintln!("Insert field {}>={}", idx, self.fields.len());
+            if idx >= self.fields.len() {
+                eprintln!("Extend {:?}", (self.fields.len()..=idx).map(|_| 0));
+                self.fields.extend((self.fields.len()..=idx).map(|_| None));
             }
+            self.fields[idx] = Some(LoggerField::String(format!("{value:?}")));
         }
     }
 }

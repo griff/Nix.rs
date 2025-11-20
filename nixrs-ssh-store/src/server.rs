@@ -552,60 +552,53 @@ where
         data: &[u8],
         mut session: server::Session,
     ) -> Self::FutureUnit {
-        if let Some(ch) = self.channels.get_mut(&channel) {
-            if let Some(source) = ch.stdin.take() {
-                let handle = session.handle();
-                let cmd = StoreCommand {
-                    shutdown: self.shutdown.clone(),
-                    store_provider: self.store_provider.clone(),
-                    channel,
-                    #[cfg(feature = "legacy")]
-                    stderr: ExtendedDataWrite::new(channel, 1, handle.clone()),
-                    stdout: BufWriter::new(DataWrite::new(channel, handle.clone())),
-                    stdin: BufReader::new(source),
-                };
+        if let Some(ch) = self.channels.get_mut(&channel)
+            && let Some(source) = ch.stdin.take()
+        {
+            let handle = session.handle();
+            let cmd = StoreCommand {
+                shutdown: self.shutdown.clone(),
+                store_provider: self.store_provider.clone(),
+                channel,
+                #[cfg(feature = "legacy")]
+                stderr: ExtendedDataWrite::new(channel, 1, handle.clone()),
+                stdout: BufWriter::new(DataWrite::new(channel, handle.clone())),
+                stdin: BufReader::new(source),
+            };
 
-                if data == b"nix-daemon --stdio" {
+            if data == b"nix-daemon --stdio" {
+                let join = tokio::task::spawn(async move {
+                    match cmd.run_daemon_command().await {
+                        Ok(_) => Ok(()),
+                        Err(err) => {
+                            let err_txt = format!("Exec failed {err:?}");
+                            send_error(err_txt, handle, channel).await;
+                            Err(err)
+                        }
+                    }
+                });
+                ch.serve = Some(join);
+            } else if data == b"nix-store --serve --write" || data == b"nix-store --serve" {
+                #[cfg(feature = "legacy")]
+                {
+                    let mut write_allowed = data == b"nix-store --serve --write";
+                    if let Some((_, user_write_allowed)) = self.auth_user.as_ref() {
+                        write_allowed = write_allowed && *user_write_allowed;
+                    }
                     let join = tokio::task::spawn(async move {
-                        match cmd.run_daemon_command().await {
+                        match cmd.run_legacy_command(write_allowed).await {
                             Ok(_) => Ok(()),
                             Err(err) => {
-                                let err_txt = format!("Exec failed {err:?}");
+                                let err_txt = format!("Exec failed {:?}", err);
                                 send_error(err_txt, handle, channel).await;
                                 Err(err)
                             }
                         }
                     });
                     ch.serve = Some(join);
-                } else if data == b"nix-store --serve --write" || data == b"nix-store --serve" {
-                    #[cfg(feature = "legacy")]
-                    {
-                        let mut write_allowed = data == b"nix-store --serve --write";
-                        if let Some((_, user_write_allowed)) = self.auth_user.as_ref() {
-                            write_allowed = write_allowed && *user_write_allowed;
-                        }
-                        let join = tokio::task::spawn(async move {
-                            match cmd.run_legacy_command(write_allowed).await {
-                                Ok(_) => Ok(()),
-                                Err(err) => {
-                                    let err_txt = format!("Exec failed {:?}", err);
-                                    send_error(err_txt, handle, channel).await;
-                                    Err(err)
-                                }
-                            }
-                        });
-                        ch.serve = Some(join);
-                    }
-                    #[cfg(not(feature = "legacy"))]
-                    {
-                        let err_txt = "invalid command".to_string();
-                        error!("{}", err_txt);
-                        session.extended_data(channel, 1, CryptoVec::from(err_txt));
-                        session.exit_status_request(channel, 1);
-                        session.close(channel);
-                        return self.finished(session);
-                    }
-                } else {
+                }
+                #[cfg(not(feature = "legacy"))]
+                {
                     let err_txt = "invalid command".to_string();
                     error!("{}", err_txt);
                     session.extended_data(channel, 1, CryptoVec::from(err_txt));
@@ -613,53 +606,46 @@ where
                     session.close(channel);
                     return self.finished(session);
                 }
+            } else {
+                let err_txt = "invalid command".to_string();
+                error!("{}", err_txt);
+                session.extended_data(channel, 1, CryptoVec::from(err_txt));
+                session.exit_status_request(channel, 1);
+                session.close(channel);
+                return self.finished(session);
+            }
 
-                /*
-                let (reply, reply_rx) = oneshot::channel();
-                self.serve_tx
-                    .send(ChannelMsg {
-                        channel,
-                        handle: handle.clone(),
-                        source,
-                        write_allowed,
-                        reply,
-                    })
-                    .unwrap_or_default();
-                let join = tokio::spawn(async move {
-                    match reply_rx.await {
-                        Ok(join) => match join.await {
-                            Ok(Ok(_)) => Ok(()),
-                            Ok(Err(err)) => {
-                                let err_txt = format!("Exec failed {:?}", err);
-                                error!("{}", err_txt);
-                                handle
-                                    .extended_data(channel, 1, CryptoVec::from(err_txt))
-                                    .await
-                                    .unwrap_or_default();
-                                handle
-                                    .exit_status_request(channel, 1)
-                                    .await
-                                    .unwrap_or_default();
-                                handle.close(channel).await.unwrap_or_default();
-                                Err(err)
-                            }
-                            Err(err) => {
-                                let err_txt = format!("Exec join failed {:?}", err);
-                                error!("{}", err_txt);
-                                handle
-                                    .extended_data(channel, 1, CryptoVec::from(err_txt))
-                                    .await
-                                    .unwrap_or_default();
-                                handle
-                                    .exit_status_request(channel, 1)
-                                    .await
-                                    .unwrap_or_default();
-                                handle.close(channel).await.unwrap_or_default();
-                                Err(err.into())
-                            }
-                        },
+            /*
+            let (reply, reply_rx) = oneshot::channel();
+            self.serve_tx
+                .send(ChannelMsg {
+                    channel,
+                    handle: handle.clone(),
+                    source,
+                    write_allowed,
+                    reply,
+                })
+                .unwrap_or_default();
+            let join = tokio::spawn(async move {
+                match reply_rx.await {
+                    Ok(join) => match join.await {
+                        Ok(Ok(_)) => Ok(()),
+                        Ok(Err(err)) => {
+                            let err_txt = format!("Exec failed {:?}", err);
+                            error!("{}", err_txt);
+                            handle
+                                .extended_data(channel, 1, CryptoVec::from(err_txt))
+                                .await
+                                .unwrap_or_default();
+                            handle
+                                .exit_status_request(channel, 1)
+                                .await
+                                .unwrap_or_default();
+                            handle.close(channel).await.unwrap_or_default();
+                            Err(err)
+                        }
                         Err(err) => {
-                            let err_txt = format!("Could not get join handle {:?}", err);
+                            let err_txt = format!("Exec join failed {:?}", err);
                             error!("{}", err_txt);
                             handle
                                 .extended_data(channel, 1, CryptoVec::from(err_txt))
@@ -672,11 +658,25 @@ where
                             handle.close(channel).await.unwrap_or_default();
                             Err(err.into())
                         }
+                    },
+                    Err(err) => {
+                        let err_txt = format!("Could not get join handle {:?}", err);
+                        error!("{}", err_txt);
+                        handle
+                            .extended_data(channel, 1, CryptoVec::from(err_txt))
+                            .await
+                            .unwrap_or_default();
+                        handle
+                            .exit_status_request(channel, 1)
+                            .await
+                            .unwrap_or_default();
+                        handle.close(channel).await.unwrap_or_default();
+                        Err(err.into())
                     }
-                });
-                ch.serve = Some(join);
-                 */
-            }
+                }
+            });
+            ch.serve = Some(join);
+                */
         }
         self.finished(session)
     }

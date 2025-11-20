@@ -27,7 +27,7 @@ where
     }
 }
 
-trait FromStoreDirStrSep: Sized {
+pub trait FromStoreDirStrSep: Sized {
     type Error: std::error::Error;
 
     fn from_store_dir_str_sep(
@@ -50,7 +50,7 @@ where
         self.1.fmt(store_dir, self.0, f)
     }
 }
-struct ParsePath<const C: char, D>(pub D);
+pub struct ParsePath<const C: char, D>(pub D);
 impl<const C: char, D> FromStoreDirStr for ParsePath<C, D>
 where
     D: FromStoreDirStrSep,
@@ -225,6 +225,8 @@ impl FromStoreDirStr for DerivedPath {
     }
 }
 
+pub type LegacyDerivedPath = ParsePath<'!', DerivedPath>;
+/*
 pub struct LegacyDerivedPath(pub DerivedPath);
 impl FromStoreDirStr for LegacyDerivedPath {
     type Error = ParseStorePathError;
@@ -238,6 +240,7 @@ impl FromStoreDirStr for LegacyDerivedPath {
         )?))
     }
 }
+*/
 
 #[cfg(feature = "daemon-serde")]
 mod daemon_serde {

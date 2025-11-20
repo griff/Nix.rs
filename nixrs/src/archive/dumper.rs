@@ -96,10 +96,10 @@ fn sort_case_hack(left: &DirEntry, right: &DirEntry) -> Ordering {
 }
 
 fn remove_case_hack_osstr(name: &OsStr) -> Option<&OsStr> {
-    if let Some(n) = <[u8]>::from_os_str(name) {
-        if let Some(pos) = n.rfind(CASE_HACK_SUFFIX) {
-            return Some(OsStr::from_bytes(&n[..pos]));
-        }
+    if let Some(n) = <[u8]>::from_os_str(name)
+        && let Some(pos) = n.rfind(CASE_HACK_SUFFIX)
+    {
+        return Some(OsStr::from_bytes(&n[..pos]));
     }
     None
 }
@@ -362,12 +362,12 @@ impl Stream for NarDumper {
         cx: &mut std::task::Context<'_>,
     ) -> Poll<Option<Self::Item>> {
         loop {
-            if let Some(entry) = self.next.as_ref() {
-                if !entry.path().starts_with(&self.dir) {
-                    self.dir.pop();
-                    self.level -= 1;
-                    return Poll::Ready(Some(Ok(NarEvent::EndDirectory)));
-                }
+            if let Some(entry) = self.next.as_ref()
+                && !entry.path().starts_with(&self.dir)
+            {
+                self.dir.pop();
+                self.level -= 1;
+                return Poll::Ready(Some(Ok(NarEvent::EndDirectory)));
             }
             if let Some(entry) = self.next.take() {
                 let name = if self.level > 0 {

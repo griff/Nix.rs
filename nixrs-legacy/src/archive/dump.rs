@@ -270,18 +270,18 @@ where
                         let item = Item {
                             path, file_type, metadata: None,
                         };
-                        if options.use_case_hack {
-                            if let Some(pos) = name.rfind(CASE_HACK_SUFFIX) {
-                                debug!("removing case hack suffix from '{:?}'", entry.path());
-                                name = name[..pos].to_owned();
-                                if unhacked.contains_key(&name) {
-                                    let name_s = String::from_utf8_lossy(&name);
-                                    Err(io::Error::other(
-                                        format!("file name collision in between '{:?}' and '{:?}'",
-                                            parent_path.join(name_s.as_ref()),
-                                            entry.path())))?;
-                                    return;
-                                }
+                        if options.use_case_hack
+                            && let Some(pos) = name.rfind(CASE_HACK_SUFFIX)
+                        {
+                            debug!("removing case hack suffix from '{:?}'", entry.path());
+                            name = name[..pos].to_owned();
+                            if unhacked.contains_key(&name) {
+                                let name_s = String::from_utf8_lossy(&name);
+                                Err(io::Error::other(
+                                    format!("file name collision in between '{:?}' and '{:?}'",
+                                        parent_path.join(name_s.as_ref()),
+                                        entry.path())))?;
+                                return;
                             }
                         }
                         unhacked.insert(name, item);

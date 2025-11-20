@@ -179,10 +179,10 @@ pub struct TakenGuard<S> {
 
 impl<S> Drop for TakenGuard<S> {
     fn drop(&mut self) {
-        if let Some(reader) = self.stream.take() {
-            if let Some(sender) = self.sender.take() {
-                sender.send(reader).ok();
-            }
+        if let Some(reader) = self.stream.take()
+            && let Some(sender) = self.sender.take()
+        {
+            sender.send(reader).ok();
         }
     }
 }

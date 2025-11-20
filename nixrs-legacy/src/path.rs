@@ -22,7 +22,7 @@ pub fn absolute_path_buf_from_current(path: PathBuf) -> io::Result<PathBuf> {
     }
 }
 
-pub fn absolute_path_from_current(path: &Path) -> io::Result<Cow<Path>> {
+pub fn absolute_path_from_current(path: &Path) -> io::Result<Cow<'_, Path>> {
     if path.is_absolute() {
         return Ok(clean_path(path));
     }
@@ -51,7 +51,7 @@ pub fn clean_path_buf(path: PathBuf) -> PathBuf {
     }
 }
 
-pub fn clean_path(path: &Path) -> Cow<Path> {
+pub fn clean_path(path: &Path) -> Cow<'_, Path> {
     let mut out = SmallVec::<[Component; 20]>::new();
     let mut no_changes = true;
     for comp in path.components() {
