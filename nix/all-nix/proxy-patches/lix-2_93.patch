@@ -1,0 +1,114 @@
+From 06e044f9479403c08ca95a3e53e09798885fc06d Mon Sep 17 00:00:00 2001
+From: Brian Olsen <brian@maven-group.org>
+Date: Wed, 19 Nov 2025 19:53:42 +0100
+Subject: [PATCH] Add process-ops argument to nix daemon
+
+Change-Id: I4b3a992724f2eb204cf28a7b5896c35a02aac2c5
+---
+ lix/libstore/daemon.cc |  2 +-
+ lix/nix/daemon.cc      | 28 ++++++++++++++++++++++++----
+ 2 files changed, 25 insertions(+), 5 deletions(-)
+
+diff --git a/lix/libstore/daemon.cc b/lix/libstore/daemon.cc
+index 18f650770..0f3861f4a 100644
+--- a/lix/libstore/daemon.cc
++++ b/lix/libstore/daemon.cc
+@@ -880,7 +880,7 @@ static void performOp(AsyncIoRoot & aio, TunnelLogger * logger, ref<Store> store
+         auto path = store->parseStorePath(readString(from));
+         logger->startWork();
+         logger->stopWork();
+-        to << dumpPath(store->toRealPath(path));
++        aio.blockOn(store->narFromPath(path))->drainInto(to);
+         break;
+     }
+ 
+diff --git a/lix/nix/daemon.cc b/lix/nix/daemon.cc
+index 8fcdb0bc7..d600f056e 100644
+--- a/lix/nix/daemon.cc
++++ b/lix/nix/daemon.cc
+@@ -466,17 +466,24 @@ processStdioConnection(AsyncIoRoot & aio, ref<Store> store, TrustedFlag trustCli
+  *
+  * @param forceTrustClientOpt See `daemonLoop()` and the parameter with
+  * the same name over there for details.
++ *
++ * @param procesOps Whether to force processing ops even if the next
++ * store also is a remote store and could process it directly.
+  */
+ static void
+-runDaemon(AsyncIoRoot & aio, bool stdio, std::optional<TrustedFlag> forceTrustClientOpt)
++runDaemon(AsyncIoRoot & aio, bool stdio, std::optional<TrustedFlag> forceTrustClientOpt, bool processOps)
+ {
+     if (stdio) {
+         auto store = aio.blockOn(openUncachedStore());
+ 
++        std::shared_ptr<RemoteStore> remoteStore;
++
+         // If --force-untrusted is passed, we cannot forward the connection and
+         // must process it ourselves (before delegating to the next store) to
+         // force untrusting the client.
+-        if (auto remoteStore = store.try_cast_shared<RemoteStore>(); remoteStore && (!forceTrustClientOpt || *forceTrustClientOpt != NotTrusted))
++        processOps |= forceTrustClientOpt && *forceTrustClientOpt == NotTrusted;
++
++        if (!processOps && (remoteStore = store.try_cast_shared<RemoteStore>()))
+             forwardStdioConnection(*remoteStore);
+         else
+             // `Trusted` is passed in the auto (no override case) because we
+@@ -492,6 +499,7 @@ static int main_nix_daemon(AsyncIoRoot & aio, std::string programName, Strings a
+     {
+         auto stdio = false;
+         std::optional<TrustedFlag> isTrustedOpt = std::nullopt;
++        bool processOps = false;
+ 
+         LegacyArgs(aio, programName, [&](Strings::iterator & arg, const Strings::iterator & end) {
+             if (*arg == "--daemon")
+@@ -511,11 +519,13 @@ static int main_nix_daemon(AsyncIoRoot & aio, std::string programName, Strings a
+             } else if (*arg == "--default-trust") {
+                 experimentalFeatureSettings.require(Xp::DaemonTrustOverride);
+                 isTrustedOpt = std::nullopt;
++            } else if (*arg == "--process-ops") {
++                processOps = true;
+             } else return false;
+             return true;
+         }).parseCmdline(argv);
+ 
+-        runDaemon(aio, stdio, isTrustedOpt);
++        runDaemon(aio, stdio, isTrustedOpt, processOps);
+ 
+         return 0;
+     }
+@@ -529,6 +539,7 @@ struct CmdDaemon : StoreCommand
+ {
+     bool stdio = false;
+     std::optional<TrustedFlag> isTrustedOpt = std::nullopt;
++    bool processOps = false;
+ 
+     CmdDaemon()
+     {
+@@ -564,6 +575,15 @@ struct CmdDaemon : StoreCommand
+             }},
+             .experimentalFeature = Xp::DaemonTrustOverride,
+         });
++        addFlag({
++            .longName = "process-ops",
++            .description = R"(
++              Forces the daemon to process received commands itself rather than forwarding the commands straight to the remote store.
++            )",
++            .handler = {[&]() {
++                processOps = true;
++            }},
++        });
+     }
+ 
+     std::string description() override
+@@ -582,7 +602,7 @@ struct CmdDaemon : StoreCommand
+ 
+     void run(ref<Store> store) override
+     {
+-        runDaemon(aio(), stdio, isTrustedOpt);
++        runDaemon(aio(), stdio, isTrustedOpt, processOps);
+     }
+ };
+ 
+-- 
+2.49.0
+

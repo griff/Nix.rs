@@ -1,0 +1,17 @@
+{
+    "name": "lix_2_93",
+    "conf_path": "../conf/nix_2_3.conf",
+    "program_path": "../lix_2_93/bin/nix-daemon",
+    "cmd_args": [
+        "--process-ops",
+        "--debug",
+        "-vvvvvv",
+        "--stdio"
+    ],
+    "range": "1.10..1.36",
+    "op_log_prefix": true,
+    "chomp_log": true,
+    "skipped": [
+        "unittests::add_multiple_to_store"
+    ]
+}

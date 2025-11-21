@@ -189,14 +189,13 @@ in {
       treefmt
       crate2nix
       rustc.llvmPackages.llvm
+      cargo
+      rustc
       capnproto
       nix-output-monitor
       just
       cloc
     ] ++ lib.optionals stdenv.isDarwin [
-      darwin.apple_sdk.frameworks.CoreServices
-      darwin.apple_sdk.frameworks.Security
-      darwin.apple_sdk.frameworks.SystemConfiguration
       iconv
     ];
   };

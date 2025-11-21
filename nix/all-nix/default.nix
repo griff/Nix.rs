@@ -347,10 +347,20 @@ let
       ];
       doCheck = false;
       doInstallCheck = false;
+      meta.broken = true;
       meta.flake.exported = "lix_2_91";
     };
+
+    lix_2_93 = pkgs.lix.overrideAttrs (finalAttrs: previousAttrs: {
+      patches = [
+        ./proxy-patches/lix-2_93.patch
+      ] ++ previousAttrs.patches;
+      doCheck = false;
+      doInstallCheck = false;
+      meta.flake.exported = "lix_2_93";
+    });
   };
-  selected = [ "nix_2_3" "nix_2_24" "lix_2_91"]; 
+  selected = [ "nix_2_3" "nix_2_24" "lix_2_93"];
   selected-nix = lib.getAttrs selected all-nix;
   unbroken = lib.attrNames (lib.filterAttrs (n: v: (lib.isDerivation v) && !(v.meta.broken or false)) all-nix);
 in lib.makeExtensible (self: (

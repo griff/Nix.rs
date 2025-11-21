@@ -6,6 +6,6 @@ error[E0277]: the trait bound `Test: FromStoreDirStr` is not satisfied
   |
   = help: the following other types implement trait `FromStoreDirStr`:
             DerivedPath
-            LegacyDerivedPath
             SingleDerivedPath
             StorePath
+            nixrs::derived_path::path::ParsePath<C, D>

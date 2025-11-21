@@ -11,7 +11,7 @@
 }@args:
 assert (hash == null) -> (src != null);
 let
-  atLeast24 = lib.versionAtLeast version "2.4pre";
+  atLeast24 = lib.versionAtLeast version "2.4";
   atLeast25 = lib.versionAtLeast version "2.5pre";
   atLeast27 = lib.versionAtLeast version "2.7pre";
   atLeast210 = lib.versionAtLeast version "2.10pre";
@@ -80,7 +80,7 @@ in
 , xz
 , enableDocumentation ? stdenv.buildPlatform.canExecute stdenv.hostPlatform
 , enableStatic ? stdenv.hostPlatform.isStatic
-, withAWS ? !enableStatic && (stdenv.hostPlatform.isLinux || stdenv.hostPlatform.isDarwin), aws-sdk-cpp
+, withAWS ? !enableStatic && (stdenv.hostPlatform.isLinux || stdenv.hostPlatform.isDarwin) && atLeast24, aws-sdk-cpp
 , withLibseccomp ? lib.meta.availableOn stdenv.hostPlatform libseccomp, libseccomp
 
 , confDir

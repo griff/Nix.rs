@@ -9,22 +9,9 @@
       },
       "branch": "nixpkgs-unstable",
       "submodules": false,
-      "revision": "8679b16e11becd487b45d568358ddf9d5640d860",
-      "url": "https://github.com/NixOS/nixpkgs/archive/8679b16e11becd487b45d568358ddf9d5640d860.tar.gz",
-      "hash": "0c3qlwczi042df9vyaych7n4spi20h8g4l3d65dqxl33h2c8akhv"
-    },
-    "nixpkgs-fixed": {
-      "type": "Git",
-      "repository": {
-        "type": "GitHub",
-        "owner": "griff",
-        "repo": "nixpkgs"
-      },
-      "branch": "nixrs-fixes",
-      "submodules": false,
-      "revision": "34baf724e06ff1383c626932b7192fe430159197",
-      "url": "https://github.com/griff/nixpkgs/archive/34baf724e06ff1383c626932b7192fe430159197.tar.gz",
-      "hash": "0vnklq49d5dv2ja43wpyigf39bz5hlpk6909b8liys571vym1qki"
+      "revision": "6f374686605df381de8541c072038472a5ea2e2d",
+      "url": "https://github.com/NixOS/nixpkgs/archive/6f374686605df381de8541c072038472a5ea2e2d.tar.gz",
+      "hash": "00wbf9z0610al0irvjlsqq6qwm1kr594chds28ry98fm7sqyp480"
     }
   },
   "version": 5
