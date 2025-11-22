@@ -12,6 +12,8 @@ members = [
   "examples/tester",
   "nixrs-daemon-tests", "capnp-rpc-tokio",
 ]
+package.version = "0.1.0"
+metadata.crane.name = "nixrs-workspace"
 
 [workspace.dependencies]
 async-stream = "0.3.6"

@@ -1226,6 +1226,7 @@ rec {
           {
             name = "tokio";
             packageId = "tokio";
+            features = [ "net" "macros" "time" "io-util" ];
           }
           {
             name = "tokio-util";
@@ -5496,6 +5497,7 @@ rec {
         version = "0.1.0";
         edition = "2024";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./nixrs-derive-tests; };
+        libName = "nixrs_derive_tests";
         authors = [
           "Brian Olsen <brian@maven-group.org>"
         ];

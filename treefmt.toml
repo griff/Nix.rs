@@ -1,3 +1,5 @@
+excludes = ["target/**"]
+
 [formatter.rust]
 command = "rustfmt"
 includes = [ "*.rs" ]

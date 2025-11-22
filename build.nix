@@ -1,4 +1,4 @@
-{pkgs, lib, project, ...}: let
+{pkgs, lib, project, sources, ...}: let
   crates = pkgs.callPackage ./Cargo.nix {
     defaultCrateOverrides = pkgs.defaultCrateOverrides // {
       nixrs = prev: {
@@ -17,21 +17,79 @@
       };
     };
   };
-  cargoDeps = pkgs.rustPlatform.importCargoLock {
-    lockFile = ./Cargo.lock;
-    outputHashes = lib.listToAttrs
-      (lib.map (c: let 
-        crate = crates.internal.crates.${c};
-      in lib.nameValuePair "${crate.crateName}-${crate.version}" crate.src.outputHash )
-      [
-        "capnp" "capnpc" "capnp-rpc" "capnp-futures"
-      ]);
-  };
+
+  craneLib = import sources.crane { inherit pkgs; };
+  craneLibNightly = craneLib.overrideToolchain (
+    p:
+    p.rust-bin.selectLatestNightlyWith (toolchain: toolchain.default)
+  );
   src = pkgs.lib.cleanSourceWith {
-    name = "project";
+    name = "nixrs-project";
     src = pkgs.nix-gitignore.gitignoreSource [] ./.;
     filter = pkgs.lib.cleanSourceFilter;
   };
+
+  craneSrc = craneLib.cleanCargoSource src;
+  commonArgs = {
+    src = src;
+    strictDeps = true;
+    nativeBuildInputs = [
+      pkgs.pkg-config
+      pkgs.capnproto
+    ];
+    buildInputs = [
+      pkgs.libsodium
+    ];
+  };
+  cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+  cargoDocsRs = {
+    packages ? [],
+    cargoDocsRsExtraArgs ? "",
+    cargoExtraArgs ? "--locked",
+    ...
+  }@origArgs: let
+    args = builtins.removeAttrs origArgs [
+      "packages"
+      "cargoDocsRsExtraArgs"
+      "cargoExtraArgs"
+    ];
+  in
+  craneLibNightly.mkCargoDerivation (args // {
+    pnameSuffix = "-docs-rs";
+
+    doInstallCargoArtifacts = args.doInstallCargoArtifacts or false;
+
+    docInstallRoot = args.docInstallRoot or "";
+    CARGO_BUILD_TARGET = pkgs.stdenv.hostPlatform.config;
+
+    buildPhaseCargoCommand = if packages == []
+    then "cargo docs-rs ${cargoExtraArgs} --target $CARGO_BUILD_TARGET ${cargoDocsRsExtraArgs}"
+    else ''
+      ${pkgs.lib.concatMapStringsSep "\n"
+      (p: "cargo docs-rs ${cargoExtraArgs} -p ${p} --target $CARGO_BUILD_TARGET ${cargoDocsRsExtraArgs}")
+      packages}
+    '';
+
+    installPhaseCommand = ''
+      echo initial ''${CARGO_BUILD_TARGET:-} $docInstallRoot
+      if [ -z "''${docInstallRoot:-}" ]; then
+        docInstallRoot="''${CARGO_TARGET_DIR:-target}/''${CARGO_BUILD_TARGET:-}/doc"
+        echo set $docInstallRoot
+
+        if ! [ -d "''${docInstallRoot}" ]; then
+          docInstallRoot="''${CARGO_TARGET_DIR:-target}/doc"
+          echo default $docInstallRoot
+        fi
+      fi
+
+      echo actual $docInstallRoot
+      mkdir -p $out/share
+      mv "''${docInstallRoot}" $out/share
+    '';
+
+    nativeBuildInputs = (args.nativeBuildInputs or [ ]) ++ [ project.nix.cargo-docs-rs ];
+  });
+
   onlyCargoSrc = pkgs.lib.cleanSourceWith {
     name = "project-empty-cargo";
     inherit src;
@@ -39,6 +97,7 @@
       base = builtins.baseNameOf path;
       in type == "directory" || base == "Cargo.toml" || base == "Cargo.lock" || base == "build.rs";
   };
+
   emptySrc = pkgs.runCommand "empty-src" { src = onlyCargoSrc; } ''
     cp -r $src $out
     chmod -R +w $out
@@ -57,60 +116,31 @@
     done
   '';
 in {
-  inherit crates src cargoDeps;
+  inherit crates src craneLib craneLibNightly commonArgs cargoArtifacts;
 
-  clippy = pkgs.stdenv.mkDerivation {
-    name = "nixrs-clippy";
-    inherit cargoDeps src;
-    ALL_NIX = project.nix.all-nix.all-nix;
-    UNIX_PROXY = "${project.nix.unix-proxy}/bin/unix-proxy";
-    nativeBuildInputs = with pkgs; [
-      pkg-config
-      cargo
-      clippy
-      rustPlatform.cargoSetupHook
-      libsodium
-      capnproto
-    ];
-    buildPhase = ''
-      cargo clippy --tests --examples --benches --no-deps -- -Dwarnings 2>&1 | tee -a $out
-    '';
-  };
-  rustdoc = pkgs.stdenv.mkDerivation {
-    name = "nixrs-rustdoc";
-    inherit cargoDeps src;
-    ALL_NIX = project.nix.all-nix.all-nix;
-    UNIX_PROXY = "${project.nix.unix-proxy}/bin/unix-proxy";
-    nativeBuildInputs = with pkgs; [
-      pkg-config
-      cargo
-      clippy
-      rustPlatform.cargoSetupHook
-      libsodium
-      capnproto
-    ];
-    buildPhase = ''
-      cargo doc
-      mv target/doc $out
-    '';
-  };
-  doc-tests = pkgs.stdenv.mkDerivation {
-    name = "nixrs-doc-tests";
-    inherit cargoDeps src;
-    ALL_NIX = project.nix.all-nix.all-nix;
-    UNIX_PROXY = "${project.nix.unix-proxy}/bin/unix-proxy";
-    nativeBuildInputs = with pkgs; [
-      pkg-config
-      cargo
-      clippy
-      rustPlatform.cargoSetupHook
-      libsodium
-      capnproto
-    ];
-    buildPhase = ''
-      cargo test --doc 2>&1 | tee -a $out
-    '';
-  };
+  clippy = craneLib.cargoClippy (
+    commonArgs
+    // {
+      inherit cargoArtifacts;
+      cargoClippyExtraArgs = "--all-targets --no-deps -- --deny warnings";
+    }
+  );
+
+  rustdoc = cargoDocsRs (
+    commonArgs
+    // {
+      inherit cargoArtifacts;
+      packages = ["nixrs" "nixrs-legacy" "nixrs-ssh-store" "nixrs-capnp" "capnp-rpc-tokio" ];
+    }
+  );
+
+  doc-tests = craneLib.cargoDocTest (
+    commonArgs
+    // {
+      inherit cargoArtifacts;
+    }
+  );
+
   crate2nix-check = let
     cargoNix = builtins.readFile ./Cargo.nix;
     cargoHash = builtins.hashString "sha256" "${cargoNix}${emptySrc}";
@@ -135,20 +165,25 @@ in {
       echo "${cargoHash}" >> $out
     '';
   };
-  treefmt = pkgs.stdenv.mkDerivation {
+
+  treefmt = craneLib.mkCargoDerivation (commonArgs // {
+    inherit cargoArtifacts;
     name = "nixrs-treefmt";
-    inherit cargoDeps src;
-    ALL_NIX = project.nix.all-nix.all-nix;
-    UNIX_PROXY = "${project.nix.unix-proxy}/bin/unix-proxy";
+    doInstallCargoArtifacts = false;
+    buildPhaseCargoCommand = ''
+      treefmt . --ci 2>&1 | tee -a $out
+    '';
+
+    installPhaseCommand = ''
+    '';
+
     nativeBuildInputs = with pkgs; [
       treefmt
       rustfmt
       nixpkgs-fmt
     ];
-    buildPhase = ''
-      treefmt . --ci 2>&1 | tee -a $out
-    '';
-  };
+  });
+
   meta.ci.targets = [
     "clippy"
     "rustdoc"

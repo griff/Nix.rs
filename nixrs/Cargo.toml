@@ -79,3 +79,7 @@ tokio-test = { workspace = true }
 [dev-dependencies.tokio]
 workspace = true
 features = ["fs", "io-util", "macros", "process", "rt-multi-thread"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

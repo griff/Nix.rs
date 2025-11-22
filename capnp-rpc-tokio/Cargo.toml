@@ -18,7 +18,7 @@ features = ["compat"]
 
 [dependencies.tokio]
 workspace = true
-#features = ["io-util", "io-std", "macros", "fs"]
+features = ["net", "macros", "time", "io-util"]
 
 [build-dependencies]
 capnpc.workspace = true

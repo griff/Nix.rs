@@ -1,15 +1,6 @@
-{ project, pkgs, lib, ... }:
-
-pkgs.stdenv.mkDerivation {
+{ project, ... }:
+project.craneLib.cargoTest (project.commonArgs // {
+  inherit (project) cargoArtifacts;
   name = "nixrs-derive-tests";
-  inherit (project) cargoDeps src;
-  ALL_NIX = project.nix.all-nix.all-nix;
-  nativeBuildInputs = with pkgs; [
-    pkg-config
-    cargo
-    rustPlatform.cargoSetupHook
-  ];
-  buildPhase = ''
-    cargo test -p nixrs-derive-tests 2>&1 | tee -a $out
-  '';
-}
+  cargoTestExtraArgs = "-p nixrs-derive-tests";
+})
