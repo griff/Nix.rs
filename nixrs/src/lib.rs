@@ -2,15 +2,18 @@
 //
 // SPDX-License-Identifier: EUPL-1.2 or MIT
 //#![deny(unused_crate_dependencies)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 use serde::Serialize;
 
 extern crate self as nixrs;
 
 #[cfg(feature = "archive")]
+#[cfg_attr(docsrs, doc(cfg(feature = "archive")))]
 pub mod archive;
 pub mod base32;
 #[cfg(any(feature = "daemon", feature = "daemon-serde"))]
+#[cfg_attr(docsrs, doc(cfg(feature = "daemon")))]
 pub mod daemon;
 pub mod derivation;
 pub mod derived_path;

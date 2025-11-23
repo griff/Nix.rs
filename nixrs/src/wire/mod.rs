@@ -1,13 +1,16 @@
 #[cfg(any(feature = "internal", feature = "archive", feature = "daemon-serde"))]
+#[cfg_attr(docsrs, doc(cfg(feature = "internal")))]
 mod padded_reader;
 #[cfg(any(feature = "internal", feature = "archive", feature = "daemon-serde"))]
 #[cfg_attr(
     not(any(feature = "internal", feature = "archive")),
     expect(unused_imports)
 )]
+#[cfg_attr(docsrs, doc(cfg(feature = "internal")))]
 pub use padded_reader::PaddedReader;
 
 #[cfg(any(feature = "internal", feature = "archive", feature = "daemon-serde"))]
+#[cfg_attr(docsrs, doc(cfg(feature = "internal")))]
 pub const ZEROS: [u8; 8] = [0u8; 8];
 
 pub const fn calc_aligned(len: u64) -> u64 {

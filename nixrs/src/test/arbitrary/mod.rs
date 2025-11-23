@@ -7,6 +7,7 @@ use crate::ByteString;
 #[cfg(feature = "archive")]
 pub mod archive;
 #[cfg(any(feature = "daemon", feature = "daemon-serde"))]
+#[cfg_attr(docsrs, doc(cfg(feature = "daemon")))]
 pub mod daemon;
 pub mod derivation;
 mod derived_path;
