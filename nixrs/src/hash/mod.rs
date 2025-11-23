@@ -4,7 +4,7 @@ use std::fmt as sfmt;
 use std::str::FromStr;
 
 use derive_more::Display;
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use ring::digest;
 use thiserror::Error;
@@ -23,8 +23,8 @@ const LARGEST_ALGORITHM: Algorithm = Algorithm::SHA512;
 
 /// A digest algorithm.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Display, Default)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "daemon", nix(from_str, display))]
 pub enum Algorithm {
     #[display("md5")]
     MD5,
@@ -145,9 +145,9 @@ pub struct InvalidHashError {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(
-    feature = "nixrs-derive",
+    feature = "daemon",
     nix(from = "fmt::Any<Hash>", into = "fmt::Base32<Hash>")
 )]
 pub struct Hash {
@@ -205,9 +205,9 @@ impl TryFrom<digest::Digest> for Hash {
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq, PartialOrd, Ord)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(
-    feature = "nixrs-derive",
+    feature = "daemon",
     nix(
         from = "fmt::Bare<fmt::Any<NarHash>>",
         into = "fmt::Bare<fmt::Base16<NarHash>>"

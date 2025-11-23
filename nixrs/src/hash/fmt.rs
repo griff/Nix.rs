@@ -1,7 +1,7 @@
 use std::{fmt as sfmt, str::FromStr};
 
 use data_encoding::{BASE64, DecodeError, DecodeKind, HEXLOWER_PERMISSIVE};
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use thiserror::Error;
 
@@ -657,9 +657,9 @@ impl<H: CommonHash> FromStr for Base16<H> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(
-    feature = "nixrs-derive",
+    feature = "daemon",
     nix(from_str, display, bound = "H: CommonHash + Sync + 'static")
 )]
 #[repr(transparent)]
@@ -906,9 +906,9 @@ impl<H: CommonHash> FromStr for Base64<H> {
 /// `[<type>:]<base16|base32|base64>` or `<type>-<base64>` (a
 /// Subresource Integrity hash expression).
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize))]
 #[cfg_attr(
-    feature = "nixrs-derive",
+    feature = "daemon",
     nix(from_str, bound = "H: CommonHash + Sync + 'static")
 )]
 pub struct Any<H>(H);
@@ -1120,9 +1120,9 @@ impl<H: CommonHash> FromStr for NonSRI<H> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
 #[cfg_attr(
-    feature = "nixrs-derive",
+    feature = "daemon",
     nix(
         from_str,
         display,

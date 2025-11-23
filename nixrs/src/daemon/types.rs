@@ -7,7 +7,6 @@ use std::time::Duration;
 use bstr::ByteSlice;
 use bytes::Bytes;
 use futures::Stream;
-#[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(any(test, feature = "test"))]
@@ -43,8 +42,7 @@ pub type DaemonPath = Bytes;
 pub type DaemonInt = libc::c_uint;
 pub type DaemonTime = libc::time_t;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 #[repr(transparent)]
 pub struct Microseconds(i64);
 
@@ -74,10 +72,20 @@ impl From<Microseconds> for i64 {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    TryFromPrimitive,
+    IntoPrimitive,
+    NixDeserialize,
+    NixSerialize,
 )]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
+#[nix(try_from = "u16", into = "u16")]
 #[repr(u16)]
 pub enum BuildMode {
     Normal = 0,
@@ -97,9 +105,10 @@ pub enum BuildMode {
     TryFromPrimitive,
     IntoPrimitive,
     Default,
+    NixDeserialize,
+    NixSerialize,
 )]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
+#[nix(try_from = "u16", into = "u16")]
 #[repr(u16)]
 pub enum GCAction {
     #[default]
@@ -110,10 +119,20 @@ pub enum GCAction {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    TryFromPrimitive,
+    IntoPrimitive,
+    NixDeserialize,
+    NixSerialize,
 )]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
+#[nix(try_from = "u16", into = "u16")]
 #[repr(u16)]
 pub enum BuildStatus {
     Built = 0,
@@ -134,10 +153,20 @@ pub enum BuildStatus {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    TryFromPrimitive,
+    IntoPrimitive,
+    NixDeserialize,
+    NixSerialize,
 )]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u64", into = "u64"))]
+#[nix(try_from = "u64", into = "u64")]
 #[repr(u64)]
 pub enum TrustLevel {
     Unknown = 0,
@@ -145,8 +174,7 @@ pub enum TrustLevel {
     NotTrusted = 2,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub struct ClientOptions {
     pub keep_failed: bool,
     pub keep_going: bool,
@@ -183,9 +211,8 @@ impl Default for ClientOptions {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct UnkeyedValidPathInfo {
     pub deriver: Option<StorePath>,
     pub nar_hash: NarHash,
@@ -198,16 +225,14 @@ pub struct UnkeyedValidPathInfo {
     pub ca: Option<ContentAddress>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct ValidPathInfo {
     pub path: StorePath,
     pub info: UnkeyedValidPathInfo,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub struct UnkeyedSubstitutablePathInfo {
     pub deriver: Option<StorePath>,
     pub references: StorePathSet,
@@ -215,41 +240,38 @@ pub struct UnkeyedSubstitutablePathInfo {
     pub nar_size: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub struct BuildResult {
     pub status: BuildStatus,
     pub error_msg: DaemonString,
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "29.."))]
+    #[nix(version = "29..")]
     pub times_built: DaemonInt,
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "29.."))]
+    #[nix(version = "29..")]
     pub is_non_deterministic: bool,
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "29.."))]
+    #[nix(version = "29..")]
     pub start_time: DaemonTime,
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "29.."))]
+    #[nix(version = "29..")]
     pub stop_time: DaemonTime,
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "37.."))]
+    #[nix(version = "37..")]
     pub cpu_user: Option<Microseconds>,
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "37.."))]
+    #[nix(version = "37..")]
     pub cpu_system: Option<Microseconds>,
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "28.."))]
+    #[nix(version = "28..")]
     pub built_outputs: BTreeMap<DrvOutput, Realisation>,
 }
 
 pub type KeyedBuildResults = Vec<KeyedBuildResult>;
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(any(test, feature = "test"), arbitrary(args = ProtocolVersion))]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct KeyedBuildResult {
     pub path: DerivedPath,
     #[cfg_attr(any(test, feature = "test"), strategy(any_with::<BuildResult>(*args)))]
     pub result: BuildResult,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
 pub struct QueryMissingResult {
     pub will_build: StorePathSet,
     pub will_substitute: StorePathSet,
@@ -258,8 +280,7 @@ pub struct QueryMissingResult {
     pub nar_size: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, NixDeserialize, NixSerialize)]
 pub struct CollectGarbageResponse {
     pub paths_deleted: Vec<DaemonString>,
     pub bytes_freed: u64,

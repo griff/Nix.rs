@@ -1,32 +1,32 @@
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 pub mod client;
 pub mod de;
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 mod fail_store;
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 mod local;
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 mod logger;
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 mod mutex;
 pub mod ser;
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 pub mod server;
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 mod types;
 mod version;
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 pub mod wire;
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 pub use fail_store::FailStore;
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 pub use local::{LocalDaemonStore, LocalHandshakeDaemonStore};
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 pub use logger::{DriveResult, FutureResultExt, LogSender, ResultLog, ResultLogExt, make_result};
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 pub use mutex::{MutexHandshakeStore, MutexStore};
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 pub use types::{
     AddToStoreItem, BuildMode, BuildResult, BuildStatus, ClientOptions, CollectGarbageResponse,
     DaemonError, DaemonErrorContext, DaemonErrorKind, DaemonInt, DaemonPath, DaemonResult,

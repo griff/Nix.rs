@@ -1,4 +1,3 @@
-#[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 #[cfg(any(test, feature = "test"))]
 use proptest_derive::Arbitrary;
@@ -53,10 +52,9 @@ impl From<IgnoredOne> for u64 {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(from = "bool", into = "bool"))]
+#[nix(from = "bool", into = "bool")]
 pub struct IgnoredTrue;
 impl From<bool> for IgnoredTrue {
     fn from(_: bool) -> Self {

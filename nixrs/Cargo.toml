@@ -12,9 +12,8 @@ license = "EUPL-1.2 OR MIT"
 [features]
 test = ["proptest", "dep:proptest-derive", "dep:test-strategy", "dep:pretty_assertions"]
 archive = ["dep:walkdir", "dep:bstr"]
-daemon = ["nixrs-derive", "tokio/rt"]
+daemon = ["archive", "daemon-serde", "dep:nixrs-derive", "dep:libc", "dep:bstr", "tokio/rt"]
 daemon-serde = []
-nixrs-derive = ["archive", "daemon-serde", "dep:nixrs-derive", "dep:libc", "dep:bstr"]
 internal = []
 full = ["test", "daemon"]
 

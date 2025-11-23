@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, fmt};
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use nixrs_derive::NixDeserialize;
 
 use crate::derived_path::OutputName;
@@ -32,9 +32,9 @@ pub(crate) fn output_path_name<'s>(
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize))]
 #[cfg_attr(
-    feature = "nixrs-derive",
+    feature = "daemon",
     nix(try_from = "daemon_serde::DerivationOutputData")
 )]
 pub enum DerivationOutput {
@@ -69,7 +69,7 @@ impl DerivationOutput {
 
 pub type DerivationOutputs = BTreeMap<OutputName, DerivationOutput>;
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 mod daemon_serde {
     use nixrs_derive::{NixDeserialize, NixSerialize};
     use thiserror::Error;

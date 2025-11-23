@@ -11,9 +11,6 @@ check-features:
     cargo check --features daemon-serde
     cargo check --features daemon-serde --tests
     cargo check --features daemon-serde,test
-    cargo check --features nixrs-derive
-    cargo check --features nixrs-derive --tests
-    cargo check --features nixrs-derive,test
     cargo check --features daemon
     cargo check --features daemon --tests
     cargo check --features daemon,test
@@ -29,9 +26,6 @@ clippy-features:
     cargo clippy --features daemon-serde
     cargo clippy --features daemon-serde --tests
     cargo clippy --features daemon-serde,test
-    cargo clippy --features nixrs-derive
-    cargo clippy --features nixrs-derive --tests
-    cargo clippy --features nixrs-derive,test
     cargo clippy --features daemon
     cargo clippy --features daemon --tests
     cargo clippy --features daemon,test
@@ -42,6 +36,5 @@ test-features:
     cargo test
     cargo test --features archive
     cargo test --features daemon-serde
-    cargo test --features nixrs-derive
     cargo test --features daemon
     cargo test --features internal

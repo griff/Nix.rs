@@ -1,4 +1,4 @@
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use nixrs_derive::nix_serialize_remote;
 
 use super::{Error, NixSerialize, NixWrite};
@@ -23,18 +23,18 @@ impl NixSerialize for usize {
 }
 
 /*
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 nix_serialize_remote!(
     #[nix(into = "u64")]
     u8
 );
 */
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 nix_serialize_remote!(
     #[nix(into = "u64")]
     u16
 );
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 nix_serialize_remote!(
     #[nix(into = "u64")]
     u32

@@ -6,7 +6,7 @@ use std::{
     str::FromStr,
 };
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use thiserror::Error;
@@ -21,8 +21,8 @@ pub const PROTOCOL_VERSION_MIN: ProtocolVersion =
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, DeserializeFromStr, SerializeDisplay,
 )]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(from = "u16", into = "u16"))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "daemon", nix(from = "u16", into = "u16"))]
 pub struct ProtocolVersion(u8, u8);
 impl ProtocolVersion {
     pub const fn max() -> Self {

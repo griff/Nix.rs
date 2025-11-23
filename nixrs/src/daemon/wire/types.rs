@@ -1,24 +1,18 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::str::FromStr;
-#[cfg(feature = "nixrs-derive")]
 use std::str::from_utf8;
 
 use bytes::Bytes;
 use derive_more::Display;
-#[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use tracing::{Span, debug_span};
 
-#[cfg(feature = "nixrs-derive")]
 use crate::daemon::UnkeyedValidPathInfo;
-#[cfg(feature = "nixrs-derive")]
 use crate::daemon::de::{Error as _, NixDeserialize, NixRead};
-#[cfg(feature = "nixrs-derive")]
 use crate::daemon::ser::{NixSerialize, NixWrite};
 use crate::daemon::version::ProtocolRange;
-#[cfg(feature = "nixrs-derive")]
 use crate::daemon::wire::IgnoredZero;
 use crate::daemon::{
     BuildMode, ClientOptions, DaemonPath, GCAction, Microseconds, UnkeyedSubstitutablePathInfo,
@@ -34,19 +28,28 @@ use crate::store_path::{
 };
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    TryFromPrimitive,
+    IntoPrimitive,
+    NixDeserialize,
+    NixSerialize,
 )]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
+#[nix(try_from = "u16", into = "u16")]
 #[repr(u16)]
 pub enum FileIngestionMethod {
     Flat = 0,
     Recursive = 1,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
+#[nix(from_str, display)]
 pub struct BaseStorePath(pub StorePath);
 impl FromStr for BaseStorePath {
     type Err = crate::store_path::ParseStorePathError;
@@ -73,9 +76,10 @@ impl fmt::Display for BaseStorePath {
     TryFromPrimitive,
     IntoPrimitive,
     Display,
+    NixDeserialize,
+    NixSerialize,
 )]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u64", into = "u64"))]
+#[nix(try_from = "u64", into = "u64")]
 #[repr(u64)]
 pub enum Operation {
     IsValidPath = 1,
@@ -194,9 +198,8 @@ impl Operation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(tag = "Operation"))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
+#[nix(tag = "Operation")]
 pub enum Request {
     IsValidPath(StorePath),
     QueryReferrers(StorePath),
@@ -442,17 +445,15 @@ impl Request {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub enum AddToStoreRequest {
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "..=24"))]
+    #[nix(version = "..=24")]
     ProtocolPre25(AddToStoreRequestPre25),
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "25.."))]
+    #[nix(version = "25..")]
     Protocol25(AddToStoreRequest25),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub struct AddToStoreRequestPre25 {
     pub base_name: String,
     pub fixed: bool,
@@ -461,8 +462,7 @@ pub struct AddToStoreRequestPre25 {
     // NAR dump
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub struct AddToStoreRequest25 {
     pub name: String,
     pub cam: ContentAddressMethodAlgorithm,
@@ -471,23 +471,20 @@ pub struct AddToStoreRequest25 {
     // Framed NAR dump
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub struct AddTextToStoreRequest {
     pub suffix: String,
     pub text: Bytes,
     pub refs: StorePathSet,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub struct BuildPathsRequest {
     pub paths: Vec<DerivedPath>,
     pub mode: BuildMode,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, NixDeserialize, NixSerialize)]
 pub struct CollectGarbageRequest {
     pub action: GCAction,
     pub paths_to_delete: StorePathSet,
@@ -498,88 +495,77 @@ pub struct CollectGarbageRequest {
     _removed3: IgnoredZero,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub enum QuerySubstitutablePathInfosRequest {
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "..=21"))]
+    #[nix(version = "..=21")]
     ProtocolPre22(StorePathSet),
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "22.."))]
+    #[nix(version = "22..")]
     Protocol22(BTreeMap<StorePath, Option<ContentAddress>>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub struct QueryValidPathsRequest {
     pub paths: StorePathSet,
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "27.."))]
+    #[nix(version = "27..")]
     pub substitute: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub struct VerifyStoreRequest {
     pub check_contents: bool,
     pub repair: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub struct BuildDerivationRequest {
     pub drv: BasicDerivation,
     pub mode: BuildMode,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub struct AddSignaturesRequest {
     pub path: StorePath,
     pub signatures: Vec<Signature>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub struct AddToStoreNarRequest {
     pub path_info: ValidPathInfo,
     pub repair: bool,
     pub dont_check_sigs: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub enum RegisterDrvOutputRequest {
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "31.."))]
+    #[nix(version = "31..")]
     Post31(Realisation),
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "..=30"))]
+    #[nix(version = "..=30")]
     Pre31 {
         output_id: DrvOutput,
         output_path: StorePath,
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub enum QueryRealisationResponse {
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "..=30"))]
+    #[nix(version = "..=30")]
     ProtocolPre31(StorePathSet),
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "31.."))]
+    #[nix(version = "31..")]
     Protocol31(Vec<Realisation>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub struct AddMultipleToStoreRequest {
     pub repair: bool,
     pub dont_check_sigs: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub struct AddPermRootRequest {
     pub store_path: StorePath,
     pub gc_root: DaemonPath,
 }
 
-#[cfg(feature = "nixrs-derive")]
 macro_rules! optional_from_store_dir_str {
     ($sub:ty) => {
         impl NixDeserialize for Option<$sub> {
@@ -618,10 +604,8 @@ macro_rules! optional_from_store_dir_str {
         }
     };
 }
-#[cfg(feature = "nixrs-derive")]
 optional_from_store_dir_str!(StorePath);
 
-#[cfg(feature = "nixrs-derive")]
 macro_rules! optional_info {
     ($sub:ty) => {
         impl NixDeserialize for Option<$sub> {
@@ -655,12 +639,9 @@ macro_rules! optional_info {
         }
     };
 }
-#[cfg(feature = "nixrs-derive")]
 optional_info!(UnkeyedSubstitutablePathInfo);
-#[cfg(feature = "nixrs-derive")]
 optional_info!(UnkeyedValidPathInfo);
 
-#[cfg(feature = "nixrs-derive")]
 macro_rules! optional_from_str {
     ($sub:ty) => {
         impl NixDeserialize for Option<$sub> {
@@ -694,14 +675,10 @@ macro_rules! optional_from_str {
         }
     };
 }
-#[cfg(feature = "nixrs-derive")]
 optional_from_str!(String);
-#[cfg(feature = "nixrs-derive")]
 optional_from_str!(ContentAddress);
-#[cfg(feature = "nixrs-derive")]
 optional_from_str!(ContentAddressMethodAlgorithm);
 
-#[cfg(feature = "nixrs-derive")]
 impl NixDeserialize for Option<Microseconds> {
     async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
     where
@@ -719,7 +696,6 @@ impl NixDeserialize for Option<Microseconds> {
     }
 }
 
-#[cfg(feature = "nixrs-derive")]
 impl NixSerialize for Option<Microseconds> {
     async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
     where

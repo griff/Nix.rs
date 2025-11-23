@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use derive_more::Display;
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use thiserror::Error;
 
@@ -19,8 +19,8 @@ pub enum ContentAddressMethod {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "daemon", nix(from_str, display))]
 pub enum ContentAddressMethodAlgorithm {
     #[display("text:sha256")]
     Text,
@@ -63,8 +63,8 @@ impl FromStr for ContentAddressMethodAlgorithm {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "daemon", nix(from_str, display))]
 pub enum ContentAddress {
     #[display("text:{}", _0.as_base32())]
     Text(Sha256),

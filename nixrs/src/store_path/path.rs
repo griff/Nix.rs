@@ -6,7 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use thiserror::Error;
@@ -19,8 +19,8 @@ use super::StoreDir;
 use super::StoreDirDisplay;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, SerializeDisplay, DeserializeFromStr)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(from_store_dir_str, store_dir_display))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "daemon", nix(from_store_dir_str, store_dir_display))]
 pub struct StorePath {
     hash: StorePathHash,
     name: StorePathName,
@@ -173,8 +173,8 @@ const STORE_PATH_HASH_SIZE: usize = 20;
 const STORE_PATH_HASH_ENCODED_SIZE: usize = base32::encode_len(STORE_PATH_HASH_SIZE);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "daemon", nix(from_str, display))]
 pub struct StorePathHash([u8; StorePathHash::len()]);
 
 impl StorePathHash {

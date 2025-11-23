@@ -5222,14 +5222,13 @@ rec {
         ];
         features = {
           "archive" = [ "dep:walkdir" "dep:bstr" ];
-          "daemon" = [ "nixrs-derive" "tokio/rt" ];
+          "daemon" = [ "archive" "daemon-serde" "dep:nixrs-derive" "dep:libc" "dep:bstr" "tokio/rt" ];
           "full" = [ "test" "daemon" ];
           "md5" = [ "dep:md5" ];
-          "nixrs-derive" = [ "archive" "daemon-serde" "dep:nixrs-derive" "dep:libc" "dep:bstr" ];
           "proptest" = [ "dep:proptest" ];
           "test" = [ "proptest" "dep:proptest-derive" "dep:test-strategy" "dep:pretty_assertions" ];
         };
-        resolvedDefaultFeatures = [ "archive" "daemon" "daemon-serde" "default" "full" "internal" "md5" "nixrs-derive" "proptest" "test" "xp-ca-derivations" "xp-dynamic-derivations" "xp-impure-derivations" ];
+        resolvedDefaultFeatures = [ "archive" "daemon" "daemon-serde" "default" "full" "internal" "md5" "proptest" "test" "xp-ca-derivations" "xp-dynamic-derivations" "xp-impure-derivations" ];
       };
       "nixrs-capnp" = rec {
         crateName = "nixrs-capnp";

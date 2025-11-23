@@ -1,12 +1,12 @@
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{FromPrimitive, IntoPrimitive, TryFromPrimitive};
 use serde::{Deserialize, Serialize};
 
 use crate::ByteString;
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use crate::daemon::ser::{NixSerialize, NixWrite};
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use crate::daemon::wire::logger::RawLogMessageType;
 
 #[derive(
@@ -25,8 +25,8 @@ use crate::daemon::wire::logger::RawLogMessageType;
     Deserialize,
 )]
 #[serde(try_from = "u16", into = "u16")]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(from = "u16", into = "u16"))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "daemon", nix(from = "u16", into = "u16"))]
 #[repr(u16)]
 pub enum Verbosity {
     #[default]
@@ -56,8 +56,8 @@ pub enum Verbosity {
     Deserialize,
 )]
 #[serde(try_from = "u16", into = "u16")]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "daemon", nix(try_from = "u16", into = "u16"))]
 #[repr(u16)]
 pub enum ActivityType {
     Unknown = 0,
@@ -91,8 +91,8 @@ pub enum ActivityType {
     Deserialize,
 )]
 #[serde(try_from = "u16", into = "u16")]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "daemon", nix(try_from = "u16", into = "u16"))]
 #[repr(u16)]
 pub enum ResultType {
     FileLinked = 100,
@@ -128,7 +128,7 @@ impl LogMessage {
     }
 }
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 impl NixSerialize for LogMessage {
     async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
     where
@@ -168,9 +168,9 @@ impl NixSerialize for LogMessage {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
 pub struct Message {
-    #[cfg_attr(feature = "nixrs-derive", nix(skip))]
+    #[cfg_attr(feature = "daemon", nix(skip))]
     pub level: Verbosity,
     #[serde(rename = "msg", serialize_with = "crate::serialize_byte_string")]
     pub text: ByteString,
@@ -189,7 +189,7 @@ pub struct Activity {
     pub activity_type: ActivityType,
 }
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 impl NixSerialize for Activity {
     async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
     where
@@ -205,7 +205,7 @@ impl NixSerialize for Activity {
     }
 }
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 impl crate::daemon::de::NixDeserialize for Activity {
     async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
     where
@@ -232,7 +232,7 @@ impl crate::daemon::de::NixDeserialize for Activity {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
 pub struct StopActivity {
     pub id: u64,
 }
@@ -246,7 +246,7 @@ pub struct ActivityResult {
     pub result_type: ResultType,
 }
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 impl NixSerialize for ActivityResult {
     async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
     where
@@ -259,7 +259,7 @@ impl NixSerialize for ActivityResult {
     }
 }
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 impl crate::daemon::de::NixDeserialize for ActivityResult {
     async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
     where
@@ -279,7 +279,7 @@ impl crate::daemon::de::NixDeserialize for ActivityResult {
     }
 }
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 #[derive(
     Debug,
     Clone,
@@ -302,8 +302,8 @@ pub enum FieldType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(tag = "FieldType"))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "daemon", nix(tag = "FieldType"))]
 #[serde(untagged)]
 pub enum Field {
     Int(u64),

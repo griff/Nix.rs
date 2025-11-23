@@ -1,4 +1,4 @@
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use nixrs_derive::nix_deserialize_remote;
 
 use super::{Error, NixDeserialize, NixRead};
@@ -21,17 +21,17 @@ impl NixDeserialize for u64 {
     }
 }
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 nix_deserialize_remote!(
     #[nix(try_from = "u64")]
     u8
 );
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 nix_deserialize_remote!(
     #[nix(try_from = "u64")]
     u16
 );
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 nix_deserialize_remote!(
     #[nix(try_from = "u64")]
     u32

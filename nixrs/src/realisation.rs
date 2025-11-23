@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
 use derive_more::Display;
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
@@ -29,8 +29,8 @@ use crate::store_path::{StorePath, StorePathNameError};
     DeserializeFromStr,
 )]
 #[display("{drv_hash:x}!{output_name}")]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "daemon", nix(from_str, display))]
 pub struct DrvOutput {
     pub drv_hash: hash::Hash,
     pub output_name: OutputName,

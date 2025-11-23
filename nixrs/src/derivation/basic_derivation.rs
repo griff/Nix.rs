@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use nixrs_derive::NixDeserialize;
 
 use crate::ByteString;
@@ -9,7 +9,7 @@ use crate::store_path::{StorePath, StorePathSet};
 use super::DerivationOutputs;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize))]
+#[cfg_attr(feature = "daemon", derive(NixDeserialize))]
 pub struct BasicDerivation {
     pub drv_path: StorePath,
     pub outputs: DerivationOutputs,
@@ -20,7 +20,7 @@ pub struct BasicDerivation {
     pub env: BTreeMap<ByteString, ByteString>,
 }
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 mod daemon_serde {
     use crate::daemon::ser::NixSerialize;
 

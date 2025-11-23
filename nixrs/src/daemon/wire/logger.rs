@@ -2,12 +2,10 @@ use std::fmt;
 use std::str::FromStr;
 
 use bytes::Bytes;
-#[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use crate::daemon::DaemonString;
-#[cfg(feature = "nixrs-derive")]
 use crate::daemon::ser::{NixSerialize, NixWrite};
 use crate::daemon::wire::IgnoredZero;
 use crate::daemon::{DaemonError, DaemonErrorKind, DaemonInt, RemoteError};
@@ -23,10 +21,20 @@ pub const STDERR_STOP_ACTIVITY: u64 = 0x53544f50; // 'STOP' in ASCII
 pub const STDERR_RESULT: u64 = 0x52534c54; // 'RSLT' in ASCII
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    TryFromPrimitive,
+    IntoPrimitive,
+    NixDeserialize,
+    NixSerialize,
 )]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u64", into = "u64"))]
+#[nix(try_from = "u64", into = "u64")]
 #[repr(u64)]
 pub enum RawLogMessageType {
     Last = STDERR_LAST,
@@ -39,8 +47,8 @@ pub enum RawLogMessageType {
     Result = STDERR_RESULT,
 }
 
-#[derive(Debug)]
-//#[cfg_attr(feature = "nixrs-derive", nix(tag = "RawLogMessageType"))]
+#[derive(Debug, NixDeserialize)]
+#[nix(tag = "RawLogMessageType")]
 pub enum RawLogMessage {
     Last,
     Error(LogError),
@@ -52,47 +60,6 @@ pub enum RawLogMessage {
     Result(ActivityResult),
 }
 
-#[cfg(feature = "nixrs-derive")]
-impl crate::daemon::de::NixDeserialize for RawLogMessage {
-    async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
-    where
-        R: ?Sized + crate::daemon::de::NixRead + Send,
-    {
-        use tracing::trace;
-
-        if let Some(tag) = reader.try_read_value::<RawLogMessageType>().await? {
-            trace!(?tag, "Read log message tag");
-            match tag {
-                RawLogMessageType::Last => Ok(Some(RawLogMessage::Last)),
-                RawLogMessageType::Error => {
-                    Ok(Some(RawLogMessage::Error(reader.read_value().await?)))
-                }
-                RawLogMessageType::Next => {
-                    Ok(Some(RawLogMessage::Next(reader.read_value().await?)))
-                }
-                RawLogMessageType::Read => {
-                    Ok(Some(RawLogMessage::Read(reader.read_value().await?)))
-                }
-                RawLogMessageType::Write => {
-                    Ok(Some(RawLogMessage::Write(reader.read_value().await?)))
-                }
-                RawLogMessageType::StartActivity => Ok(Some(RawLogMessage::StartActivity(
-                    reader.read_value().await?,
-                ))),
-                RawLogMessageType::StopActivity => Ok(Some(RawLogMessage::StopActivity(
-                    reader.read_value().await?,
-                ))),
-                RawLogMessageType::Result => {
-                    Ok(Some(RawLogMessage::Result(reader.read_value().await?)))
-                }
-            }
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-#[cfg(feature = "nixrs-derive")]
 impl NixSerialize for RawLogMessage {
     async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
     where
@@ -143,8 +110,7 @@ impl NixSerialize for RawLogMessage {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub struct TraceLine {
     _have_pos: IgnoredZero,
     pub hint: DaemonString, // If logger is JSON, invalid UTF-8 is replaced with U+FFFD
@@ -154,24 +120,20 @@ fn default_exit_status() -> DaemonInt {
     1
 }
 
-#[derive(Debug)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[derive(Debug, NixDeserialize, NixSerialize)]
 pub struct LogError {
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "26.."))]
+    #[nix(version = "26..")]
     _ty: IgnoredErrorType,
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "26.."))]
+    #[nix(version = "26..")]
     pub level: Verbosity,
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "26.."))]
+    #[nix(version = "26..")]
     _name: IgnoredErrorType,
     pub msg: DaemonString, // If logger is JSON, invalid UTF-8 is replaced with U+FFFD
-    #[cfg_attr(
-        feature = "nixrs-derive",
-        nix(version = "..=25", default = "default_exit_status")
-    )]
+    #[nix(version = "..=25", default = "default_exit_status")]
     pub exit_status: DaemonInt,
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "26.."))]
+    #[nix(version = "26..")]
     _have_pos: IgnoredZero,
-    #[cfg_attr(feature = "nixrs-derive", nix(version = "26.."))]
+    #[nix(version = "26..")]
     pub traces: Vec<TraceLine>,
 }
 
@@ -220,9 +182,8 @@ impl From<LogError> for RemoteError {
     }
 }
 
-#[derive(Debug, Default)]
-#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(from_str, display))]
+#[derive(Debug, Default, NixDeserialize, NixSerialize)]
+#[nix(from_str, display)]
 pub struct IgnoredErrorType;
 
 impl fmt::Display for IgnoredErrorType {

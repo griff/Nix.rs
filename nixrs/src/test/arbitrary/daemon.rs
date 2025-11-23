@@ -2,33 +2,33 @@
 mod mock;
 pub mod ser;
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use bytes::Bytes;
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use proptest::collection::btree_map;
 use proptest::prelude::*;
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use proptest::sample::SizeRange;
 
 use crate::daemon::ProtocolVersion;
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use crate::daemon::{
     BuildMode, BuildResult, BuildStatus, ClientOptions, DaemonInt, DaemonString, DaemonTime,
     Microseconds, ValidPathInfo,
 };
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use crate::log::Verbosity;
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use crate::test::arbitrary::arb_byte_string;
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use crate::test::arbitrary::archive::{arb_nar_contents, arb_nar_events};
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use crate::test::arbitrary::realisation::arb_drv_outputs;
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 use crate::test::archive::test_data;
 
 #[cfg(feature = "daemon")]
@@ -64,27 +64,27 @@ where
     version_cut_off(version, cut_off, Just(V::default()), after)
 }
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 pub fn arb_nar_item() -> impl Strategy<Value = (ValidPathInfo, test_data::TestNarEvents)> {
     (any::<ValidPathInfo>(), arb_nar_events(20, 20, 5))
 }
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 pub fn arb_nar_contents_item() -> impl Strategy<Value = (ValidPathInfo, Bytes)> {
     (any::<ValidPathInfo>(), arb_nar_contents(20, 20, 5))
 }
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 pub fn arb_nar_items() -> impl Strategy<Value = Vec<(ValidPathInfo, test_data::TestNarEvents)>> {
     proptest::collection::vec(arb_nar_item(), SizeRange::default())
 }
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 pub fn arb_nar_contents_items() -> impl Strategy<Value = Vec<(ValidPathInfo, Bytes)>> {
     proptest::collection::vec(arb_nar_contents_item(), SizeRange::default())
 }
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 impl Arbitrary for BuildMode {
     type Parameters = ();
     type Strategy = BoxedStrategy<BuildMode>;
@@ -100,7 +100,7 @@ impl Arbitrary for BuildMode {
     }
 }
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 impl Arbitrary for BuildStatus {
     type Parameters = ();
     type Strategy = BoxedStrategy<BuildStatus>;
@@ -125,7 +125,7 @@ impl Arbitrary for BuildStatus {
     }
 }
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 impl Arbitrary for Microseconds {
     type Parameters = ();
     type Strategy = BoxedStrategy<Microseconds>;
@@ -136,13 +136,13 @@ impl Arbitrary for Microseconds {
 }
 
 prop_compose! {
-    #[cfg(feature = "nixrs-derive")]
+    #[cfg(feature = "daemon")]
     fn arb_microseconds()(ms in 0i64..i64::MAX) -> Microseconds {
         ms.into()
     }
 }
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 impl Arbitrary for BuildResult {
     type Parameters = ProtocolVersion;
     type Strategy = BoxedStrategy<BuildResult>;
@@ -152,7 +152,7 @@ impl Arbitrary for BuildResult {
 }
 
 prop_compose! {
-    #[cfg(feature = "nixrs-derive")]
+    #[cfg(feature = "daemon")]
     pub fn arb_build_result(version: ProtocolVersion)
     (
         status in any::<BuildStatus>(),
@@ -174,7 +174,7 @@ prop_compose! {
     }
 }
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 fn arb_client_settings(
     size: impl Into<SizeRange>,
 ) -> impl Strategy<Value = BTreeMap<String, DaemonString>> {
@@ -183,7 +183,7 @@ fn arb_client_settings(
     btree_map(key, value, size)
 }
 
-#[cfg(feature = "nixrs-derive")]
+#[cfg(feature = "daemon")]
 impl Arbitrary for ClientOptions {
     type Parameters = ();
     type Strategy = BoxedStrategy<Self>;
