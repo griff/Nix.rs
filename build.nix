@@ -226,6 +226,8 @@ in {
       rustc.llvmPackages.llvm
       cargo
       rustc
+      clippy
+      rust-analyzer
       capnproto
       nix-output-monitor
       just
