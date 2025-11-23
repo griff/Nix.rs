@@ -4,13 +4,10 @@ use std::future::{Future, ready};
 use futures::Stream;
 use tokio::io::AsyncBufRead;
 
-use crate::daemon::wire::types2::{
-    BuildMode, BuildResult, CollectGarbageResponse, GCAction, KeyedBuildResult, QueryMissingResult,
-    ValidPathInfo,
-};
 use crate::daemon::{
-    AddToStoreItem, ClientOptions, DaemonError, DaemonPath, DaemonResult, FutureResultExt,
-    ResultLog, TrustLevel, UnkeyedValidPathInfo,
+    AddToStoreItem, BuildMode, BuildResult, ClientOptions, CollectGarbageResponse, DaemonError,
+    DaemonPath, DaemonResult, FutureResultExt, GCAction, KeyedBuildResult, QueryMissingResult,
+    ResultLog, TrustLevel, UnkeyedValidPathInfo, ValidPathInfo,
 };
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};

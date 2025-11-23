@@ -6,40 +6,32 @@ use std::{
 };
 
 use futures::{FutureExt as _, Stream, StreamExt as _, TryFutureExt as _};
-use tokio::io::AsyncBufRead;
-use tokio::{
-    io::{AsyncBufReadExt as _, AsyncRead, AsyncWrite, AsyncWriteExt as _, copy_buf},
-    select,
+use tokio::io::{
+    AsyncBufRead, AsyncBufReadExt as _, AsyncRead, AsyncWrite, AsyncWriteExt as _, copy_buf,
 };
+use tokio::select;
 use tracing::{debug, error, info, instrument, trace};
 use tracing_futures::Instrument;
 
 use crate::archive::NarReader;
 use crate::daemon::de::{NixRead as _, NixReader};
 use crate::daemon::local::{LocalDaemonStore, LocalHandshakeDaemonStore};
-use crate::daemon::ser::NixWriter;
-use crate::daemon::server::{Builder, DaemonConnection, RecoverableError, process_logs, write_log};
+use crate::daemon::ser::{NixWrite as _, NixWriter};
+use crate::daemon::server::{
+    Builder, DaemonConnection, RecoverExt as _, RecoverableError, process_logs, write_log,
+};
 use crate::daemon::wire::logger::RawLogMessage;
-use crate::daemon::wire::types::Operation;
+use crate::daemon::wire::types::{
+    AddToStoreRequest, BaseStorePath, Operation, RegisterDrvOutputRequest, Request,
+};
+use crate::daemon::wire::{FramedReader, IgnoredOne, StderrReader, parse_add_multiple_to_store};
 use crate::daemon::{
-    DaemonError, DaemonErrorKind, DaemonResult, DaemonResultExt as _, NIX_VERSION, ResultLog,
+    AddToStoreItem, DaemonError, DaemonErrorKind, DaemonResult, DaemonResultExt as _, NIX_VERSION,
+    ResultLog, ValidPathInfo,
 };
-use crate::{
-    daemon::{
-        AddToStoreItem,
-        ser::NixWrite as _,
-        server::RecoverExt as _,
-        wire::{
-            FramedReader, IgnoredOne, StderrReader, parse_add_multiple_to_store,
-            types2::{
-                AddToStoreRequest, BaseStorePath, RegisterDrvOutputRequest, Request, ValidPathInfo,
-            },
-        },
-    },
-    io::AsyncBufReadCompat,
-    realisation::Realisation,
-    store_path::{ContentAddressMethodAlgorithm, StorePath, StorePathSet},
-};
+use crate::io::AsyncBufReadCompat;
+use crate::realisation::Realisation;
+use crate::store_path::{ContentAddressMethodAlgorithm, StorePath, StorePathSet};
 
 impl Builder {
     pub async fn local_serve_connection<'s, R, W, S>(

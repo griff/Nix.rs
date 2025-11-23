@@ -4,7 +4,7 @@ pub mod de;
 #[cfg(feature = "nixrs-derive")]
 mod fail_store;
 #[cfg(feature = "nixrs-derive")]
-pub mod local;
+mod local;
 #[cfg(feature = "nixrs-derive")]
 mod logger;
 #[cfg(feature = "nixrs-derive")]
@@ -28,16 +28,18 @@ pub use logger::{DriveResult, FutureResultExt, LogSender, ResultLog, ResultLogEx
 pub use mutex::{MutexHandshakeStore, MutexStore};
 #[cfg(feature = "nixrs-derive")]
 pub use types::{
-    AddToStoreItem, ClientOptions, DaemonError, DaemonErrorContext, DaemonErrorKind, DaemonInt,
-    DaemonPath, DaemonResult, DaemonResultExt, DaemonStore, DaemonString, DaemonTime,
-    HandshakeDaemonStore, RemoteError, TrustLevel, UnkeyedValidPathInfo,
+    AddToStoreItem, BuildMode, BuildResult, BuildStatus, ClientOptions, CollectGarbageResponse,
+    DaemonError, DaemonErrorContext, DaemonErrorKind, DaemonInt, DaemonPath, DaemonResult,
+    DaemonResultExt, DaemonStore, DaemonString, DaemonTime, GCAction, HandshakeDaemonStore,
+    KeyedBuildResult, KeyedBuildResults, Microseconds, QueryMissingResult, RemoteError, TrustLevel,
+    UnkeyedSubstitutablePathInfo, UnkeyedValidPathInfo, ValidPathInfo,
 };
 pub use version::{
     NIX_VERSION, PROTOCOL_VERSION, PROTOCOL_VERSION_MIN, ProtocolRange, ProtocolVersion,
 };
 
 #[cfg(all(test, feature = "daemon"))]
-pub(crate) mod unittests {
+mod unittests {
     use std::collections::BTreeSet;
     use std::future::{Future, ready};
     use std::io::Cursor;
@@ -52,14 +54,10 @@ pub(crate) mod unittests {
     use tracing::trace;
 
     use super::client::DaemonClient;
-    use super::types::AddToStoreItem;
-    use super::wire::types2::{
-        BuildMode, BuildResult, BuildStatus, KeyedBuildResult, KeyedBuildResults,
-        QueryMissingResult, ValidPathInfo,
-    };
     use super::{
-        ClientOptions, DaemonError, DaemonResult, DaemonStore, DaemonString, ProtocolVersion,
-        UnkeyedValidPathInfo,
+        AddToStoreItem, BuildMode, BuildResult, BuildStatus, ClientOptions, DaemonError,
+        DaemonResult, DaemonStore, DaemonString, KeyedBuildResult, KeyedBuildResults,
+        ProtocolVersion, QueryMissingResult, UnkeyedValidPathInfo, ValidPathInfo,
     };
     use crate::btree_set;
     use crate::daemon::server;
@@ -68,7 +66,7 @@ pub(crate) mod unittests {
     use crate::hash::NarHash;
     use crate::store_path::{StoreDir, StorePath, StorePathSet};
     use crate::test::archive::{test_data, write_nar};
-    use crate::test::daemon::mock::{MockReporter, MockStore};
+    use crate::test::daemon::{MockReporter, MockStore};
     use crate::test::derived_path::parse_path;
 
     macro_rules! btree_map {
@@ -844,12 +842,11 @@ mod proptests {
     use tokio::io::copy_buf;
     use tracing::info;
 
-    use super::DaemonResult;
     use super::unittests::run_store_test;
-    use super::wire::types2::{BuildMode, BuildResult, KeyedBuildResult, QueryMissingResult};
-    use super::{ClientOptions, UnkeyedValidPathInfo};
-    use crate::daemon::wire::types2::ValidPathInfo;
-    use crate::daemon::{AddToStoreItem, DaemonStore as _};
+    use super::{
+        AddToStoreItem, BuildMode, BuildResult, ClientOptions, DaemonResult, DaemonStore as _,
+        KeyedBuildResult, QueryMissingResult, UnkeyedValidPathInfo, ValidPathInfo,
+    };
     use crate::derivation::BasicDerivation;
     use crate::derived_path::DerivedPath;
     use crate::hash::NarHash;
@@ -858,7 +855,7 @@ mod proptests {
     use crate::test::arbitrary::archive::arb_nar_contents;
     use crate::test::arbitrary::daemon::arb_nar_contents_items;
     use crate::test::archive::{read_nar, test_data};
-    use crate::test::daemon::mock::MockStore;
+    use crate::test::daemon::MockStore;
 
     // TODO: proptest handshake
 

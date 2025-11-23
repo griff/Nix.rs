@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::future::{Future, ready};
 use std::pin::Pin;
+use std::time::Duration;
 
 use bstr::ByteSlice;
 use bytes::Bytes;
@@ -9,6 +10,8 @@ use futures::Stream;
 #[cfg(feature = "nixrs-derive")]
 use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+#[cfg(any(test, feature = "test"))]
+use proptest::prelude::any_with;
 #[cfg(any(test, feature = "test"))]
 use test_strategy::Arbitrary;
 use thiserror::Error;
@@ -33,16 +36,114 @@ use crate::test::arbitrary::signature::arb_signatures;
 use super::ProtocolVersion;
 use super::logger::ResultLog;
 use super::wire::types::Operation;
-use super::wire::types2::{
-    BuildMode, BuildResult, CollectGarbageResponse, GCAction, KeyedBuildResult, QueryMissingResult,
-    ValidPathInfo,
-};
 use super::wire::{IgnoredTrue, IgnoredZero};
 
 pub type DaemonString = Bytes;
 pub type DaemonPath = Bytes;
 pub type DaemonInt = libc::c_uint;
 pub type DaemonTime = libc::time_t;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[repr(transparent)]
+pub struct Microseconds(i64);
+
+impl From<i64> for Microseconds {
+    fn from(value: i64) -> Self {
+        Microseconds(value)
+    }
+}
+
+impl From<Microseconds> for Duration {
+    fn from(value: Microseconds) -> Self {
+        Duration::from_micros(value.0.unsigned_abs())
+    }
+}
+
+impl TryFrom<Duration> for Microseconds {
+    type Error = std::num::TryFromIntError;
+    fn try_from(value: Duration) -> Result<Self, Self::Error> {
+        Ok(Microseconds(value.as_micros().try_into()?))
+    }
+}
+
+impl From<Microseconds> for i64 {
+    fn from(value: Microseconds) -> Self {
+        value.0
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
+)]
+#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
+#[repr(u16)]
+pub enum BuildMode {
+    Normal = 0,
+    Repair = 1,
+    Check = 2,
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Default,
+)]
+#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
+#[repr(u16)]
+pub enum GCAction {
+    #[default]
+    ReturnLive = 0,
+    ReturnDead = 1,
+    DeleteDead = 2,
+    DeleteSpecific = 3,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
+)]
+#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u16", into = "u16"))]
+#[repr(u16)]
+pub enum BuildStatus {
+    Built = 0,
+    Substituted = 1,
+    AlreadyValid = 2,
+    PermanentFailure = 3,
+    InputRejected = 4,
+    OutputRejected = 5,
+    TransientFailure = 6,
+    CachedFailure = 7,
+    TimedOut = 8,
+    MiscFailure = 9,
+    DependencyFailed = 10,
+    LogLimitExceeded = 11,
+    NotDeterministic = 12,
+    ResolvesToAlreadyValid = 13,
+    NoSubstituters = 14,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
+)]
+#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u64", into = "u64"))]
+#[repr(u64)]
+pub enum TrustLevel {
+    Unknown = 0,
+    Trusted = 1,
+    NotTrusted = 2,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
@@ -53,10 +154,10 @@ pub struct ClientOptions {
     pub verbosity: Verbosity,
     pub max_build_jobs: DaemonInt,
     pub max_silent_time: DaemonTime,
-    _use_build_hook: IgnoredTrue,
+    pub(crate) _use_build_hook: IgnoredTrue,
     pub verbose_build: Verbosity,
-    _log_type: IgnoredZero,
-    _print_build_trace: IgnoredZero,
+    pub(crate) _log_type: IgnoredZero,
+    pub(crate) _print_build_trace: IgnoredZero,
     pub build_cores: DaemonInt,
     pub use_substitutes: bool,
     pub other_settings: BTreeMap<String, DaemonString>,
@@ -97,16 +198,72 @@ pub struct UnkeyedValidPathInfo {
     pub ca: Option<ContentAddress>,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TryFromPrimitive, IntoPrimitive,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "nixrs-derive", nix(try_from = "u64", into = "u64"))]
-#[repr(u64)]
-pub enum TrustLevel {
-    Unknown = 0,
-    Trusted = 1,
-    NotTrusted = 2,
+pub struct ValidPathInfo {
+    pub path: StorePath,
+    pub info: UnkeyedValidPathInfo,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+pub struct UnkeyedSubstitutablePathInfo {
+    pub deriver: Option<StorePath>,
+    pub references: StorePathSet,
+    pub download_size: u64,
+    pub nar_size: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+pub struct BuildResult {
+    pub status: BuildStatus,
+    pub error_msg: DaemonString,
+    #[cfg_attr(feature = "nixrs-derive", nix(version = "29.."))]
+    pub times_built: DaemonInt,
+    #[cfg_attr(feature = "nixrs-derive", nix(version = "29.."))]
+    pub is_non_deterministic: bool,
+    #[cfg_attr(feature = "nixrs-derive", nix(version = "29.."))]
+    pub start_time: DaemonTime,
+    #[cfg_attr(feature = "nixrs-derive", nix(version = "29.."))]
+    pub stop_time: DaemonTime,
+    #[cfg_attr(feature = "nixrs-derive", nix(version = "37.."))]
+    pub cpu_user: Option<Microseconds>,
+    #[cfg_attr(feature = "nixrs-derive", nix(version = "37.."))]
+    pub cpu_system: Option<Microseconds>,
+    #[cfg_attr(feature = "nixrs-derive", nix(version = "28.."))]
+    pub built_outputs: BTreeMap<DrvOutput, Realisation>,
+}
+
+pub type KeyedBuildResults = Vec<KeyedBuildResult>;
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
+#[cfg_attr(any(test, feature = "test"), arbitrary(args = ProtocolVersion))]
+#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+pub struct KeyedBuildResult {
+    pub path: DerivedPath,
+    #[cfg_attr(any(test, feature = "test"), strategy(any_with::<BuildResult>(*args)))]
+    pub result: BuildResult,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
+#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+pub struct QueryMissingResult {
+    pub will_build: StorePathSet,
+    pub will_substitute: StorePathSet,
+    pub unknown: StorePathSet,
+    pub download_size: u64,
+    pub nar_size: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "nixrs-derive", derive(NixDeserialize, NixSerialize))]
+pub struct CollectGarbageResponse {
+    pub paths_deleted: Vec<DaemonString>,
+    pub bytes_freed: u64,
+    _obsolete: IgnoredZero,
 }
 
 pub type DaemonResult<T> = Result<T, DaemonError>;
@@ -882,73 +1039,5 @@ where
 
     fn shutdown(&mut self) -> impl Future<Output = DaemonResult<()>> + Send + '_ {
         (**self).shutdown()
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-mod proptests {
-    use ::proptest::collection::btree_map;
-    use ::proptest::prelude::*;
-    use ::proptest::sample::SizeRange;
-
-    use super::*;
-
-    fn arb_client_settings(
-        size: impl Into<SizeRange>,
-    ) -> impl Strategy<Value = BTreeMap<String, DaemonString>> {
-        let key = any::<String>();
-        let value = any::<Vec<u8>>().prop_map(DaemonString::from);
-        btree_map(key, value, size)
-    }
-
-    impl Arbitrary for ClientOptions {
-        type Parameters = ();
-        type Strategy = BoxedStrategy<Self>;
-
-        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-            (
-                any::<bool>(),
-                any::<bool>(),
-                any::<bool>(),
-                any::<Verbosity>(),
-                any::<DaemonInt>(),
-                any::<DaemonTime>(),
-                any::<Verbosity>(),
-                any::<DaemonInt>(),
-                any::<bool>(),
-                arb_client_settings(..30),
-            )
-                .prop_map(
-                    |(
-                        keep_failed,
-                        keep_going,
-                        try_fallback,
-                        verbosity,
-                        max_build_jobs,
-                        max_silent_time,
-                        verbose_build,
-                        build_cores,
-                        use_substitutes,
-                        other_settings,
-                    )| {
-                        ClientOptions {
-                            keep_failed,
-                            keep_going,
-                            try_fallback,
-                            verbosity,
-                            max_build_jobs,
-                            max_silent_time,
-                            verbose_build,
-                            build_cores,
-                            use_substitutes,
-                            other_settings,
-                            _use_build_hook: IgnoredTrue,
-                            _log_type: IgnoredZero,
-                            _print_build_trace: IgnoredZero,
-                        }
-                    },
-                )
-                .boxed()
-        }
     }
 }

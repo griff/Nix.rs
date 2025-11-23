@@ -11,9 +11,8 @@ use capnp_rpc_tokio::stream::{ByteStreamWrap, ByteStreamWriter, from_cap_error};
 use futures::channel::mpsc;
 use futures::stream::TryStreamExt;
 use futures::{SinkExt, TryFutureExt as _};
-use nixrs::daemon::wire::types2::BuildMode;
 use nixrs::daemon::{
-    DaemonError, DaemonResult, DriveResult, FutureResultExt as _, LocalDaemonStore,
+    BuildMode, DaemonError, DaemonResult, DriveResult, FutureResultExt as _, LocalDaemonStore,
     LocalHandshakeDaemonStore, ResultLog, UnkeyedValidPathInfo,
 };
 use nixrs::derived_path::DerivedPath;
@@ -190,8 +189,7 @@ impl LocalDaemonStore for CapnpStore {
         &'a mut self,
         drvs: &'a [DerivedPath],
         mode: BuildMode,
-    ) -> impl ResultLog<Output = DaemonResult<Vec<nixrs::daemon::wire::types2::KeyedBuildResult>>> + 'a
-    {
+    ) -> impl ResultLog<Output = DaemonResult<Vec<nixrs::daemon::KeyedBuildResult>>> + 'a {
         (async move {
             let mut req = self.store.build_paths_with_results_request();
             let mut params = req.get();
@@ -209,7 +207,7 @@ impl LocalDaemonStore for CapnpStore {
         &'a mut self,
         drv: &'a nixrs::derivation::BasicDerivation,
         mode: BuildMode,
-    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::wire::types2::BuildResult>> + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::BuildResult>> + 'a {
         (async move {
             let mut req = self.store.build_derivation_request();
             let mut params = req.get();
@@ -229,8 +227,7 @@ impl LocalDaemonStore for CapnpStore {
     fn query_missing<'a>(
         &'a mut self,
         paths: &'a [DerivedPath],
-    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::wire::types2::QueryMissingResult>> + 'a
-    {
+    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::QueryMissingResult>> + 'a {
         (async move {
             let mut req = self.store.query_missing_request();
             let mut params = req.get();
@@ -245,7 +242,7 @@ impl LocalDaemonStore for CapnpStore {
 
     fn add_to_store_nar<'s, 'r, 'i, R>(
         &'s mut self,
-        info: &'i nixrs::daemon::wire::types2::ValidPathInfo,
+        info: &'i nixrs::daemon::ValidPathInfo,
         mut source: R,
         repair: bool,
         dont_check_sigs: bool,
@@ -582,8 +579,7 @@ impl LocalDaemonStore for LoggedCapnpStore {
         &'a mut self,
         drvs: &'a [DerivedPath],
         mode: BuildMode,
-    ) -> impl ResultLog<Output = DaemonResult<Vec<nixrs::daemon::wire::types2::KeyedBuildResult>>> + 'a
-    {
+    ) -> impl ResultLog<Output = DaemonResult<Vec<nixrs::daemon::KeyedBuildResult>>> + 'a {
         make_request!(self, |store| {
             store.build_paths_with_results(drvs, mode).await
         })
@@ -593,21 +589,20 @@ impl LocalDaemonStore for LoggedCapnpStore {
         &'a mut self,
         drv: &'a nixrs::derivation::BasicDerivation,
         mode: BuildMode,
-    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::wire::types2::BuildResult>> + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::BuildResult>> + 'a {
         make_request!(self, |store| store.build_derivation(drv, mode).await)
     }
 
     fn query_missing<'a>(
         &'a mut self,
         paths: &'a [DerivedPath],
-    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::wire::types2::QueryMissingResult>> + 'a
-    {
+    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::QueryMissingResult>> + 'a {
         make_request!(self, |store| store.query_missing(paths).await)
     }
 
     fn add_to_store_nar<'s, 'r, 'i, R>(
         &'s mut self,
-        info: &'i nixrs::daemon::wire::types2::ValidPathInfo,
+        info: &'i nixrs::daemon::ValidPathInfo,
         source: R,
         repair: bool,
         dont_check_sigs: bool,
@@ -687,12 +682,11 @@ impl LocalDaemonStore for LoggedCapnpStore {
 
     fn collect_garbage<'a>(
         &'a mut self,
-        action: nixrs::daemon::wire::types2::GCAction,
+        action: nixrs::daemon::GCAction,
         paths_to_delete: &'a StorePathSet,
         ignore_liveness: bool,
         max_freed: u64,
-    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::wire::types2::CollectGarbageResponse>> + 'a
-    {
+    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::CollectGarbageResponse>> + 'a {
         make_request!(self, |store| {
             store
                 .collect_garbage(action, paths_to_delete, ignore_liveness, max_freed)
@@ -830,7 +824,7 @@ impl LocalDaemonStore for LoggedCapnpStore {
         refs: &'a StorePathSet,
         repair: bool,
         source: R,
-    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::wire::types2::ValidPathInfo>> + 'r
+    ) -> impl ResultLog<Output = DaemonResult<nixrs::daemon::ValidPathInfo>> + 'r
     where
         R: tokio::io::AsyncBufRead + Unpin + 'r,
         'a: 'r,

@@ -15,10 +15,9 @@ use nixrs::daemon::wire::types::Operation;
 use nixrs::daemon::{DaemonError, DaemonResult, DaemonStore as _};
 use nixrs::daemon::{ProtocolRange, ProtocolVersion, ResultLog, server};
 use nixrs::log::{LogMessage, Message, Verbosity};
-use nixrs::test::daemon::mock::{self, MockReporter, MockStore, ReporterError};
+use nixrs::test::daemon::{Builder, MockReporter, MockStore, ReporterError};
 use serde::Deserialize;
 use serde::de::Error;
-use tempfile::Builder;
 use tokio::io::{AsyncBufReadExt, BufReader, split};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::try_join;
@@ -49,7 +48,7 @@ pub trait NixImpl: std::fmt::Debug {
             Path::new("../nix/all-nix/").join("conf/nix_2_3.conf")
         }
     }
-    fn prepare_mock(&self, _mock: &mut mock::Builder<()>) {}
+    fn prepare_mock(&self, _mock: &mut Builder<()>) {}
     fn prepare_program<'c>(&self, cmd: &'c mut Command) -> &'c mut Command;
     fn prepare_op_logs(&self, op: Operation, logs: &mut Vec<LogMessage>);
     //fn prepare_op_logs2(&self, op: Operation, logs: &mut VecDeque<LogMessage>);
@@ -179,7 +178,7 @@ impl NixImpl for StdNixImpl {
         self.name
     }
 
-    fn prepare_mock(&self, _mock: &mut mock::Builder<()>) {
+    fn prepare_mock(&self, _mock: &mut Builder<()>) {
         /*
         let mut options = ClientOptions::default();
         options.build_cores = 12;
@@ -305,7 +304,7 @@ impl DerefMut for KillOnDrop {
 pub async fn run_store_test<R, T, F, E>(
     nix: &dyn NixImpl,
     version: ProtocolVersion,
-    mock: mock::Builder<R>,
+    mock: Builder<R>,
     test: T,
 ) -> Result<(), E>
 where
@@ -321,7 +320,10 @@ where
     let mock = mock.build();
     let reports = reporter.collect::<Vec<ReporterError>>().map(|r| Ok(r));
 
-    let dir = Builder::new().prefix("test_restore_dir").tempdir().unwrap();
+    let dir = tempfile::Builder::new()
+        .prefix("test_restore_dir")
+        .tempdir()
+        .unwrap();
     let remote_program = dir.path().join("local");
     if let Some(unix_proxy) = std::env::var_os("UNIX_PROXY") {
         tokio::fs::symlink(unix_proxy, &remote_program)
@@ -399,7 +401,7 @@ where
     Ok(())
 }
 
-pub fn prepare_mock(nix: &dyn NixImpl) -> mock::Builder<()> {
+pub fn prepare_mock(nix: &dyn NixImpl) -> Builder<()> {
     let mut mock = MockStore::builder();
     nix.prepare_mock(&mut mock);
     mock

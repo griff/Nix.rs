@@ -7,13 +7,10 @@ use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, copy_buf};
 use tracing::{Instrument, debug, debug_span, instrument, trace};
 
 use crate::archive::NarBytesReader;
-use crate::daemon::wire::types2::ValidPathInfo;
-use crate::daemon::{DaemonError, DaemonResult};
-use crate::io::{AsyncBufReadCompat, AsyncBytesRead, Lending};
-
 use crate::daemon::de::NixRead;
 use crate::daemon::ser::NixWrite;
-use crate::daemon::types::AddToStoreItem;
+use crate::daemon::{AddToStoreItem, DaemonError, DaemonResult, ValidPathInfo};
+use crate::io::{AsyncBufReadCompat, AsyncBytesRead, Lending};
 
 #[instrument(level = "trace", skip_all)]
 pub async fn write_add_multiple_to_store_stream<W, S, R>(

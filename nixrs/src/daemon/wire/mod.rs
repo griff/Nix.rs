@@ -11,7 +11,6 @@ mod framed;
 pub mod logger;
 mod stderr_read;
 pub mod types;
-pub mod types2;
 
 pub use add_multiple_to_store::{
     SizedStream, parse_add_multiple_to_store, write_add_multiple_to_store_stream,

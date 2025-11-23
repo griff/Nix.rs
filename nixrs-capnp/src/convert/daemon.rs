@@ -1,10 +1,10 @@
 use bytes::Bytes;
 use capnp::Error;
 use capnp::traits::{FromPointerBuilder as _, SetterInput};
-use nixrs::daemon::wire::types2::{
-    BuildMode, BuildResult, BuildStatus, KeyedBuildResult, QueryMissingResult, ValidPathInfo,
+use nixrs::daemon::{
+    BuildMode, BuildResult, BuildStatus, ClientOptions, KeyedBuildResult, QueryMissingResult,
+    UnkeyedValidPathInfo, ValidPathInfo,
 };
-use nixrs::daemon::{ClientOptions, UnkeyedValidPathInfo};
 
 use crate::capnp::nix_daemon_capnp;
 use crate::capnp::nixrs_capnp::store_path_info;

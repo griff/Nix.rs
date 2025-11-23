@@ -14,7 +14,7 @@ use tokio::try_join;
 use nixrs::daemon::client::DaemonClient;
 use nixrs::daemon::{DaemonError, DaemonResult, DaemonStore as _};
 use nixrs::store_path::StorePath;
-use nixrs::test::daemon::mock::{MockReporter, MockStore};
+use nixrs::test::daemon::{MockReporter, MockStore};
 
 struct Provider<R: MockReporter>(Arc<RwLock<Option<MockStore<R>>>>);
 impl<R: MockReporter> Clone for Provider<R> {

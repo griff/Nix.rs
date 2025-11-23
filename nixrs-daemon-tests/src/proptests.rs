@@ -7,7 +7,7 @@ use nixrs::daemon::{DaemonStore as _, ProtocolVersion};
 use nixrs::log::LogMessage;
 use nixrs::pretty_prop_assert_eq;
 use nixrs::store_path::{StorePath, StorePathSet};
-use nixrs::test::daemon::mock::MockStore;
+use nixrs::test::daemon::MockStore;
 use proptest::prelude::*;
 use proptest::sample::size_range;
 use proptest::test_runner::TestCaseResult;

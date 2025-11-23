@@ -6,35 +6,27 @@ use std::pin::{Pin, pin};
 use std::task::Poll;
 use std::{fmt, thread};
 
-use arbitrary::MockOperationParams;
 use bytes::Bytes;
-use futures::Stream;
-#[cfg(any(test, feature = "test"))]
-use futures::StreamExt as _;
 use futures::channel::mpsc;
 use futures::future::Either;
 use futures::stream::{TryStreamExt, iter};
+use futures::{Stream, StreamExt as _};
 use pin_project_lite::pin_project;
-#[cfg(any(test, feature = "test"))]
-use proptest::prelude::*;
-#[cfg(any(test, feature = "test"))]
+use proptest::prelude::TestCaseError;
 use proptest::prop_assert_eq;
-#[cfg(any(test, feature = "test"))]
-use test_strategy::Arbitrary;
 use tokio::io::{AsyncBufRead, AsyncReadExt as _};
 use tracing::trace;
 
-use crate::daemon::wire::types::Operation;
-use crate::daemon::wire::types2::{
+use crate::daemon::wire::types::{
     AddMultipleToStoreRequest, AddPermRootRequest, AddSignaturesRequest, AddToStoreNarRequest,
-    AddToStoreRequest25, BuildDerivationRequest, BuildMode, BuildPathsRequest, BuildResult,
-    CollectGarbageRequest, CollectGarbageResponse, GCAction, KeyedBuildResult, KeyedBuildResults,
-    QueryMissingResult, QueryValidPathsRequest, ValidPathInfo, VerifyStoreRequest,
+    AddToStoreRequest25, BuildDerivationRequest, BuildPathsRequest, CollectGarbageRequest,
+    Operation, QueryValidPathsRequest, VerifyStoreRequest,
 };
 use crate::daemon::{
-    AddToStoreItem, ClientOptions, DaemonError, DaemonPath, DaemonResult, DaemonResultExt,
-    DaemonStore, FutureResultExt, HandshakeDaemonStore, ResultLog, ResultLogExt as _, TrustLevel,
-    UnkeyedValidPathInfo,
+    AddToStoreItem, BuildMode, BuildResult, ClientOptions, CollectGarbageResponse, DaemonError,
+    DaemonPath, DaemonResult, DaemonResultExt, DaemonStore, FutureResultExt, GCAction,
+    HandshakeDaemonStore, KeyedBuildResult, KeyedBuildResults, QueryMissingResult, ResultLog,
+    ResultLogExt as _, TrustLevel, UnkeyedValidPathInfo, ValidPathInfo,
 };
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
@@ -1486,15 +1478,11 @@ impl MockReporter for ChannelReporter {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
-#[cfg_attr(any(test, feature = "test"), arbitrary(args = MockOperationParams))]
 pub struct LogOperation {
-    #[cfg_attr(any(test, feature = "test"), strategy(any_with::<MockOperation>(*args)))]
     pub operation: MockOperation,
     pub logs: VecDeque<LogMessage>,
 }
 
-#[cfg(any(test, feature = "test"))]
 pub async fn check_logs<S>(
     mut expected: VecDeque<LogMessage>,
     mut actual: S,
@@ -1511,7 +1499,6 @@ where
 }
 
 impl LogOperation {
-    #[cfg(any(test, feature = "test"))]
     pub async fn check_operation<S: DaemonStore>(self, mut client: S) -> Result<(), TestCaseError> {
         let expected = self.operation.response();
         let request = self.operation.request();
@@ -2573,163 +2560,10 @@ where
     }
 }
 
-#[cfg(any(test, feature = "test"))]
-pub mod arbitrary {
-    use std::ops::RangeBounds;
-
-    use proptest::prelude::*;
-
-    use crate::daemon::wire::types2::KeyedBuildResult;
-    use crate::daemon::{ClientOptions, ProtocolVersion};
-    use crate::store_path::{StorePath, StorePathSet};
-    use crate::test::arbitrary::archive::arb_nar_contents;
-    use crate::test::arbitrary::daemon::{arb_nar_contents_items, field_after};
-    use crate::test::arbitrary::helpers::Union;
-
-    use super::*;
-
-    prop_compose! {
-        fn arb_mock_set_options()(options in any::<ClientOptions>()) -> MockOperation {
-            MockOperation::SetOptions(options, Ok(()))
-        }
-    }
-    prop_compose! {
-        fn arb_mock_is_valid_path()(
-            path in any::<StorePath>(),
-            result in proptest::bool::ANY) -> MockOperation {
-            MockOperation::IsValidPath(path, Ok(result))
-        }
-    }
-
-    prop_compose! {
-        fn arb_mock_query_valid_paths(version: ProtocolVersion)(
-            paths in any::<StorePathSet>(),
-            substitute in field_after(version, 27, proptest::bool::ANY),
-            result in any::<StorePathSet>()) -> MockOperation {
-            MockOperation::QueryValidPaths(QueryValidPathsRequest {
-                paths, substitute
-            }, Ok(result))
-        }
-    }
-
-    prop_compose! {
-        fn arb_mock_query_path_info()(
-            path in any::<StorePath>(),
-            result in any::<Option<UnkeyedValidPathInfo>>()) -> MockOperation {
-            MockOperation::QueryPathInfo(path, Ok(result))
-        }
-    }
-    prop_compose! {
-        fn arb_mock_nar_from_path()(
-            path in any::<StorePath>(),
-            result in arb_nar_contents(20, 20, 3)) -> MockOperation {
-            MockOperation::NarFromPath(path, Ok(result))
-        }
-    }
-    prop_compose! {
-        fn arb_mock_build_paths()(
-            paths in any::<Vec<DerivedPath>>(),
-            mode in any::<BuildMode>()) -> MockOperation {
-            MockOperation::BuildPaths(BuildPathsRequest { paths, mode }, Ok(()))
-        }
-    }
-    prop_compose! {
-        fn arb_mock_build_paths_with_results(version: ProtocolVersion)(
-            results in any_with::<Vec<KeyedBuildResult>>((Default::default(), version)),
-            mode in any::<BuildMode>()) -> MockOperation {
-            let paths = results.iter().map(|r| r.path.clone()).collect();
-            MockOperation::BuildPathsWithResults(BuildPathsRequest { paths, mode }, Ok(results))
-        }
-    }
-
-    prop_compose! {
-        fn arb_mock_build_derivation(version: ProtocolVersion)(
-            drv in any::<BasicDerivation>(),
-            mode in any::<BuildMode>(),
-            result in any_with::<BuildResult>(version)) -> MockOperation {
-            MockOperation::BuildDerivation(BuildDerivationRequest { drv, mode }, Ok(result))
-        }
-    }
-    prop_compose! {
-        fn arb_mock_query_missing()(
-            paths in any::<Vec<DerivedPath>>(),
-            result in any::<QueryMissingResult>()) -> MockOperation {
-            MockOperation::QueryMissing(paths, Ok(result))
-        }
-    }
-    prop_compose! {
-        fn arb_mock_add_to_store_nar()(
-            path_info in any::<ValidPathInfo>(),
-            repair in proptest::bool::ANY,
-            dont_check_sigs in proptest::bool::ANY,
-            content in arb_nar_contents(20, 20, 3)) -> MockOperation {
-            MockOperation::AddToStoreNar(AddToStoreNarRequest {
-                path_info, repair, dont_check_sigs
-            }, content, Ok(()))
-        }
-    }
-    prop_compose! {
-        fn arb_mock_add_multiple_to_store()(
-            repair in proptest::bool::ANY,
-            dont_check_sigs in proptest::bool::ANY,
-            infos in arb_nar_contents_items()) -> MockOperation {
-            MockOperation::AddMultipleToStore(AddMultipleToStoreRequest {
-                repair, dont_check_sigs
-            }, infos, Ok(()))
-        }
-    }
-
-    #[derive(Debug, Clone, Copy)]
-    pub struct MockOperationParams {
-        pub version: ProtocolVersion,
-        pub allow_options: bool,
-    }
-
-    impl Default for MockOperationParams {
-        fn default() -> Self {
-            Self {
-                version: Default::default(),
-                allow_options: true,
-            }
-        }
-    }
-
-    impl Arbitrary for MockOperation {
-        type Parameters = MockOperationParams;
-        type Strategy = Union<BoxedStrategy<Self>>;
-
-        fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-            let mut ret = Union::new([
-                arb_mock_is_valid_path().boxed(),
-                arb_mock_query_valid_paths(args.version).boxed(),
-                arb_mock_query_path_info().boxed(),
-                arb_mock_nar_from_path().boxed(),
-                arb_mock_build_paths().boxed(),
-                arb_mock_build_derivation(args.version).boxed(),
-                arb_mock_add_to_store_nar().boxed(),
-            ]);
-            if args.allow_options {
-                ret = ret.or(arb_mock_set_options().boxed());
-            }
-            if Operation::BuildPathsWithResults
-                .versions()
-                .contains(&args.version)
-            {
-                ret = ret.or(arb_mock_build_paths_with_results(args.version).boxed());
-            }
-            if Operation::AddMultipleToStore
-                .versions()
-                .contains(&args.version)
-            {
-                ret = ret.or(arb_mock_add_multiple_to_store().boxed());
-            }
-            ret
-        }
-    }
-}
-
 #[cfg(test)]
 mod unittests {
+    use futures::StreamExt as _;
+
     use super::*;
 
     #[tokio::test]

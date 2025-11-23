@@ -11,14 +11,20 @@ use tokio::select;
 use tracing::{Instrument, debug, error, info, instrument, trace};
 
 use crate::archive::NarReader;
-use crate::daemon::wire::IgnoredOne;
+use crate::daemon::de::{NixRead, NixReader};
+use crate::daemon::ser::{NixWrite, NixWriter};
 use crate::daemon::wire::logger::RawLogMessage;
-use crate::daemon::wire::types::Operation;
-use crate::daemon::wire::types2::{
-    AddToStoreRequest, BaseStorePath, CollectGarbageResponse, GCAction,
+use crate::daemon::wire::types::{
+    AddToStoreRequest, BaseStorePath, Operation, RegisterDrvOutputRequest, Request,
 };
-use crate::daemon::wire::{FramedReader, StderrReader, parse_add_multiple_to_store};
-use crate::daemon::{DaemonErrorKind, DaemonPath, DaemonResultExt, PROTOCOL_VERSION};
+use crate::daemon::wire::{
+    CLIENT_MAGIC, FramedReader, IgnoredOne, SERVER_MAGIC, StderrReader, parse_add_multiple_to_store,
+};
+use crate::daemon::{
+    AddToStoreItem, CollectGarbageResponse, DaemonError, DaemonErrorKind, DaemonPath, DaemonResult,
+    DaemonResultExt, DaemonStore, GCAction, HandshakeDaemonStore, NIX_VERSION, PROTOCOL_VERSION,
+    ProtocolVersion, ResultLog, TrustLevel, ValidPathInfo,
+};
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
 use crate::io::{AsyncBufReadCompat, BytesReader};
@@ -27,16 +33,6 @@ use crate::realisation::{DrvOutput, Realisation};
 use crate::signature::Signature;
 use crate::store_path::{
     ContentAddressMethodAlgorithm, HasStoreDir, StorePath, StorePathHash, StorePathSet,
-};
-
-use super::de::{NixRead, NixReader};
-use super::ser::{NixWrite, NixWriter};
-use super::types::AddToStoreItem;
-use super::wire::types2::{RegisterDrvOutputRequest, Request, ValidPathInfo};
-use super::wire::{CLIENT_MAGIC, SERVER_MAGIC};
-use super::{
-    DaemonError, DaemonResult, DaemonStore, HandshakeDaemonStore, NIX_VERSION, ProtocolVersion,
-    ResultLog, TrustLevel,
 };
 
 mod local;
@@ -274,7 +270,7 @@ where
     fn build_paths<'a>(
         &'a mut self,
         paths: &'a [DerivedPath],
-        mode: super::wire::types2::BuildMode,
+        mode: super::BuildMode,
     ) -> impl ResultLog<Output = DaemonResult<()>> + Send + 'a {
         let ret = Box::pin(self.0.build_paths(paths, mode));
         trace!("BuildPaths Size {}", size_of_val(&ret));
@@ -284,8 +280,8 @@ where
     fn build_derivation<'a>(
         &'a mut self,
         drv: &'a BasicDerivation,
-        mode: super::wire::types2::BuildMode,
-    ) -> impl ResultLog<Output = DaemonResult<super::wire::types2::BuildResult>> + Send + 'a {
+        mode: super::BuildMode,
+    ) -> impl ResultLog<Output = DaemonResult<super::BuildResult>> + Send + 'a {
         let ret = Box::pin(self.0.build_derivation(drv, mode));
         trace!("BuildDerivation Size {}", size_of_val(&ret));
         ret
@@ -294,8 +290,7 @@ where
     fn query_missing<'a>(
         &'a mut self,
         paths: &'a [DerivedPath],
-    ) -> impl ResultLog<Output = DaemonResult<super::wire::types2::QueryMissingResult>> + Send + 'a
-    {
+    ) -> impl ResultLog<Output = DaemonResult<super::QueryMissingResult>> + Send + 'a {
         let ret = Box::pin(self.0.query_missing(paths));
         trace!("QueryMissing Size {}", size_of_val(&ret));
         ret
@@ -343,9 +338,8 @@ where
     fn build_paths_with_results<'a>(
         &'a mut self,
         drvs: &'a [DerivedPath],
-        mode: super::wire::types2::BuildMode,
-    ) -> impl ResultLog<Output = DaemonResult<Vec<super::wire::types2::KeyedBuildResult>>> + Send + 'a
-    {
+        mode: super::BuildMode,
+    ) -> impl ResultLog<Output = DaemonResult<Vec<super::KeyedBuildResult>>> + Send + 'a {
         let ret = Box::pin(self.0.build_paths_with_results(drvs, mode));
         trace!("BuildPathsWithResults Size {}", size_of_val(ret.deref()));
         ret

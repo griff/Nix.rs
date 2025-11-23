@@ -14,9 +14,9 @@ use capnp_rpc::new_client;
 use capnp_rpc_tokio::builder::RpcSystemBuilder;
 use capnp_rpc_tokio::client::ClientBuilder;
 use clap::Parser;
-use nixrs::daemon::DaemonStore;
-use nixrs::daemon::HandshakeDaemonStore;
-use nixrs::daemon::{FutureResultExt, LocalDaemonStore, wire::types2::BuildMode};
+use nixrs::daemon::{
+    BuildMode, DaemonStore, FutureResultExt, HandshakeDaemonStore, LocalDaemonStore,
+};
 use nixrs::store_path::HasStoreDir;
 use nixrs::store_path::StoreDir;
 use nixrs_capnp::capnp::nix_daemon_capnp;
@@ -75,7 +75,7 @@ impl DaemonStore for SleepStore {
     fn build_paths<'a>(
         &'a mut self,
         _drvs: &'a [nixrs::derived_path::DerivedPath],
-        _mode: nixrs::daemon::wire::types2::BuildMode,
+        _mode: nixrs::daemon::BuildMode,
     ) -> impl nixrs::daemon::ResultLog<Output = nixrs::daemon::DaemonResult<()>> + 'a {
         let duration = self.duration;
         async move {

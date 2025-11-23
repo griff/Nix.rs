@@ -7,10 +7,9 @@ use nixrs::daemon::client::DaemonClient;
 use nixrs::daemon::de::NixReader;
 use nixrs::daemon::ser::NixWriter;
 use nixrs::daemon::wire::{
-    SizedStream, parse_add_multiple_to_store, types2::ValidPathInfo,
-    write_add_multiple_to_store_stream,
+    SizedStream, parse_add_multiple_to_store, write_add_multiple_to_store_stream,
 };
-use nixrs::daemon::{AddToStoreItem, DaemonError, DaemonResult, DaemonStore as _};
+use nixrs::daemon::{AddToStoreItem, DaemonError, DaemonResult, DaemonStore as _, ValidPathInfo};
 use nixrs::hash::HashSink;
 use nixrs::io::DEFAULT_BUF_SIZE;
 use nixrs::store_path::StorePath;

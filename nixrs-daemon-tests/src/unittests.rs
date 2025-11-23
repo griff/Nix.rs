@@ -7,11 +7,9 @@ use bytes::Bytes;
 use futures::StreamExt as _;
 use futures::stream::iter;
 use nixrs::daemon::wire::types::Operation;
-use nixrs::daemon::wire::types2::{
-    BuildMode, BuildResult, BuildStatus, QueryMissingResult, ValidPathInfo,
-};
 use nixrs::daemon::{
-    AddToStoreItem, DaemonError, DaemonResult, DaemonStore as _, DaemonString, UnkeyedValidPathInfo,
+    AddToStoreItem, BuildMode, BuildResult, BuildStatus, DaemonError, DaemonResult,
+    DaemonStore as _, DaemonString, QueryMissingResult, UnkeyedValidPathInfo, ValidPathInfo,
 };
 use nixrs::derivation::{BasicDerivation, DerivationOutput};
 use nixrs::derived_path::{DerivedPath, OutputName};

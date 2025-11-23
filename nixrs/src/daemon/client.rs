@@ -21,13 +21,13 @@ use super::ser::{NixWrite, NixWriter, NixWriterBuilder};
 use super::types::AddToStoreItem;
 use super::wire::logger::RawLogMessage;
 use super::wire::types::Operation;
-use super::wire::types2::{BuildMode, CollectGarbageResponse, GCAction, ValidPathInfo};
 use super::wire::{
     CLIENT_MAGIC, FramedWriter, IgnoredOne, SERVER_MAGIC, write_add_multiple_to_store_stream,
 };
 use super::{
-    DaemonError, DaemonErrorKind, DaemonPath, DaemonResult, DaemonResultExt as _, DaemonStore,
-    HandshakeDaemonStore, ProtocolVersion, TrustLevel,
+    BuildMode, CollectGarbageResponse, DaemonError, DaemonErrorKind, DaemonPath, DaemonResult,
+    DaemonResultExt as _, DaemonStore, GCAction, HandshakeDaemonStore, ProtocolVersion, TrustLevel,
+    ValidPathInfo,
 };
 use crate::archive::{NarBytesReader, NarReader};
 use crate::daemon::client::compat::CompatAddPermRoot;
@@ -537,8 +537,7 @@ where
         &'a mut self,
         drvs: &'a [DerivedPath],
         mode: BuildMode,
-    ) -> impl ResultLog<Output = DaemonResult<Vec<super::wire::types2::KeyedBuildResult>>> + Send + 'a
-    {
+    ) -> impl ResultLog<Output = DaemonResult<Vec<super::KeyedBuildResult>>> + Send + 'a {
         async move {
             self.writer
                 .write_value(&Operation::BuildPathsWithResults)
@@ -555,7 +554,7 @@ where
         &'a mut self,
         drv: &'a BasicDerivation,
         mode: BuildMode,
-    ) -> impl ResultLog<Output = DaemonResult<super::wire::types2::BuildResult>> + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<super::BuildResult>> + 'a {
         async move {
             self.writer.write_value(&Operation::BuildDerivation).await?;
             self.writer.write_value(drv).await?;
@@ -569,7 +568,7 @@ where
     fn query_missing<'a>(
         &'a mut self,
         paths: &'a [DerivedPath],
-    ) -> impl ResultLog<Output = DaemonResult<super::wire::types2::QueryMissingResult>> + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<super::QueryMissingResult>> + 'a {
         async move {
             trace!(paths = paths.len(), "Sending QueryMissing");
             self.writer.write_value(&Operation::QueryMissing).await?;

@@ -166,7 +166,7 @@ where
     fn build_paths<'a>(
         &'a mut self,
         drvs: &'a [crate::derived_path::DerivedPath],
-        mode: super::wire::types2::BuildMode,
+        mode: super::BuildMode,
     ) -> impl ResultLog<Output = super::DaemonResult<()>> + Send + 'a {
         mutex_result!(self, |store| { store.build_paths(drvs, mode) })
     }
@@ -174,33 +174,30 @@ where
     fn build_paths_with_results<'a>(
         &'a mut self,
         drvs: &'a [crate::derived_path::DerivedPath],
-        mode: super::wire::types2::BuildMode,
-    ) -> impl ResultLog<Output = super::DaemonResult<Vec<super::wire::types2::KeyedBuildResult>>>
-    + Send
-    + 'a {
+        mode: super::BuildMode,
+    ) -> impl ResultLog<Output = super::DaemonResult<Vec<super::KeyedBuildResult>>> + Send + 'a
+    {
         mutex_result!(self, |store| { store.build_paths_with_results(drvs, mode) })
     }
 
     fn build_derivation<'a>(
         &'a mut self,
         drv: &'a crate::derivation::BasicDerivation,
-        mode: super::wire::types2::BuildMode,
-    ) -> impl ResultLog<Output = super::DaemonResult<super::wire::types2::BuildResult>> + Send + 'a
-    {
+        mode: super::BuildMode,
+    ) -> impl ResultLog<Output = super::DaemonResult<super::BuildResult>> + Send + 'a {
         mutex_result!(self, |store| { store.build_derivation(drv, mode) })
     }
 
     fn query_missing<'a>(
         &'a mut self,
         paths: &'a [crate::derived_path::DerivedPath],
-    ) -> impl ResultLog<Output = super::DaemonResult<super::wire::types2::QueryMissingResult>> + Send + 'a
-    {
+    ) -> impl ResultLog<Output = super::DaemonResult<super::QueryMissingResult>> + Send + 'a {
         mutex_result!(self, |store| { store.query_missing(paths) })
     }
 
     fn add_to_store_nar<'s, 'r, 'i, R>(
         &'s mut self,
-        info: &'i super::wire::types2::ValidPathInfo,
+        info: &'i super::ValidPathInfo,
         source: R,
         repair: bool,
         dont_check_sigs: bool,
@@ -285,13 +282,12 @@ where
 
     fn collect_garbage<'a>(
         &'a mut self,
-        action: super::wire::types2::GCAction,
+        action: super::GCAction,
         paths_to_delete: &'a crate::store_path::StorePathSet,
         ignore_liveness: bool,
         max_freed: u64,
-    ) -> impl ResultLog<Output = super::DaemonResult<super::wire::types2::CollectGarbageResponse>>
-    + Send
-    + 'a {
+    ) -> impl ResultLog<Output = super::DaemonResult<super::CollectGarbageResponse>> + Send + 'a
+    {
         mutex_result!(self, |store| {
             store.collect_garbage(action, paths_to_delete, ignore_liveness, max_freed)
         })
@@ -423,13 +419,7 @@ where
         refs: &'a crate::store_path::StorePathSet,
         repair: bool,
         source: R,
-    ) -> Pin<
-        Box<
-            dyn ResultLog<Output = super::DaemonResult<super::wire::types2::ValidPathInfo>>
-                + Send
-                + 'r,
-        >,
-    >
+    ) -> Pin<Box<dyn ResultLog<Output = super::DaemonResult<super::ValidPathInfo>> + Send + 'r>>
     where
         R: tokio::io::AsyncBufRead + Send + Unpin + 'r,
         'a: 'r,
