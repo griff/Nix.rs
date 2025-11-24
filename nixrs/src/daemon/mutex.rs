@@ -362,10 +362,8 @@ where
     fn query_realisation<'a>(
         &'a mut self,
         output_id: &'a crate::realisation::DrvOutput,
-    ) -> impl ResultLog<
-        Output = super::DaemonResult<std::collections::BTreeSet<crate::realisation::Realisation>>,
-    > + Send
-    + 'a {
+    ) -> impl ResultLog<Output = super::DaemonResult<Option<crate::realisation::Realisation>>> + Send + 'a
+    {
         mutex_result!(self, |store| { store.query_realisation(output_id) })
     }
 

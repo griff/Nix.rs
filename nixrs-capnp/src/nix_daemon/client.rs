@@ -768,9 +768,7 @@ impl LocalDaemonStore for LoggedCapnpStore {
     fn query_realisation<'a>(
         &'a mut self,
         output_id: &'a nixrs::realisation::DrvOutput,
-    ) -> impl ResultLog<
-        Output = DaemonResult<std::collections::BTreeSet<nixrs::realisation::Realisation>>,
-    > + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<Option<nixrs::realisation::Realisation>>> + 'a {
         make_request!(self, |store| store.query_realisation(output_id).await)
     }
 

@@ -488,7 +488,7 @@ where
     fn query_realisation<'a>(
         &'a mut self,
         output_id: &'a DrvOutput,
-    ) -> impl ResultLog<Output = DaemonResult<BTreeSet<Realisation>>> + Send + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<Option<Realisation>>> + Send + 'a {
         let ret = Box::pin(self.0.query_realisation(output_id));
         trace!("QueryRealisation Size {}", size_of_val(ret.deref()));
         ret
@@ -1226,22 +1226,25 @@ where
                 let logs = store.query_realisation(&output_id);
                 let value = self.process_logs(logs).await?;
                 /*
-                  ### Outputs
+                ### Outputs
                 */
-                if self.reader.version().minor() >= 31 {
-                    /*
-                    #### If protocol is 1.31 or newer
-                    realisations :: [Set][se-Set] of [Realisation][se-Realisation]
-                    */
-                    self.writer.write_value(&value).await?;
+                if let Some(value) = value {
+                    self.writer.write_number(1).await?;
+                    if self.reader.version().minor() >= 31 {
+                        /*
+                        #### If protocol is 1.31 or newer
+                        realisations :: [Set][se-Set] of [Realisation][se-Realisation]
+                        */
+                        self.writer.write_value(&value).await?;
+                    } else {
+                        /*
+                        #### If protocol is older than 1.31
+                        outPaths :: [Set][se-Set] of [StorePath][se-StorePath]
+                        */
+                        self.writer.write_value(&value.out_path).await?;
+                    }
                 } else {
-                    /*
-                    #### If protocol is older than 1.31
-                    outPaths :: [Set][se-Set] of [StorePath][se-StorePath]
-                     */
-                    let out_paths: BTreeSet<StorePath> =
-                        value.into_iter().map(|r| r.out_path).collect();
-                    self.writer.write_value(&out_paths).await?;
+                    self.writer.write_number(0).await?;
                 }
             }
             AddMultipleToStore(req) => {

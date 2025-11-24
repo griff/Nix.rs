@@ -643,22 +643,25 @@ where
                 let logs = store.query_realisation(&output_id);
                 let value = self.local_process_logs(logs).await?;
                 /*
-                  ### Outputs
+                ### Outputs
                 */
-                if self.reader.version().minor() >= 31 {
-                    /*
-                    #### If protocol is 1.31 or newer
-                    realisations :: [Set][se-Set] of [Realisation][se-Realisation]
-                    */
-                    self.writer.write_value(&value).await?;
+                if let Some(value) = value {
+                    self.writer.write_number(1).await?;
+                    if self.reader.version().minor() >= 31 {
+                        /*
+                        #### If protocol is 1.31 or newer
+                        realisations :: [Set][se-Set] of [Realisation][se-Realisation]
+                        */
+                        self.writer.write_value(&value).await?;
+                    } else {
+                        /*
+                        #### If protocol is older than 1.31
+                        outPaths :: [Set][se-Set] of [StorePath][se-StorePath]
+                        */
+                        self.writer.write_value(&value.out_path).await?;
+                    }
                 } else {
-                    /*
-                    #### If protocol is older than 1.31
-                    outPaths :: [Set][se-Set] of [StorePath][se-StorePath]
-                     */
-                    let out_paths: BTreeSet<StorePath> =
-                        value.into_iter().map(|r| r.out_path).collect();
-                    self.writer.write_value(&out_paths).await?;
+                    self.writer.write_number(0).await?;
                 }
             }
             AddMultipleToStore(req) => {

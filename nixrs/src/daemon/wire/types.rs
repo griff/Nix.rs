@@ -549,7 +549,7 @@ pub enum RegisterDrvOutputRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
 pub enum QueryRealisationResponse {
     #[nix(version = "..=30")]
-    ProtocolPre31(StorePathSet),
+    ProtocolPre31(Vec<StorePath>),
     #[nix(version = "31..")]
     Protocol31(Vec<Realisation>),
 }

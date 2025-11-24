@@ -714,7 +714,7 @@ pub trait DaemonStore: HasStoreDir + Send {
     fn query_realisation<'a>(
         &'a mut self,
         output_id: &'a DrvOutput,
-    ) -> impl ResultLog<Output = DaemonResult<BTreeSet<Realisation>>> + Send + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<Option<Realisation>>> + Send + 'a {
         ready(Err(DaemonError::unimplemented(Operation::QueryRealisation))).empty_logs()
     }
 
@@ -1000,7 +1000,7 @@ where
     fn query_realisation<'a>(
         &'a mut self,
         output_id: &'a DrvOutput,
-    ) -> impl ResultLog<Output = DaemonResult<BTreeSet<Realisation>>> + Send + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<Option<Realisation>>> + Send + 'a {
         (**self).query_realisation(output_id)
     }
 

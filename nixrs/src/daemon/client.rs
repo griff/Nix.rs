@@ -32,6 +32,7 @@ use super::{
 use crate::archive::{NarBytesReader, NarReader};
 use crate::daemon::client::compat::CompatAddPermRoot;
 use crate::daemon::client::process_stderr::{ProcessStderr, read_logs};
+use crate::daemon::wire::types::QueryRealisationResponse;
 use crate::daemon::{FutureResultExt, make_result};
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
@@ -901,13 +902,35 @@ where
     fn query_realisation<'a>(
         &'a mut self,
         output_id: &'a DrvOutput,
-    ) -> impl ResultLog<Output = DaemonResult<BTreeSet<Realisation>>> + Send + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<Option<Realisation>>> + Send + 'a {
         async move {
             self.writer
                 .write_value(&Operation::QueryRealisation)
                 .await?;
             self.writer.write_value(output_id).await?;
-            Ok(self.process_stderr())
+            Ok(self
+                .process_stderr::<QueryRealisationResponse>()
+                .map_ok(|r| match r {
+                    QueryRealisationResponse::Protocol31(mut real) => {
+                        if real.is_empty() {
+                            None
+                        } else {
+                            Some(real.swap_remove(0))
+                        }
+                    }
+                    QueryRealisationResponse::ProtocolPre31(mut paths) => {
+                        if paths.is_empty() {
+                            None
+                        } else {
+                            Some(Realisation {
+                                id: output_id.clone(),
+                                out_path: paths.swap_remove(0),
+                                signatures: BTreeSet::new(),
+                                dependent_realisations: BTreeMap::new(),
+                            })
+                        }
+                    }
+                }))
         }
         .future_result()
         .fill_operation(Operation::QueryRealisation)

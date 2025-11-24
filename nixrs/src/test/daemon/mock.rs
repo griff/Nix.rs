@@ -76,7 +76,7 @@ pub enum MockOperation {
         DaemonResult<BTreeMap<OutputName, Option<StorePath>>>,
     ),
     RegisterDrvOutput(Realisation, DaemonResult<()>),
-    QueryRealisation(DrvOutput, DaemonResult<BTreeSet<Realisation>>),
+    QueryRealisation(DrvOutput, DaemonResult<Option<Realisation>>),
     AddBuildLog(StorePath, Bytes, DaemonResult<()>),
     AddPermRoot(AddPermRootRequest, DaemonResult<DaemonPath>),
     SyncWithGC(DaemonResult<()>),
@@ -1056,7 +1056,7 @@ pub enum MockResponse {
     CollectGarbageResponse(CollectGarbageResponse),
     OptStorePath(Option<StorePath>),
     OutputMap(BTreeMap<OutputName, Option<StorePath>>),
-    Realisations(BTreeSet<Realisation>),
+    Realisation(Option<Realisation>),
     OutputNames(BTreeSet<OutputName>),
 }
 
@@ -1150,9 +1150,9 @@ impl MockResponse {
             _ => panic!("Unexpected response {self:?}"),
         }
     }
-    pub fn unwrap_realisations(self) -> BTreeSet<Realisation> {
+    pub fn unwrap_realisation(self) -> Option<Realisation> {
         match self {
-            Self::Realisations(val) => val,
+            Self::Realisation(val) => val,
             _ => panic!("Unexpected response {self:?}"),
         }
     }
@@ -1299,14 +1299,14 @@ impl From<MockResponse> for BTreeMap<OutputName, Option<StorePath>> {
     }
 }
 
-impl From<BTreeSet<Realisation>> for MockResponse {
-    fn from(v: BTreeSet<Realisation>) -> Self {
-        MockResponse::Realisations(v)
+impl From<Option<Realisation>> for MockResponse {
+    fn from(v: Option<Realisation>) -> Self {
+        MockResponse::Realisation(v)
     }
 }
-impl From<MockResponse> for BTreeSet<Realisation> {
+impl From<MockResponse> for Option<Realisation> {
     fn from(value: MockResponse) -> Self {
-        value.unwrap_realisations()
+        value.unwrap_realisation()
     }
 }
 
@@ -1921,7 +1921,7 @@ impl<R> Builder<R> {
     pub fn query_realisation(
         &mut self,
         output_id: &DrvOutput,
-        response: DaemonResult<BTreeSet<Realisation>>,
+        response: DaemonResult<Option<Realisation>>,
     ) -> LogBuilder<'_, R, MockOperation> {
         self.build_operation(MockOperation::QueryRealisation(output_id.clone(), response))
     }
@@ -2461,7 +2461,7 @@ where
     fn query_realisation<'a>(
         &'a mut self,
         output_id: &'a DrvOutput,
-    ) -> impl ResultLog<Output = DaemonResult<BTreeSet<Realisation>>> + Send + 'a {
+    ) -> impl ResultLog<Output = DaemonResult<Option<Realisation>>> + Send + 'a {
         let actual = MockRequest::QueryRealisation(output_id.clone());
         self.check_operation(actual)
     }
