@@ -137,16 +137,6 @@ rec {
       # File a bug if you depend on any for non-debug work!
       debug = internal.debugCrate { inherit packageId; };
     };
-    "tester" = rec {
-      packageId = "tester";
-      build = internal.buildRustCrateWithFeatures {
-        packageId = "tester";
-      };
-
-      # Debug support which might change between releases.
-      # File a bug if you depend on any for non-debug work!
-      debug = internal.debugCrate { inherit packageId; };
-    };
   };
 
   # A derivation that joins the outputs of all workspace members together.
@@ -9565,56 +9555,6 @@ rec {
             name = "syn";
             packageId = "syn";
             features = [ "visit" "full" "extra-traits" ];
-          }
-        ];
-
-      };
-      "tester" = rec {
-        crateName = "tester";
-        version = "0.1.0";
-        edition = "2021";
-        crateBin = [
-          {
-            name = "tester";
-            path = "src/main.rs";
-            requiredFeatures = [ ];
-          }
-        ];
-        src = lib.cleanSourceWith { filter = sourceFilter;  src = ./examples/tester; };
-        authors = [
-          "Brian Olsen <brian@maven-group.org>"
-        ];
-        dependencies = [
-          {
-            name = "async-stream";
-            packageId = "async-stream";
-          }
-          {
-            name = "clap";
-            packageId = "clap";
-            features = [ "derive" ];
-          }
-          {
-            name = "futures";
-            packageId = "futures";
-          }
-          {
-            name = "nixrs";
-            packageId = "nixrs";
-            features = [ "daemon" "internal" ];
-          }
-          {
-            name = "tokio";
-            packageId = "tokio";
-            features = [ "fs" "io-util" "macros" "process" "rt-multi-thread" ];
-          }
-          {
-            name = "tracing";
-            packageId = "tracing";
-          }
-          {
-            name = "tracing-subscriber";
-            packageId = "tracing-subscriber";
           }
         ];
 

@@ -9,7 +9,6 @@ members = [
   "nixrs-capnp",
   "examples/nixrs-nix-store",
   "examples/nix-docker-build",
-  "examples/tester",
   "nixrs-daemon-tests", "capnp-rpc-tokio",
 ]
 package.version = "0.1.0"
