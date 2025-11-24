@@ -6,7 +6,6 @@ use std::pin::pin;
 use bytes::Bytes;
 use futures::StreamExt as _;
 use futures::stream::iter;
-use nixrs::daemon::wire::types::Operation;
 use nixrs::daemon::{
     AddToStoreItem, BuildMode, BuildResult, BuildStatus, DaemonError, DaemonResult,
     DaemonStore as _, DaemonString, QueryMissingResult, UnkeyedValidPathInfo, ValidPathInfo,
@@ -17,6 +16,7 @@ use nixrs::hash::NarHash;
 use nixrs::log::{Activity, ActivityResult, LogMessage};
 use nixrs::store_path::{StoreDir, StorePath, StorePathSet};
 use nixrs::test::archive::{read_nar, test_data, write_nar};
+use nixrs::test::daemon::Operation;
 use nixrs::{ByteString, btree_set};
 use pretty_assertions::assert_eq;
 use rstest::rstest;

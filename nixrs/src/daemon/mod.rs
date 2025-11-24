@@ -15,8 +15,10 @@ pub mod server;
 #[cfg(feature = "daemon")]
 mod types;
 mod version;
-#[cfg(feature = "daemon")]
+#[cfg(all(feature = "daemon", feature = "internal"))]
 pub mod wire;
+#[cfg(all(not(feature = "internal"), feature = "daemon"))]
+pub(crate) mod wire;
 
 #[cfg(feature = "daemon")]
 pub use fail_store::FailStore;

@@ -11,9 +11,7 @@ pub mod logger;
 mod stderr_read;
 pub mod types;
 
-pub use add_multiple_to_store::{
-    SizedStream, parse_add_multiple_to_store, write_add_multiple_to_store_stream,
-};
+pub use add_multiple_to_store::{parse_add_multiple_to_store, write_add_multiple_to_store_stream};
 pub use framed::reader::FramedReader;
 pub use framed::writer::FramedWriter;
 pub use stderr_read::StderrReader;
