@@ -2,14 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
 use derive_more::Display;
-#[cfg(feature = "daemon")]
-use nixrs_derive::{NixDeserialize, NixSerialize};
 use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use thiserror::Error;
 
-#[cfg(feature = "daemon-serde")]
-use crate::daemon::{de::NixDeserialize, ser::NixSerialize};
 use crate::derived_path::OutputName;
 use crate::hash::fmt::Any;
 use crate::hash::{self, Hash};
@@ -29,8 +25,6 @@ use crate::store_path::{StorePath, StorePathNameError};
     DeserializeFromStr,
 )]
 #[display("{drv_hash:x}!{output_name}")]
-#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "daemon", nix(from_str, display))]
 pub struct DrvOutput {
     pub drv_hash: hash::Hash,
     pub output_name: OutputName,
@@ -79,35 +73,6 @@ pub struct Realisation {
     pub signatures: BTreeSet<Signature>,
     #[serde(default)]
     pub dependent_realisations: BTreeMap<DrvOutput, StorePath>,
-}
-
-#[cfg(feature = "daemon-serde")]
-impl NixSerialize for Realisation {
-    async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
-    where
-        W: crate::daemon::ser::NixWrite,
-    {
-        use crate::daemon::ser::Error;
-        let s = serde_json::to_string(&self).map_err(W::Error::custom)?;
-        writer.write_slice(s.as_bytes()).await
-    }
-}
-
-#[cfg(feature = "daemon-serde")]
-impl NixDeserialize for Realisation {
-    async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
-    where
-        R: ?Sized + crate::daemon::de::NixRead + Send,
-    {
-        use crate::daemon::de::Error;
-        if let Some(buf) = reader.try_read_bytes().await? {
-            Ok(Some(
-                serde_json::from_slice(&buf).map_err(R::Error::custom)?,
-            ))
-        } else {
-            Ok(None)
-        }
-    }
 }
 
 pub type DrvOutputs = BTreeMap<DrvOutput, Realisation>;
@@ -205,7 +170,7 @@ mod unittests {
         pretty_assertions::assert_eq!(actual, expected);
     }
 
-    #[cfg(feature = "daemon-serde")]
+    #[cfg(feature = "daemon")]
     #[tokio::test]
     #[rstest]
     #[case(
@@ -230,7 +195,7 @@ mod unittests {
         mock.write_value(&value).await.unwrap();
     }
 
-    #[cfg(feature = "daemon-serde")]
+    #[cfg(feature = "daemon")]
     #[tokio::test]
     #[rstest]
     #[case(

@@ -1,8 +1,5 @@
 use std::{collections::BTreeMap, fmt};
 
-#[cfg(feature = "daemon")]
-use nixrs_derive::NixDeserialize;
-
 use crate::derived_path::OutputName;
 #[cfg(any(feature = "xp-ca-derivations", feature = "xp-impure-derivations"))]
 use crate::store_path::ContentAddressMethodAlgorithm;
@@ -32,11 +29,6 @@ pub(crate) fn output_path_name<'s>(
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
-#[cfg_attr(feature = "daemon", derive(NixDeserialize))]
-#[cfg_attr(
-    feature = "daemon",
-    nix(try_from = "daemon_serde::DerivationOutputData")
-)]
 pub enum DerivationOutput {
     InputAddressed(StorePath),
     CAFixed(ContentAddress),
@@ -68,157 +60,6 @@ impl DerivationOutput {
 }
 
 pub type DerivationOutputs = BTreeMap<OutputName, DerivationOutput>;
-
-#[cfg(feature = "daemon")]
-mod daemon_serde {
-    use nixrs_derive::{NixDeserialize, NixSerialize};
-    use thiserror::Error;
-
-    use crate::daemon::ser::{Error, NixWrite};
-    use crate::derived_path::OutputName;
-    use crate::hash;
-    use crate::hash::fmt::ParseHashError;
-    use crate::store_path::{
-        ContentAddress, ContentAddressMethod, ContentAddressMethodAlgorithm, StorePath,
-        StorePathName,
-    };
-
-    use super::{DerivationOutput, output_path_name};
-
-    #[derive(Error, Debug, PartialEq, Clone)]
-    pub enum ParseDerivationOutput {
-        #[error("{0}")]
-        Hash(
-            #[from]
-            #[source]
-            hash::fmt::ParseHashError,
-        ),
-        #[error("{0}")]
-        InvalidData(String),
-        #[error("Missing experimental feature {0}")]
-        MissingExperimentalFeature(String),
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
-    pub struct DerivationOutputData {
-        pub path: Option<StorePath>,
-        pub hash_algo: Option<ContentAddressMethodAlgorithm>,
-        pub hash: Option<String>,
-    }
-
-    impl TryFrom<DerivationOutputData> for DerivationOutput {
-        type Error = ParseDerivationOutput;
-
-        fn try_from(value: DerivationOutputData) -> Result<Self, Self::Error> {
-            if let Some(hash_algo) = value.hash_algo {
-                #[cfg(not(feature = "xp-dynamic-derivations"))]
-                if hash_algo.method() == ContentAddressMethod::Text {
-                    return Err(ParseDerivationOutput::MissingExperimentalFeature(
-                        "dynamic-derivations".into(),
-                    ));
-                }
-                if let Some(hash_s) = value.hash {
-                    if hash_s == "impure" {
-                        #[cfg(not(feature = "xp-impure-derivations"))]
-                        {
-                            Err(ParseDerivationOutput::MissingExperimentalFeature(
-                                "impure-derivations".into(),
-                            ))
-                        }
-                        #[cfg(feature = "xp-impure-derivations")]
-                        {
-                            if value.path.is_some() {
-                                Err(ParseDerivationOutput::InvalidData(
-                                    "expected path to be empty".into(),
-                                ))
-                            } else {
-                                Ok(DerivationOutput::Impure(hash_algo))
-                            }
-                        }
-                    } else if value.path.is_none() {
-                        Err(ParseDerivationOutput::InvalidData(
-                            "expected path to have StorePath".into(),
-                        ))
-                    } else {
-                        let hash =
-                            hash::fmt::NonSRI::<hash::Hash>::parse(hash_algo.algorithm(), &hash_s)?;
-                        let hash = ContentAddress::from_hash(hash_algo.method(), hash).map_err(
-                            |kind| ParseDerivationOutput::Hash(ParseHashError::new(hash_s, kind)),
-                        )?;
-                        Ok(DerivationOutput::CAFixed(hash))
-                    }
-                } else if value.path.is_some() {
-                    Err(ParseDerivationOutput::InvalidData(
-                        "expected path to have StorePath".into(),
-                    ))
-                } else {
-                    #[cfg(not(feature = "xp-ca-derivations"))]
-                    {
-                        Err(ParseDerivationOutput::MissingExperimentalFeature(
-                            "ca-derivations".into(),
-                        ))
-                    }
-                    #[cfg(feature = "xp-ca-derivations")]
-                    {
-                        Ok(DerivationOutput::CAFloating(hash_algo))
-                    }
-                }
-            } else if let Some(path) = value.path {
-                Ok(DerivationOutput::InputAddressed(path))
-            } else {
-                Ok(DerivationOutput::Deferred)
-            }
-        }
-    }
-
-    impl DerivationOutput {
-        pub(crate) async fn write_output<W>(
-            &self,
-            drv_name: &StorePathName,
-            output_name: &OutputName,
-            mut writer: W,
-        ) -> Result<(), W::Error>
-        where
-            W: NixWrite,
-        {
-            match self {
-                DerivationOutput::InputAddressed(store_path) => {
-                    writer.write_value(store_path).await?;
-                    writer.write_value("").await?;
-                    writer.write_value("").await?;
-                }
-                DerivationOutput::CAFixed(ca) => {
-                    let name = output_path_name(drv_name, output_name)
-                        .to_string()
-                        .parse()
-                        .map_err(Error::unsupported_data)?;
-                    let path = writer.store_dir().make_store_path_from_ca(name, *ca);
-                    writer.write_value(&path).await?;
-                    writer.write_value(&ca.method_algorithm()).await?;
-                    writer.write_display(ca.hash().base32().bare()).await?;
-                }
-                DerivationOutput::Deferred => {
-                    writer.write_value("").await?;
-                    writer.write_value("").await?;
-                    writer.write_value("").await?;
-                }
-                #[cfg(feature = "xp-ca-derivations")]
-                DerivationOutput::CAFloating(algo) => {
-                    writer.write_value("").await?;
-                    writer.write_value(algo).await?;
-                    writer.write_value("").await?;
-                }
-                #[cfg(feature = "xp-impure-derivations")]
-                DerivationOutput::Impure(algo) => {
-                    writer.write_value("").await?;
-                    writer.write_value(algo).await?;
-                    writer.write_value("impure").await?;
-                }
-            }
-            Ok(())
-        }
-    }
-}
 
 #[cfg(test)]
 mod unittests {

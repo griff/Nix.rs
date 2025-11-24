@@ -514,3 +514,38 @@ pub fn nix_serialize_remote(item: TokenStream) -> TokenStream {
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }
+
+#[proc_macro]
+pub fn nix_serde_remote(item: TokenStream) -> TokenStream {
+    let input = syn::parse_macro_input!(item as RemoteInput);
+    let crate_path: syn::Path = parse_quote!(nixrs);
+    let mut ret = ser::expand_nix_serialize_remote(crate_path.clone(), &input)
+        .unwrap_or_else(syn::Error::into_compile_error);
+    ret.extend(
+        de::expand_nix_deserialize_remote(crate_path, &input)
+            .unwrap_or_else(syn::Error::into_compile_error),
+    );
+    ret.into()
+}
+
+#[proc_macro]
+pub fn nix_deserialize_remote_derive(item: TokenStream) -> TokenStream {
+    let mut input = syn::parse_macro_input!(item as DeriveInput);
+    let crate_path: syn::Path = parse_quote!(nixrs);
+    de::expand_nix_deserialize(crate_path, &mut input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+#[proc_macro]
+pub fn nix_serde_remote_derive(item: TokenStream) -> TokenStream {
+    let mut input = syn::parse_macro_input!(item as DeriveInput);
+    let crate_path: syn::Path = parse_quote!(nixrs);
+    let mut ret = de::expand_nix_deserialize(crate_path.clone(), &mut input)
+        .unwrap_or_else(syn::Error::into_compile_error);
+    ret.extend(
+        ser::expand_nix_serialize(crate_path, &mut input)
+            .unwrap_or_else(syn::Error::into_compile_error),
+    );
+    ret.into()
+}

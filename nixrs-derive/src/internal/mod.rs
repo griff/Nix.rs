@@ -143,19 +143,13 @@ impl<'a> Container<'a> {
             &self.crate_path
         }
     }
-
-    pub fn ident_type(&self) -> syn::Type {
-        let path: syn::Path = self.ident.clone().into();
-        let tp = syn::TypePath { qself: None, path };
-        tp.into()
-    }
 }
 
 pub struct Remote<'a> {
     pub attrs: attrs::Container,
-    pub ty: &'a syn::Type,
+    pub ty: &'a syn::Ident,
     pub crate_path: syn::Path,
-    //pub input: &'a inputs::RemoteInput,
+    pub original: &'a inputs::RemoteInput,
 }
 
 impl<'a> Remote<'a> {
@@ -169,7 +163,7 @@ impl<'a> Remote<'a> {
             ty: &input.ident,
             attrs,
             crate_path,
-            //input,
+            original: input,
         })
     }
 

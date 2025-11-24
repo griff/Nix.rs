@@ -242,44 +242,6 @@ impl FromStoreDirStr for LegacyDerivedPath {
 }
 */
 
-#[cfg(feature = "daemon-serde")]
-mod daemon_serde {
-    use crate::daemon::de::NixDeserialize;
-    use crate::daemon::ser::NixSerialize;
-
-    use super::{DerivedPath, LegacyDerivedPath};
-
-    impl NixSerialize for DerivedPath {
-        async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
-        where
-            W: crate::daemon::ser::NixWrite,
-        {
-            let store_dir = writer.store_dir().clone();
-            writer
-                .write_display(store_dir.display(&self.to_legacy_format()))
-                .await
-        }
-    }
-
-    impl NixDeserialize for DerivedPath {
-        async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
-        where
-            R: ?Sized + crate::daemon::de::NixRead + Send,
-        {
-            use crate::daemon::de::Error;
-            if let Some(s) = reader.try_read_value::<String>().await? {
-                let legacy = reader
-                    .store_dir()
-                    .parse::<LegacyDerivedPath>(&s)
-                    .map_err(R::Error::invalid_data)?;
-                Ok(Some(legacy.0))
-            } else {
-                Ok(None)
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod unittests {
     use rstest::rstest;

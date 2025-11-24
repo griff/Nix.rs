@@ -4,8 +4,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use data_encoding::BASE64;
-#[cfg(feature = "daemon")]
-use nixrs_derive::{NixDeserialize, NixSerialize};
 use ring::error::{KeyRejected, Unspecified};
 use ring::rand;
 use ring::signature::{self, Ed25519KeyPair, KeyPair, UnparsedPublicKey};
@@ -39,8 +37,6 @@ pub type SignatureSet = BTreeSet<Signature>;
 #[derive(
     Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, DeserializeFromStr, SerializeDisplay,
 )]
-#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "daemon", nix(from_str, display))]
 pub struct Signature(Arc<String>, [u8; SIGNATURE_BYTES]);
 
 impl Signature {

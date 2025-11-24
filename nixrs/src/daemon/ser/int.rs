@@ -1,6 +1,3 @@
-#[cfg(feature = "daemon")]
-use nixrs_derive::nix_serialize_remote;
-
 use super::{Error, NixSerialize, NixWrite};
 
 impl NixSerialize for u64 {
@@ -21,24 +18,6 @@ impl NixSerialize for usize {
         writer.write_number(v).await
     }
 }
-
-/*
-#[cfg(feature = "daemon")]
-nix_serialize_remote!(
-    #[nix(into = "u64")]
-    u8
-);
-*/
-#[cfg(feature = "daemon")]
-nix_serialize_remote!(
-    #[nix(into = "u64")]
-    u16
-);
-#[cfg(feature = "daemon")]
-nix_serialize_remote!(
-    #[nix(into = "u64")]
-    u32
-);
 
 impl NixSerialize for bool {
     async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>

@@ -1,13 +1,7 @@
-#[cfg(feature = "daemon")]
-use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{FromPrimitive, IntoPrimitive, TryFromPrimitive};
 use serde::{Deserialize, Serialize};
 
 use crate::ByteString;
-#[cfg(feature = "daemon")]
-use crate::daemon::ser::{NixSerialize, NixWrite};
-#[cfg(feature = "daemon")]
-use crate::daemon::wire::logger::RawLogMessageType;
 
 #[derive(
     Debug,
@@ -25,8 +19,6 @@ use crate::daemon::wire::logger::RawLogMessageType;
     Deserialize,
 )]
 #[serde(try_from = "u16", into = "u16")]
-#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "daemon", nix(from = "u16", into = "u16"))]
 #[repr(u16)]
 pub enum Verbosity {
     #[default]
@@ -56,8 +48,6 @@ pub enum Verbosity {
     Deserialize,
 )]
 #[serde(try_from = "u16", into = "u16")]
-#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "daemon", nix(try_from = "u16", into = "u16"))]
 #[repr(u16)]
 pub enum ActivityType {
     Unknown = 0,
@@ -91,8 +81,6 @@ pub enum ActivityType {
     Deserialize,
 )]
 #[serde(try_from = "u16", into = "u16")]
-#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "daemon", nix(try_from = "u16", into = "u16"))]
 #[repr(u16)]
 pub enum ResultType {
     FileLinked = 100,
@@ -128,49 +116,8 @@ impl LogMessage {
     }
 }
 
-#[cfg(feature = "daemon")]
-impl NixSerialize for LogMessage {
-    async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
-    where
-        W: NixWrite,
-    {
-        match self {
-            LogMessage::Message(msg) => {
-                writer.write_value(&RawLogMessageType::Next).await?;
-                writer.write_value(&msg.text).await?;
-            }
-            LogMessage::StartActivity(act) => {
-                if writer.version().minor() >= 20 {
-                    writer
-                        .write_value(&RawLogMessageType::StartActivity)
-                        .await?;
-                    writer.write_value(act).await?;
-                } else {
-                    writer.write_value(&RawLogMessageType::Next).await?;
-                    writer.write_value(&act.text).await?;
-                }
-            }
-            LogMessage::StopActivity(act) => {
-                if writer.version().minor() >= 20 {
-                    writer.write_value(&RawLogMessageType::StopActivity).await?;
-                    writer.write_value(&act.id).await?;
-                }
-            }
-            LogMessage::Result(result) => {
-                if writer.version().minor() >= 20 {
-                    writer.write_value(&RawLogMessageType::Result).await?;
-                    writer.write_value(result).await?;
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
 pub struct Message {
-    #[cfg_attr(feature = "daemon", nix(skip))]
     pub level: Verbosity,
     #[serde(rename = "msg", serialize_with = "crate::serialize_byte_string")]
     pub text: ByteString,
@@ -189,50 +136,7 @@ pub struct Activity {
     pub activity_type: ActivityType,
 }
 
-#[cfg(feature = "daemon")]
-impl NixSerialize for Activity {
-    async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
-    where
-        W: NixWrite,
-    {
-        writer.write_value(&self.id).await?;
-        writer.write_value(&self.level).await?;
-        writer.write_value(&self.activity_type).await?;
-        writer.write_value(&self.text).await?;
-        writer.write_value(&self.fields).await?;
-        writer.write_value(&self.parent).await?;
-        Ok(())
-    }
-}
-
-#[cfg(feature = "daemon")]
-impl crate::daemon::de::NixDeserialize for Activity {
-    async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
-    where
-        R: ?Sized + crate::daemon::de::NixRead + Send,
-    {
-        if let Some(id) = reader.try_read_value::<u64>().await? {
-            let level: Verbosity = reader.read_value().await?;
-            let activity_type: ActivityType = reader.read_value().await?;
-            let text: ByteString = reader.read_value().await?;
-            let fields: Vec<Field> = reader.read_value().await?;
-            let parent: u64 = reader.read_value().await?;
-            Ok(Some(Self {
-                id,
-                level,
-                activity_type,
-                text,
-                fields,
-                parent,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
 pub struct StopActivity {
     pub id: u64,
 }
@@ -246,64 +150,7 @@ pub struct ActivityResult {
     pub result_type: ResultType,
 }
 
-#[cfg(feature = "daemon")]
-impl NixSerialize for ActivityResult {
-    async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>
-    where
-        W: NixWrite,
-    {
-        writer.write_value(&self.id).await?;
-        writer.write_value(&self.result_type).await?;
-        writer.write_value(&self.fields).await?;
-        Ok(())
-    }
-}
-
-#[cfg(feature = "daemon")]
-impl crate::daemon::de::NixDeserialize for ActivityResult {
-    async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
-    where
-        R: ?Sized + crate::daemon::de::NixRead + Send,
-    {
-        if let Some(id) = reader.try_read_value().await? {
-            let result_type = reader.read_value().await?;
-            let fields = reader.read_value().await?;
-            Ok(Some(Self {
-                fields,
-                id,
-                result_type,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-#[cfg(feature = "daemon")]
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    TryFromPrimitive,
-    IntoPrimitive,
-    NixDeserialize,
-    NixSerialize,
-)]
-#[nix(try_from = "u16", into = "u16")]
-#[repr(u16)]
-pub enum FieldType {
-    Int = 0,
-    String = 1,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(feature = "daemon", nix(tag = "FieldType"))]
 #[serde(untagged)]
 pub enum Field {
     Int(u64),

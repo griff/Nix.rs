@@ -1,7 +1,7 @@
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, quote, quote_spanned};
 use syn::spanned::Spanned;
-use syn::{DeriveInput, Generics, Path, Type};
+use syn::{DeriveInput, Generics, Ident, Path, Type};
 
 use crate::internal::attrs::Default;
 use crate::internal::inputs::RemoteInput;
@@ -16,13 +16,12 @@ pub fn expand_nix_deserialize(
     cx.check()?;
     let cont = cont.unwrap();
 
-    let ty = cont.ident_type();
     let body = nix_deserialize_body(&cont);
     let crate_path = cont.crate_path();
 
     Ok(nix_deserialize_impl(
         crate_path,
-        &ty,
+        cont.ident,
         &cont.attrs,
         &cont.original.generics,
         body,
@@ -51,19 +50,18 @@ pub fn expand_nix_deserialize_remote(
 
     let crate_path = remote.crate_path();
     let body = nix_deserialize_body_from(crate_path, &remote.attrs).expect("From tokenstream");
-    let generics = Generics::default();
     Ok(nix_deserialize_impl(
         crate_path,
         remote.ty,
         &remote.attrs,
-        &generics,
+        &remote.original.generics,
         body,
     ))
 }
 
 fn nix_deserialize_impl(
     crate_path: &Path,
-    ty: &Type,
+    ty: &Ident,
     attrs: &attrs::Container,
     generics: &Generics,
     body: TokenStream,

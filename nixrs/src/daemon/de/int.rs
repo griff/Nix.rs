@@ -1,6 +1,3 @@
-#[cfg(feature = "daemon")]
-use nixrs_derive::nix_deserialize_remote;
-
 use super::{Error, NixDeserialize, NixRead};
 
 impl NixDeserialize for () {
@@ -20,22 +17,6 @@ impl NixDeserialize for u64 {
         reader.try_read_number().await
     }
 }
-
-#[cfg(feature = "daemon")]
-nix_deserialize_remote!(
-    #[nix(try_from = "u64")]
-    u8
-);
-#[cfg(feature = "daemon")]
-nix_deserialize_remote!(
-    #[nix(try_from = "u64")]
-    u16
-);
-#[cfg(feature = "daemon")]
-nix_deserialize_remote!(
-    #[nix(try_from = "u64")]
-    u32
-);
 
 impl NixDeserialize for usize {
     async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>

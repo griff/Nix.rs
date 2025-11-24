@@ -1,8 +1,6 @@
 use std::{fmt as sfmt, str::FromStr};
 
 use data_encoding::{BASE64, DecodeError, DecodeKind, HEXLOWER_PERMISSIVE};
-#[cfg(feature = "daemon")]
-use nixrs_derive::{NixDeserialize, NixSerialize};
 use thiserror::Error;
 
 use crate::base32;
@@ -657,11 +655,6 @@ impl<H: CommonHash> FromStr for Base16<H> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
-#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(
-    feature = "daemon",
-    nix(from_str, display, bound = "H: CommonHash + Sync + 'static")
-)]
 #[repr(transparent)]
 pub struct Base32<H>(H);
 impl<H: CommonHash + Sized> Base32<H> {
@@ -906,11 +899,6 @@ impl<H: CommonHash> FromStr for Base64<H> {
 /// `[<type>:]<base16|base32|base64>` or `<type>-<base64>` (a
 /// Subresource Integrity hash expression).
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
-#[cfg_attr(feature = "daemon", derive(NixDeserialize))]
-#[cfg_attr(
-    feature = "daemon",
-    nix(from_str, bound = "H: CommonHash + Sync + 'static")
-)]
 pub struct Any<H>(H);
 impl<H> Any<H> {
     pub const fn as_hash(&self) -> &H {
@@ -1120,18 +1108,6 @@ impl<H: CommonHash> FromStr for NonSRI<H> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[cfg_attr(feature = "daemon", derive(NixDeserialize, NixSerialize))]
-#[cfg_attr(
-    feature = "daemon",
-    nix(
-        from_str,
-        display,
-        bound(
-            deserialize = "F: Format + Sync + 'static, <F as Format>::Hash: CommonHash",
-            serialize = "F: sfmt::Display + Sync"
-        )
-    )
-)]
 #[repr(transparent)]
 pub struct Bare<F>(F);
 impl<F> sfmt::Display for Bare<F>

@@ -8,6 +8,7 @@ pub const SERVER_MAGIC: u64 = 0x6478696f; // 'dxio' in ASCII
 mod add_multiple_to_store;
 mod framed;
 pub mod logger;
+mod serde;
 mod stderr_read;
 pub mod types;
 

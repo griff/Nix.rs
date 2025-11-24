@@ -1,15 +1,22 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoteInput {
     pub attrs: Vec<syn::Attribute>,
-    pub ident: syn::Type,
+    pub ident: syn::Ident,
+    pub generics: syn::Generics,
 }
 
 impl syn::parse::Parse for RemoteInput {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let attrs = input.call(syn::Attribute::parse_outer)?;
 
-        let ident = input.parse::<syn::Type>()?;
-        Ok(RemoteInput { attrs, ident })
+        let ident = input.parse::<syn::Ident>()?;
+        let generics = input.parse::<syn::Generics>()?;
+
+        Ok(RemoteInput {
+            attrs,
+            ident,
+            generics,
+        })
     }
 }
 
@@ -43,6 +50,7 @@ mod test {
             RemoteInput {
                 attrs: vec![],
                 ident: parse_quote!(u64),
+                generics: syn::Generics::default(),
             }
         );
     }
@@ -58,6 +66,7 @@ mod test {
             RemoteInput {
                 attrs: vec![parse_quote!(#[nix])],
                 ident: parse_quote!(u64),
+                generics: syn::Generics::default(),
             }
         );
     }
@@ -74,6 +83,7 @@ mod test {
             RemoteInput {
                 attrs: vec![parse_quote!(#[nix]), parse_quote!(#[hello])],
                 ident: parse_quote!(u64),
+                generics: syn::Generics::default(),
             }
         );
     }
@@ -89,6 +99,7 @@ mod test {
             RemoteInput {
                 attrs: vec![parse_quote!(#[nix(try_from="u64")])],
                 ident: parse_quote!(usize),
+                generics: syn::Generics::default(),
             }
         );
     }
@@ -104,6 +115,23 @@ mod test {
             RemoteInput {
                 attrs: vec![parse_quote!(#[muh])],
                 ident: parse_quote!(u64),
+                generics: syn::Generics::default(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_input_attr_full_generics() {
+        let p: RemoteInput = parse_quote!(
+            #[nix(try_from = "u64")]
+            Vec<H>
+        );
+        assert_eq!(
+            p,
+            RemoteInput {
+                attrs: vec![parse_quote!(#[nix(try_from="u64")])],
+                ident: parse_quote!(Vec),
+                generics: parse_quote!(<H>),
             }
         );
     }
