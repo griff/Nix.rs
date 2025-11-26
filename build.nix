@@ -39,6 +39,7 @@
     ];
     buildInputs = [
       pkgs.libsodium
+      pkgs.openssl
     ];
   };
   cargoArtifacts = craneLib.buildDepsOnly commonArgs;
