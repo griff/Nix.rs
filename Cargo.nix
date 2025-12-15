@@ -1238,7 +1238,10 @@ rec {
             packageId = "capnpc";
           }
         ];
-
+        features = {
+          "process" = [ "tokio/process" ];
+        };
+        resolvedDefaultFeatures = [ "process" ];
       };
       "capnpc" = rec {
         crateName = "capnpc";

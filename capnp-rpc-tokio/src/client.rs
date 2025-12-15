@@ -95,6 +95,31 @@ impl ClientBuilder {
         let (reader, writer) = stream.into_split();
         self.connect_io(reader, writer).await
     }
+
+    #[cfg(feature = "process")]
+    pub async fn connect_process<C>(
+        self,
+        cmd: &mut tokio::process::Command,
+    ) -> capnp::Result<GuardedClient<C, ProcessDropGuard>>
+    where
+        C: FromClientHook,
+    {
+        cmd.kill_on_drop(true);
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stdin(std::process::Stdio::piped());
+        let mut process = cmd.spawn()?;
+        let stdin = process.stdin.take().expect("Stdin");
+        let stdout = process.stdout.take().expect("Stdout");
+
+        let (client, shutdown) = self
+            .connect_io::<C, _, _>(stdout, stdin)
+            .await?
+            .into_inner();
+        Ok(GuardedClient::new(
+            client,
+            Rc::new(ProcessDropGuard { process, shutdown }),
+        ))
+    }
 }
 
 pub struct ShutdownDropGuard {
@@ -108,6 +133,14 @@ impl Drop for ShutdownDropGuard {
             actual.shutdown_background();
         }
     }
+}
+
+#[cfg(feature = "process")]
+pub struct ProcessDropGuard {
+    #[expect(dead_code)]
+    process: tokio::process::Child,
+    #[expect(dead_code)]
+    shutdown: Rc<ShutdownDropGuard>,
 }
 
 pub struct GuardedClient<C, I> {

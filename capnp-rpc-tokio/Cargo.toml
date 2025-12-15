@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2024"
 build = "build.rs"
 
+[features]
+process = ["tokio/process"]
+
 [dependencies]
 capnp.workspace = true
 capnp-rpc.workspace = true
