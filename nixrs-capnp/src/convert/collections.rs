@@ -52,7 +52,7 @@ where
 
 impl<'r, T> ReadFrom<capnp::text_list::Reader<'r>> for Vec<T>
 where
-    T: FromStr + Ord,
+    T: FromStr,
     <T as FromStr>::Err: fmt::Display,
 {
     fn read_from(reader: capnp::text_list::Reader<'r>) -> Result<Self, Error> {
