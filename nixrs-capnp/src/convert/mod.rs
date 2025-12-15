@@ -36,7 +36,7 @@ where
     }
 }
 
-impl<'b, T> BuildFrom<T> for capnp::text::Builder<'b>
+impl<T> BuildFrom<T> for capnp::text::Builder<'_>
 where
     T: fmt::Display,
 {
@@ -47,12 +47,12 @@ where
     }
 }
 
-impl<'r, T> ReadFrom<capnp::text::Reader<'r>> for T
+impl<T> ReadFrom<capnp::text::Reader<'_>> for T
 where
     T: FromStr,
     <T as FromStr>::Err: fmt::Display,
 {
-    fn read_from(reader: capnp::text::Reader<'r>) -> Result<Self, Error> {
+    fn read_from(reader: capnp::text::Reader<'_>) -> Result<Self, Error> {
         reader
             .to_str()?
             .parse::<T>()
@@ -60,13 +60,13 @@ where
     }
 }
 
-impl<'r> ReadFrom<capnp::data::Reader<'r>> for Bytes {
-    fn read_from(reader: capnp::data::Reader<'r>) -> Result<Self, Error> {
+impl ReadFrom<capnp::data::Reader<'_>> for Bytes {
+    fn read_from(reader: capnp::data::Reader<'_>) -> Result<Self, Error> {
         Ok(Bytes::copy_from_slice(reader))
     }
 }
 
-impl<'b> BuildFrom<Signature> for nix_types_capnp::signature::Builder<'b> {
+impl BuildFrom<Signature> for nix_types_capnp::signature::Builder<'_> {
     fn build_from(&mut self, input: &Signature) -> Result<(), Error> {
         self.set_key(input.name());
         self.set_hash(input.signature_bytes());
@@ -74,8 +74,8 @@ impl<'b> BuildFrom<Signature> for nix_types_capnp::signature::Builder<'b> {
     }
 }
 
-impl<'r> ReadFrom<nix_types_capnp::signature::Reader<'r>> for Signature {
-    fn read_from(value: nix_types_capnp::signature::Reader<'r>) -> Result<Self, Error> {
+impl ReadFrom<nix_types_capnp::signature::Reader<'_>> for Signature {
+    fn read_from(value: nix_types_capnp::signature::Reader<'_>) -> Result<Self, Error> {
         let c_key = value.get_key()?.to_str()?;
         let c_hash = value.get_hash()?;
         let signature =
