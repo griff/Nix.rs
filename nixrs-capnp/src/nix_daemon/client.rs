@@ -481,15 +481,21 @@ impl LocalHandshakeDaemonStore for LoggedCapnpStore {
             let (sender, receiver) = LoggerStream::new();
             let mut req = self.store.capture_logs_request();
             req.get().set_logger(new_client(sender));
-            eprintln!("Doing client handsshake");
-            let capture_res = req.send();
-            let capnp_store = capture_res.pipeline.get_daemon();
             Ok(async move {
+                eprintln!("Doing client handshake");
+                let capnp_store = req
+                    .send()
+                    .promise
+                    .await
+                    .map_err(DaemonError::custom)?
+                    .get()
+                    .map_err(DaemonError::custom)?
+                    .get_daemon()
+                    .map_err(DaemonError::custom)?;
                 let mut store = CapnpStore::new(capnp_store);
-                eprintln!("Shutting down client handsshake");
+                eprintln!("Shutting down client handshake");
                 let end_res = store.shutdown().await;
-                let mres = capture_res.promise.await.map(|_| ());
-                eprintln!("Sending client handsshake result {end_res:?} {mres:?}");
+                eprintln!("Sending client handshake result {end_res:?}");
                 end_res?;
                 Ok(self)
             }
@@ -505,15 +511,15 @@ macro_rules! make_request {
             let (sender, receiver) = LoggerStream::new();
             let mut req = $self.store.capture_logs_request();
             req.get().set_logger(new_client(sender));
-            let capture_res = req.send();
-            let capnp_store = capture_res.pipeline.get_daemon();
             Ok(async move {
+                let capnp_store = req.send().promise.await.map_err(DaemonError::custom)?
+                    .get().map_err(DaemonError::custom)?
+                    .get_daemon().map_err(DaemonError::custom)?;
                 let mut $store = CapnpStore::new(capnp_store);
                 let res = {
                     $($block)*
                 };
                 let end_res = $store.shutdown().await;
-                let _ = capture_res.promise.await.map_err(DaemonError::custom);
                 let value = res.map_err(DaemonError::custom)?;
                 end_res?;
                 Ok(value)

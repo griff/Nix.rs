@@ -611,7 +611,6 @@ where
     ) -> Promise<(), ::capnp::Error> {
         let inner = self.inner.clone();
         Promise::from_future(async move {
-            let (sender, receiver) = oneshot::channel();
             let logger = if params.get()?.has_logger() {
                 params.get()?.get_logger()?
             } else {
@@ -619,7 +618,7 @@ where
             };
             let captures = Captures {
                 client: logger,
-                sender: Some(sender),
+                sender: None,
             };
             let client: logger::Client = new_client(captures);
             let store = poll_fn(|cx| {
@@ -635,8 +634,6 @@ where
                 shutdown: false,
             };
             result.get().set_daemon(new_client(server));
-            result.set_pipeline()?;
-            receiver.await.map_err(from_error)?;
             Ok(())
         })
     }
@@ -709,7 +706,6 @@ where
     ) -> Promise<(), ::capnp::Error> {
         let store = self.store.clone();
         Promise::from_future(async move {
-            let (sender, receiver) = oneshot::channel();
             let client = if params.get()?.has_logger() {
                 params.get()?.get_logger()?
             } else {
@@ -717,7 +713,7 @@ where
             };
             let captures = Captures {
                 client,
-                sender: Some(sender),
+                sender: None,
             };
             let client = new_client(captures);
             let server = CapnpServer {
@@ -726,8 +722,6 @@ where
                 shutdown: false,
             };
             result.get().set_daemon(new_client(server));
-            result.set_pipeline()?;
-            receiver.await.map_err(from_error)?;
             Ok(())
         })
     }
