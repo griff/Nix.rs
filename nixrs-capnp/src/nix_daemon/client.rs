@@ -67,13 +67,17 @@ impl LocalDaemonStore for CapnpStore {
         nixrs::daemon::TrustLevel::Trusted
     }
 
-    async fn shutdown(&mut self) -> DaemonResult<()> {
-        let req = self.store.end_request();
-        req.send()
-            .promise
-            .await
-            .map(|_| ())
-            .map_err(DaemonError::custom)
+    fn shutdown(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + '_ {
+        async move {
+            let req = self.store.end_request();
+            req.send()
+                .promise
+                .await
+                .map(|_| ())
+                .map_err(DaemonError::custom)
+        }
+        .map_err(DaemonError::custom)
+        .empty_logs()
     }
 
     fn set_options<'a>(
@@ -838,7 +842,7 @@ impl LocalDaemonStore for LoggedCapnpStore {
         })
     }
 
-    async fn shutdown(&mut self) -> DaemonResult<()> {
-        Ok(())
+    fn shutdown(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + '_ {
+        ready(Ok(())).empty_logs()
     }
 }

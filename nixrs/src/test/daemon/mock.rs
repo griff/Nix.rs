@@ -2547,16 +2547,19 @@ where
         .boxed_result()
     }
 
-    async fn shutdown(&mut self) -> DaemonResult<()> {
-        let mut res = Ok(());
-        for op in self.ops.drain(..) {
-            if let Err(err) = self.reporter.unread_operation(op)
-                && res.is_ok()
-            {
-                res = Err(err);
+    fn shutdown(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + Send + '_ {
+        async move {
+            let mut res = Ok(());
+            for op in self.ops.drain(..) {
+                if let Err(err) = self.reporter.unread_operation(op)
+                    && res.is_ok()
+                {
+                    res = Err(err);
+                }
             }
+            res
         }
-        res
+        .empty_logs()
     }
 }
 

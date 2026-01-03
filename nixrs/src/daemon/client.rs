@@ -1065,8 +1065,11 @@ where
         .boxed_result()
     }
 
-    async fn shutdown(&mut self) -> DaemonResult<()> {
-        self.writer.shutdown().await?;
-        Ok(())
+    fn shutdown(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + Send + '_ {
+        async move {
+            self.writer.shutdown().await?;
+            Ok(())
+        }
+        .empty_logs()
     }
 }

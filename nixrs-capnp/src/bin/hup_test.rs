@@ -67,9 +67,11 @@ impl DaemonStore for SleepStore {
         nixrs::daemon::TrustLevel::Trusted
     }
 
-    async fn shutdown(&mut self) -> nixrs::daemon::DaemonResult<()> {
+    fn shutdown(
+        &mut self,
+    ) -> impl nixrs::daemon::ResultLog<Output = nixrs::daemon::DaemonResult<()>> + '_ {
         info!("shutting down sleep store");
-        Ok(())
+        ready(Ok(())).empty_logs()
     }
 
     fn build_paths<'a>(

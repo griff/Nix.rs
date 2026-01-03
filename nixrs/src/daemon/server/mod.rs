@@ -1,6 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
-use std::future::Future;
 use std::ops::Deref;
 use std::pin::{Pin, pin};
 
@@ -563,7 +562,7 @@ where
         ret
     }
 
-    fn shutdown(&mut self) -> impl Future<Output = DaemonResult<()>> + Send + '_ {
+    fn shutdown(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + Send + '_ {
         let ret = Box::pin(self.0.shutdown());
         trace!("Shutdown Size {}", size_of_val(&ret));
         ret

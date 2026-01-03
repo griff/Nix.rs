@@ -1,4 +1,3 @@
-use std::future::Future;
 use std::pin::Pin;
 use std::{pin::pin, sync::Arc};
 
@@ -103,12 +102,8 @@ where
         self.trust
     }
 
-    fn shutdown(&mut self) -> impl Future<Output = super::DaemonResult<()>> + Send + '_ {
-        let m = self.clone();
-        async move {
-            let mut g = m.m.lock().await;
-            g.shutdown().await
-        }
+    fn shutdown(&mut self) -> impl ResultLog<Output = super::DaemonResult<()>> + Send + '_ {
+        mutex_result!(self, |store| { store.shutdown() })
     }
 
     fn set_options<'r>(

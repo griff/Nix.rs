@@ -43,7 +43,7 @@ pub struct Logger {
 
 impl Logger {
     pub async fn process_logs<R>(
-        self,
+        &self,
         logs: impl ResultLog<Output = DaemonResult<R>>,
     ) -> Result<R, Error> {
         let mut logs = pin!(logs);
@@ -105,10 +105,10 @@ where
     fn end(&mut self, _: nix_daemon::EndParams, _: nix_daemon::EndResults) -> Promise<(), Error> {
         let mut this = self.clone();
         Promise::from_future(async move {
-            this.logger.end().await?;
             if this.shutdown {
-                this.store.shutdown().await.map_err(from_error)?;
+                this.logger.process_logs(this.store.shutdown()).await?;
             }
+            this.logger.end().await?;
             Ok(())
         })
     }

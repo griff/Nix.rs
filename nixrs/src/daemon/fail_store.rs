@@ -26,7 +26,7 @@ impl DaemonStore for FailStore {
         super::TrustLevel::Unknown
     }
 
-    async fn shutdown(&mut self) -> DaemonResult<()> {
-        Ok(())
+    fn shutdown(&mut self) -> impl ResultLog<Output = DaemonResult<()>> {
+        ready(Ok(())).empty_logs()
     }
 }

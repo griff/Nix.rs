@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::future::{Future, ready};
+use std::future::ready;
 
 use futures::Stream;
 use tokio::io::AsyncBufRead;
@@ -325,7 +325,7 @@ pub trait LocalDaemonStore: HasStoreDir {
         ready(Err(DaemonError::unimplemented(Operation::AddToStore))).empty_logs()
     }
 
-    fn shutdown(&mut self) -> impl Future<Output = DaemonResult<()>> + '_;
+    fn shutdown(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + '_;
 }
 
 #[forbid(clippy::missing_trait_methods)]
@@ -600,7 +600,7 @@ where
         (**self).add_ca_to_store(name, cam, refs, repair, source)
     }
 
-    fn shutdown(&mut self) -> impl Future<Output = DaemonResult<()>> + '_ {
+    fn shutdown(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + '_ {
         (**self).shutdown()
     }
 }

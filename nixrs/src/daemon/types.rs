@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
-use std::future::{Future, ready};
+use std::future::ready;
 use std::pin::Pin;
 use std::time::Duration;
 
@@ -782,7 +782,7 @@ pub trait DaemonStore: HasStoreDir + Send {
             .boxed_result()
     }
 
-    fn shutdown(&mut self) -> impl Future<Output = DaemonResult<()>> + Send + '_;
+    fn shutdown(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + Send + '_;
 }
 
 #[forbid(clippy::missing_trait_methods)]
@@ -1058,7 +1058,7 @@ where
         (**self).add_ca_to_store(name, cam, refs, repair, source)
     }
 
-    fn shutdown(&mut self) -> impl Future<Output = DaemonResult<()>> + Send + '_ {
+    fn shutdown(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + Send + '_ {
         (**self).shutdown()
     }
 }
