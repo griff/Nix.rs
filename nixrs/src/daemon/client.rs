@@ -170,7 +170,7 @@ where
     }
 
     #[cfg(feature = "daemon-client-process")]
-    pub async fn build_process(self, cmd: &mut Command) -> DaemonResult<ChildHandshakeStore<CP>> {
+    pub fn build_process(self, cmd: &mut Command) -> DaemonResult<ChildHandshakeStore<CP>> {
         use tokio::io::{AsyncBufReadExt as _, BufReader};
 
         cmd.stdout(std::process::Stdio::piped());
@@ -231,7 +231,7 @@ where
     where
         CP: CompatAddPermRoot<DaemonClient<ChildStdout, ChildStdin, CP>>,
     {
-        async move { Ok(self.build_process(cmd).await?.handshake()) }.future_result()
+        async move { Ok(self.build_process(cmd)?.handshake()) }.future_result()
     }
 }
 
