@@ -14,8 +14,9 @@ test = ["proptest", "dep:proptest-derive", "dep:test-strategy", "dep:pretty_asse
 archive = ["dep:walkdir", "dep:bstr"]
 daemon = ["archive", "daemon-serde", "dep:nixrs-derive", "dep:libc", "dep:bstr", "tokio/rt"]
 daemon-serde = []
+daemon-client-process = ["daemon", "tokio/process"]
 internal = []
-full = ["test", "daemon"]
+full = ["test", "daemon", "daemon-client-process"]
 
 # Nix Experimental Features
 xp-dynamic-derivations = []
