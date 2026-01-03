@@ -224,7 +224,7 @@ where
     }
 
     #[cfg(feature = "daemon-client-process")]
-    pub async fn connect_process(
+    pub fn connect_process(
         self,
         cmd: &mut Command,
     ) -> impl ResultLog<Output = DaemonResult<ChildStore<CP>>>
