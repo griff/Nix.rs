@@ -52,7 +52,21 @@ impl<'r> ReadFrom<nix_types_capnp::store_path::Reader<'r>> for StorePath {
 
 impl<'r> ReadFrom<nixrs_capnp::remote_store_path::Reader<'r>> for StorePath {
     fn read_from(value: nixrs_capnp::remote_store_path::Reader<'r>) -> Result<Self, Error> {
-        value.get_store_path()?.read_into()
+        if value.has_store_path() {
+            value.get_store_path()?.read_into()
+        } else {
+            Err(Error::failed("No store path was sent".to_string()))
+        }
+    }
+}
+
+impl<'r> ReadFrom<nixrs_capnp::remote_store_path::Reader<'r>> for Option<StorePath> {
+    fn read_from(value: nixrs_capnp::remote_store_path::Reader<'r>) -> Result<Self, Error> {
+        if value.has_store_path() {
+            Ok(Some(value.get_store_path()?.read_into()?))
+        } else {
+            Ok(None)
+        }
     }
 }
 
