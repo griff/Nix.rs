@@ -346,7 +346,7 @@ impl DaemonStorePathAccess {
                 }
                 tokio::select! {
                     _ = sender.closed() => {
-                        warn!(%store_path, "Canceling info requets because all recivers were dropped");
+                        warn!(%store_path, "Canceling info request because all receivers were dropped");
                     },
                     res = req.send().promise => {
                         let value = res.and_then(|res| {
