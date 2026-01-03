@@ -11,6 +11,8 @@ use futures::io::Cursor;
 use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, AsyncWriteExt as _, copy_buf};
 use tokio::net::UnixStream;
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
+#[cfg(feature = "daemon-client-process")]
+use tokio::process::{ChildStdin, ChildStdout, Command};
 use tokio::sync::oneshot;
 use tokio::try_join;
 use tracing::{debug, info, trace};
@@ -45,7 +47,12 @@ use crate::store_path::{
 };
 
 pub mod compat;
+#[cfg(feature = "daemon-client-process")]
+mod process;
 mod process_stderr;
+
+#[cfg(feature = "daemon-client-process")]
+pub use process::{ChildHandshakeStore, ChildStore};
 
 pub struct DaemonClientBuilder<CP = ()> {
     store_dir: StoreDir,
@@ -162,6 +169,27 @@ where
         self.build_unix("/nix/var/nix/daemon-socket/socket").await
     }
 
+    #[cfg(feature = "daemon-client-process")]
+    pub async fn build_process(self, cmd: &mut Command) -> DaemonResult<ChildHandshakeStore<CP>> {
+        use tokio::io::{AsyncBufReadExt as _, BufReader};
+
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stdin(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
+        let mut child = cmd.spawn()?;
+        let stdin = child.stdin.take().expect("Stdin");
+        let stdout = child.stdout.take().expect("Stdout");
+        let stderr = child.stderr.take().expect("Stderr");
+        let stderr = BufReader::new(stderr).lines();
+
+        let store = self.build(stdout, stdin);
+        Ok(ChildHandshakeStore {
+            store,
+            child,
+            stderr,
+        })
+    }
+
     pub fn connect<R, W>(
         self,
         reader: R,
@@ -193,6 +221,17 @@ where
         CP: CompatAddPermRoot<DaemonClient<OwnedReadHalf, OwnedWriteHalf, CP>>,
     {
         async move { Ok(self.build_daemon().await?.handshake()) }.future_result()
+    }
+
+    #[cfg(feature = "daemon-client-process")]
+    pub async fn connect_process(
+        self,
+        cmd: &mut Command,
+    ) -> impl ResultLog<Output = DaemonResult<ChildStore<CP>>>
+    where
+        CP: CompatAddPermRoot<DaemonClient<ChildStdout, ChildStdin, CP>>,
+    {
+        async move { Ok(self.build_process(cmd).await?.handshake()) }.future_result()
     }
 }
 

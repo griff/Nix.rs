@@ -5216,12 +5216,13 @@ rec {
         features = {
           "archive" = [ "dep:walkdir" "dep:bstr" ];
           "daemon" = [ "archive" "daemon-serde" "dep:nixrs-derive" "dep:libc" "dep:bstr" "tokio/rt" ];
-          "full" = [ "test" "daemon" ];
+          "daemon-client-process" = [ "daemon" "tokio/process" ];
+          "full" = [ "test" "daemon" "daemon-client-process" ];
           "md5" = [ "dep:md5" ];
           "proptest" = [ "dep:proptest" ];
           "test" = [ "proptest" "dep:proptest-derive" "dep:test-strategy" "dep:pretty_assertions" ];
         };
-        resolvedDefaultFeatures = [ "archive" "daemon" "daemon-serde" "default" "full" "internal" "md5" "proptest" "test" "xp-ca-derivations" "xp-dynamic-derivations" "xp-impure-derivations" ];
+        resolvedDefaultFeatures = [ "archive" "daemon" "daemon-client-process" "daemon-serde" "default" "full" "internal" "md5" "proptest" "test" "xp-ca-derivations" "xp-dynamic-derivations" "xp-impure-derivations" ];
       };
       "nixrs-capnp" = rec {
         crateName = "nixrs-capnp";
