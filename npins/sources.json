@@ -11,10 +11,10 @@
       "version_upper_bound": null,
       "release_prefix": null,
       "submodules": false,
-      "version": "v0.21.2",
-      "revision": "c1f101c1de5c2fe9838937774270ae71a7482340",
-      "url": "https://api.github.com/repos/ipetkov/crane/tarball/v0.21.2",
-      "hash": "0ywij0y8n0an7875mxacix2mzkr54lmcj661qlv1jmprwhls3v62"
+      "version": "v0.22.0",
+      "revision": "40203daff663c9e0b70d052aae12819dea8e6798",
+      "url": "https://api.github.com/repos/ipetkov/crane/tarball/v0.22.0",
+      "hash": "0qqyp6vwwlxcpm7306nw3bxd8dimzbf8zzgrp245jxgqk0b49b7j"
     },
     "nixpkgs": {
       "type": "Git",
@@ -25,9 +25,9 @@
       },
       "branch": "nixpkgs-unstable",
       "submodules": false,
-      "revision": "6f374686605df381de8541c072038472a5ea2e2d",
-      "url": "https://github.com/NixOS/nixpkgs/archive/6f374686605df381de8541c072038472a5ea2e2d.tar.gz",
-      "hash": "00wbf9z0610al0irvjlsqq6qwm1kr594chds28ry98fm7sqyp480"
+      "revision": "76eec3925eb9bbe193934987d3285473dbcfad50",
+      "url": "https://github.com/NixOS/nixpkgs/archive/76eec3925eb9bbe193934987d3285473dbcfad50.tar.gz",
+      "hash": "12ifsbmygs4wp1bifaknk2p9gdy203mjzjidi77vl61w0hbnhflh"
     },
     "rust-overlay": {
       "type": "Git",
@@ -38,9 +38,9 @@
       },
       "branch": "master",
       "submodules": false,
-      "revision": "6fbf5d328dce1828d887b8ee7d44a785196a34e7",
-      "url": "https://github.com/oxalica/rust-overlay/archive/6fbf5d328dce1828d887b8ee7d44a785196a34e7.tar.gz",
-      "hash": "1l7naa8zzc77ay0ybhamf67dg1di9l4v7w8zlsz5rl8lqv4848ml"
+      "revision": "03c6e38661c02a27ca006a284813afdc461e9f7e",
+      "url": "https://github.com/oxalica/rust-overlay/archive/03c6e38661c02a27ca006a284813afdc461e9f7e.tar.gz",
+      "hash": "0z921lzgfj6c5chmsq4q8i3p088kg3h7dqr4nc2z4ncf1mgrfwn8"
     }
   },
   "version": 5
