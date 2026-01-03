@@ -123,9 +123,23 @@ impl SetterInput<remote_store_path::Owned> for &'_ RemoteStorePath {
 
 impl<'r> ReadFrom<remote_store_path::Reader<'r>> for RemoteStorePath {
     fn read_from(reader: remote_store_path::Reader<'r>) -> Result<Self, CapError> {
+        if !reader.has_store_path() {
+            return Err(CapError::failed("No store path was sent".to_string()));
+        }
         let store_path = Rc::new(reader.get_store_path()?.read_into()?);
         let client = reader.get_access()?;
         Ok(RemoteStorePath { store_path, client })
+    }
+}
+
+impl<'r> ReadFrom<remote_store_path::Reader<'r>> for Option<RemoteStorePath> {
+    fn read_from(reader: remote_store_path::Reader<'r>) -> Result<Self, CapError> {
+        if !reader.has_store_path() {
+            return Ok(None);
+        }
+        let store_path = Rc::new(reader.get_store_path()?.read_into()?);
+        let client = reader.get_access()?;
+        Ok(Some(RemoteStorePath { store_path, client }))
     }
 }
 
