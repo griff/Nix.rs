@@ -2,8 +2,13 @@ error[E0277]: the trait bound `BadType: NixDeserialize` is not satisfied
  --> tests/ui/deserialize_bad_type.rs
   |
   7 |     version: BadType,
-    |              ^^^^^^^ the trait `NixDeserialize` is not implemented for `BadType`
+    |              ^^^^^^^ unsatisfied trait bound
     |
+help: the trait `NixDeserialize` is not implemented for `BadType`
+   --> tests/ui/deserialize_bad_type.rs
+    |
+  3 | pub struct BadType;
+    | ^^^^^^^^^^^^^^^^^^
     = help: the following other types implement trait `NixDeserialize`:
               ()
               BTreeMap<K, V>

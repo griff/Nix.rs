@@ -2,8 +2,13 @@ error[E0277]: the trait bound `Test: FromStoreDirStr` is not satisfied
  --> tests/ui/deserialize_from_store_dir_str_missing.rs
   |
   | #[nix(from_store_dir_str)]
-  |       ^^^^^^^^^^^^^^^^^^ the trait `FromStoreDirStr` is not implemented for `Test`
+  |       ^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
   |
+help: the trait `FromStoreDirStr` is not implemented for `Test`
+ --> tests/ui/deserialize_from_store_dir_str_missing.rs
+  |
+  | pub struct Test;
+  | ^^^^^^^^^^^^^^^
   = help: the following other types implement trait `FromStoreDirStr`:
             DerivedPath
             SingleDerivedPath

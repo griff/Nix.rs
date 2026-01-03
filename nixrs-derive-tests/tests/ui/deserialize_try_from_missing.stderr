@@ -2,7 +2,12 @@ error[E0277]: the trait bound `Test: std::convert::From<u64>` is not satisfied
  --> tests/ui/deserialize_try_from_missing.rs
   |
   | #[nix(try_from = "u64")]
-  |                  ^^^^^ the trait `std::convert::From<u64>` is not implemented for `Test`
+  |                  ^^^^^ unsatisfied trait bound
   |
+help: the trait `std::convert::From<u64>` is not implemented for `Test`
+ --> tests/ui/deserialize_try_from_missing.rs
+  |
+  | pub struct Test;
+  | ^^^^^^^^^^^^^^^
   = note: required for `u64` to implement `Into<Test>`
   = note: required for `Test` to implement `TryFrom<u64>`
