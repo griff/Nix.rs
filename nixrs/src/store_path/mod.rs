@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 mod content_address;
 mod create;
+mod fixed_output;
 mod full_store_path;
 mod macros;
 mod path;
@@ -9,7 +10,10 @@ mod store_dir;
 mod store_path_hash;
 mod store_path_name;
 
-pub use content_address::{ContentAddress, ContentAddressMethod, ContentAddressMethodAlgorithm};
+pub use content_address::{
+    ContentAddress, ContentAddressMethod, ContentAddressMethodAlgorithm, ParseContentAddressError,
+};
+pub use fixed_output::{FixedOutput, FixedOutputMethod, FixedOutputMethodAlgorithm};
 pub use full_store_path::FullStorePath;
 pub use path::{ParseStorePathError, StorePath, StorePathError};
 pub use store_dir::{

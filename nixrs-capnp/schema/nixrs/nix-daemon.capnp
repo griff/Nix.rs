@@ -23,8 +23,7 @@ struct ClientOptions {
 struct ContentAddressMethodAlgorithm {
     union {
         text @0 :Void;
-        flat @1 :Types.HashAlgo;
-        recursive @2 :Types.HashAlgo;
+        fixed @1 :Types.FixedOutputMethodAlgorithm;
     }
 }
 struct ValidPathInfo {

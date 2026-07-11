@@ -2,9 +2,23 @@ use proptest::prelude::*;
 
 use crate::hash::{Algorithm, Hash, Sha256};
 use crate::store_path::{
-    ContentAddress, ContentAddressMethod, ContentAddressMethodAlgorithm, FullStorePath, StoreDir,
-    StorePath, StorePathHash, StorePathName,
+    ContentAddress, ContentAddressMethod, ContentAddressMethodAlgorithm, FixedOutput,
+    FixedOutputMethod, FixedOutputMethodAlgorithm, FullStorePath, StoreDir, StorePath,
+    StorePathHash, StorePathName,
 };
+
+impl Arbitrary for FixedOutputMethod {
+    type Parameters = ();
+    type Strategy = BoxedStrategy<FixedOutputMethod>;
+
+    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+        prop_oneof![
+            Just(FixedOutputMethod::Flat),
+            Just(FixedOutputMethod::Recursive),
+        ]
+        .boxed()
+    }
+}
 
 impl Arbitrary for ContentAddressMethod {
     type Parameters = ();
@@ -13,24 +27,54 @@ impl Arbitrary for ContentAddressMethod {
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
         prop_oneof![
             Just(ContentAddressMethod::Text),
-            Just(ContentAddressMethod::Flat),
-            Just(ContentAddressMethod::Recursive),
+            any::<FixedOutputMethod>().prop_map(ContentAddressMethod::Fixed),
         ]
         .boxed()
     }
 }
 
+fn limit_algorithm(algo: Option<Algorithm>) -> impl Strategy<Value = Algorithm> {
+    match algo {
+        Some(value) => Just(value).boxed(),
+        None => any::<Algorithm>().boxed(),
+    }
+}
+
+impl Arbitrary for FixedOutputMethodAlgorithm {
+    type Parameters = Option<Algorithm>;
+    type Strategy = BoxedStrategy<FixedOutputMethodAlgorithm>;
+
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+        (any::<FixedOutputMethod>(), limit_algorithm(args))
+            .prop_map(|(method, algorithm)| -> _ {
+                FixedOutputMethodAlgorithm { method, algorithm }
+            })
+            .boxed()
+    }
+}
+
 impl Arbitrary for ContentAddressMethodAlgorithm {
-    type Parameters = ();
+    type Parameters = Option<Algorithm>;
     type Strategy = BoxedStrategy<ContentAddressMethodAlgorithm>;
 
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
         prop_oneof![
             Just(ContentAddressMethodAlgorithm::Text),
-            any::<Algorithm>().prop_map(ContentAddressMethodAlgorithm::Flat),
-            any::<Algorithm>().prop_map(ContentAddressMethodAlgorithm::Recursive),
+            any_with::<FixedOutputMethodAlgorithm>(args)
+                .prop_map(ContentAddressMethodAlgorithm::Fixed),
         ]
         .boxed()
+    }
+}
+
+impl Arbitrary for FixedOutput {
+    type Parameters = ();
+    type Strategy = BoxedStrategy<FixedOutput>;
+
+    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+        (any::<FixedOutputMethod>(), any::<Hash>())
+            .prop_map(|(method, hash)| FixedOutput { method, hash })
+            .boxed()
     }
 }
 
@@ -41,8 +85,7 @@ impl Arbitrary for ContentAddress {
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
         prop_oneof![
             any::<Sha256>().prop_map(ContentAddress::Text),
-            any::<Hash>().prop_map(ContentAddress::Flat),
-            any::<Hash>().prop_map(ContentAddress::Recursive),
+            any::<FixedOutput>().prop_map(ContentAddress::Fixed),
         ]
         .boxed()
     }

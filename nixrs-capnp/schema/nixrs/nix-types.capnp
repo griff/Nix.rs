@@ -34,11 +34,26 @@ struct Hash {
     algo @0 :HashAlgo;
     digest @1 :Data;
 }
+
+enum FixedOutputMethod {
+    flat @0;
+    recursive @1;
+}
+
+struct FixedOutputMethodAlgorithm {
+    method @0 :FixedOutputMethod;
+    algo @1 :HashAlgo;
+}
+
+struct FixedOutput {
+    method @0 :FixedOutputMethod;
+    hash @1 :Hash;
+}
+
 struct ContentAddress {
     union {
         text @0 :Sha256;
-        flat @1 :Hash;
-        recursive @2 :Hash;
+        fixed @1 :FixedOutput;
     }
 }
 

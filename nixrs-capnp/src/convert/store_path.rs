@@ -2,10 +2,29 @@ use capnp::Error;
 use capnp_convert::{BuildFrom as _, ReadFrom, ReadInto as _, SetInto};
 use nixrs::hash;
 use nixrs::store_path::{
-    ContentAddress, ContentAddressMethodAlgorithm, StorePath, StorePathHash, StorePathName,
+    ContentAddress, ContentAddressMethodAlgorithm, FixedOutput, FixedOutputMethod,
+    FixedOutputMethodAlgorithm, StorePath, StorePathHash, StorePathName,
 };
 
 use crate::capnp::{nix_daemon_capnp, nix_types_capnp, nixrs_capnp};
+
+impl From<nix_types_capnp::FixedOutputMethod> for FixedOutputMethod {
+    fn from(value: nix_types_capnp::FixedOutputMethod) -> Self {
+        match value {
+            nix_types_capnp::FixedOutputMethod::Flat => Self::Flat,
+            nix_types_capnp::FixedOutputMethod::Recursive => Self::Recursive,
+        }
+    }
+}
+
+impl From<FixedOutputMethod> for nix_types_capnp::FixedOutputMethod {
+    fn from(value: FixedOutputMethod) -> Self {
+        match value {
+            FixedOutputMethod::Flat => nix_types_capnp::FixedOutputMethod::Flat,
+            FixedOutputMethod::Recursive => nix_types_capnp::FixedOutputMethod::Recursive,
+        }
+    }
+}
 
 impl<'b> SetInto<nix_types_capnp::store_path::Builder<'b>> for StorePath {
     fn set_into(
@@ -61,6 +80,25 @@ impl<'r> ReadFrom<capnp::data::Reader<'r>> for StorePathHash {
 }
 */
 
+impl<'b> SetInto<nix_types_capnp::fixed_output::Builder<'b>> for FixedOutput {
+    fn set_into(
+        &self,
+        builder: &mut nix_types_capnp::fixed_output::Builder<'b>,
+    ) -> capnp::Result<()> {
+        builder.set_method(self.method.into());
+        builder.reborrow().init_hash().build_from(&self.hash)?;
+        Ok(())
+    }
+}
+
+impl<'r> ReadFrom<nix_types_capnp::fixed_output::Reader<'r>> for FixedOutput {
+    fn read_from(value: nix_types_capnp::fixed_output::Reader<'r>) -> Result<Self, Error> {
+        let method = value.get_method()?.into();
+        let hash = value.get_hash()?.read_into()?;
+        Ok(FixedOutput { method, hash })
+    }
+}
+
 impl<'b> SetInto<nix_types_capnp::content_address::Builder<'b>> for ContentAddress {
     fn set_into(
         &self,
@@ -70,11 +108,8 @@ impl<'b> SetInto<nix_types_capnp::content_address::Builder<'b>> for ContentAddre
             ContentAddress::Text(sha256) => {
                 builder.set_text(sha256.as_ref());
             }
-            ContentAddress::Flat(hash) => {
-                builder.reborrow().init_flat().build_from(hash)?;
-            }
-            ContentAddress::Recursive(hash) => {
-                builder.reborrow().init_recursive().build_from(hash)?;
+            ContentAddress::Fixed(fo) => {
+                builder.reborrow().init_fixed().build_from(fo)?;
             }
         }
         Ok(())
@@ -90,15 +125,36 @@ impl<'r> ReadFrom<nix_types_capnp::content_address::Reader<'r>> for ContentAddre
                     .map_err(|err| Error::failed(err.to_string()))?;
                 Ok(ContentAddress::Text(hash))
             }
-            nix_types_capnp::content_address::Which::Flat(hash) => {
-                let hash = hash?.read_into()?;
-                Ok(ContentAddress::Flat(hash))
-            }
-            nix_types_capnp::content_address::Which::Recursive(hash) => {
-                let hash = hash?.read_into()?;
-                Ok(ContentAddress::Recursive(hash))
+            nix_types_capnp::content_address::Which::Fixed(fo) => {
+                let fo = fo?.read_into()?;
+                Ok(ContentAddress::Fixed(fo))
             }
         }
+    }
+}
+
+impl<'b> SetInto<nix_types_capnp::fixed_output_method_algorithm::Builder<'b>>
+    for FixedOutputMethodAlgorithm
+{
+    fn set_into(
+        &self,
+        builder: &mut nix_types_capnp::fixed_output_method_algorithm::Builder<'b>,
+    ) -> capnp::Result<()> {
+        builder.set_method(self.method.into());
+        builder.set_algo(self.algorithm.into());
+        Ok(())
+    }
+}
+
+impl<'r> ReadFrom<nix_types_capnp::fixed_output_method_algorithm::Reader<'r>>
+    for FixedOutputMethodAlgorithm
+{
+    fn read_from(
+        reader: nix_types_capnp::fixed_output_method_algorithm::Reader<'r>,
+    ) -> Result<Self, Error> {
+        let method = reader.get_method()?.into();
+        let algorithm = reader.get_algo()?.into();
+        Ok(FixedOutputMethodAlgorithm { method, algorithm })
     }
 }
 
@@ -113,11 +169,8 @@ impl<'b> SetInto<nix_daemon_capnp::content_address_method_algorithm::Builder<'b>
             ContentAddressMethodAlgorithm::Text => {
                 builder.set_text(());
             }
-            ContentAddressMethodAlgorithm::Flat(algo) => {
-                builder.reborrow().set_flat((*algo).into());
-            }
-            ContentAddressMethodAlgorithm::Recursive(algo) => {
-                builder.reborrow().set_recursive((*algo).into());
+            ContentAddressMethodAlgorithm::Fixed(fo) => {
+                builder.reborrow().init_fixed().build_from(fo)?;
             }
         }
         Ok(())
@@ -134,11 +187,8 @@ impl<'r> ReadFrom<nix_daemon_capnp::content_address_method_algorithm::Reader<'r>
             nix_daemon_capnp::content_address_method_algorithm::Which::Text(_) => {
                 Ok(ContentAddressMethodAlgorithm::Text)
             }
-            nix_daemon_capnp::content_address_method_algorithm::Which::Flat(algo) => {
-                Ok(ContentAddressMethodAlgorithm::Flat(algo?.into()))
-            }
-            nix_daemon_capnp::content_address_method_algorithm::Which::Recursive(algo) => {
-                Ok(ContentAddressMethodAlgorithm::Recursive(algo?.into()))
+            nix_daemon_capnp::content_address_method_algorithm::Which::Fixed(fo) => {
+                Ok(ContentAddressMethodAlgorithm::Fixed(fo?.read_into()?))
             }
         }
     }

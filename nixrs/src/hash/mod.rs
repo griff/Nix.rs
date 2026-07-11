@@ -172,7 +172,7 @@ impl Hash {
     }
 
     #[inline]
-    pub fn algorithm(&self) -> Algorithm {
+    pub const fn algorithm(&self) -> Algorithm {
         self.algorithm
     }
 

@@ -1,45 +1,55 @@
 use std::str::FromStr;
 
-use derive_more::Display;
-use thiserror::Error;
-
 use crate::hash::fmt::{NonSRI, ParseHashError, ParseHashErrorKind};
 use crate::hash::{Algorithm, Hash, Sha256, UnknownAlgorithm};
+use crate::store_path::{FixedOutput, FixedOutputMethod, FixedOutputMethodAlgorithm};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, derive_more::Display)]
 pub enum ContentAddressMethod {
     #[display("text")]
     Text,
-    #[display("fixed")]
-    Flat,
-    #[display("fixed:r")]
-    Recursive,
+    #[display("{_0}")]
+    Fixed(FixedOutputMethod),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
+impl ContentAddressMethod {
+    pub const fn fixed_flat() -> Self {
+        Self::Fixed(FixedOutputMethod::Flat)
+    }
+
+    pub const fn fixed_recursive() -> Self {
+        Self::Fixed(FixedOutputMethod::Recursive)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, derive_more::Display)]
 pub enum ContentAddressMethodAlgorithm {
     #[display("text:sha256")]
     Text,
     #[display("{_0}")]
-    Flat(Algorithm),
-    #[display("r:{_0}")]
-    Recursive(Algorithm),
+    Fixed(FixedOutputMethodAlgorithm),
 }
 
 impl ContentAddressMethodAlgorithm {
-    pub fn algorithm(&self) -> Algorithm {
+    pub const fn fixed_flat(algorithm: Algorithm) -> Self {
+        Self::Fixed(FixedOutputMethodAlgorithm::flat(algorithm))
+    }
+
+    pub const fn fixed_recursive(algorithm: Algorithm) -> Self {
+        Self::Fixed(FixedOutputMethodAlgorithm::recursive(algorithm))
+    }
+
+    pub const fn algorithm(&self) -> Algorithm {
         match self {
             ContentAddressMethodAlgorithm::Text => Algorithm::SHA256,
-            ContentAddressMethodAlgorithm::Flat(algorithm) => *algorithm,
-            ContentAddressMethodAlgorithm::Recursive(algorithm) => *algorithm,
+            ContentAddressMethodAlgorithm::Fixed(fod) => fod.algorithm,
         }
     }
 
     pub fn method(&self) -> ContentAddressMethod {
         match self {
             ContentAddressMethodAlgorithm::Text => ContentAddressMethod::Text,
-            ContentAddressMethodAlgorithm::Flat(_) => ContentAddressMethod::Flat,
-            ContentAddressMethodAlgorithm::Recursive(_) => ContentAddressMethod::Recursive,
+            ContentAddressMethodAlgorithm::Fixed(fod) => fod.method.into(),
         }
     }
 }
@@ -50,33 +60,36 @@ impl FromStr for ContentAddressMethodAlgorithm {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s == "text:sha256" {
             Ok(Self::Text)
-        } else if let Some(algo) = s.strip_prefix("r:") {
-            Ok(Self::Recursive(algo.parse()?))
         } else {
-            Ok(Self::Flat(s.parse()?))
+            Ok(Self::Fixed(s.parse()?))
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, derive_more::Display)]
 pub enum ContentAddress {
     #[display("text:{}", _0.as_base32())]
     Text(Sha256),
-    #[display("fixed:{}", _0.as_base32())]
-    Flat(Hash),
-    #[display("fixed:r:{}", _0.as_base32())]
-    Recursive(Hash),
+    #[display("{_0}")]
+    Fixed(FixedOutput),
 }
 
 impl ContentAddress {
+    pub const fn fixed_flat(hash: Hash) -> Self {
+        Self::Fixed(FixedOutput::flat(hash))
+    }
+
+    pub const fn fixed_recursive(hash: Hash) -> Self {
+        Self::Fixed(FixedOutput::recursive(hash))
+    }
+
     pub fn from_hash(
         method: ContentAddressMethod,
         hash: Hash,
     ) -> Result<ContentAddress, ParseHashErrorKind> {
         Ok(match method {
             ContentAddressMethod::Text => ContentAddress::Text(hash.try_into()?),
-            ContentAddressMethod::Flat => ContentAddress::Flat(hash),
-            ContentAddressMethod::Recursive => ContentAddress::Recursive(hash),
+            ContentAddressMethod::Fixed(method) => FixedOutput::from_hash(method, hash).into(),
         })
     }
     pub fn algorithm(&self) -> Algorithm {
@@ -85,27 +98,26 @@ impl ContentAddress {
     pub fn method(&self) -> ContentAddressMethod {
         match self {
             ContentAddress::Text(_) => ContentAddressMethod::Text,
-            ContentAddress::Flat(_) => ContentAddressMethod::Flat,
-            ContentAddress::Recursive(_) => ContentAddressMethod::Recursive,
+            ContentAddress::Fixed(fo) => fo.method.into(),
         }
     }
 
     pub fn method_algorithm(&self) -> ContentAddressMethodAlgorithm {
         match self {
             ContentAddress::Text(_) => ContentAddressMethodAlgorithm::Text,
-            ContentAddress::Flat(hash) => ContentAddressMethodAlgorithm::Flat(hash.algorithm()),
-            ContentAddress::Recursive(hash) => {
-                ContentAddressMethodAlgorithm::Recursive(hash.algorithm())
-            }
+            ContentAddress::Fixed(fo) => fo.method_algorithm().into(),
         }
     }
 
     pub fn hash(&self) -> Hash {
         match *self {
             ContentAddress::Text(sha256) => sha256.into(),
-            ContentAddress::Flat(hash) => hash,
-            ContentAddress::Recursive(hash) => hash,
+            ContentAddress::Fixed(fo) => fo.hash,
         }
+    }
+
+    pub fn is_source(&self) -> bool {
+        matches!(self, ContentAddress::Fixed(fo) if fo.is_source())
     }
 }
 
@@ -121,29 +133,13 @@ impl FromStr for ContentAddress {
                 })?
                 .into_hash();
             Ok(Self::Text(sha256))
-        } else if let Some(hash_s) = s.strip_prefix("fixed:r:") {
-            let hash = hash_s
-                .parse::<NonSRI<Hash>>()
-                .map_err(|err| {
-                    ParseContentAddressError::InvalidHash(ContentAddressMethod::Recursive, err)
-                })?
-                .into_hash();
-            Ok(Self::Recursive(hash))
-        } else if let Some(hash_s) = s.strip_prefix("fixed:") {
-            let hash = hash_s
-                .parse::<NonSRI<Hash>>()
-                .map_err(|err| {
-                    ParseContentAddressError::InvalidHash(ContentAddressMethod::Flat, err)
-                })?
-                .into_hash();
-            Ok(Self::Flat(hash))
         } else {
-            Err(ParseContentAddressError::InvalidForm(s.into()))
+            Ok(s.parse::<FixedOutput>()?.into())
         }
     }
 }
 
-#[derive(Error, Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, thiserror::Error)]
 pub enum ParseContentAddressError {
     #[error("content address {0} {1}")]
     InvalidHash(ContentAddressMethod, #[source] ParseHashError),
@@ -172,12 +168,12 @@ mod unittests {
     )]
     #[case::flat(
         "fixed:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s",
-        ContentAddressMethod::Flat,
+        ContentAddressMethod::fixed_flat(),
         Algorithm::SHA256
     )]
     #[case::recursive(
         "fixed:r:sha256:1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s",
-        ContentAddressMethod::Recursive,
+        ContentAddressMethod::fixed_recursive(),
         Algorithm::SHA256
     )]
     fn content_address_parse(
@@ -211,32 +207,26 @@ mod unittests {
         panic!("{actual}");
     }
 
-    /*
-    #[rstest]
-    #[case(ContentAddressMethod::Text, "text:")]
-    #[case(ContentAddressMethod::Flat, "")]
-    #[case(ContentAddressMethod::Recursive, "r:")]
-    fn content_address_method_parse(#[case] method: ContentAddressMethod, #[case] value: &str) {
-        assert_eq!(method.to_string(), value);
-        let actual = value.parse::<ContentAddressMethod>().unwrap();
-        assert_eq!(actual, method);
-    }
-    */
-
     #[rstest]
     #[case(ContentAddressMethodAlgorithm::Text, "text:sha256")]
-    #[case(ContentAddressMethodAlgorithm::Flat(Algorithm::MD5), "md5")]
-    #[case(ContentAddressMethodAlgorithm::Flat(Algorithm::SHA1), "sha1")]
-    #[case(ContentAddressMethodAlgorithm::Flat(Algorithm::SHA256), "sha256")]
-    #[case(ContentAddressMethodAlgorithm::Flat(Algorithm::SHA512), "sha512")]
-    #[case(ContentAddressMethodAlgorithm::Recursive(Algorithm::MD5), "r:md5")]
-    #[case(ContentAddressMethodAlgorithm::Recursive(Algorithm::SHA1), "r:sha1")]
+    #[case(ContentAddressMethodAlgorithm::fixed_flat(Algorithm::MD5), "md5")]
+    #[case(ContentAddressMethodAlgorithm::fixed_flat(Algorithm::SHA1), "sha1")]
+    #[case(ContentAddressMethodAlgorithm::fixed_flat(Algorithm::SHA256), "sha256")]
+    #[case(ContentAddressMethodAlgorithm::fixed_flat(Algorithm::SHA512), "sha512")]
     #[case(
-        ContentAddressMethodAlgorithm::Recursive(Algorithm::SHA256),
+        ContentAddressMethodAlgorithm::fixed_recursive(Algorithm::MD5),
+        "r:md5"
+    )]
+    #[case(
+        ContentAddressMethodAlgorithm::fixed_recursive(Algorithm::SHA1),
+        "r:sha1"
+    )]
+    #[case(
+        ContentAddressMethodAlgorithm::fixed_recursive(Algorithm::SHA256),
         "r:sha256"
     )]
     #[case(
-        ContentAddressMethodAlgorithm::Recursive(Algorithm::SHA512),
+        ContentAddressMethodAlgorithm::fixed_recursive(Algorithm::SHA512),
         "r:sha512"
     )]
     fn content_address_method_algo_parse(

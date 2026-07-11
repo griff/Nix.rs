@@ -18,9 +18,8 @@
 //! ```
 //!
 
-use crate::hash::{self, Algorithm};
-
-use super::{ContentAddress, StoreDirDisplay, StorePathSet};
+use super::{ContentAddress, FixedOutput, StoreDirDisplay, StorePathSet};
+use crate::hash;
 
 pub struct Fingerprint<N> {
     pub path_type: PathType,
@@ -56,12 +55,7 @@ pub enum PathType {
         self_ref: bool,
         digest: hash::Sha256,
     },
-    Output {
-        hash: hash::Hash,
-    },
-    FlatOutput {
-        hash: hash::Hash,
-    },
+    FixedOutput(FixedOutput),
 }
 
 impl From<ContentAddress> for PathType {
@@ -71,16 +65,15 @@ impl From<ContentAddress> for PathType {
                 references: StorePathSet::new(),
                 digest,
             },
-            ContentAddress::Recursive(hash) if hash.algorithm() == Algorithm::SHA256 => {
-                let digest = hash.try_into().unwrap();
+            ContentAddress::Fixed(fo) if fo.is_source() => {
+                let digest = fo.hash.try_into().unwrap();
                 PathType::Source {
                     references: StorePathSet::new(),
                     self_ref: false,
                     digest,
                 }
             }
-            ContentAddress::Recursive(hash) => PathType::Output { hash },
-            ContentAddress::Flat(hash) => PathType::FlatOutput { hash },
+            ContentAddress::Fixed(fo) => PathType::FixedOutput(fo),
         }
     }
 }
@@ -113,14 +106,8 @@ impl StoreDirDisplay for PathType {
                 }
                 write!(f, ":sha256:{digest:x}")
             }
-            PathType::Output { hash } => {
-                let digest_input = format!("fixed:out:r:{hash:x}");
-                let digest = hash::Sha256::digest(digest_input);
-                write!(f, "output:out:sha256:{digest:x}")
-            }
-            PathType::FlatOutput { hash } => {
-                let digest_input = format!("fixed:out:{hash:x}");
-                let digest = hash::Sha256::digest(digest_input);
+            PathType::FixedOutput(fo) => {
+                let digest = fo.fod_digest();
                 write!(f, "output:out:sha256:{digest:x}")
             }
         }

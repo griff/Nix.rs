@@ -117,8 +117,9 @@ pub fn arb_derivation_output_fixed() -> impl Strategy<Value = DerivationOutput> 
     use crate::store_path::ContentAddress;
 
     prop_oneof![
-        any::<hash::Hash>().prop_map(|h| DerivationOutput::CAFixed(ContentAddress::Flat(h))),
-        any::<hash::Hash>().prop_map(|h| DerivationOutput::CAFixed(ContentAddress::Recursive(h)))
+        any::<hash::Hash>().prop_map(|h| DerivationOutput::CAFixed(ContentAddress::fixed_flat(h))),
+        any::<hash::Hash>()
+            .prop_map(|h| DerivationOutput::CAFixed(ContentAddress::fixed_recursive(h)))
     ]
 }
 
