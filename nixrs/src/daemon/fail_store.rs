@@ -1,6 +1,6 @@
 use std::future::ready;
 
-use crate::daemon::FutureResultExt;
+use crate::daemon::{FutureResultExt, HasTrustLevel};
 use crate::store_path::{HasStoreDir, StoreDir};
 
 use super::{DaemonResult, DaemonStore, HandshakeDaemonStore, ResultLog};
@@ -13,6 +13,13 @@ impl HasStoreDir for FailStore {
         &self.0
     }
 }
+
+impl HasTrustLevel for FailStore {
+    fn trust_level(&self) -> super::TrustLevel {
+        super::TrustLevel::Unknown
+    }
+}
+
 impl HandshakeDaemonStore for FailStore {
     type Store = Self;
 
@@ -22,10 +29,6 @@ impl HandshakeDaemonStore for FailStore {
 }
 
 impl DaemonStore for FailStore {
-    fn trust_level(&self) -> super::TrustLevel {
-        super::TrustLevel::Unknown
-    }
-
     fn shutdown(&mut self) -> impl ResultLog<Output = DaemonResult<()>> {
         ready(Ok(())).empty_logs()
     }

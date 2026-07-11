@@ -25,8 +25,9 @@ use crate::daemon::wire::types::{
 use crate::daemon::{
     AddToStoreItem, BuildMode, BuildResult, ClientOptions, CollectGarbageResponse, DaemonError,
     DaemonPath, DaemonResult, DaemonResultExt, DaemonStore, FutureResultExt, GCAction,
-    HandshakeDaemonStore, KeyedBuildResult, KeyedBuildResults, Operation, QueryMissingResult,
-    ResultLog, ResultLogExt as _, TrustLevel, UnkeyedValidPathInfo, ValidPathInfo,
+    HandshakeDaemonStore, HasTrustLevel, KeyedBuildResult, KeyedBuildResults, Operation,
+    QueryMissingResult, ResultLog, ResultLogExt as _, TrustLevel, UnkeyedValidPathInfo,
+    ValidPathInfo,
 };
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
@@ -2168,14 +2169,19 @@ where
     }
 }
 
-impl<R> DaemonStore for MockStore<R>
+impl<R> HasTrustLevel for MockStore<R>
 where
     R: MockReporter + Send,
 {
     fn trust_level(&self) -> TrustLevel {
         self.trusted_client
     }
+}
 
+impl<R> DaemonStore for MockStore<R>
+where
+    R: MockReporter + Send,
+{
     fn set_options<'a>(
         &'a mut self,
         options: &'a ClientOptions,

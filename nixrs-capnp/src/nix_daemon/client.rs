@@ -11,8 +11,8 @@ use futures::channel::mpsc;
 use futures::stream::TryStreamExt;
 use futures::{SinkExt, TryFutureExt as _};
 use nixrs::daemon::{
-    BuildMode, DaemonError, DaemonResult, DriveResult, FutureResultExt as _, LocalDaemonStore,
-    LocalHandshakeDaemonStore, ResultLog, UnkeyedValidPathInfo,
+    BuildMode, DaemonError, DaemonResult, DriveResult, FutureResultExt as _, HasTrustLevel,
+    LocalDaemonStore, LocalHandshakeDaemonStore, ResultLog, UnkeyedValidPathInfo,
 };
 use nixrs::derived_path::DerivedPath;
 use nixrs::log::LogMessage;
@@ -52,6 +52,13 @@ impl HasStoreDir for CapnpStore {
     }
 }
 
+#[forbid(clippy::missing_trait_methods)]
+impl HasTrustLevel for CapnpStore {
+    fn trust_level(&self) -> nixrs::daemon::TrustLevel {
+        nixrs::daemon::TrustLevel::Trusted
+    }
+}
+
 impl LocalHandshakeDaemonStore for CapnpStore {
     type Store = Self;
 
@@ -61,10 +68,6 @@ impl LocalHandshakeDaemonStore for CapnpStore {
 }
 
 impl LocalDaemonStore for CapnpStore {
-    fn trust_level(&self) -> nixrs::daemon::TrustLevel {
-        nixrs::daemon::TrustLevel::Trusted
-    }
-
     fn shutdown(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + '_ {
         async move {
             let req = self.store.end_request();
@@ -469,6 +472,12 @@ impl HasStoreDir for LoggedCapnpStore {
     }
 }
 
+impl HasTrustLevel for LoggedCapnpStore {
+    fn trust_level(&self) -> nixrs::daemon::TrustLevel {
+        nixrs::daemon::TrustLevel::Trusted
+    }
+}
+
 impl LocalHandshakeDaemonStore for LoggedCapnpStore {
     type Store = Self;
 
@@ -527,10 +536,6 @@ macro_rules! make_request {
 
 #[forbid(clippy::missing_trait_methods)]
 impl LocalDaemonStore for LoggedCapnpStore {
-    fn trust_level(&self) -> nixrs::daemon::TrustLevel {
-        nixrs::daemon::TrustLevel::Trusted
-    }
-
     fn set_options<'a>(
         &'a mut self,
         options: &'a nixrs::daemon::ClientOptions,

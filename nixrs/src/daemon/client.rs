@@ -34,7 +34,7 @@ use crate::archive::{NarBytesReader, NarReader};
 use crate::daemon::client::compat::CompatAddPermRoot;
 use crate::daemon::client::process_stderr::{ProcessStderr, read_logs};
 use crate::daemon::wire::types::QueryRealisationResponse;
-use crate::daemon::{FutureResultExt, make_result};
+use crate::daemon::{FutureResultExt, HasTrustLevel, make_result};
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
 use crate::io::{AsyncBufReadCompat, BytesReader, Lending};
@@ -422,6 +422,12 @@ impl<R, W, CP> HasStoreDir for DaemonClient<R, W, CP> {
     }
 }
 
+impl<R, W, CP> HasTrustLevel for DaemonClient<R, W, CP> {
+    fn trust_level(&self) -> TrustLevel {
+        self.remote_trusts_us
+    }
+}
+
 #[forbid(clippy::missing_trait_methods)]
 impl<R, W, CP> DaemonStore for DaemonClient<R, W, CP>
 where
@@ -429,10 +435,6 @@ where
     W: AsyncWrite + fmt::Debug + Unpin + Send + 'static,
     CP: CompatAddPermRoot<Self> + Clone + Send,
 {
-    fn trust_level(&self) -> TrustLevel {
-        self.remote_trusts_us
-    }
-
     fn set_options<'a>(
         &'a mut self,
         options: &'a super::ClientOptions,

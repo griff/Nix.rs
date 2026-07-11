@@ -10,8 +10,8 @@ use tracing::warn;
 use crate::daemon::client::compat::CompatAddPermRoot;
 use crate::daemon::client::{DaemonClient, DaemonHandshakeClient};
 use crate::daemon::{
-    DaemonResult, DaemonStore, HandshakeDaemonStore, LogSender, ResultLog, ResultLogExt as _,
-    make_result,
+    DaemonResult, DaemonStore, HandshakeDaemonStore, HasTrustLevel, LogSender, ResultLog,
+    ResultLogExt as _, make_result,
 };
 use crate::log::{LogMessage, Message};
 use crate::store_path::{HasStoreDir, StorePath};
@@ -98,9 +98,17 @@ pub struct ChildStore<CP> {
     child: Child,
 }
 
+#[forbid(clippy::missing_trait_methods)]
 impl<CP> HasStoreDir for ChildStore<CP> {
     fn store_dir(&self) -> &crate::store_path::StoreDir {
         self.store.store_dir()
+    }
+}
+
+#[forbid(clippy::missing_trait_methods)]
+impl<CP> HasTrustLevel for ChildStore<CP> {
+    fn trust_level(&self) -> crate::daemon::TrustLevel {
+        self.store.trust_level()
     }
 }
 
@@ -109,10 +117,6 @@ impl<CP> DaemonStore for ChildStore<CP>
 where
     CP: CompatAddPermRoot<DaemonClient<ChildStdout, ChildStdin, CP>> + Clone + Send,
 {
-    fn trust_level(&self) -> crate::daemon::TrustLevel {
-        self.store.trust_level()
-    }
-
     fn shutdown(&mut self) -> impl ResultLog<Output = DaemonResult<()>> + Send + '_ {
         make_result(move |mut sender| async move {
             let result = self.store.shutdown();

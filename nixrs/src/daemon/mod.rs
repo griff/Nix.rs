@@ -33,8 +33,9 @@ pub use types::{
     AddToStoreItem, BuildMode, BuildResult, BuildStatus, ClientOptions, CollectGarbageResponse,
     DaemonError, DaemonErrorContext, DaemonErrorKind, DaemonInt, DaemonPath, DaemonResult,
     DaemonResultExt, DaemonStore, DaemonString, DaemonTime, GCAction, HandshakeDaemonStore,
-    KeyedBuildResult, KeyedBuildResults, Microseconds, Operation, QueryMissingResult, RemoteError,
-    TrustLevel, UnkeyedSubstitutablePathInfo, UnkeyedValidPathInfo, ValidPathInfo,
+    HasTrustLevel, KeyedBuildResult, KeyedBuildResults, Microseconds, Operation,
+    QueryMissingResult, RemoteError, TrustLevel, UnkeyedSubstitutablePathInfo,
+    UnkeyedValidPathInfo, ValidPathInfo,
 };
 pub use version::{
     NIX_VERSION, PROTOCOL_VERSION, PROTOCOL_VERSION_MIN, ProtocolRange, ProtocolVersion,

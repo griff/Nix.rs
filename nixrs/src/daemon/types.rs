@@ -601,15 +601,17 @@ pub struct AddToStoreItem<R> {
     pub reader: R,
 }
 
+pub trait HasTrustLevel {
+    fn trust_level(&self) -> TrustLevel;
+}
+
 pub trait HandshakeDaemonStore: HasStoreDir {
     type Store: DaemonStore + Send;
     fn handshake(self) -> impl ResultLog<Output = DaemonResult<Self::Store>> + Send;
 }
 
 #[allow(unused_variables)]
-pub trait DaemonStore: HasStoreDir + Send {
-    fn trust_level(&self) -> TrustLevel;
-
+pub trait DaemonStore: HasStoreDir + HasTrustLevel + Send {
     /// Sets options on server.
     /// This is usually called by the client just after the handshake to set
     /// options for the rest of the session.
@@ -920,14 +922,20 @@ pub trait DaemonStore: HasStoreDir + Send {
 }
 
 #[forbid(clippy::missing_trait_methods)]
-impl<'os, S> DaemonStore for &'os mut S
+impl<S> HasTrustLevel for &mut S
 where
-    S: DaemonStore,
+    S: HasTrustLevel,
 {
     fn trust_level(&self) -> TrustLevel {
         (**self).trust_level()
     }
+}
 
+#[forbid(clippy::missing_trait_methods)]
+impl<'os, S> DaemonStore for &'os mut S
+where
+    S: DaemonStore,
+{
     fn set_options<'a>(
         &'a mut self,
         options: &'a ClientOptions,

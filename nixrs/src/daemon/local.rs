@@ -6,8 +6,8 @@ use tokio::io::AsyncBufRead;
 
 use crate::daemon::{
     AddToStoreItem, BuildMode, BuildResult, ClientOptions, CollectGarbageResponse, DaemonError,
-    DaemonPath, DaemonResult, FutureResultExt, GCAction, KeyedBuildResult, Operation,
-    QueryMissingResult, ResultLog, TrustLevel, UnkeyedValidPathInfo, ValidPathInfo,
+    DaemonPath, DaemonResult, FutureResultExt, GCAction, HasTrustLevel, KeyedBuildResult,
+    Operation, QueryMissingResult, ResultLog, UnkeyedValidPathInfo, ValidPathInfo,
 };
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
@@ -23,9 +23,7 @@ pub trait LocalHandshakeDaemonStore: HasStoreDir {
 }
 
 #[allow(unused_variables)]
-pub trait LocalDaemonStore: HasStoreDir {
-    fn trust_level(&self) -> TrustLevel;
-
+pub trait LocalDaemonStore: HasStoreDir + HasTrustLevel {
     /// Sets options on server.
     /// This is usually called by the client just after the handshake to set
     /// options for the rest of the session.
@@ -331,10 +329,6 @@ impl<'bs, S> LocalDaemonStore for &'bs mut S
 where
     S: LocalDaemonStore,
 {
-    fn trust_level(&self) -> TrustLevel {
-        (**self).trust_level()
-    }
-
     fn set_options<'a>(
         &'a mut self,
         options: &'a ClientOptions,

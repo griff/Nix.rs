@@ -2,7 +2,7 @@ use std::pin::Pin;
 use std::{pin::pin, sync::Arc};
 
 use crate::daemon::{
-    DaemonStore, FutureResultExt as _, HandshakeDaemonStore, ResultLog, ResultLogExt,
+    DaemonStore, FutureResultExt as _, HandshakeDaemonStore, HasTrustLevel, ResultLog, ResultLogExt,
 };
 use crate::store_path::{HasStoreDir, StoreDir};
 use async_stream::stream;
@@ -87,9 +87,15 @@ macro_rules! mutex_result {
     }};
 }
 
-impl<S: HasStoreDir> HasStoreDir for MutexStore<S> {
+impl<S> HasStoreDir for MutexStore<S> {
     fn store_dir(&self) -> &crate::store_path::StoreDir {
         &self.store_dir
+    }
+}
+
+impl<S> HasTrustLevel for MutexStore<S> {
+    fn trust_level(&self) -> super::TrustLevel {
+        self.trust
     }
 }
 
@@ -98,10 +104,6 @@ impl<S> DaemonStore for MutexStore<S>
 where
     S: DaemonStore + Send,
 {
-    fn trust_level(&self) -> super::TrustLevel {
-        self.trust
-    }
-
     fn shutdown(&mut self) -> impl ResultLog<Output = super::DaemonResult<()>> + Send + '_ {
         mutex_result!(self, |store| { store.shutdown() })
     }

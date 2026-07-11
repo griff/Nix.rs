@@ -21,8 +21,8 @@ use crate::daemon::wire::{
 };
 use crate::daemon::{
     AddToStoreItem, CollectGarbageResponse, DaemonError, DaemonErrorKind, DaemonPath, DaemonResult,
-    DaemonResultExt, DaemonStore, GCAction, HandshakeDaemonStore, NIX_VERSION, Operation,
-    PROTOCOL_VERSION, ProtocolVersion, ResultLog, TrustLevel, ValidPathInfo,
+    DaemonResultExt, DaemonStore, GCAction, HandshakeDaemonStore, HasTrustLevel, NIX_VERSION,
+    Operation, PROTOCOL_VERSION, ProtocolVersion, ResultLog, TrustLevel, ValidPathInfo,
 };
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
@@ -213,14 +213,20 @@ impl<S: HasStoreDir> HasStoreDir for BoxedStore<S> {
 }
 
 #[forbid(clippy::missing_trait_methods)]
-impl<S> DaemonStore for BoxedStore<S>
+impl<S> HasTrustLevel for BoxedStore<S>
 where
-    S: DaemonStore,
+    S: HasTrustLevel,
 {
     fn trust_level(&self) -> TrustLevel {
         self.0.trust_level()
     }
+}
 
+#[forbid(clippy::missing_trait_methods)]
+impl<S> DaemonStore for BoxedStore<S>
+where
+    S: DaemonStore,
+{
     fn set_options<'a>(
         &'a mut self,
         options: &'a super::ClientOptions,

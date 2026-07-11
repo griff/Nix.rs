@@ -14,6 +14,7 @@ use capnp_rpc::new_client;
 use capnp_rpc_tokio::builder::RpcSystemBuilder;
 use capnp_rpc_tokio::client::ClientBuilder;
 use clap::Parser;
+use nixrs::daemon::HasTrustLevel;
 use nixrs::daemon::{
     BuildMode, DaemonStore, FutureResultExt, HandshakeDaemonStore, LocalDaemonStore,
 };
@@ -53,6 +54,11 @@ impl HasStoreDir for SleepStore {
         &self.store_dir
     }
 }
+impl HasTrustLevel for SleepStore {
+    fn trust_level(&self) -> nixrs::daemon::TrustLevel {
+        nixrs::daemon::TrustLevel::Trusted
+    }
+}
 impl HandshakeDaemonStore for SleepStore {
     type Store = Self;
 
@@ -63,10 +69,6 @@ impl HandshakeDaemonStore for SleepStore {
     }
 }
 impl DaemonStore for SleepStore {
-    fn trust_level(&self) -> nixrs::daemon::TrustLevel {
-        nixrs::daemon::TrustLevel::Trusted
-    }
-
     fn shutdown(
         &mut self,
     ) -> impl nixrs::daemon::ResultLog<Output = nixrs::daemon::DaemonResult<()>> + '_ {
