@@ -1,11 +1,9 @@
-use std::path::{MAIN_SEPARATOR_STR, PathBuf};
-
 use proptest::prelude::*;
 
 use crate::hash::{Algorithm, Hash, Sha256};
 use crate::store_path::{
-    ContentAddress, ContentAddressMethod, ContentAddressMethodAlgorithm, MAX_NAME_LEN, StoreDir,
-    StorePath, StorePathHash, StorePathName,
+    ContentAddress, ContentAddressMethod, ContentAddressMethodAlgorithm, FullStorePath,
+    MAX_NAME_LEN, StoreDir, StorePath, StorePathHash, StorePathName,
 };
 
 impl Arbitrary for ContentAddressMethod {
@@ -96,12 +94,25 @@ impl Arbitrary for StorePathName {
     }
 }
 
+pub fn arb_full_store_path(
+    max: u8,
+    extension: Option<String>,
+) -> impl Strategy<Value = FullStorePath> {
+    (arb_store_dir(), arb_store_path(max, extension))
+        .prop_map(|(store_dir, path)| FullStorePath { store_dir, path })
+}
+
 pub fn arb_store_path(max: u8, extension: Option<String>) -> impl Strategy<Value = StorePath> {
     (any::<StorePathHash>(), arb_store_path_name(max, extension)).prop_map(StorePath::from)
 }
 
 pub fn arb_drv_store_path() -> impl Strategy<Value = StorePath> {
     arb_store_path(MAX_NAME_LEN as u8 - 4 - 15, Some("drv".into()))
+}
+
+pub fn arb_full_drv_store_path() -> impl Strategy<Value = FullStorePath> {
+    (arb_store_dir(), arb_drv_store_path())
+        .prop_map(|(store_dir, path)| FullStorePath { store_dir, path })
 }
 
 impl Arbitrary for StorePath {
@@ -112,16 +123,17 @@ impl Arbitrary for StorePath {
     }
 }
 
+impl Arbitrary for FullStorePath {
+    type Parameters = Option<String>;
+    type Strategy = BoxedStrategy<FullStorePath>;
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+        arb_full_store_path(MAX_NAME_LEN as u8, args).boxed()
+    }
+}
+
+// FUTUREWORK: Generate something sensible
 pub fn arb_store_dir() -> impl Strategy<Value = StoreDir> {
-    (any::<PathBuf>()).prop_map(|mut path| {
-        if !path.is_absolute() {
-            let mut out = PathBuf::new();
-            out.push(MAIN_SEPARATOR_STR);
-            out.push(path);
-            path = out;
-        }
-        StoreDir::new(path).unwrap()
-    })
+    Just(StoreDir::default())
 }
 
 impl Arbitrary for StoreDir {

@@ -30,9 +30,13 @@ pub struct StoreDirError {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StoreDir(SmolStr);
 
-const DEFAULT_DIR: StoreDir = StoreDir::from_static("/nix/store");
+const DEFAULT_DIR: &StoreDir = &StoreDir::from_static("/nix/store");
 
 impl StoreDir {
+    pub const fn nix_store() -> &'static StoreDir {
+        DEFAULT_DIR
+    }
+
     pub const fn from_static(dir: &'static str) -> Self {
         assert!(*(dir.as_bytes().first().expect("non-empty store dir")) == b'/');
         Self(SmolStr::new_static(dir))
@@ -47,6 +51,10 @@ impl StoreDir {
             path: path.to_path_buf(),
         })?;
         Self::from_str(dir)
+    }
+
+    pub fn is_default(&self) -> bool {
+        self == DEFAULT_DIR
     }
 
     /// Get [`str`] representation of this StoreDir.
