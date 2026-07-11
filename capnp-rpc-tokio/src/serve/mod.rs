@@ -43,7 +43,10 @@ where
         self.listener.local_addr()
     }
 
-    pub fn with_graceful_shutdown<S>(self, signal: S) -> WithGracefulShutdown<L, M, S> {
+    pub fn with_graceful_shutdown<S>(self, signal: S) -> WithGracefulShutdown<L, M, S>
+    where
+        S: Future<Output = ()> + Send + 'static,
+    {
         WithGracefulShutdown {
             listener: self.listener,
             make_service: self.make_service,
