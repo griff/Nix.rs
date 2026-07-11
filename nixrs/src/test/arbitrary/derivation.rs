@@ -86,7 +86,7 @@ pub fn arb_derivation_outputs(
             .prop_flat_map(move |hash_type| {
                 prop::collection::btree_map(
                     any::<OutputName>(),
-                    arb_derivation_output_floating(Just(hash_type)),
+                    arb_derivation_output_floating_with_algorithm(hash_type),
                     size2.clone(),
                 )
             })
@@ -99,7 +99,8 @@ pub fn arb_derivation_outputs(
             any::<OutputName>(),
             arb_derivation_output_impure(),
             size.clone(),
-        ));
+        )
+        .boxed());
     }
     ret
 }
@@ -119,7 +120,7 @@ pub fn arb_derivation_output_input_addressed() -> impl Strategy<Value = Derivati
 
 #[cfg(feature = "xp-dynamic-derivations")]
 pub fn arb_derivation_output_fixed() -> impl Strategy<Value = DerivationOutput> {
-    any::<ContentAddress>().prop_map(DerivationOutput::CAFixed)
+    any::<crate::store_path::ContentAddress>().prop_map(DerivationOutput::CAFixed)
 }
 
 #[cfg(not(feature = "xp-dynamic-derivations"))]
@@ -135,16 +136,20 @@ pub fn arb_derivation_output_fixed() -> impl Strategy<Value = DerivationOutput> 
 
 #[cfg(feature = "xp-impure-derivations")]
 pub fn arb_derivation_output_impure() -> impl Strategy<Value = DerivationOutput> {
-    any::<ContentAddressMethodAlgorithm>(any::<hash::Algorithm>())
-        .prop_map(|ca| DerivationOutput::Impure(ca))
+    any::<crate::store_path::ContentAddressMethodAlgorithm>().prop_map(DerivationOutput::Impure)
 }
 
 #[cfg(feature = "xp-ca-derivations")]
-pub fn arb_derivation_output_floating<H>(hash_type: H) -> impl Strategy<Value = DerivationOutput>
-where
-    H: Strategy<Value = hash::Algorithm>,
-{
-    any::<ContentAddressMethodAlgorithm>(hash_type).prop_map(|ca| DerivationOutput::CAFloating(ca))
+pub fn arb_derivation_output_floating() -> impl Strategy<Value = DerivationOutput> {
+    any::<crate::store_path::ContentAddressMethodAlgorithm>().prop_map(DerivationOutput::CAFloating)
+}
+
+#[cfg(feature = "xp-ca-derivations")]
+pub fn arb_derivation_output_floating_with_algorithm(
+    algo: hash::Algorithm,
+) -> impl Strategy<Value = DerivationOutput> {
+    any_with::<crate::store_path::ContentAddressMethodAlgorithm>(Some(algo))
+        .prop_map(DerivationOutput::CAFloating)
 }
 
 pub fn arb_derivation_output() -> impl Strategy<Value = DerivationOutput> {
@@ -154,7 +159,7 @@ pub fn arb_derivation_output() -> impl Strategy<Value = DerivationOutput> {
         prop_oneof![
             arb_derivation_output_input_addressed(),
             arb_derivation_output_fixed(),
-            arb_derivation_output_floating(any::<hash::Algorithm>()),
+            arb_derivation_output_floating(),
             Just(Deferred),
             arb_derivation_output_impure(),
         ]
@@ -173,7 +178,7 @@ pub fn arb_derivation_output() -> impl Strategy<Value = DerivationOutput> {
         prop_oneof![
             arb_derivation_output_input_addressed(),
             arb_derivation_output_fixed(),
-            arb_derivation_output_floating(any::<hash::Algorithm>()),
+            arb_derivation_output_floating(),
             Just(Deferred),
         ]
     }
