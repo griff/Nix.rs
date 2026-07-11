@@ -99,25 +99,12 @@ use super::radix_tree::{RLookup, RMatch, RTree};
 use crate::io::{AsyncBytesRead, DrainInto};
 use crate::wire::{ZEROS, calc_aligned};
 
-// https://github.com/rust-lang/rust/issues/131415
-const fn copy_from_slice(dst: &mut [u8], src: &[u8]) {
-    if dst.len() != src.len() {
-        panic!("failed");
-    }
-    // SAFETY: `self` is valid for `self.len()` elements by definition, and `src` was
-    // checked to have the same length. The slices cannot overlap because
-    // mutable references are exclusive.
-    unsafe {
-        std::ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
-    }
-}
-
 const fn encode<const R: usize>(s: &[u8]) -> [u8; R] {
     let mut ret = [0u8; R];
     let (len, data) = ret.split_at_mut(size_of::<u64>());
-    copy_from_slice(len, &(s.len() as u64).to_le_bytes());
+    len.copy_from_slice(&(s.len() as u64).to_le_bytes());
     let (data, _padding) = data.split_at_mut(s.len());
-    copy_from_slice(data, s);
+    data.copy_from_slice(s);
     ret
 }
 
@@ -134,7 +121,7 @@ pub(crate) const fn concat<const R: usize>(list: &[&[u8]]) -> [u8; R] {
     while idx < list.len() {
         let src = list[idx];
         let dst = get_slice_mut(&mut ret, pos..(pos + src.len()));
-        copy_from_slice(dst, src);
+        dst.copy_from_slice(src);
         pos += src.len();
         idx += 1;
     }
