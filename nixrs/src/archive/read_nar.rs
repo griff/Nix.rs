@@ -804,7 +804,15 @@ mod unittests {
 
     use super::NarReader;
 
-    // FUTUREWORK: I have seen case_8_dir_example::postfix_2_Ok__b__more_______::chunk_size_07_7 not finishing
+    // FUTUREWORK: I have seen the following tests not finishing:
+    // case_2_exec_file::postfix_1_Ok__b_________::chunk_size_04_4
+    // case_7_symlink::postfix_1_Ok__b_________::chunk_size_11_11
+    // case_8_dir_example::postfix_1_Ok__b_________::chunk_size_01_1
+    // case_8_dir_example::postfix_1_Ok__b_________::chunk_size_09_9
+    // case_8_dir_example::postfix_2_Ok__b__more_______::chunk_size_03_3
+    // case_8_dir_example::postfix_2_Ok__b__more_______::chunk_size_07_7
+    // This happens at random times and only one does it but I can't
+    // replicate it
     #[test_log::test(tokio::test)]
     #[rstest]
     #[case::text_file(text_file())]
