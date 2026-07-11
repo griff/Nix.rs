@@ -18,6 +18,7 @@ pub use version::{
 cfg_daemon! {
     pub mod client;
     mod fail_store;
+    mod lazy;
     mod local;
     mod logger;
     mod mutex;
@@ -29,6 +30,7 @@ cfg_daemon! {
     pub(crate) mod wire;
 
     pub use fail_store::FailStore;
+    pub use lazy::{ready_connection, ready_local_connection, ReadyConnection, LazyDaemonConnection, LocalLazyDaemonConnection};
     pub use local::{LocalDaemonStore, LocalHandshakeDaemonStore};
     pub use mutex::{MutexHandshakeStore, MutexStore};
     pub use logger::{AndThenLog, DriveResult, EmptyLogs, FutureResultExt, FutureResult, LogSender, MapErrResult, MapOkResult, ResultLog, ResultLogExt, WithLogs, make_result};
