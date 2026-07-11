@@ -11,6 +11,7 @@ use tracing::{Span, debug, trace, trace_span};
 use crate::wire::{DEFAULT_BUF_SIZE, RESERVED_BUF_SIZE};
 
 pin_project! {
+    #[project = FramedWriterProj]
     #[derive(Debug)]
     pub struct FramedWriter<W> {
         #[pin]
@@ -18,6 +19,31 @@ pin_project! {
         flushing: Option<Span>,
         shutdown: bool,
         buf: BytesMut,
+    }
+}
+
+impl<W> FramedWriterProj<'_, W>
+where
+    W: AsyncWrite,
+{
+    fn poll_write_buf(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        while !self.buf.is_empty() {
+            trace!(
+                len = self.buf.len(),
+                cap = self.buf.capacity(),
+                "FramedWriter:poll_shutdown: write {}",
+                self.buf.len()
+            );
+            let n = ready!(self.inner.as_mut().poll_write(cx, &self.buf[..]))?;
+            if n == 0 {
+                return Poll::Ready(Err(io::Error::new(
+                    io::ErrorKind::WriteZero,
+                    "failed to write the buffer",
+                )));
+            }
+            self.buf.advance(n);
+        }
+        Poll::Ready(Ok(()))
     }
 }
 
@@ -35,6 +61,7 @@ where
             buf,
         }
     }
+
     fn poll_flush_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         let mut this = self.project();
         if this.flushing.is_none() && this.buf.len() > 8 {
@@ -46,29 +73,14 @@ where
             );
             BufMut::put_u64_le(&mut &mut this.buf[..8], len as u64);
             *this.flushing = Some(trace_span!(
-                "FramedWriter::poll_flush_buf",
+                "FramedWriter::flushing",
                 len,
                 cap = this.buf.capacity()
             ));
         }
-        if let Some(span) = this.flushing.as_ref() {
-            let _ = span.enter();
-            while !this.buf.is_empty() {
-                trace!(
-                    remaning = this.buf.len(),
-                    cap = this.buf.capacity(),
-                    "FramedWriter:poll_flush_buf: write {}",
-                    this.buf.len()
-                );
-                let n = ready!(this.inner.as_mut().poll_write(cx, &this.buf[..]))?;
-                if n == 0 {
-                    return Poll::Ready(Err(io::Error::new(
-                        io::ErrorKind::WriteZero,
-                        "failed to write the buffer",
-                    )));
-                }
-                this.buf.advance(n);
-            }
+        if let Some(span) = this.flushing.clone() {
+            let _guard = span.enter();
+            ready!(this.poll_write_buf(cx))?;
             this.buf.reserve(RESERVED_BUF_SIZE);
             this.buf.put_u64_le(0);
             *this.flushing = None;
@@ -100,6 +112,7 @@ where
         trace!(
             len = self.buf.len(),
             cap = self.buf.capacity(),
+            buf.len = buf.len(),
             "FramedWriter:poll_write: check buf"
         );
         if self.remaining_mut() == 0 || self.flushing.is_some() {
@@ -109,12 +122,16 @@ where
         trace!(
             len = self.buf.len(),
             cap = self.buf.capacity(),
+            write,
+            buf.len = buf.len(),
             "FramedWriter:poll_write: write slice"
         );
         self.as_mut().project().buf.put_slice(&buf[..write]);
         trace!(
             len = self.buf.len(),
             cap = self.buf.capacity(),
+            write,
+            buf.len = buf.len(),
             "FramedWriter:poll_write: done"
         );
         Poll::Ready(Ok(write))
@@ -147,22 +164,7 @@ where
         ready!(self.as_mut().poll_flush_buf(cx))?;
         let mut this = self.as_mut().project();
         if !*this.shutdown {
-            while !this.buf.is_empty() {
-                trace!(
-                    len = this.buf.len(),
-                    cap = this.buf.capacity(),
-                    "FramedWriter:poll_shutdown: write {}",
-                    this.buf.len()
-                );
-                let n = ready!(this.inner.as_mut().poll_write(cx, &this.buf[..]))?;
-                if n == 0 {
-                    return Poll::Ready(Err(io::Error::new(
-                        io::ErrorKind::WriteZero,
-                        "failed to write the buffer",
-                    )));
-                }
-                this.buf.advance(n);
-            }
+            ready!(this.poll_write_buf(cx))?;
         }
         *this.shutdown = true;
         ready!(this.inner.poll_flush(cx))?;
