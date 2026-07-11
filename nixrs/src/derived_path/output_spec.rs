@@ -11,6 +11,14 @@ pub enum OutputSpec {
     Named(BTreeSet<OutputName>),
 }
 
+impl OutputSpec {
+    pub fn single(output_name: OutputName) -> Self {
+        let mut set = BTreeSet::new();
+        set.insert(output_name);
+        Self::Named(set)
+    }
+}
+
 impl fmt::Display for OutputSpec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -43,6 +51,12 @@ impl FromStr for OutputSpec {
             }
             Ok(OutputSpec::Named(outputs))
         }
+    }
+}
+
+impl From<OutputName> for OutputSpec {
+    fn from(output_name: OutputName) -> Self {
+        Self::single(output_name)
     }
 }
 
