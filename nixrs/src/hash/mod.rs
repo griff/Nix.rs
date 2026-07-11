@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::fmt as sfmt;
+use std::io::Write;
 use std::str::FromStr;
 
 use derive_more::Display;
@@ -94,6 +95,12 @@ impl Algorithm {
                 .try_into()
                 .unwrap(),
         }
+    }
+
+    pub fn digest_display<D: sfmt::Display>(&self, data: D) -> Hash {
+        let mut ctx = Context::new(*self);
+        write!(ctx, "{data}").unwrap();
+        ctx.finish()
     }
 }
 
@@ -212,6 +219,10 @@ impl NarHash {
         Self::new(&Algorithm::SHA256.digest(data))
     }
 
+    pub fn digest_display<D: sfmt::Display>(data: D) -> Self {
+        Self::new(&Algorithm::SHA256.digest_display(data))
+    }
+
     #[inline]
     pub fn digest_bytes(&self) -> &[u8] {
         self.0.digest_bytes()
@@ -260,7 +271,11 @@ impl Sha256 {
     /// assert_eq!("1b8m03r63zqhnjf7l5wnldhh7c134ap5vpj0850ymkq1iyzicy5s", hash.as_base32().as_bare().to_string());
     /// ```
     pub fn digest<B: AsRef<[u8]>>(data: B) -> Self {
-        Algorithm::SHA256.digest(data).try_into().unwrap()
+        Self::new(&Algorithm::SHA256.digest(data))
+    }
+
+    pub fn digest_display<D: sfmt::Display>(data: D) -> Self {
+        Self::new(&Algorithm::SHA256.digest_display(data))
     }
 
     #[inline]
@@ -373,6 +388,17 @@ impl Context {
 impl sfmt::Debug for Context {
     fn fmt(&self, f: &mut sfmt::Formatter<'_>) -> sfmt::Result {
         f.debug_tuple("Context").field(&self.0).finish()
+    }
+}
+
+impl std::io::Write for Context {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.update(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
     }
 }
 
