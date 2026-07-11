@@ -119,21 +119,17 @@ impl FromStoreDirStrSep for SingleDerivedPath {
         sep: char,
         s: &str,
     ) -> Result<Self, Self::Error> {
-        let mut it = s.rsplitn(2, sep);
-        let path = it.next().unwrap();
-        if let Some(prefix) = it.next() {
+        if let Some((prefix, output_s)) = s.rsplit_once(sep) {
             let drv_path = SingleDerivedPath::from_store_dir_str_sep(store_dir, sep, prefix)?;
-            let output = path
-                .parse()
-                .map_err(|error: crate::store_path::StorePathNameError| {
-                    ParseStorePathError::new(s, error)
-                })?;
+            let output = output_s.parse::<OutputName>().map_err(|error| {
+                ParseStorePathError::new(s, error.adjust_index(prefix.len() + sep.len_utf8()))
+            })?;
             Ok(SingleDerivedPath::Built {
                 drv_path: Box::new(drv_path),
                 output,
             })
         } else {
-            Ok(SingleDerivedPath::Opaque(store_dir.parse(path)?))
+            Ok(SingleDerivedPath::Opaque(store_dir.parse(s)?))
         }
     }
 }
@@ -200,16 +196,14 @@ impl FromStoreDirStrSep for DerivedPath {
         sep: char,
         s: &str,
     ) -> Result<Self, Self::Error> {
-        let mut it = s.rsplitn(2, sep);
-        let path = it.next().unwrap();
-        if let Some(prefix) = it.next() {
+        if let Some((prefix, outputs_s)) = s.rsplit_once(sep) {
             let drv_path = SingleDerivedPath::from_store_dir_str_sep(store_dir, sep, prefix)?;
-            let outputs = path
-                .parse()
-                .map_err(|error| ParseStorePathError::new(s, error))?;
+            let outputs = outputs_s.parse::<OutputSpec>().map_err(|error| {
+                ParseStorePathError::new(s, error.adjust_index(prefix.len() + sep.len_utf8()))
+            })?;
             Ok(DerivedPath::Built { drv_path, outputs })
         } else {
-            Ok(DerivedPath::Opaque(store_dir.parse(path)?))
+            Ok(DerivedPath::Opaque(store_dir.parse(s)?))
         }
     }
 }
@@ -282,20 +276,33 @@ mod unittests {
     }))]
     #[case("/nix/store/00000000000000000000000000000000-test.drv!out", Err(ParseStorePathError {
         path: "/nix/store/00000000000000000000000000000000-test.drv!out".into(),
-        error: StorePathError::Symbol(41, b'!'),
+        error: StorePathError::Symbol { position: 52, symbol: b'!' },
     }))]
     #[case("/nix/store/00000000000000000000000000000000-test.drv!out^bin", Err(ParseStorePathError {
         path: "/nix/store/00000000000000000000000000000000-test.drv!out".into(),
-        error: StorePathError::Symbol(41, b'!'),
+        error: StorePathError::Symbol { position: 52, symbol: b'!' },
     }))]
     #[case("/nix/store/00000000000000000000000000000000-test.drv^out^bin!out^lib", Err(ParseStorePathError {
         path: "/nix/store/00000000000000000000000000000000-test.drv^out^bin!out".into(),
-        error: StorePathError::Symbol(3, b'!'),
+        error: StorePathError::Symbol { position: 60, symbol: b'!' },
     }))]
     fn parse_path(#[case] input: &str, #[case] expected: Result<DerivedPath, ParseStorePathError>) {
         let store_dir = StoreDir::default();
         let actual: Result<DerivedPath, _> = store_dir.parse(input);
         assert_eq!(actual, expected);
+    }
+
+    #[rstest]
+    #[should_panic = "could not parse '/nix/store/00000000000000000000000000000000-test.drv!out', invalid store path symbol '!' at position 52"]
+    #[case("/nix/store/00000000000000000000000000000000-test.drv!out")]
+    #[should_panic = "could not parse '/nix/store/00000000000000000000000000000000-test.drv!out', invalid store path symbol '!' at position 52"]
+    #[case("/nix/store/00000000000000000000000000000000-test.drv!out^bin")]
+    #[should_panic = "could not parse '/nix/store/00000000000000000000000000000000-test.drv^out^bin!out', invalid store path symbol '!' at position 60"]
+    #[case("/nix/store/00000000000000000000000000000000-test.drv^out^bin!out^lib")]
+    fn parse_path_errors(#[case] input: &str) {
+        let store_dir = StoreDir::default();
+        let actual = store_dir.parse::<DerivedPath>(input).unwrap_err();
+        panic!("{actual}");
     }
 
     #[rstest]
@@ -331,15 +338,15 @@ mod unittests {
     }))]
     #[case("/nix/store/00000000000000000000000000000000-test.drv^out", Err(ParseStorePathError {
         path: "/nix/store/00000000000000000000000000000000-test.drv^out".into(),
-        error: StorePathError::Symbol(41, b'^'),
+        error: StorePathError::Symbol { position: 52, symbol: b'^' },
     }))]
     #[case("/nix/store/00000000000000000000000000000000-test.drv^out!bin", Err(ParseStorePathError {
         path: "/nix/store/00000000000000000000000000000000-test.drv^out".into(),
-        error: StorePathError::Symbol(41, b'^'),
+        error: StorePathError::Symbol { position: 52, symbol: b'^' },
     }))]
     #[case("/nix/store/00000000000000000000000000000000-test.drv!out!bin^out!lib", Err(ParseStorePathError {
         path: "/nix/store/00000000000000000000000000000000-test.drv!out!bin^out".into(),
-        error: StorePathError::Symbol(3, b'^'),
+        error: StorePathError::Symbol { position: 60, symbol: b'^' },
     }))]
     fn parse_legacy_path(
         #[case] input: &str,
@@ -375,15 +382,15 @@ mod unittests {
     }))]
     #[case("/nix/store/00000000000000000000000000000000-test.drv!out", Err(ParseStorePathError {
         path: "/nix/store/00000000000000000000000000000000-test.drv!out".into(),
-        error: StorePathError::Symbol(41, b'!'),
+        error: StorePathError::Symbol { position: 52, symbol: b'!' },
     }))]
     #[case("/nix/store/00000000000000000000000000000000-test.drv!out^bin", Err(ParseStorePathError {
         path: "/nix/store/00000000000000000000000000000000-test.drv!out".into(),
-        error: StorePathError::Symbol(41, b'!'),
+        error: StorePathError::Symbol { position: 52, symbol: b'!' },
     }))]
     #[case("/nix/store/00000000000000000000000000000000-test.drv^out^bin!out^lib", Err(ParseStorePathError {
         path: "/nix/store/00000000000000000000000000000000-test.drv^out^bin!out".into(),
-        error: StorePathError::Symbol(3, b'!'),
+        error: StorePathError::Symbol { position: 60, symbol: b'!' },
     }))]
     fn parse_single_path(
         #[case] input: &str,

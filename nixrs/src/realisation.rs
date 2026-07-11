@@ -108,7 +108,7 @@ mod unittests {
     #[case("sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394")]
     #[should_panic = "derivation output hash 'sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm39' has wrong length for hash type 'sha256'"]
     #[case("sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm39!out")]
-    #[should_panic = "derivation output has invalid name symbol '{' at position 3"]
+    #[should_panic = "derivation output has invalid store path name symbol '{' at position 3"]
     #[case("sha256:1h86vccx9vgcyrkj3zv4b7j3r8rrc0z0r4r6q3jvhf06s9hnm394!out{put")]
     fn parse_drv_output_failure(#[case] value: &str) {
         let actual = value.parse::<DrvOutput>().unwrap_err();

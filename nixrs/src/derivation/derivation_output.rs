@@ -3,10 +3,12 @@ use std::{collections::BTreeMap, fmt};
 use crate::derived_path::OutputName;
 #[cfg(any(feature = "xp-ca-derivations", feature = "xp-impure-derivations"))]
 use crate::store_path::ContentAddressMethodAlgorithm;
-use crate::store_path::{ContentAddress, StoreDir, StorePath, StorePathName, StorePathNameError};
+use crate::store_path::{
+    ContentAddress, StoreDir, StorePath, StorePathName, StorePathNameError, StorePathNameRef,
+};
 
 struct OutputPathName<'b> {
-    drv_name: &'b StorePathName,
+    drv_name: &'b StorePathNameRef,
     output_name: &'b OutputName,
 }
 impl fmt::Display for OutputPathName<'_> {
@@ -19,7 +21,7 @@ impl fmt::Display for OutputPathName<'_> {
     }
 }
 pub(crate) fn output_path_name<'s>(
-    drv_name: &'s StorePathName,
+    drv_name: &'s StorePathNameRef,
     output_name: &'s OutputName,
 ) -> impl fmt::Display + 's {
     OutputPathName {

@@ -33,7 +33,7 @@ mod derivation {
     use crate::hash::fmt::ParseHashError;
     use crate::store_path::{
         ContentAddress, ContentAddressMethod, ContentAddressMethodAlgorithm, StorePath,
-        StorePathName, StorePathSet,
+        StorePathNameRef, StorePathSet,
     };
 
     nix_deserialize_remote_derive! {
@@ -164,7 +164,7 @@ mod derivation {
     impl DerivationOutput {
         pub(crate) async fn write_output<W>(
             &self,
-            drv_name: &StorePathName,
+            drv_name: &StorePathNameRef,
             output_name: &OutputName,
             mut writer: W,
         ) -> Result<(), W::Error>

@@ -77,14 +77,14 @@ impl FromStr for FullStorePath {
         if let Some(dir) = path.parent() {
             let store_dir = StoreDir::new(dir).map_err(|_| ParseStorePathError {
                 path: s.to_string(),
-                error: StorePathError::NotInStore(path.to_path_buf()),
+                error: StorePathError::NotInStore,
             })?;
             let path = store_dir.parse(s)?;
             Ok(FullStorePath { store_dir, path })
         } else {
             Err(ParseStorePathError {
                 path: s.to_string(),
-                error: StorePathError::NonAbsolute(path.to_path_buf()),
+                error: StorePathError::NonAbsolute,
             })
         }
     }

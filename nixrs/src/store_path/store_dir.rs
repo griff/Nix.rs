@@ -57,6 +57,18 @@ impl StoreDir {
         self == DEFAULT_DIR
     }
 
+    /// Return length of StoreDir.
+    ///
+    /// ```
+    /// # use nixrs::store_path::StoreDir;
+    /// let store = StoreDir::new("/nix/store").unwrap();
+    /// assert_eq!(10, store.len());
+    /// ```
+    #[expect(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
+        self.0.as_str().len()
+    }
+
     /// Get [`str`] representation of this StoreDir.
     ///
     /// ```

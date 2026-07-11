@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use derive_more::Display;
 
-use crate::store_path::{StorePathNameError, into_name};
+use crate::store_path::{StorePathNameError, StorePathNameRef};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
 pub struct OutputName(pub(crate) String);
@@ -31,7 +31,7 @@ impl FromStr for OutputName {
     type Err = StorePathNameError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let name = into_name(&s)?.to_string();
+        let name = StorePathNameRef::from_str(s)?.to_string();
         Ok(OutputName(name))
     }
 }
@@ -99,9 +99,9 @@ mod unittests {
     #[case("*", Ok(OutputSpec::All))]
     #[case("out", Ok(OutputSpec::Named(set!("out"))))]
     #[case("bin,dev,out", Ok(OutputSpec::Named(set!("bin", "dev", "out"))))]
-    #[case("bin{n", Err(StorePathNameError::Symbol(3, b'{')))]
-    #[case("out,bin{n", Err(StorePathNameError::Symbol(3, b'{')))]
-    #[case(" bin{n", Err(StorePathNameError::Symbol(0, b' ')))]
+    #[case("bin{n", Err(StorePathNameError::Symbol { position: 3, symbol: b'{' }))]
+    #[case("out,bin{n", Err(StorePathNameError::Symbol { position: 3, symbol: b'{' }))]
+    #[case(" bin{n", Err(StorePathNameError::Symbol { position: 0, symbol: b' ' }))]
     #[case("out,", Err(StorePathNameError::NameLength))]
     #[case("", Err(StorePathNameError::NameLength))]
     #[case(",out", Err(StorePathNameError::NameLength))]

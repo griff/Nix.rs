@@ -2,8 +2,8 @@ use proptest::prelude::*;
 
 use crate::hash::{Algorithm, Hash, Sha256};
 use crate::store_path::{
-    ContentAddress, ContentAddressMethod, ContentAddressMethodAlgorithm, FullStorePath,
-    MAX_NAME_LEN, StoreDir, StorePath, StorePathHash, StorePathName,
+    ContentAddress, ContentAddressMethod, ContentAddressMethodAlgorithm, FullStorePath, StoreDir,
+    StorePath, StorePathHash, StorePathName,
 };
 
 impl Arbitrary for ContentAddressMethod {
@@ -58,7 +58,7 @@ impl Arbitrary for StorePathHash {
 
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
         any::<[u8; StorePathHash::len()]>()
-            .prop_map(StorePathHash::new)
+            .prop_map(StorePathHash::from_array)
             .boxed()
     }
 }
@@ -70,8 +70,8 @@ pub fn arb_store_path_name(
     "[a-zA-Z0-9+\\-_?=][a-zA-Z0-9+\\-_?=.]{0,210}".prop_map(move |mut s| {
         let mut max = max;
         let len = extension.as_ref().map(|e| e.len() + 1).unwrap_or(0) as u8;
-        if max > MAX_NAME_LEN as u8 - len {
-            max = MAX_NAME_LEN as u8 - len;
+        if max > StorePathName::max_len() as u8 - len {
+            max = StorePathName::max_len() as u8 - len;
         }
         max -= 1;
         if s.len() > max as usize {
@@ -90,7 +90,7 @@ impl Arbitrary for StorePathName {
     type Strategy = BoxedStrategy<StorePathName>;
 
     fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-        arb_store_path_name(MAX_NAME_LEN as u8, args).boxed()
+        arb_store_path_name(StorePathName::max_len() as u8, args).boxed()
     }
 }
 
@@ -107,7 +107,7 @@ pub fn arb_store_path(max: u8, extension: Option<String>) -> impl Strategy<Value
 }
 
 pub fn arb_drv_store_path() -> impl Strategy<Value = StorePath> {
-    arb_store_path(MAX_NAME_LEN as u8 - 4 - 15, Some("drv".into()))
+    arb_store_path(StorePathName::max_len() as u8 - 4 - 15, Some("drv".into()))
 }
 
 pub fn arb_full_drv_store_path() -> impl Strategy<Value = FullStorePath> {
@@ -119,7 +119,7 @@ impl Arbitrary for StorePath {
     type Parameters = Option<String>;
     type Strategy = BoxedStrategy<StorePath>;
     fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-        arb_store_path(MAX_NAME_LEN as u8, args).boxed()
+        arb_store_path(StorePathName::max_len() as u8, args).boxed()
     }
 }
 
@@ -127,7 +127,7 @@ impl Arbitrary for FullStorePath {
     type Parameters = Option<String>;
     type Strategy = BoxedStrategy<FullStorePath>;
     fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-        arb_full_store_path(MAX_NAME_LEN as u8, args).boxed()
+        arb_full_store_path(StorePathName::max_len() as u8, args).boxed()
     }
 }
 
