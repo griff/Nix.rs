@@ -31,6 +31,7 @@ rstest = { workspace = true }
 tokio-test = { workspace = true }
 trybuild = { workspace = true }
 num_enum = { workspace = true }
+tracing.workspace = true
 
 [dev-dependencies.nixrs]
 version = "0.1.0"

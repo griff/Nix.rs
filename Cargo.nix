@@ -5734,6 +5734,10 @@ rec {
             packageId = "tokio-test";
           }
           {
+            name = "tracing";
+            packageId = "tracing";
+          }
+          {
             name = "trybuild";
             packageId = "trybuild";
           }
@@ -5786,6 +5790,10 @@ rec {
           {
             name = "tokio-test";
             packageId = "tokio-test";
+          }
+          {
+            name = "tracing";
+            packageId = "tracing";
           }
           {
             name = "trybuild";

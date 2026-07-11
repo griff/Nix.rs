@@ -1787,6 +1787,7 @@ dependencies = [
  "syn",
  "tokio",
  "tokio-test",
+ "tracing",
  "trybuild",
 ]
 
@@ -1802,6 +1803,7 @@ dependencies = [
  "rstest",
  "tokio",
  "tokio-test",
+ "tracing",
  "trybuild",
 ]
 

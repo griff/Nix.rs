@@ -93,6 +93,7 @@ fn nix_deserialize_impl(
                 where R: ?Sized + #crate_path::daemon::de::NixRead + Send,
             {
                 use #crate_path::daemon::de::Error as _;
+                use ::tracing::Instrument as _;
                 #body
             }
         }
@@ -142,7 +143,8 @@ fn nix_deserialize_field(f: &Field) -> TokenStream {
     let read_value = quote_spanned! {
         ty.span()=> if first__ {
             first__ = false;
-            let value = reader.try_read_value::<#ty>().await
+            let span = ::tracing::trace_span!(#field_sl);
+            let value = reader.try_read_value::<#ty>().instrument(span).await
                 .map_err(|err| err.with_field(#field_sl))?;
             if let Some(v) = value {
                 v
@@ -150,7 +152,8 @@ fn nix_deserialize_field(f: &Field) -> TokenStream {
                 return Ok(None);
             }
         } else {
-            reader.read_value::<#ty>().await
+            let span = ::tracing::trace_span!(#field_sl);
+            reader.read_value::<#ty>().instrument(span).await
                 .map_err(|err| err.with_field(#field_sl))?
         }
     };
