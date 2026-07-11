@@ -12,7 +12,9 @@ mod store_path_name;
 pub use content_address::{ContentAddress, ContentAddressMethod, ContentAddressMethodAlgorithm};
 pub use full_store_path::FullStorePath;
 pub use path::{ParseStorePathError, StorePath, StorePathError};
-pub use store_dir::{FromStoreDirStr, HasStoreDir, StoreDir, StoreDirDisplay};
+pub use store_dir::{
+    FromStoreDirStr, HasStoreDir, StoreDir, StoreDirDisplay, StoreDirDisplayFromFn, display_from_fn,
+};
 pub use store_path_hash::{StorePathHash, StorePathHashError};
 pub use store_path_name::{StorePathName, StorePathNameError, StorePathNameRef};
 

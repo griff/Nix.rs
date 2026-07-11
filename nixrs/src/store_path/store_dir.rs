@@ -181,6 +181,23 @@ where
     }
 }
 
+pub struct StoreDirDisplayFromFn<F>(F);
+impl<F> StoreDirDisplay for StoreDirDisplayFromFn<F>
+where
+    F: Fn(&StoreDir, &mut fmt::Formatter<'_>) -> fmt::Result,
+{
+    fn fmt(&self, store_dir: &StoreDir, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        (self.0)(store_dir, f)
+    }
+}
+
+pub const fn display_from_fn<F>(f: F) -> StoreDirDisplayFromFn<F>
+where
+    F: Fn(&StoreDir, &mut fmt::Formatter<'_>) -> fmt::Result,
+{
+    StoreDirDisplayFromFn(f)
+}
+
 pub trait HasStoreDir {
     fn store_dir(&self) -> &StoreDir;
 }
