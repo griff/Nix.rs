@@ -1,11 +1,8 @@
 {
     "name": "nixrs-capnp",
-    "conf_path": "../legacy-nix/nix_2_3.conf",
-    "program_path": "../../target/debug/daemon-it-capnp",
-    "cmd_args": [
-    ],
-    "range": "1.10..1.37",
-    "op_log_prefix": false,
-    "chomp_log": false,
+    "program": "../../target/debug/daemon-it-capnp",
+    "args": [],
+    "protocol_range": "1.10..1.37",
+    "quirks": [],
     "skipped": []
 }

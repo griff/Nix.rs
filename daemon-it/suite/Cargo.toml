@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 bstr = { workspace = true }
 bytes = { workspace = true }
+enum-bitset = { workspace = true, features = ["serde"] }
 futures = { workspace = true }
 nixrs = { path = "../../nixrs", features = [ "daemon", "test" ] }
 pretty_assertions = { workspace = true }

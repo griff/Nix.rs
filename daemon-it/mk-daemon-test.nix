@@ -7,7 +7,7 @@
   '';
   crate = project.daemon-it.suite.bin;
   drvArgs = lib.removeAttrs args ["name" "config" "configFile"];
-in pkgs.runCommand "daemon-tests-${name}" ({ UNIX_PROXY = "${project.nix.unix-proxy}/bin/unix-proxy"; }// drvArgs) ''
+in pkgs.runCommand "daemon-it-${name}" ({ UNIX_PROXY = "${project.nix.unix-proxy}/bin/unix-proxy"; }// drvArgs) ''
   export NIX_IMPL=${run-config}
   echo "Running tests for $NIX_IMPL"
   cat $NIX_IMPL

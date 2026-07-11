@@ -23,6 +23,7 @@ use nixrs::{ByteString, btree_set};
 use pretty_assertions::assert_eq;
 use rstest::rstest;
 use tokio::io::copy_buf;
+use tracing::info;
 
 use crate::assert_result;
 use crate::{ENV_NIX_IMPL, NixImpl as _, prepare_mock, process_logs, run_store_test};
@@ -197,7 +198,7 @@ async fn check_unread_fails() {
     ])]
 async fn op_logs(#[case] mut logs: Vec<ParsedLogMessage>) {
     let nix = ENV_NIX_IMPL.deref();
-    if nix.is_skipped("unittests::op_logs") {
+    if nix.is_operation_skipped(Operation::IsValidPath) || nix.is_skipped("unittests::op_logs") {
         return;
     }
 
@@ -301,10 +302,7 @@ async fn is_valid_path(
     #[case] expected: Result<bool, String>,
 ) {
     let nix = ENV_NIX_IMPL.deref();
-    if nix
-        .range
-        .intersect(&Operation::IsValidPath.versions())
-        .is_none()
+    if nix.is_operation_skipped(Operation::IsValidPath)
         || nix.is_skipped("unittests::is_valid_path")
     {
         return;
@@ -313,6 +311,8 @@ async fn is_valid_path(
     mock.is_valid_path(&store_path, response).build();
     let version = nix.protocol_range().max();
     run_store_test(nix, version, mock, |mut client, _| async move {
+        info!("Testing operation");
+        eprintln!("Testing operation");
         assert_result!(
             expected,
             client
@@ -320,10 +320,14 @@ async fn is_valid_path(
                 .await
                 .map_err(|err| err.to_string())
         );
+        info!("Test operations complete!");
+        eprintln!("Test operations complete!");
         Ok(client) as DaemonResult<_>
     })
     .await
     .unwrap();
+    info!("Test complete!");
+    eprintln!("Test complete!");
 }
 
 #[test_log::test(tokio::test)]
@@ -341,10 +345,7 @@ async fn query_valid_paths(
     #[case] expected: Result<&[&str], String>,
 ) {
     let nix = ENV_NIX_IMPL.deref();
-    if nix
-        .range
-        .intersect(&Operation::QueryValidPaths.versions())
-        .is_none()
+    if nix.is_operation_skipped(Operation::QueryValidPaths)
         || nix.is_skipped("unittests::query_valid_paths")
     {
         return;
@@ -400,10 +401,7 @@ async fn query_path_info(
     #[case] expected: Result<Option<UnkeyedValidPathInfo>, String>,
 ) {
     let nix = ENV_NIX_IMPL.deref();
-    if nix
-        .range
-        .intersect(&Operation::QueryPathInfo.versions())
-        .is_none()
+    if nix.is_operation_skipped(Operation::QueryPathInfo)
         || nix.is_skipped("unittests::query_path_info")
     {
         return;
@@ -437,10 +435,7 @@ async fn query_path_info(
 #[case::dir_example("00000000000000000000000000000000-_", test_data::dir_example())]
 async fn nar_from_path(#[case] store_path: StorePath, #[case] events: test_data::TestNarEvents) {
     let nix = ENV_NIX_IMPL.deref();
-    if nix
-        .range
-        .intersect(&Operation::NarFromPath.versions())
-        .is_none()
+    if nix.is_operation_skipped(Operation::NarFromPath)
         || nix.is_skipped("unittests::nar_from_path")
     {
         return;
@@ -501,12 +496,7 @@ async fn build_paths(
     #[case] expected: Result<(), String>,
 ) {
     let nix = ENV_NIX_IMPL.deref();
-    if nix
-        .range
-        .intersect(&Operation::BuildPaths.versions())
-        .is_none()
-        || nix.is_skipped("unittests::build_paths")
-    {
+    if nix.is_operation_skipped(Operation::BuildPaths) || nix.is_skipped("unittests::build_paths") {
         return;
     }
     let store_dir = StoreDir::default();
@@ -605,10 +595,7 @@ async fn build_derivation(
     #[case] mut expected: Result<BuildResult, String>,
 ) {
     let nix = ENV_NIX_IMPL.deref();
-    if nix
-        .range
-        .intersect(&Operation::BuildDerivation.versions())
-        .is_none()
+    if nix.is_operation_skipped(Operation::BuildDerivation)
         || nix.is_skipped("unittests::build_derivation")
     {
         return;
@@ -681,10 +668,7 @@ async fn query_missing(
     #[case] expected: Result<QueryMissingResult, String>,
 ) {
     let nix = ENV_NIX_IMPL.deref();
-    if nix
-        .range
-        .intersect(&Operation::QueryMissing.versions())
-        .is_none()
+    if nix.is_operation_skipped(Operation::QueryMissing)
         || nix.is_skipped("unittests::query_missing")
     {
         return;
@@ -754,10 +738,7 @@ async fn add_to_store_nar(
     #[case] expected: Result<(), String>,
 ) {
     let nix = ENV_NIX_IMPL.deref();
-    if nix
-        .range
-        .intersect(&Operation::AddToStoreNar.versions())
-        .is_none()
+    if nix.is_operation_skipped(Operation::AddToStoreNar)
         || nix.is_skipped("unittests::add_to_store_nar")
     {
         return;
@@ -896,10 +877,7 @@ async fn add_multiple_to_store(
     #[case] expected: Result<(), String>,
 ) {
     let nix = ENV_NIX_IMPL.deref();
-    if nix
-        .range
-        .intersect(&Operation::AddMultipleToStore.versions())
-        .is_none()
+    if nix.is_operation_skipped(Operation::AddMultipleToStore)
         || nix.is_skipped("unittests::add_multiple_to_store")
     {
         return;
@@ -939,12 +917,7 @@ async fn add_multiple_to_store(
 #[test_log::test(tokio::test)]
 async fn sesennst() {
     let nix = ENV_NIX_IMPL.deref();
-    if nix
-        .range
-        .intersect(&Operation::AddToStoreNar.versions())
-        .is_none()
-        || nix.is_skipped("unittests::sesennst")
-    {
+    if nix.is_operation_skipped(Operation::AddToStoreNar) || nix.is_skipped("unittests::sesennst") {
         return;
     }
     let handshake_logs = vec![LogMessage::message(Bytes::new())];

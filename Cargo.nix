@@ -2586,6 +2586,82 @@ rec {
         };
         resolvedDefaultFeatures = [ "alloc" "default" ];
       };
+      "enum-bitset" = rec {
+        crateName = "enum-bitset";
+        version = "0.2.2";
+        edition = "2024";
+        sha256 = "11nmvalnp1cmq816v5jbyc6pcjx9h2d4yrwf69s6hsa5yn8zznmb";
+        libName = "enum_bitset";
+        authors = [
+          "glueball <glueball@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "enum-bitset-derive";
+            packageId = "enum-bitset-derive";
+          }
+          {
+            name = "serde";
+            packageId = "serde";
+            optional = true;
+            usesDefaultFeatures = false;
+          }
+        ];
+        devDependencies = [
+          {
+            name = "serde";
+            packageId = "serde";
+            usesDefaultFeatures = false;
+            features = [ "derive" ];
+          }
+        ];
+        features = {
+          "serde" = [ "dep:serde" "enum-bitset-derive/serde" ];
+        };
+        resolvedDefaultFeatures = [ "serde" ];
+      };
+      "enum-bitset-derive" = rec {
+        crateName = "enum-bitset-derive";
+        version = "0.2.2";
+        edition = "2024";
+        sha256 = "17x7ca9jd8sff5ra0lcy674nm6a43zg27bs7qj3npqwx0faf12vx";
+        procMacro = true;
+        libName = "enum_bitset_derive";
+        authors = [
+          "glueball <glueball@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "heck";
+            packageId = "heck";
+          }
+          {
+            name = "proc-macro2";
+            packageId = "proc-macro2";
+          }
+          {
+            name = "quote";
+            packageId = "quote";
+          }
+          {
+            name = "syn";
+            packageId = "syn";
+            usesDefaultFeatures = false;
+            features = [ "parsing" "derive" "proc-macro" "printing" "clone-impls" ];
+          }
+        ];
+        devDependencies = [
+          {
+            name = "syn";
+            packageId = "syn";
+            usesDefaultFeatures = false;
+            features = [ "extra-traits" ];
+          }
+        ];
+        features = {
+        };
+        resolvedDefaultFeatures = [ "serde" ];
+      };
       "env_filter" = rec {
         crateName = "env_filter";
         version = "0.1.3";
@@ -5538,6 +5614,11 @@ rec {
           {
             name = "bytes";
             packageId = "bytes";
+          }
+          {
+            name = "enum-bitset";
+            packageId = "enum-bitset";
+            features = [ "serde" ];
           }
           {
             name = "futures";

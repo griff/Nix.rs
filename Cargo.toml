@@ -72,6 +72,7 @@ url = "2.4.1"
 compress-tools = "^0.14.3"
 
 assert_matches = "1.5.0"
+enum-bitset = "0.2.2"
 
 # nixrs-capnp
 #capnp = { git = "https://github.com/griff/capnproto-rust.git", branch = "feat/setter-input-everywhere" }

@@ -7,12 +7,10 @@ let
 in mkDaemonTest {
   name = "capnp";
   config = {
-    program_path = "${crate}/bin/daemon-it-capnp";
-    conf_path = ../legacy-nix/nix_2_3.conf;
-    cmd_args = [];
-    range = "1.10..1.37";
-    op_log_prefix = false;
-    chomp_log = false;
+    program = "${crate}/bin/daemon-it-capnp";
+    args = [];
+    protocol_range = "1.10..1.37";
+    quirks = [];
     skipped = [];
   };
   passthru.program = crate;

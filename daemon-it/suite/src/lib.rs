@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::future::Future;
 use std::ops::{Deref, DerefMut};
@@ -18,8 +18,8 @@ use nixrs::daemon::{
 };
 use nixrs::log::{Message, ParsedLogMessage, Verbosity};
 use nixrs::test::daemon::{Builder, MockReporter, MockStore, ReporterError};
-use serde::Deserialize;
 use serde::de::Error;
+use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, BufReader, split};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::try_join;
@@ -30,27 +30,32 @@ mod proptests;
 #[cfg(test)]
 mod unittests;
 
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Deserialize,
+    Serialize,
+    enum_bitset::EnumBitset,
+)]
+#[bitset(name = Quirks)]
+pub enum Quirk {
+    ChompLog,
+    LogPrefix,
+    SkipAll,
+}
+
 pub trait NixImpl: std::fmt::Debug {
     fn name(&self) -> &str;
-    fn program_path(&self) -> PathBuf {
-        if let Some(all_nix) = std::env::var_os("ALL_NIX") {
-            Path::new(&all_nix).join(self.name()).join("bin/nix-daemon")
-        } else {
-            warn!("Missing location of ALL_NIX");
-            Path::new(".").join(self.name()).join("bin/nix-daemon")
-        }
+    fn program_path(&self) -> PathBuf;
+    fn prepare_mock(&self, mock: &mut Builder<()>) {
+        let _ = mock;
     }
-    fn conf_path(&self) -> PathBuf {
-        if let Some(all_nix) = std::env::var_os("ALL_NIX") {
-            Path::new(&all_nix)
-                .join(self.name())
-                .join("conf/nix_2_3.conf")
-        } else {
-            warn!("Missing location of ALL_NIX");
-            Path::new("../nix/all-nix/").join("conf/nix_2_3.conf")
-        }
-    }
-    fn prepare_mock(&self, _mock: &mut Builder<()>) {}
     fn prepare_program<'c>(&self, cmd: &'c mut Command) -> &'c mut Command;
     fn prepare_op_logs(&self, op: Operation, logs: &mut Vec<ParsedLogMessage>);
     //fn prepare_op_logs2(&self, op: Operation, logs: &mut VecDeque<LogMessage>);
@@ -59,20 +64,27 @@ pub trait NixImpl: std::fmt::Debug {
     fn collect_log(&self, log: ParsedLogMessage) -> ParsedLogMessage {
         log
     }
+    fn is_test_skipped(&self, test: &str) -> bool {
+        let _ = test;
+        false
+    }
+    fn is_operation_skipped(&self, op: Operation) -> bool {
+        self.protocol_range().intersect(&op.versions()).is_none()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct JsonNixImpl {
     name: String,
-    conf_path: PathBuf,
-    program_path: PathBuf,
-    cmd_args: Vec<String>,
-    range: ProtocolRange,
-    op_log_prefix: bool,
+    program: PathBuf,
+    #[serde(rename = "args", default)]
+    arguments: Vec<String>,
+    #[serde(rename = "env", default)]
+    environment: BTreeMap<String, String>,
+    protocol_range: ProtocolRange,
     #[serde(default)]
-    chomp_log: bool,
+    quirks: Quirks,
     #[serde(default)]
-    skip_all: bool,
     skipped: BTreeSet<String>,
 }
 
@@ -82,18 +94,15 @@ impl JsonNixImpl {
         let rdr = File::open(path).map_err(serde_json::Error::custom)?;
         let mut ret: JsonNixImpl = serde_json::from_reader(rdr)?;
         let base_dir = path.parent().unwrap_or(Path::new("."));
-        if ret.conf_path.is_relative() {
-            ret.conf_path = base_dir.join(ret.conf_path); //.canonicalize().map_err(serde_json::Error::custom)?;
-        }
-        if ret.program_path.is_relative() {
-            ret.program_path = base_dir.join(ret.program_path); //.canonicalize().map_err(serde_json::Error::custom)?;
+        if ret.program.is_relative() {
+            ret.program = base_dir.join(ret.program); //.canonicalize().map_err(serde_json::Error::custom)?;
         }
         eprintln!("nix config: {ret:#?}");
         eprintln!("daemon protocol range: {}", ret.protocol_range());
         Ok(ret)
     }
     pub fn is_skipped(&self, test: &str) -> bool {
-        self.skip_all || self.skipped.contains(test)
+        self.quirks.contains(Quirk::SkipAll) || self.skipped.contains(test)
     }
 }
 pub static ENV_NIX_IMPL: LazyLock<JsonNixImpl> = LazyLock::new(|| {
@@ -103,20 +112,18 @@ pub static ENV_NIX_IMPL: LazyLock<JsonNixImpl> = LazyLock::new(|| {
         eprintln!("NIX_IMPL was not set. Ignoring ALL tests");
         JsonNixImpl {
             name: "ignored".into(),
-            conf_path: "ignored.conf".into(),
-            program_path: "bin/ignored".into(),
-            cmd_args: vec![],
-            range: ProtocolRange::default(),
-            op_log_prefix: true,
-            chomp_log: false,
-            skip_all: true,
-            skipped: BTreeSet::new(),
+            program: "bin/ignored".into(),
+            arguments: vec![],
+            environment: Default::default(),
+            protocol_range: ProtocolRange::default(),
+            quirks: Quirk::LogPrefix + Quirk::SkipAll,
+            skipped: Default::default(),
         }
     }
 });
 pub fn nix_protocol_range() -> ProtocolRange {
     ENV_NIX_IMPL
-        .range
+        .protocol_range
         .intersect(&ProtocolRange::default())
         .unwrap()
 }
@@ -126,18 +133,16 @@ impl NixImpl for JsonNixImpl {
         &self.name
     }
     fn program_path(&self) -> PathBuf {
-        self.program_path.clone()
-    }
-    fn conf_path(&self) -> PathBuf {
-        self.conf_path.clone()
+        self.program.clone()
     }
 
     fn prepare_program<'c>(&self, cmd: &'c mut Command) -> &'c mut Command {
-        cmd.args(self.cmd_args.iter())
+        cmd.args(self.arguments.iter())
+            .envs(self.environment.iter())
     }
 
     fn prepare_op_logs(&self, op: Operation, logs: &mut Vec<ParsedLogMessage>) {
-        if self.op_log_prefix {
+        if self.quirks.contains(Quirk::LogPrefix) {
             let id: u64 = op.into();
             logs.insert(
                 0,
@@ -158,115 +163,20 @@ impl NixImpl for JsonNixImpl {
             }
         }
     }
+
     fn collect_log(&self, log: ParsedLogMessage) -> ParsedLogMessage {
-        if self.chomp_log { chomp_log(log) } else { log }
+        if self.quirks.contains(Quirk::ChompLog) {
+            chomp_log(log)
+        } else {
+            log
+        }
     }
     fn protocol_range(&self) -> ProtocolRange {
-        self.range
+        self.protocol_range
             .intersect(&ProtocolRange::default())
             .expect("No overlap between supported range and NIX_IMPL range")
     }
 }
-
-#[derive(Debug, Clone, Copy)]
-pub struct StdNixImpl {
-    name: &'static str,
-    cmd_args: &'static [&'static str],
-    range: ProtocolRange,
-    op_log_prefix: bool,
-    //handshake_logs: bool,
-}
-
-impl NixImpl for StdNixImpl {
-    fn name(&self) -> &str {
-        self.name
-    }
-
-    fn prepare_mock(&self, _mock: &mut Builder<()>) {
-        /*
-        let mut options = ClientOptions::default();
-        options.build_cores = 12;
-        options.max_build_jobs = 12;
-        options.verbosity = self.verbosity;
-        mock.set_options(&options, Ok(())).build();
-         */
-    }
-
-    fn prepare_program<'c>(&self, cmd: &'c mut Command) -> &'c mut Command {
-        cmd.args(self.cmd_args.iter())
-    }
-
-    fn prepare_op_logs(&self, op: Operation, logs: &mut Vec<ParsedLogMessage>) {
-        if self.op_log_prefix {
-            let id: u64 = op.into();
-            logs.insert(
-                0,
-                ParsedLogMessage::message(format!("performing daemon worker op: {id}\n")),
-            )
-        }
-    }
-    /*
-    fn prepare_op_logs2(&self, op: Operation, logs: &mut VecDeque<LogMessage>) {
-        if self.op_log_prefix {
-            let id: u64 = op.into();
-            logs.push_front(LogMessage::Next(
-                format!("performing daemon worker op: {}\n", id).into(),
-            ))
-        }
-    }
-    */
-    fn collect_log(&self, log: ParsedLogMessage) -> ParsedLogMessage {
-        chomp_log(log)
-    }
-
-    fn protocol_range(&self) -> ProtocolRange {
-        self.range.intersect(&ProtocolRange::default()).unwrap()
-    }
-
-    /*
-    fn handshake_logs_range(&self) -> SizeRange {
-        if self.handshake_logs {
-            size_range(0..10)
-        } else {
-            size_range(0..=0)
-        }
-    }
-    */
-}
-
-pub const NIX_2_3: StdNixImpl = StdNixImpl {
-    name: "nix_2_3",
-    //verbosity: Verbosity::Error,
-    cmd_args: &["--process-ops", "--debug", "-vvvvvv", "--stdio"],
-    range: ProtocolRange::from_minor(10, 21),
-    op_log_prefix: false,
-    //handshake_logs: false,
-};
-
-pub const NIX_2_24: StdNixImpl = StdNixImpl {
-    name: "nix_2_24",
-    //verbosity: Verbosity::Error,
-    cmd_args: &[
-        "--extra-experimental-features",
-        "mounted-ssh-store",
-        "--process-ops",
-        "--debug",
-        "-vvvvvv",
-        "--stdio",
-    ],
-    range: ProtocolRange::from_minor(10, 37),
-    op_log_prefix: true,
-    //handshake_logs: true,
-};
-
-pub const LIX_2_91: StdNixImpl = StdNixImpl {
-    name: "lix_2_91",
-    //verbosity: Verbosity::Vomit,
-    cmd_args: &["--process-ops", "--debug", "-vvvvvv", "--stdio"],
-    range: ProtocolRange::from_minor(10, 35),
-    op_log_prefix: true,
-    //handshake_logs: true,
-};
 
 pub async fn process_logs<R, L>(logs: L) -> DaemonResult<R>
 where
@@ -355,13 +265,11 @@ where
     }
     .map_err(From::from);
 
-    let conf = nix.conf_path();
     let program = nix.program_path();
     //let program = "../../lix/outputs/out/bin/nix-daemon";
     let mut cmd = Command::new(program);
     nix.prepare_program(&mut cmd)
         .env("NIX_REMOTE", uri)
-        .env("NIX_CONF", conf)
         .env("NIXRS_SOCKET", socket)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
