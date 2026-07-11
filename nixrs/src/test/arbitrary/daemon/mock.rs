@@ -104,7 +104,7 @@ prop_compose! {
     pub fn arb_mock_add_multiple_to_store()(
         repair in proptest::bool::ANY,
         dont_check_sigs in proptest::bool::ANY,
-        infos in arb_nar_contents_items()) -> MockOperation {
+        infos in arb_nar_contents_items(Default::default())) -> MockOperation {
         MockOperation::AddMultipleToStore(AddMultipleToStoreRequest {
             repair, dont_check_sigs
         }, infos, Ok(()))

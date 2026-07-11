@@ -75,13 +75,17 @@ pub fn arb_nar_contents_item() -> impl Strategy<Value = (ValidPathInfo, Bytes)> 
 }
 
 #[cfg(feature = "daemon")]
-pub fn arb_nar_items() -> impl Strategy<Value = Vec<(ValidPathInfo, test_data::TestNarEvents)>> {
-    proptest::collection::vec(arb_nar_item(), SizeRange::default())
+pub fn arb_nar_items(
+    size: SizeRange,
+) -> impl Strategy<Value = Vec<(ValidPathInfo, test_data::TestNarEvents)>> {
+    proptest::collection::vec(arb_nar_item(), size)
 }
 
 #[cfg(feature = "daemon")]
-pub fn arb_nar_contents_items() -> impl Strategy<Value = Vec<(ValidPathInfo, Bytes)>> {
-    proptest::collection::vec(arb_nar_contents_item(), SizeRange::default())
+pub fn arb_nar_contents_items(
+    size: SizeRange,
+) -> impl Strategy<Value = Vec<(ValidPathInfo, Bytes)>> {
+    proptest::collection::vec(arb_nar_contents_item(), size)
 }
 
 #[cfg(feature = "daemon")]

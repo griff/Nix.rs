@@ -1103,7 +1103,7 @@ mod proptests {
     async fn add_multiple_to_store(
         repair: bool,
         dont_check_sigs: bool,
-        #[strategy(arb_nar_contents_items())] infos: Vec<(ValidPathInfo, Bytes)>,
+        #[strategy(arb_nar_contents_items(Default::default()))] infos: Vec<(ValidPathInfo, Bytes)>,
     ) -> TestCaseResult {
         let infos_stream = iter(infos.clone().into_iter().map(|(info, content)| {
             Ok(AddToStoreItem {
