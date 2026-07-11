@@ -15,6 +15,7 @@ use crate::wire::{DEFAULT_BUF_SIZE, RESERVED_BUF_SIZE, ZEROS, calc_padding};
 
 use super::{Error, NixWrite};
 
+#[derive(Clone)]
 pub struct NixWriterBuilder {
     buf: Option<BytesMut>,
     reserved_buf_size: usize,

@@ -16,6 +16,7 @@ use crate::wire::{TryReadBytesLimited, TryReadU64};
 
 use super::NixRead;
 
+#[derive(Clone)]
 pub struct NixReaderBuilder {
     reserved_buf_size: usize,
     max_buf_size: usize,

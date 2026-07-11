@@ -55,6 +55,7 @@ pub use process::{ChildHandshakeStore, ChildStore};
 
 pub const DAEMON_SOCKET_PATH: &str = "/nix/var/nix/daemon-socket/socket";
 
+#[derive(Clone)]
 pub struct DaemonClientBuilder<CP = ()> {
     store_dir: StoreDir,
     host: Option<String>,
