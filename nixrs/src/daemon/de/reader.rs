@@ -1,5 +1,4 @@
 use std::fmt::Debug;
-use std::future::poll_fn;
 use std::io::{self, Cursor};
 use std::ops::RangeInclusive;
 use std::pin::Pin;
@@ -123,17 +122,6 @@ impl<R> NixReader<R> {
 impl<R> HasStoreDir for NixReader<R> {
     fn store_dir(&self) -> &StoreDir {
         &self.store_dir
-    }
-}
-
-impl<R> NixReader<R>
-where
-    R: AsyncBytesRead + Unpin,
-{
-    pub async fn force_fill(&mut self) -> io::Result<Bytes> {
-        let mut p = Pin::new(self);
-        let read = poll_fn(|cx| p.as_mut().poll_force_fill_buf(cx)).await?;
-        Ok(read)
     }
 }
 

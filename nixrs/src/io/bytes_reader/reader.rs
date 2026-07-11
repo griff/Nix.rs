@@ -104,17 +104,6 @@ where
     }
 }
 
-impl<R> BytesReader<R>
-where
-    R: AsyncRead + Unpin,
-{
-    pub async fn force_fill(&mut self) -> io::Result<bytes::Bytes> {
-        let mut p = Pin::new(self);
-        let read = poll_fn(|cx| p.as_mut().poll_force_fill_buf(cx)).await?;
-        Ok(read)
-    }
-}
-
 impl<R> BytesReader<R> {
     pub fn get_ref(&self) -> &R {
         &self.inner
@@ -233,7 +222,7 @@ mod unittests {
     use tokio::io::AsyncReadExt as _;
     use tokio_test::io::Builder;
 
-    use crate::io::BytesReader;
+    use crate::io::{AsyncBytesReadExt, BytesReader};
 
     #[test_log::test(tokio::test)]
     async fn test_read_twice() {
@@ -272,10 +261,10 @@ mod unittests {
         let mut reader = BytesReader::new(mock);
 
         //assert!(reader.filled().is_unique());
-        let buf = reader.force_fill().await.unwrap();
+        let buf = reader.force_fill_buf().await.unwrap();
         assert_eq!(2, buf.len());
         drop(buf);
 
-        assert_eq!(8, reader.force_fill().await.unwrap().len());
+        assert_eq!(8, reader.force_fill_buf().await.unwrap().len());
     }
 }
