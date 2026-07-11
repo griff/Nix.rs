@@ -53,6 +53,8 @@ mod process_stderr;
 #[cfg(feature = "daemon-client-process")]
 pub use process::{ChildHandshakeStore, ChildStore};
 
+pub const DAEMON_SOCKET_PATH: &str = "/nix/var/nix/daemon-socket/socket";
+
 pub struct DaemonClientBuilder<CP = ()> {
     store_dir: StoreDir,
     host: Option<String>,
@@ -165,7 +167,7 @@ where
     pub async fn build_daemon(
         self,
     ) -> DaemonResult<DaemonHandshakeClient<OwnedReadHalf, OwnedWriteHalf, CP>> {
-        self.build_unix("/nix/var/nix/daemon-socket/socket").await
+        self.build_unix(DAEMON_SOCKET_PATH).await
     }
 
     #[cfg(feature = "daemon-client-process")]
