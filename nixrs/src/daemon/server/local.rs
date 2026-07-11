@@ -29,7 +29,7 @@ use crate::daemon::{
     AddToStoreItem, DaemonError, DaemonErrorKind, DaemonResult, DaemonResultExt as _, NIX_VERSION,
     Operation, ResultLog, ValidPathInfo,
 };
-use crate::io::AsyncBufReadCompat;
+use crate::io::{AsyncBufReadCompat, AsyncBytesReadExt as _};
 use crate::realisation::Realisation;
 use crate::store_path::{ContentAddressMethodAlgorithm, StorePath, StorePathSet};
 
@@ -282,15 +282,10 @@ where
                 - repairBool :: [Bool64][se-Bool64]
                 - [Framed][se-Framed] NAR dump
                 */
-                let buf_reader = AsyncBufReadCompat::new(&mut self.reader);
-                let mut framed = FramedReader::new(buf_reader);
+                let mut framed = FramedReader::new(&mut self.reader);
+                let source = AsyncBufReadCompat::new(&mut framed);
                 let logs = Self::local_add_ca_to_store(
-                    &mut store,
-                    &req.name,
-                    req.cam,
-                    &req.refs,
-                    req.repair,
-                    &mut framed,
+                    &mut store, &req.name, req.cam, &req.refs, req.repair, source,
                 );
                 let res = process_logs(&mut self.writer, logs).await;
                 let err = framed.drain_all().await;
@@ -469,13 +464,13 @@ where
                     [Framed][se-Framed] NAR dump
                      */
                     trace!("DaemonConnection: Add to store");
-                    let buf_reader = AsyncBufReadCompat::new(&mut self.reader);
-                    let mut framed = FramedReader::new(buf_reader);
+                    let mut framed = FramedReader::new(&mut self.reader);
+                    let source = AsyncBufReadCompat::new(&mut framed);
                     trace!("DaemonConnection: Add to store: Framed");
                     let logs = Self::local_add_to_store_nar(
                         &mut store,
                         &req.path_info,
-                        &mut framed,
+                        source,
                         req.repair,
                         req.dont_check_sigs,
                     );
@@ -670,9 +665,8 @@ where
                 - [Framed][se-Framed] stream of [add multiple NAR dump][se-AddMultipleToStore]
                 */
                 let builder = NixReader::builder().set_version(self.reader.version());
-                let buf_reader = AsyncBufReadCompat::new(&mut self.reader);
-                let mut framed = FramedReader::new(buf_reader);
-                let source = builder.build_buffered(&mut framed);
+                let mut framed = FramedReader::new(&mut self.reader);
+                let source = builder.build(&mut framed);
                 let stream = parse_add_multiple_to_store(source).await?;
                 trace!("DaemonConnection: Add multiple to store: call store");
                 let logs = Self::local_add_multiple_to_store(
@@ -712,9 +706,9 @@ where
                 - path :: [BaseStorePath][se-BaseStorePath]
                 - [Framed][se-Framed] stream of log lines
                 */
-                let buf_reader = AsyncBufReadCompat::new(&mut self.reader);
-                let mut framed = FramedReader::new(buf_reader);
-                let logs = Self::local_add_build_log(&mut store, &path, &mut framed);
+                let mut framed = FramedReader::new(&mut self.reader);
+                let source = AsyncBufReadCompat::new(&mut framed);
+                let logs = Self::local_add_build_log(&mut store, &path, source);
                 let res = process_logs(&mut self.writer, logs).await;
                 let err = framed.drain_all().await;
                 res?;
