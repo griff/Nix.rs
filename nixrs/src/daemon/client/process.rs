@@ -16,6 +16,33 @@ use crate::daemon::{
 use crate::log::{LogMessage, Message};
 use crate::store_path::{HasStoreDir, StorePath};
 
+async fn send_line(
+    sender: &mut LogSender,
+    line_res: std::io::Result<Option<String>>,
+) -> DaemonResult<()> {
+    match line_res {
+        Ok(Some(line)) => {
+            let msg = LogMessage::Message(Message {
+                level: crate::log::Verbosity::Debug,
+                text: Bytes::copy_from_slice(line.as_bytes()),
+            });
+            sender.send(msg).await?;
+        }
+        Ok(_) => {
+            warn!("Stderr already completed!");
+        }
+        Err(err) => {
+            let err_message = format!("Could not read stderr: {err}");
+            let msg = LogMessage::Message(Message {
+                level: crate::log::Verbosity::Error,
+                text: Bytes::from(err_message),
+            });
+            sender.send(msg).await?;
+        }
+    }
+    Ok(())
+}
+
 async fn read_logs<T>(
     result: impl ResultLog<Output = DaemonResult<T>>,
     sender: &mut LogSender,
@@ -32,30 +59,20 @@ async fn read_logs<T>(
                 }
             },
             line_res = lines.next_line() => {
-                match line_res {
-                    Ok(Some(line)) => {
-                        let msg = LogMessage::Message(Message {
-                            level: crate::log::Verbosity::Debug,
-                            text: Bytes::copy_from_slice(line.as_bytes()),
-                        });
-                        sender.send(msg).await?;
-                    }
-                    Ok(_) => {
-                        warn!("Stderr already completed!");
-                    },
-                    Err(err) => {
-                        let err_message = format!("Could not read stderr: {err}");
-                        let msg = LogMessage::Message(Message {
-                            level: crate::log::Verbosity::Error,
-                            text: Bytes::from(err_message),
-                        });
-                        sender.send(msg).await?;
-                    }
-                }
+                send_line(sender, line_res).await?;
             }
         }
     }
-    s.await
+    loop {
+        tokio::select! {
+            result = s.as_mut() => {
+                return result;
+            }
+            line_res = lines.next_line() => {
+                send_line(sender, line_res).await?;
+            }
+        }
+    }
 }
 
 pub struct ChildHandshakeStore<CP> {
