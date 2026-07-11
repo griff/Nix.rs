@@ -8,7 +8,8 @@ use futures::StreamExt as _;
 use futures::stream::iter;
 use nixrs::daemon::{
     AddToStoreItem, BuildMode, BuildResult, BuildStatus, DaemonError, DaemonResult,
-    DaemonStore as _, DaemonString, QueryMissingResult, UnkeyedValidPathInfo, ValidPathInfo,
+    DaemonStore as _, DaemonString, Operation, QueryMissingResult, UnkeyedValidPathInfo,
+    ValidPathInfo,
 };
 use nixrs::derivation::{BasicDerivation, DerivationOutput};
 use nixrs::derived_path::{DerivedPath, OutputName};
@@ -18,7 +19,6 @@ use nixrs::log::{
 };
 use nixrs::store_path::{StoreDir, StorePath, StorePathSet};
 use nixrs::test::archive::{read_nar, test_data, write_nar};
-use nixrs::test::daemon::Operation;
 use nixrs::{ByteString, btree_set};
 use pretty_assertions::assert_eq;
 use rstest::rstest;

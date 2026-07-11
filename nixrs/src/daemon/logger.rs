@@ -10,8 +10,7 @@ use futures::{Sink, SinkExt, Stream, StreamExt};
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncBufRead, AsyncRead};
 
-use super::{DaemonError, DaemonResult};
-use crate::daemon::wire::types::Operation;
+use super::{DaemonError, DaemonResult, Operation};
 use crate::log::LogMessage;
 
 pub trait ResultLog: Stream<Item = LogMessage> + Future {}

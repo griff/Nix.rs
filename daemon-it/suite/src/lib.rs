@@ -11,10 +11,12 @@ use bstr::ByteSlice;
 use bytes::BytesMut;
 use futures::{FutureExt as _, StreamExt as _, TryFutureExt as _};
 use nixrs::daemon::client::DaemonClient;
-use nixrs::daemon::{DaemonError, DaemonResult, DaemonStore as _};
-use nixrs::daemon::{ProtocolRange, ProtocolVersion, ResultLog, server};
+use nixrs::daemon::server;
+use nixrs::daemon::{
+    DaemonError, DaemonResult, DaemonStore as _, Operation, ProtocolRange, ProtocolVersion,
+    ResultLog,
+};
 use nixrs::log::{Message, ParsedLogMessage, Verbosity};
-use nixrs::test::daemon::Operation;
 use nixrs::test::daemon::{Builder, MockReporter, MockStore, ReporterError};
 use serde::Deserialize;
 use serde::de::Error;

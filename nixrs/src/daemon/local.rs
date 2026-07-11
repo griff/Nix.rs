@@ -6,8 +6,8 @@ use tokio::io::AsyncBufRead;
 
 use crate::daemon::{
     AddToStoreItem, BuildMode, BuildResult, ClientOptions, CollectGarbageResponse, DaemonError,
-    DaemonPath, DaemonResult, FutureResultExt, GCAction, KeyedBuildResult, QueryMissingResult,
-    ResultLog, TrustLevel, UnkeyedValidPathInfo, ValidPathInfo,
+    DaemonPath, DaemonResult, FutureResultExt, GCAction, KeyedBuildResult, Operation,
+    QueryMissingResult, ResultLog, TrustLevel, UnkeyedValidPathInfo, ValidPathInfo,
 };
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
@@ -16,8 +16,6 @@ use crate::signature::Signature;
 use crate::store_path::{
     ContentAddressMethodAlgorithm, HasStoreDir, StorePath, StorePathHash, StorePathSet,
 };
-
-use super::wire::types::Operation;
 
 pub trait LocalHandshakeDaemonStore: HasStoreDir {
     type Store: LocalDaemonStore;

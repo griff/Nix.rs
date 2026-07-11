@@ -20,13 +20,13 @@ use tracing::trace;
 use crate::daemon::wire::types::{
     AddMultipleToStoreRequest, AddPermRootRequest, AddSignaturesRequest, AddToStoreNarRequest,
     AddToStoreRequest25, BuildDerivationRequest, BuildPathsRequest, CollectGarbageRequest,
-    Operation, QueryValidPathsRequest, VerifyStoreRequest,
+    QueryValidPathsRequest, VerifyStoreRequest,
 };
 use crate::daemon::{
     AddToStoreItem, BuildMode, BuildResult, ClientOptions, CollectGarbageResponse, DaemonError,
     DaemonPath, DaemonResult, DaemonResultExt, DaemonStore, FutureResultExt, GCAction,
-    HandshakeDaemonStore, KeyedBuildResult, KeyedBuildResults, QueryMissingResult, ResultLog,
-    ResultLogExt as _, TrustLevel, UnkeyedValidPathInfo, ValidPathInfo,
+    HandshakeDaemonStore, KeyedBuildResult, KeyedBuildResults, Operation, QueryMissingResult,
+    ResultLog, ResultLogExt as _, TrustLevel, UnkeyedValidPathInfo, ValidPathInfo,
 };
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};

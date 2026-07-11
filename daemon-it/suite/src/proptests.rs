@@ -2,13 +2,12 @@ use std::pin::pin;
 use std::time::{Duration, Instant};
 
 use futures::StreamExt as _;
-use nixrs::daemon::{DaemonStore as _, ProtocolVersion};
+use nixrs::daemon::{DaemonStore as _, Operation, ProtocolVersion};
 use nixrs::log::ParsedLogMessage;
 use nixrs::pretty_prop_assert_eq;
 use nixrs::store_path::{StorePath, StorePathSet};
 use nixrs::test::arbitrary::log::protocol_parsed_log_messages;
 use nixrs::test::daemon::MockStore;
-use nixrs::test::daemon::Operation;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseResult;
 use tokio::time::timeout;

@@ -22,14 +22,13 @@ use super::logger::{ResultLog, ResultLogExt};
 use super::ser::{NixWrite, NixWriter, NixWriterBuilder};
 use super::types::AddToStoreItem;
 use super::wire::logger::RawLogMessage;
-use super::wire::types::Operation;
 use super::wire::{
     CLIENT_MAGIC, FramedWriter, IgnoredOne, SERVER_MAGIC, write_add_multiple_to_store_stream,
 };
 use super::{
     BuildMode, CollectGarbageResponse, DaemonError, DaemonErrorKind, DaemonPath, DaemonResult,
-    DaemonResultExt as _, DaemonStore, GCAction, HandshakeDaemonStore, ProtocolVersion, TrustLevel,
-    ValidPathInfo,
+    DaemonResultExt as _, DaemonStore, GCAction, HandshakeDaemonStore, Operation, ProtocolVersion,
+    TrustLevel, ValidPathInfo,
 };
 use crate::archive::{NarBytesReader, NarReader};
 use crate::daemon::client::compat::CompatAddPermRoot;

@@ -5,11 +5,11 @@ use proptest::prelude::*;
 
 use crate::daemon::wire::types::{
     AddMultipleToStoreRequest, AddToStoreNarRequest, BuildDerivationRequest, BuildPathsRequest,
-    Operation, QueryValidPathsRequest,
+    QueryValidPathsRequest,
 };
 use crate::daemon::{
-    BuildMode, BuildResult, ClientOptions, KeyedBuildResult, ProtocolVersion, QueryMissingResult,
-    UnkeyedValidPathInfo, ValidPathInfo,
+    BuildMode, BuildResult, ClientOptions, KeyedBuildResult, Operation, ProtocolVersion,
+    QueryMissingResult, UnkeyedValidPathInfo, ValidPathInfo,
 };
 use crate::derivation::BasicDerivation;
 use crate::derived_path::DerivedPath;

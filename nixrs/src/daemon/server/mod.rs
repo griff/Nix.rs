@@ -14,15 +14,15 @@ use crate::daemon::de::{NixRead, NixReader};
 use crate::daemon::ser::{NixWrite, NixWriter};
 use crate::daemon::wire::logger::RawLogMessage;
 use crate::daemon::wire::types::{
-    AddToStoreRequest, BaseStorePath, Operation, RegisterDrvOutputRequest, Request,
+    AddToStoreRequest, BaseStorePath, RegisterDrvOutputRequest, Request,
 };
 use crate::daemon::wire::{
     CLIENT_MAGIC, FramedReader, IgnoredOne, SERVER_MAGIC, StderrReader, parse_add_multiple_to_store,
 };
 use crate::daemon::{
     AddToStoreItem, CollectGarbageResponse, DaemonError, DaemonErrorKind, DaemonPath, DaemonResult,
-    DaemonResultExt, DaemonStore, GCAction, HandshakeDaemonStore, NIX_VERSION, PROTOCOL_VERSION,
-    ProtocolVersion, ResultLog, TrustLevel, ValidPathInfo,
+    DaemonResultExt, DaemonStore, GCAction, HandshakeDaemonStore, NIX_VERSION, Operation,
+    PROTOCOL_VERSION, ProtocolVersion, ResultLog, TrustLevel, ValidPathInfo,
 };
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};

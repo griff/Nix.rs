@@ -22,12 +22,12 @@ use crate::daemon::server::{
 };
 use crate::daemon::wire::logger::RawLogMessage;
 use crate::daemon::wire::types::{
-    AddToStoreRequest, BaseStorePath, Operation, RegisterDrvOutputRequest, Request,
+    AddToStoreRequest, BaseStorePath, RegisterDrvOutputRequest, Request,
 };
 use crate::daemon::wire::{FramedReader, IgnoredOne, StderrReader, parse_add_multiple_to_store};
 use crate::daemon::{
     AddToStoreItem, DaemonError, DaemonErrorKind, DaemonResult, DaemonResultExt as _, NIX_VERSION,
-    ResultLog, ValidPathInfo,
+    Operation, ResultLog, ValidPathInfo,
 };
 use crate::io::AsyncBufReadCompat;
 use crate::realisation::Realisation;

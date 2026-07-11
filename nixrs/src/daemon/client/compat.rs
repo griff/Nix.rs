@@ -3,9 +3,8 @@ use std::future::ready;
 use bstr::ByteSlice as _;
 use tokio::fs::canonicalize;
 
-use crate::daemon::wire::types::Operation;
 use crate::daemon::{
-    DaemonError, DaemonPath, DaemonResult, DaemonStore, FutureResultExt as _, ResultLog,
+    DaemonError, DaemonPath, DaemonResult, DaemonStore, FutureResultExt as _, Operation, ResultLog,
     ResultLogExt as _, make_result,
 };
 use crate::store_path::StorePath;
