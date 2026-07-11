@@ -1,34 +1,9 @@
-use std::{collections::BTreeMap, fmt};
+use std::collections::BTreeMap;
 
-use crate::derivation::OutputName;
+use crate::derivation::{OutputName, StorePathNameOutput};
 #[cfg(any(feature = "xp-ca-derivations", feature = "xp-impure-derivations"))]
 use crate::store_path::ContentAddressMethodAlgorithm;
-use crate::store_path::{
-    ContentAddress, StoreDir, StorePath, StorePathName, StorePathNameError, StorePathNameRef,
-};
-
-struct OutputPathName<'b> {
-    drv_name: &'b StorePathNameRef,
-    output_name: &'b OutputName,
-}
-impl fmt::Display for OutputPathName<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.output_name.is_default() {
-            write!(f, "{}", self.drv_name)
-        } else {
-            write!(f, "{}-{}", self.drv_name, self.output_name)
-        }
-    }
-}
-pub(crate) fn output_path_name<'s>(
-    drv_name: &'s StorePathNameRef,
-    output_name: &'s OutputName,
-) -> impl fmt::Display + 's {
-    OutputPathName {
-        drv_name,
-        output_name,
-    }
-}
+use crate::store_path::{ContentAddress, StoreDir, StorePath, StorePathName, StorePathNameError};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum DerivationOutput {
@@ -50,12 +25,9 @@ impl DerivationOutput {
     ) -> Result<Option<StorePath>, StorePathNameError> {
         match self {
             DerivationOutput::InputAddressed(store_path) => Ok(Some(store_path.clone())),
-            DerivationOutput::CAFixed(ca) => {
-                let name = output_path_name(drv_name, output_name)
-                    .to_string()
-                    .parse()?;
-                Ok(Some(store_dir.make_store_path_from_ca(name, *ca)))
-            }
+            DerivationOutput::CAFixed(ca) => Ok(Some(
+                store_dir.make_store_path_from_ca(drv_name.output_path_name(output_name)?, *ca),
+            )),
             _ => Ok(None),
         }
     }

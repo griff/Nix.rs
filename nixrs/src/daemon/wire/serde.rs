@@ -27,7 +27,7 @@ mod derivation {
     use crate::ByteString;
     use crate::daemon::ser::{Error, NixSerialize, NixWrite};
     use crate::derivation::{
-        BasicDerivation, DerivationOutput, DerivationOutputs, OutputName, output_path_name,
+        BasicDerivation, DerivationOutput, DerivationOutputs, OutputName, StorePathNameOutput,
     };
     use crate::hash;
     use crate::hash::fmt::ParseHashError;
@@ -183,11 +183,12 @@ mod derivation {
                     writer.write_value("").await?;
                 }
                 DerivationOutput::CAFixed(ca) => {
-                    let name = output_path_name(drv_name, output_name)
-                        .to_string()
-                        .parse()
-                        .map_err(Error::unsupported_data)?;
-                    let path = writer.store_dir().make_store_path_from_ca(name, *ca);
+                    let path = writer.store_dir().make_store_path_from_ca(
+                        drv_name
+                            .output_path_name(output_name)
+                            .map_err(Error::unsupported_data)?,
+                        *ca,
+                    );
                     writer.write_value(&path).await?;
                     writer.write_value(&ca.method_algorithm()).await?;
                     writer.write_display(ca.hash().base32().bare()).await?;

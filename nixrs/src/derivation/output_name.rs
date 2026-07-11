@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use crate::store_path::{StorePathNameError, StorePathNameRef};
+use crate::store_path::{StorePathName, StorePathNameError, StorePathNameRef};
 
 /// A derivation output name.
 ///
@@ -38,5 +38,25 @@ impl FromStr for OutputName {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let name = StorePathNameRef::from_str(s)?.to_string();
         Ok(OutputName(name))
+    }
+}
+
+pub trait StorePathNameOutput {
+    fn output_path_name(
+        self,
+        output_name: &OutputName,
+    ) -> Result<StorePathName, StorePathNameError>;
+}
+
+impl StorePathNameOutput for &'_ StorePathNameRef {
+    fn output_path_name(
+        self,
+        output_name: &OutputName,
+    ) -> Result<StorePathName, StorePathNameError> {
+        if output_name.is_default() {
+            Ok(self.to_owned())
+        } else {
+            StorePathName::from_string(format!("{}-{}", self, output_name))
+        }
     }
 }
