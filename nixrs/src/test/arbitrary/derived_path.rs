@@ -3,6 +3,7 @@ use proptest::{collection::btree_set, prelude::*};
 use crate::derivation::OutputName;
 use crate::derived_path::{DerivedPath, OutputSpec, SingleDerivedPath};
 use crate::store_path::StorePath;
+use crate::test::arbitrary::store_path::arb_drv_store_path;
 
 impl Arbitrary for OutputSpec {
     type Parameters = ();
@@ -23,11 +24,12 @@ impl Arbitrary for SingleDerivedPath {
 
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
         use proptest::prelude::*;
-        let opaque = any::<StorePath>().prop_map(SingleDerivedPath::Opaque);
+        let opaque = arb_drv_store_path().prop_map(SingleDerivedPath::Opaque);
+        let drv_path = arb_drv_store_path().prop_map(SingleDerivedPath::Opaque);
         let leaf = prop_oneof![
-            4 => opaque.clone(),
-            1 => opaque.prop_recursive(6, 1, 1, |inner| {
-                (any::<OutputName>(), inner).prop_map(|(output, drv_path)| {
+            4 => opaque,
+            1 => drv_path.prop_recursive(6, 1, 1, |drv_path| {
+                (any::<OutputName>(), drv_path).prop_map(|(output, drv_path)| {
                     SingleDerivedPath::Built {
                         drv_path: Box::new(drv_path),
                         output,

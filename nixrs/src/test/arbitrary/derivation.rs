@@ -8,6 +8,7 @@ use crate::hash;
 use crate::store_path::{StorePath, StorePathSet};
 use crate::test::arbitrary::arb_byte_string;
 use crate::test::arbitrary::helpers::Union;
+use crate::test::arbitrary::store_path::arb_drv_store_path;
 
 impl Arbitrary for OutputName {
     type Parameters = ();
@@ -37,7 +38,7 @@ prop_compose! {
         builder in arb_byte_string(),
         args in proptest::collection::vec(arb_byte_string(), SizeRange::default()),
         env in proptest::collection::btree_map(arb_byte_string(), arb_byte_string(), SizeRange::default()),
-        drv_path in any::<StorePath>()
+        drv_path in arb_drv_store_path()
     ) -> BasicDerivation
     {
         BasicDerivation {
