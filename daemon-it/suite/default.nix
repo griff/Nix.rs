@@ -11,5 +11,6 @@ let
     '';
   };
 in test-lib.test.overrideAttrs (finalAttrs: previousAttrs: {
+  dontFixup = true;
   outputs = ["out" "bin"];
 })

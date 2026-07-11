@@ -11,10 +11,24 @@
       "version_upper_bound": null,
       "release_prefix": null,
       "submodules": false,
-      "version": "v0.22.0",
-      "revision": "40203daff663c9e0b70d052aae12819dea8e6798",
-      "url": "https://api.github.com/repos/ipetkov/crane/tarball/v0.22.0",
-      "hash": "0qqyp6vwwlxcpm7306nw3bxd8dimzbf8zzgrp245jxgqk0b49b7j"
+      "version": "v0.23.3",
+      "revision": "9db02d41c4107fab6914b772dc3a27f7adfa2279",
+      "url": "https://api.github.com/repos/ipetkov/crane/tarball/v0.23.3",
+      "hash": "0kdjzp7ljik9hpw3x67phx2kp1v30j7xy5h98lskmnb4hcdbsj1b"
+    },
+    "legacy-nix": {
+      "type": "Git",
+      "repository": {
+        "type": "Forgejo",
+        "server": "https://codeberg.org/",
+        "owner": "griff79",
+        "repo": "legacy-nix"
+      },
+      "branch": "main",
+      "submodules": false,
+      "revision": "a3141f8ae1d5d8dc94eca6d1ac91eb8f28de7bdf",
+      "url": "https://codeberg.org/griff79/legacy-nix/archive/a3141f8ae1d5d8dc94eca6d1ac91eb8f28de7bdf.tar.gz",
+      "hash": "0jilyf3rsa0w1nbjschb9jp0nl2sa0ws8lb5mr4d8yzjxyzij8l2"
     },
     "nixpkgs": {
       "type": "Git",
@@ -25,9 +39,9 @@
       },
       "branch": "nixpkgs-unstable",
       "submodules": false,
-      "revision": "76eec3925eb9bbe193934987d3285473dbcfad50",
-      "url": "https://github.com/NixOS/nixpkgs/archive/76eec3925eb9bbe193934987d3285473dbcfad50.tar.gz",
-      "hash": "12ifsbmygs4wp1bifaknk2p9gdy203mjzjidi77vl61w0hbnhflh"
+      "revision": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "url": "https://github.com/NixOS/nixpkgs/archive/567a49d1913ce81ac6e9582e3553dd90a955875f.tar.gz",
+      "hash": "lrp67w8AulE9Ks53n27I45ADSzbOCn4H+CNW1Ck8B+8="
     },
     "rust-overlay": {
       "type": "Git",
@@ -38,9 +52,9 @@
       },
       "branch": "master",
       "submodules": false,
-      "revision": "03c6e38661c02a27ca006a284813afdc461e9f7e",
-      "url": "https://github.com/oxalica/rust-overlay/archive/03c6e38661c02a27ca006a284813afdc461e9f7e.tar.gz",
-      "hash": "0z921lzgfj6c5chmsq4q8i3p088kg3h7dqr4nc2z4ncf1mgrfwn8"
+      "revision": "3be56bd430bfd65d3c468a50626c3a601c7dee03",
+      "url": "https://github.com/oxalica/rust-overlay/archive/3be56bd430bfd65d3c468a50626c3a601c7dee03.tar.gz",
+      "hash": "1qsayfax8zrg3f5z6s3w9ycsf1c4xgvg93yvaifl3i6ic5q7fjdw"
     }
   },
   "version": 5

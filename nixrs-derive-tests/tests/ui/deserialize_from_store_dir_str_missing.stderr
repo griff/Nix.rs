@@ -1,16 +1,30 @@
 error[E0277]: the trait bound `Test: FromStoreDirStr` is not satisfied
  --> tests/ui/deserialize_from_store_dir_str_missing.rs
   |
-  | #[nix(from_store_dir_str)]
-  |       ^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
-  |
+  4 | #[nix(from_store_dir_str)]
+    |       ^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
 help: the trait `FromStoreDirStr` is not implemented for `Test`
- --> tests/ui/deserialize_from_store_dir_str_missing.rs
-  |
-  | pub struct Test;
-  | ^^^^^^^^^^^^^^^
-  = help: the following other types implement trait `FromStoreDirStr`:
-            DerivedPath
-            SingleDerivedPath
-            StorePath
-            nixrs::derived_path::path::ParsePath<C, D>
+   --> tests/ui/deserialize_from_store_dir_str_missing.rs
+    |
+  5 | pub struct Test;
+    | ^^^^^^^^^^^^^^^
+help: the following other types implement trait `FromStoreDirStr`
+   --> $WORKSPACE/nixrs/src/store_path/path.rs
+    |
+    |   impl FromStoreDirStr for StorePath {
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `StorePath`
+    |
+   ::: $WORKSPACE/nixrs/src/derived_path/path.rs
+    |
+ 54 | / impl<const C: char, D> FromStoreDirStr for ParsePath<C, D>
+ 55 | | where
+ 56 | |     D: FromStoreDirStrSep,
+ 57 | |     <D as FromStoreDirStrSep>::Error: std::error::Error,
+    | |________________________________________________________^ `nixrs::derived_path::path::ParsePath<C, D>`
+...
+    |   impl FromStoreDirStr for SingleDerivedPath {
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `SingleDerivedPath`
+...
+    |   impl FromStoreDirStr for DerivedPath {
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `DerivedPath`

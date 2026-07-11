@@ -1,10 +1,6 @@
 {pkgs, lib, project, sources, ...}: let
   crates = pkgs.callPackage ./Cargo.nix {
     defaultCrateOverrides = pkgs.defaultCrateOverrides // {
-      nixrs = prev: {
-        ALL_NIX = project.nix.all-nix.all-nix;
-        UNIX_PROXY = "${project.nix.unix-proxy}/bin/unix-proxy";
-      };
       nixrs-capnp = prev: {
         buildInputs = [pkgs.capnproto];
       };
@@ -210,7 +206,6 @@ in {
   shell = pkgs.mkShell {
     name = "Nix.rs";
     buildInputs = [ pkgs.bashInteractive ];
-    ALL_NIX = project.nix.all-nix.all-nix;
     UNIX_PROXY = "${project.nix.unix-proxy}/bin/unix-proxy";
     packages = with pkgs; [
       git

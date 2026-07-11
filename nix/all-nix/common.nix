@@ -46,8 +46,6 @@ in
 , curl
 , darwin
 , darwinMinVersionHook
-, docbook_xsl_ns
-, docbook5
 , editline
 , flex
 , git
@@ -66,8 +64,6 @@ in
 , lowdown-unsandboxed
 , toml11
 , man
-, mdbook
-, mdbook-linkcheck
 , nlohmann_json
 , nixosTests
 , nixVersions
@@ -78,7 +74,6 @@ in
 , sqlite
 , util-linuxMinimal
 , xz
-, enableDocumentation ? stdenv.buildPlatform.canExecute stdenv.hostPlatform
 , enableStatic ? stdenv.hostPlatform.isStatic
 , withAWS ? !enableStatic && (stdenv.hostPlatform.isLinux || stdenv.hostPlatform.isDarwin) && atLeast24, aws-sdk-cpp
 , withLibseccomp ? lib.meta.availableOn stdenv.hostPlatform libseccomp, libseccomp
@@ -101,9 +96,7 @@ self = stdenv.mkDerivation {
 
   inherit src patches;
 
-  outputs =
-    [ "out" "dev" ]
-    ++ lib.optionals enableDocumentation [ "man" "doc" ];
+  outputs = [ "out" "dev" ];
 
   hardeningEnable = lib.optionals (!stdenv.hostPlatform.isDarwin) [ "pie" ];
 
@@ -120,16 +113,6 @@ self = stdenv.mkDerivation {
     bison
     flex
     jq
-  ] ++ lib.optionals (enableDocumentation && !atLeast24) [
-    libxslt
-    libxml2
-    docbook_xsl_ns
-    docbook5
-  ] ++ lib.optionals (enableDocumentation && atLeast24) [
-    (lib.getBin lowdown-unsandboxed)
-    mdbook
-  ] ++ lib.optionals (atLeast213 && enableDocumentation) [
-    mdbook-linkcheck
   ] ++ lib.optionals stdenv.hostPlatform.isLinux [
     util-linuxMinimal
   ];
@@ -215,7 +198,6 @@ self = stdenv.mkDerivation {
     "--localstatedir=${stateDir}"
     "--sysconfdir=${confDir}"
     "--enable-gc"
-  ] ++ lib.optionals (!enableDocumentation) [
     "--disable-doc-gen"
   ] ++ lib.optionals stdenv.hostPlatform.isLinux [
     "--with-sandbox-shell=${busybox-sandbox-shell}/bin/busybox"
@@ -330,7 +312,7 @@ self = stdenv.mkDerivation {
     license = licenses.lgpl21Plus;
     inherit maintainers;
     platforms = platforms.unix;
-    outputsToInstall = [ "out" ] ++ optional enableDocumentation "man";
+    outputsToInstall = [ "out" ];
     mainProgram = "nix";
     knownVulnerabilities = lib.optional (!builtins.elem (lib.versions.majorMinor version) unaffectedByFodSandboxEscape && !atLeast221) "CVE-2024-27297";
     flake = {exported = self_attribute_name; };

@@ -8,7 +8,7 @@ in mkDaemonTest {
   name = "capnp";
   config = {
     program_path = "${crate}/bin/daemon-it-capnp";
-    conf_path = "${project.nix.all-nix.files.conf}/nix_2_3.conf";
+    conf_path = ../legacy-nix/nix_2_3.conf;
     cmd_args = [];
     range = "1.10..1.37";
     op_log_prefix = false;
