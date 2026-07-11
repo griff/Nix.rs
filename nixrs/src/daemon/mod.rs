@@ -795,6 +795,20 @@ mod unittests {
         ],
         Err(DaemonError::custom("bad input path")), Err("AddMultipleToStore: remote error: AddMultipleToStore: bad input path".into())
     )]
+    #[case::panic(
+        false,
+        false,
+        serde_json::from_reader(std::fs::File::open("test-data/add_multiple_to_store_fail.json").unwrap()).unwrap(),
+        Ok(()),
+        Ok(()),
+    )]
+    #[case::timeout(
+        false,
+        false,
+        serde_json::from_reader(std::fs::File::open("test-data/AddMultipleToStoreArgs-timeout.json").unwrap()).unwrap(),
+        Ok(()),
+        Ok(()),
+    )]
     async fn add_multiple_to_store(
         #[case] repair: bool,
         #[case] dont_check_sigs: bool,
@@ -837,6 +851,7 @@ mod unittests {
 
 #[cfg(all(test, feature = "daemon"))]
 mod proptests {
+    use std::fmt;
     use std::io::Cursor;
     use std::time::Instant;
 
@@ -845,7 +860,9 @@ mod proptests {
     use proptest::prelude::*;
     use proptest::test_runner::TestCaseResult;
     use proptest::{prop_assert, prop_assert_eq, proptest};
+    use serde::{Deserialize, Serialize};
     use tokio::io::copy_buf;
+    use tokio::time::timeout;
     use tracing::info;
 
     use super::unittests::run_store_test;
@@ -859,8 +876,8 @@ mod proptests {
     use crate::pretty_prop_assert_eq;
     use crate::store_path::{StorePath, StorePathSet};
     use crate::test::arbitrary::archive::arb_nar_contents;
-    use crate::test::arbitrary::daemon::arb_nar_contents_items;
-    use crate::test::archive::{read_nar, test_data};
+    use crate::test::arbitrary::daemon::arb_nar_items;
+    use crate::test::archive::{read_nar, test_data, write_nar};
     use crate::test::daemon::MockStore;
 
     // TODO: proptest handshake
@@ -1049,37 +1066,113 @@ mod proptests {
         .await
     }
 
-    #[test_strategy::proptest(async = "tokio")]
-    async fn build_paths_with_results(
+    #[derive(Serialize, Deserialize)]
+    struct BuildPathsWithResultsArgs {
         result: Vec<KeyedBuildResult>,
         mode: BuildMode,
-    ) -> TestCaseResult {
-        let paths: Vec<DerivedPath> = result.iter().map(|r| r.path.clone()).collect();
+    }
+
+    impl fmt::Debug for BuildPathsWithResultsArgs {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let mut file = std::fs::File::create(
+                "./test-data/BuildPathsWithResultsArgs-result-latest-fail.json",
+            )
+            .unwrap();
+            serde_json::to_writer_pretty(&mut file, &self.result).unwrap();
+            file.sync_all().unwrap();
+            f.debug_struct("BuildPathsWithResultsArgs")
+                .field("mode", &self.mode)
+                .field(
+                    "result",
+                    &"./test-data/BuildPathsWithResultsArgs-result-latest-fail.json",
+                )
+                .finish()
+        }
+    }
+
+    impl Arbitrary for BuildPathsWithResultsArgs {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<BuildPathsWithResultsArgs>;
+
+        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+            (any::<BuildMode>(), any::<Vec<KeyedBuildResult>>())
+                .prop_map(|(mode, result)| BuildPathsWithResultsArgs { mode, result })
+                .boxed()
+        }
+    }
+
+    #[test_strategy::proptest(async = "tokio")]
+    async fn build_paths_with_results(args: BuildPathsWithResultsArgs) -> TestCaseResult {
+        let paths: Vec<DerivedPath> = args.result.iter().map(|r| r.path.clone()).collect();
         let mock = MockStore::builder()
-            .build_paths_with_results(&paths, mode, Ok(result.clone()))
+            .build_paths_with_results(&paths, args.mode, Ok(args.result.clone()))
             .build()
             .build();
         run_store_test(mock, |mut client| async move {
-            let actual = client.build_paths_with_results(&paths, mode).await?;
-            pretty_prop_assert_eq!(result, actual);
+            let actual = client.build_paths_with_results(&paths, args.mode).await?;
+            pretty_prop_assert_eq!(args.result, actual);
             Ok(client) as Result<_, TestCaseError>
         })
         .await
     }
 
-    #[test_strategy::proptest(async = "tokio")]
-    async fn build_derivation(
+    #[derive(Serialize, Deserialize)]
+    struct BuildDerivationArgs {
         drv: BasicDerivation,
         mode: BuildMode,
         result: BuildResult,
-    ) -> TestCaseResult {
+    }
+
+    impl fmt::Debug for BuildDerivationArgs {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let mut file =
+                std::fs::File::create("./test-data/BuildDerivationArgs-drv-latest-fail.json")
+                    .unwrap();
+            serde_json::to_writer_pretty(&mut file, &self.drv).unwrap();
+            file.sync_all().unwrap();
+            let mut file =
+                std::fs::File::create("./test-data/BuildDerivationArgs-result-latest-fail.json")
+                    .unwrap();
+            serde_json::to_writer_pretty(&mut file, &self.result).unwrap();
+            file.sync_all().unwrap();
+            f.debug_struct("BuildDerivationArgs")
+                .field(
+                    "drv",
+                    &"./test-data/BuildDerivationArgs-drv-latest-fail.json",
+                )
+                .field("mode", &self.mode)
+                .field(
+                    "result",
+                    &"./test-data/BuildDerivationArgs-result-latest-fail.json",
+                )
+                .finish()
+        }
+    }
+
+    impl Arbitrary for BuildDerivationArgs {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<BuildDerivationArgs>;
+
+        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+            (
+                any::<BasicDerivation>(),
+                any::<BuildMode>(),
+                any::<BuildResult>(),
+            )
+                .prop_map(|(drv, mode, result)| BuildDerivationArgs { drv, mode, result })
+                .boxed()
+        }
+    }
+
+    #[test_strategy::proptest(async = "tokio")]
+    async fn build_derivation(args: BuildDerivationArgs) -> TestCaseResult {
         let mock = MockStore::builder()
-            .build_derivation(&drv, mode, Ok(result.clone()))
+            .build_derivation(&args.drv, args.mode, Ok(args.result.clone()))
             .build()
             .build();
         run_store_test(mock, |mut client| async move {
-            let actual = client.build_derivation(&drv, mode).await?;
-            pretty_prop_assert_eq!(result, actual);
+            let actual = client.build_derivation(&args.drv, args.mode).await?;
+            pretty_prop_assert_eq!(args.result, actual);
             Ok(client) as Result<_, TestCaseError>
         })
         .await
@@ -1099,12 +1192,61 @@ mod proptests {
         .await
     }
 
-    #[test_strategy::proptest(async = "tokio")]
-    async fn add_multiple_to_store(
+    #[derive(Serialize, Deserialize)]
+    struct AddMultipleToStoreArgs {
         repair: bool,
         dont_check_sigs: bool,
-        #[strategy(arb_nar_contents_items(Default::default()))] infos: Vec<(ValidPathInfo, Bytes)>,
-    ) -> TestCaseResult {
+        infos: Vec<(ValidPathInfo, test_data::TestNarEvents)>,
+    }
+
+    impl fmt::Debug for AddMultipleToStoreArgs {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let mut file =
+                std::fs::File::create("./test-data/AddMultipleToStoreArgs-latest-fail.json")
+                    .unwrap();
+            serde_json::to_writer_pretty(&mut file, &self.infos).unwrap();
+            file.sync_all().unwrap();
+            f.debug_struct("AddMultipleToStoreArgs")
+                .field("repair", &self.repair)
+                .field("dont_check_sigs", &self.dont_check_sigs)
+                .field(
+                    "infos",
+                    &"./test-data/AddMultipleToStoreArgs-latest-fail.json",
+                )
+                .finish()
+        }
+    }
+
+    impl Arbitrary for AddMultipleToStoreArgs {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<AddMultipleToStoreArgs>;
+
+        fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+            (
+                any::<bool>(),
+                any::<bool>(),
+                arb_nar_items(Default::default()),
+            )
+                .prop_map(|(repair, dont_check_sigs, infos)| AddMultipleToStoreArgs {
+                    repair,
+                    dont_check_sigs,
+                    infos,
+                })
+                .boxed()
+        }
+    }
+
+    #[test_log::test(test_strategy::proptest(
+        async = "tokio",
+        ProptestConfig::default(),
+        max_shrink_iters = 10
+    ))]
+    async fn add_multiple_to_store(args: AddMultipleToStoreArgs) -> TestCaseResult {
+        let infos = args
+            .infos
+            .into_iter()
+            .map(|(info, events)| (info, write_nar(events.iter())))
+            .collect::<Vec<_>>();
         let infos_stream = iter(infos.clone().into_iter().map(|(info, content)| {
             Ok(AddToStoreItem {
                 info: info.clone(),
@@ -1113,16 +1255,19 @@ mod proptests {
         }));
 
         let mock = MockStore::builder()
-            .add_multiple_to_store(repair, dont_check_sigs, infos, Ok(()))
+            .add_multiple_to_store(args.repair, args.dont_check_sigs, infos, Ok(()))
             .build()
             .build();
-        run_store_test(mock, |mut client| async move {
-            client
-                .add_multiple_to_store(repair, dont_check_sigs, infos_stream)
-                .await?;
-            Ok(client) as Result<_, TestCaseError>
-        })
-        .await
+        timeout(
+            std::time::Duration::from_secs(15),
+            run_store_test(mock, |mut client| async move {
+                client
+                    .add_multiple_to_store(args.repair, args.dont_check_sigs, infos_stream)
+                    .await?;
+                Ok(client) as Result<_, TestCaseError>
+            }),
+        )
+        .await?
     }
 
     /*
