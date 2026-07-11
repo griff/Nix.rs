@@ -195,9 +195,21 @@ impl<T: ?Sized + HasStoreDir> HasStoreDir for &mut T {
 
 #[cfg(test)]
 mod unittests {
-    use super::StoreDir;
     use pretty_assertions::assert_eq;
+    use rstest::rstest;
     use std::path::Path;
+
+    use super::StoreDir;
+
+    #[rstest]
+    #[should_panic(expected = "path '' is not a store dir")]
+    #[case::empty("")]
+    #[should_panic(expected = "path 'test/store' is not a store dir")]
+    #[case::relative("test/store")]
+    fn test_store_dir_new_fail(#[case] path: &str) {
+        let err = StoreDir::new(path).unwrap_err();
+        panic!("{err}");
+    }
 
     #[test]
     fn test_store_dir_display() {
