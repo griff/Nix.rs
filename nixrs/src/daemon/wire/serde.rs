@@ -58,12 +58,17 @@ mod derivation {
         where
             W: crate::daemon::ser::NixWrite,
         {
+            let drv_name = self
+                .drv_path
+                .name()
+                .strip_drv_ext()
+                .ok_or_else(|| W::Error::custom("drv_path does not end in .drv"))?;
             writer.write_value(&self.drv_path).await?;
             writer.write_value(&self.outputs.len()).await?;
             for (output_name, output) in self.outputs.iter() {
                 writer.write_value(output_name).await?;
                 output
-                    .write_output(self.drv_path.name(), output_name, &mut writer)
+                    .write_output(drv_name, output_name, &mut writer)
                     .await?;
             }
             writer.write_value(&self.input_srcs).await?;
