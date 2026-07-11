@@ -11,11 +11,12 @@ license = "EUPL-1.2 OR MIT"
 
 [features]
 test = ["proptest", "dep:proptest-derive", "dep:test-strategy", "dep:pretty_assertions"]
-archive = ["dep:walkdir"]
+archive = ["dep:taniwha-io", "dep:walkdir"]
 daemon = ["archive", "daemon-serde", "dep:nixrs-derive", "dep:libc", "tokio/rt"]
-daemon-serde = []
+daemon-serde = ["dep:taniwha-io"]
 daemon-client-process = ["daemon", "tokio/process"]
 internal = []
+io = ["dep:taniwha-io"]
 full = ["test", "daemon", "daemon-client-process"]
 
 # Nix Experimental Features
@@ -27,6 +28,7 @@ xp-impure-derivations = []
 default = []
 
 [dependencies]
+taniwha-io = { path = "../taniwha-io", optional = true }
 async-stream = { workspace = true }
 bstr.workspace = true
 bytes = { workspace = true, features = ["serde"] }

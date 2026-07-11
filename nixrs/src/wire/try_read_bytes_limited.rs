@@ -6,11 +6,11 @@ use std::pin::Pin;
 use std::task::{Context, Poll, ready};
 
 use bytes::{Buf, Bytes};
+use taniwha_io::AsyncBytesRead;
 use tracing::field::Empty;
 use tracing::{Span, trace_span};
 
 use super::{TryReadU64, ZEROS, checked_calc_aligned};
-use crate::io::AsyncBytesRead;
 
 #[derive(Debug, Clone)]
 pub enum TryReadBytesLimited {
@@ -108,10 +108,10 @@ mod unittests {
     use std::time::Duration;
 
     use hex_literal::hex;
+    use taniwha_io::BytesReader;
     use tokio_test::io::Builder;
 
     use super::TryReadBytesLimited;
-    use crate::io::BytesReader;
 
     #[tokio::test]
     async fn test_try_read_bytes_missing_padding() {

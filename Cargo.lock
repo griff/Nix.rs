@@ -1715,6 +1715,7 @@ dependencies = [
  "serde_with",
  "smallvec",
  "smol_str",
+ "taniwha-io",
  "tempfile",
  "test-log",
  "test-strategy",
@@ -2984,6 +2985,21 @@ checksum = "8e1d1b10ced5ca923a1fcb8d03e96b8d3268065d724548c0211415ff6ac6bac4"
 dependencies = [
  "core-foundation-sys",
  "libc",
+]
+
+[[package]]
+name = "taniwha-io"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "futures-util",
+ "hex-literal",
+ "pin-project-lite",
+ "smallvec",
+ "test-log",
+ "tokio",
+ "tokio-test",
+ "tracing",
 ]
 
 [[package]]

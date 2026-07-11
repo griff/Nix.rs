@@ -1,7 +1,7 @@
 use bytes::{Buf, TryGetError};
 use smallvec::SmallVec;
 
-use crate::io::{BytesBuf, ext::buf::panic_advance};
+use crate::{BytesBuf, buf::panic_advance};
 
 #[derive(Clone)]
 pub struct Chunked<const N: usize, B>(ChunkedMut<N, B>);

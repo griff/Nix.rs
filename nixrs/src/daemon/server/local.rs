@@ -6,6 +6,7 @@ use std::{
 };
 
 use futures::{FutureExt as _, Stream, StreamExt as _, TryFutureExt as _};
+use taniwha_io::{AsyncBufReadCompat, AsyncBytesReadExt};
 use tokio::io::{
     AsyncBufRead, AsyncBufReadExt as _, AsyncRead, AsyncWrite, AsyncWriteExt as _, copy_buf,
 };
@@ -29,7 +30,6 @@ use crate::daemon::{
     AddToStoreItem, DaemonError, DaemonErrorKind, DaemonResult, DaemonResultExt as _, NIX_VERSION,
     Operation, ResultLog, ValidPathInfo,
 };
-use crate::io::{AsyncBufReadCompat, AsyncBytesReadExt as _};
 use crate::realisation::Realisation;
 use crate::store_path::{ContentAddressMethodAlgorithm, StorePath, StorePathSet};
 

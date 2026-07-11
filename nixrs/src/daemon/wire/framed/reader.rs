@@ -4,10 +4,11 @@ use std::task::{Context, Poll, ready};
 
 use bytes::{Buf, BufMut as _, Bytes};
 use pin_project_lite::pin_project;
+use taniwha_io::AsyncBytesRead;
+use taniwha_io::buf::{BytesBuf, Chunked, ChunkedMut};
 use tokio::io::AsyncRead;
 use tracing::{debug, trace};
 
-use crate::io::{AsyncBytesRead, BytesBuf, Chunked, ChunkedMut};
 use crate::wire::TryReadU64;
 
 pub const FRAMES_STACK: usize = 4;
@@ -176,11 +177,11 @@ where
 #[cfg(test)]
 mod unittests {
     use hex_literal::hex;
+    use taniwha_io::BytesReader;
     use tokio::io::AsyncReadExt as _;
     use tokio_test::io::Builder;
 
     use super::*;
-    use crate::io::BytesReader;
 
     #[tokio::test]
     async fn test_read_frames() {

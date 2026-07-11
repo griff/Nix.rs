@@ -6,7 +6,7 @@ use std::task::{Context, Poll};
 use bytes::{Buf, Bytes};
 use tokio::io::AsyncRead;
 
-use crate::io::BytesBuf;
+use crate::BytesBuf;
 
 pub trait AsyncBytesRead: AsyncRead {
     type Buf: BytesBuf;

@@ -2,6 +2,11 @@ use std::{collections::VecDeque, io::IoSlice};
 
 use bytes::{Buf, Bytes, TryGetError, buf::Take};
 
+mod buffer;
+mod chunked;
+pub use buffer::{BufferMut, Filled};
+pub use chunked::{Chunked, ChunkedMut};
+
 pub trait BytesBuf: Buf {
     fn empty() -> Self;
 

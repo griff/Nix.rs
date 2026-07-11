@@ -5,6 +5,7 @@ use std::pin::{Pin, pin};
 
 use futures::future::TryFutureExt;
 use futures::{FutureExt, Stream, StreamExt as _};
+use taniwha_io::{AsyncBufReadCompat, AsyncBytesReadExt as _, BytesReader};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, copy_buf};
 use tokio::select;
 use tracing::{Instrument, debug, error, info, instrument, trace};
@@ -26,7 +27,6 @@ use crate::daemon::{
 };
 use crate::derivation::{BasicDerivation, OutputName};
 use crate::derived_path::DerivedPath;
-use crate::io::{AsyncBufReadCompat, AsyncBytesReadExt as _, BytesReader};
 use crate::log::LogMessage;
 use crate::realisation::{DrvOutput, Realisation};
 use crate::signature::Signature;

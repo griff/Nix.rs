@@ -163,6 +163,16 @@ rec {
       # File a bug if you depend on any for non-debug work!
       debug = internal.debugCrate { inherit packageId; };
     };
+    "taniwha-io" = rec {
+      packageId = "taniwha-io";
+      build = internal.buildRustCrateWithFeatures {
+        packageId = "taniwha-io";
+      };
+
+      # Debug support which might change between releases.
+      # File a bug if you depend on any for non-debug work!
+      debug = internal.debugCrate { inherit packageId; };
+    };
   };
 
 
@@ -5387,6 +5397,11 @@ rec {
             packageId = "smol_str";
           }
           {
+            name = "taniwha-io";
+            packageId = "taniwha-io";
+            optional = true;
+          }
+          {
             name = "test-strategy";
             packageId = "test-strategy";
             optional = true;
@@ -5472,15 +5487,17 @@ rec {
           }
         ];
         features = {
-          "archive" = [ "dep:walkdir" ];
+          "archive" = [ "dep:taniwha-io" "dep:walkdir" ];
           "daemon" = [ "archive" "daemon-serde" "dep:nixrs-derive" "dep:libc" "tokio/rt" ];
           "daemon-client-process" = [ "daemon" "tokio/process" ];
+          "daemon-serde" = [ "dep:taniwha-io" ];
           "full" = [ "test" "daemon" "daemon-client-process" ];
+          "io" = [ "dep:taniwha-io" ];
           "md5" = [ "dep:md5" ];
           "proptest" = [ "dep:proptest" ];
           "test" = [ "proptest" "dep:proptest-derive" "dep:test-strategy" "dep:pretty_assertions" ];
         };
-        resolvedDefaultFeatures = [ "archive" "daemon" "daemon-client-process" "daemon-serde" "default" "full" "internal" "md5" "proptest" "test" "xp-ca-derivations" "xp-dynamic-derivations" "xp-impure-derivations" ];
+        resolvedDefaultFeatures = [ "archive" "daemon" "daemon-client-process" "daemon-serde" "default" "full" "internal" "io" "md5" "proptest" "test" "xp-ca-derivations" "xp-dynamic-derivations" "xp-impure-derivations" ];
       };
       "nixrs-capnp" = rec {
         crateName = "nixrs-capnp";
@@ -9697,6 +9714,61 @@ rec {
           {
             name = "libc";
             packageId = "libc";
+          }
+        ];
+
+      };
+      "taniwha-io" = rec {
+        crateName = "taniwha-io";
+        version = "0.1.0";
+        edition = "2024";
+        src = lib.cleanSourceWith { filter = sourceFilter;  src = ./taniwha-io; };
+        libName = "taniwha_io";
+        dependencies = [
+          {
+            name = "bytes";
+            packageId = "bytes";
+          }
+          {
+            name = "futures-util";
+            packageId = "futures-util";
+          }
+          {
+            name = "pin-project-lite";
+            packageId = "pin-project-lite";
+          }
+          {
+            name = "smallvec";
+            packageId = "smallvec";
+            features = [ "const_generics" ];
+          }
+          {
+            name = "tokio";
+            packageId = "tokio";
+            features = [ "sync" ];
+          }
+          {
+            name = "tracing";
+            packageId = "tracing";
+          }
+        ];
+        devDependencies = [
+          {
+            name = "hex-literal";
+            packageId = "hex-literal";
+          }
+          {
+            name = "test-log";
+            packageId = "test-log";
+          }
+          {
+            name = "tokio";
+            packageId = "tokio";
+            features = [ "io-util" "macros" "rt" ];
+          }
+          {
+            name = "tokio-test";
+            packageId = "tokio-test";
           }
         ];
 

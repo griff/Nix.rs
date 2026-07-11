@@ -1,0 +1,18 @@
+[package]
+name = "taniwha-io"
+edition = "2024"
+version.workspace = true
+
+[dependencies]
+bytes.workspace = true
+futures-util.workspace = true
+pin-project-lite.workspace = true
+smallvec.workspace = true
+tokio = { workspace = true, features = ["sync"]}
+tracing.workspace = true
+
+[dev-dependencies]
+hex-literal.workspace = true
+test-log.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "rt"]}
+tokio-test.workspace = true

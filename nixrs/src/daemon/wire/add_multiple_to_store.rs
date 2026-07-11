@@ -3,6 +3,7 @@ use std::pin::pin;
 use async_stream::try_stream;
 use futures::{Stream, StreamExt};
 use pin_project_lite::pin_project;
+use taniwha_io::{AsyncBufReadCompat, AsyncBytesRead, Lending};
 use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, copy_buf};
 use tracing::{Instrument, debug, debug_span, instrument, trace};
 
@@ -10,7 +11,6 @@ use crate::archive::NarBytesReader;
 use crate::daemon::de::NixRead;
 use crate::daemon::ser::NixWrite;
 use crate::daemon::{AddToStoreItem, DaemonError, DaemonResult, ValidPathInfo};
-use crate::io::{AsyncBufReadCompat, AsyncBytesRead, Lending};
 
 #[instrument(level = "trace", skip_all)]
 pub async fn write_add_multiple_to_store_stream<W, S, R>(
@@ -131,6 +131,7 @@ mod unittests {
     use futures::{FutureExt as _, TryFutureExt as _, TryStreamExt as _};
     use pretty_assertions::assert_eq;
     use rstest::rstest;
+    use taniwha_io::BytesReader;
     use tokio::io::{AsyncReadExt, AsyncWriteExt, simplex};
     use tokio::try_join;
     use tokio_test::io::Builder;
@@ -141,7 +142,6 @@ mod unittests {
     use crate::daemon::ser::NixWriter;
     use crate::daemon::{DaemonResult, UnkeyedValidPathInfo};
     use crate::hash::NarHash;
-    use crate::io::BytesReader;
     use crate::test::archive::{read_nar, test_data, write_nar};
     use crate::wire::DEFAULT_BUF_SIZE;
 

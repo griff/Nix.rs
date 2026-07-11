@@ -4,9 +4,9 @@ use bytes::Buf as _;
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncBufRead, AsyncRead};
 
-use crate::io::BytesBuf;
+use crate::BytesBuf;
 
-use super::{AsyncBytesRead, DrainInto};
+use crate::{AsyncBytesRead, DrainInto};
 
 pin_project! {
     #[derive(Debug)]

@@ -5,11 +5,11 @@ use std::task::{Context, Poll, ready};
 use bytes::Buf;
 use futures::Stream;
 use pin_project_lite::pin_project;
+use taniwha_io::{AsyncBufReadCompat, AsyncBytesRead, BytesReader, Lending, LentReader};
 use tokio::io::AsyncRead;
 use tracing::trace;
 
 use crate::ByteString;
-use crate::io::{AsyncBufReadCompat, AsyncBytesRead, BytesReader, Lending, LentReader};
 use crate::wire::PaddedReader;
 
 use super::NarEvent;

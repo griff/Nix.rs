@@ -4,9 +4,8 @@ use std::task::{Context, Poll, ready};
 
 use bytes::{Buf, BufMut as _};
 use pin_project_lite::pin_project;
+use taniwha_io::{AsyncBytesRead, BytesBuf, DrainInto};
 use tokio::io::{AsyncRead, ReadBuf};
-
-use crate::io::{AsyncBytesRead, BytesBuf, DrainInto};
 
 use super::{ZEROS, calc_aligned};
 
@@ -216,9 +215,9 @@ mod unittests {
 
     use bytes::Bytes;
     use rstest::rstest;
+    use taniwha_io::AsyncBytesRead as _;
 
     use super::PaddedReader;
-    use crate::io::AsyncBytesRead as _;
     use crate::wire::calc_aligned;
 
     #[tokio::test]

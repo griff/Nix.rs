@@ -19,14 +19,6 @@ pub mod derivation;
 pub mod derived_path;
 pub mod encoding;
 pub mod hash;
-#[cfg(feature = "internal")]
-pub mod io;
-#[cfg(all(
-    not(feature = "internal"),
-    any(feature = "archive", feature = "daemon-serde")
-))]
-#[allow(unused_imports, dead_code)]
-pub(crate) mod io;
 pub mod log;
 pub mod profile;
 pub mod realisation;
@@ -41,6 +33,9 @@ pub mod wire;
     any(feature = "archive", feature = "daemon-serde")
 ))]
 pub(crate) mod wire;
+
+#[cfg(feature = "io")]
+pub use taniwha_io as io;
 
 pub type ByteString = bytes::Bytes;
 

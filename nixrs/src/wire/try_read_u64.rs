@@ -64,11 +64,11 @@ mod unittests {
     use std::time::Duration;
 
     use hex_literal::hex;
+    use taniwha_io::BytesReader;
     use tokio::io::AsyncReadExt as _;
     use tokio_test::io::Builder;
 
     use super::TryReadU64;
-    use crate::io::BytesReader;
 
     #[test_log::test(tokio::test)]
     async fn test_read_u64_partial() {

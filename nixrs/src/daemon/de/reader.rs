@@ -6,10 +6,10 @@ use std::task::{Context, Poll, ready};
 
 use bytes::{Buf, BufMut as _, Bytes};
 use pin_project_lite::pin_project;
+use taniwha_io::{AsyncBytesRead, BytesReader, DEFAULT_MAX_BUF_SIZE, DEFAULT_RESERVED_BUF_SIZE};
 use tokio::io::{AsyncRead, ReadBuf};
 
 use crate::daemon::ProtocolVersion;
-use crate::io::{AsyncBytesRead, BytesReader, DEFAULT_MAX_BUF_SIZE, DEFAULT_RESERVED_BUF_SIZE};
 use crate::store_path::{HasStoreDir, StoreDir};
 use crate::wire::{TryReadBytesLimited, TryReadU64};
 
@@ -206,6 +206,7 @@ mod unittests {
 
     use hex_literal::hex;
     use rstest::rstest;
+    use taniwha_io::BytesReader;
     use tokio::io::AsyncReadExt as _;
     #[cfg(feature = "daemon")]
     use tokio::io::{AsyncWriteExt as _, simplex};
@@ -213,7 +214,6 @@ mod unittests {
 
     use super::*;
     use crate::daemon::de::NixRead;
-    use crate::io::BytesReader;
     #[cfg(feature = "daemon")]
     use crate::{
         btree_set,

@@ -92,11 +92,12 @@ use std::task::{Context, Poll, ready};
 
 use bytes::{Buf, BufMut as _};
 use pin_project_lite::pin_project;
+use taniwha_io::buf::{BytesBuf, Limited};
+use taniwha_io::{AsyncBytesRead, DrainInto};
 use tokio::io::{AsyncBufRead, AsyncRead};
 use tracing::{error, trace};
 
 use super::radix_tree::{RLookup, RMatch, RTree};
-use crate::io::{AsyncBytesRead, BytesBuf, DrainInto, Limited};
 use crate::wire::{ZEROS, calc_aligned, checked_calc_aligned};
 
 const fn encode<const R: usize>(s: &[u8]) -> [u8; R] {
@@ -801,11 +802,11 @@ mod unittests {
 
     use bytes::{BufMut as _, Bytes, BytesMut};
     use rstest::rstest;
+    use taniwha_io::BytesReader;
     use tokio::io::{AsyncReadExt, BufReader};
     use tokio_test::io::Builder;
     use tracing::trace;
 
-    use crate::io::BytesReader;
     use crate::test::archive::test_data::*;
     use crate::test::archive::write_nar;
 
@@ -976,14 +977,15 @@ mod proptests {
     use bytes::{BufMut as _, Bytes, BytesMut};
     use proptest::prelude::{TestCaseError, any};
     use proptest::proptest;
+    use taniwha_io::BytesReader;
     use tokio::io::{AsyncReadExt as _, BufReader};
     use tokio_test::io::Builder;
     use tracing::{info, trace};
 
-    use crate::io::BytesReader;
     use crate::test::arbitrary::archive::arb_nar_contents;
 
     use super::{NarBytesReader, NarReader};
+
     #[test_log::test]
     fn proptest_read_nar() {
         let r = tokio::runtime::Builder::new_multi_thread()

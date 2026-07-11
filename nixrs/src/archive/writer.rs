@@ -4,9 +4,10 @@ use std::task::{Poll, ready};
 use bytes::{Buf, BufMut, BytesMut};
 use futures::Sink;
 use pin_project_lite::pin_project;
+use taniwha_io::DEFAULT_RESERVED_BUF_SIZE;
 use tokio::io::{AsyncBufRead, AsyncWrite};
 
-use crate::{io::DEFAULT_RESERVED_BUF_SIZE, wire::calc_padding};
+use crate::wire::calc_padding;
 
 use super::{
     NarEvent,
@@ -215,10 +216,10 @@ mod unittests {
     use futures::StreamExt as _;
     use futures::stream::iter;
     use rstest::rstest;
+    use taniwha_io::BytesReader;
     use tempfile::tempdir;
     use tokio::fs::File;
 
-    use crate::io::BytesReader;
     use crate::test::archive::{read_nar, test_data};
 
     use super::NarWriter;

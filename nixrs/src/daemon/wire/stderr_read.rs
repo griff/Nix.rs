@@ -4,11 +4,11 @@ use std::task::{Poll, ready};
 
 use bytes::{Buf, Bytes};
 use pin_project_lite::pin_project;
+use taniwha_io::AsyncBytesRead;
 use tokio::io::{AsyncBufRead, AsyncRead};
 use tokio::sync::mpsc;
 use tokio_util::sync::PollSender;
 
-use crate::io::AsyncBytesRead;
 use crate::wire::{DEFAULT_BUF_SIZE, TryReadBytesLimited};
 
 enum State {

@@ -1,4 +1,3 @@
-use std::future::poll_fn;
 use std::io::{self, Cursor};
 use std::pin::Pin;
 use std::task::{Poll, ready};
@@ -7,10 +6,10 @@ use bytes::{Buf, BufMut as _, Bytes};
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncRead, ReadBuf};
 
-use super::buffer::BufferMut;
-use crate::io::AsyncBytesRead;
+use crate::AsyncBytesRead;
+use crate::buf::BufferMut;
 
-pub const DEFAULT_RESERVED_BUF_SIZE: usize = 8192;
+pub const DEFAULT_RESERVED_BUF_SIZE: usize = 1024 * 1024;
 pub const DEFAULT_MAX_BUF_SIZE: usize = 1024 * 1024 * 8;
 
 pub struct BytesReaderBuilder {
@@ -224,7 +223,7 @@ mod unittests {
     use tokio::io::AsyncReadExt as _;
     use tokio_test::io::Builder;
 
-    use crate::io::{AsyncBytesReadExt, BytesReader};
+    use crate::{AsyncBytesReadExt as _, BytesReader};
 
     #[test_log::test(tokio::test)]
     async fn test_read_twice() {
