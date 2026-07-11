@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -7,9 +8,8 @@ use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
 use capnp::Error as CapError;
-use capnp::capability::Promise;
 use capnp_convert::{BuildFrom as _, ReadFrom, ReadInto as _, SetInto};
-use capnp_rpc::{new_client, new_future_client, pry};
+use capnp_rpc::{new_client, new_future_client};
 use futures::TryFutureExt as _;
 use futures::future::{select_all, try_join, try_join_all};
 use nixrs::daemon::{UnkeyedValidPathInfo, ValidPathInfo};
@@ -329,7 +329,7 @@ impl SetInto<capnp::struct_list::Builder<'_, nix_types_capnp::store_path::Owned>
 pub struct DaemonStorePathAccess {
     store: nix_daemon::Client,
     store_path: Rc<StorePath>,
-    info_sender: Option<watch::Sender<Result<UnkeyedValidPathInfo, CapError>>>,
+    info_sender: RefCell<Option<watch::Sender<Result<UnkeyedValidPathInfo, CapError>>>>,
     info_receiver: watch::Receiver<Result<UnkeyedValidPathInfo, CapError>>,
 }
 
@@ -339,12 +339,12 @@ impl DaemonStorePathAccess {
         Self {
             store,
             store_path,
-            info_sender: Some(sender),
+            info_sender: RefCell::new(Some(sender)),
             info_receiver: receiver,
         }
     }
 
-    fn send_for_info(&mut self) {
+    fn send_for_info(&self) {
         if let Some(sender) = self.info_sender.take() {
             let mut req = self.store.query_path_info_request();
             let store_path = self.store_path.clone();
@@ -375,49 +375,47 @@ impl DaemonStorePathAccess {
         }
     }
 
-    fn with_info<F>(&mut self, f: F) -> Promise<(), CapError>
+    async fn with_info<F>(self: Rc<Self>, f: F) -> capnp::Result<()>
     where
-        F: FnOnce(&UnkeyedValidPathInfo) -> Result<(), CapError> + 'static,
+        F: FnOnce(&UnkeyedValidPathInfo) -> capnp::Result<()> + 'static,
     {
         if matches!(self.info_receiver.has_changed(), Ok(true) | Err(_)) {
             let info = self.info_receiver.borrow();
             match info.as_ref() {
-                Ok(info) => f(info).into(),
-                Err(err) => Promise::err(err.clone()),
+                Ok(info) => f(info),
+                Err(err) => Err(err.clone()),
             }
         } else {
             self.send_for_info();
             let mut receiver = self.info_receiver.clone();
             let store_path = self.store_path.clone();
-            Promise::from_future(async move {
-                receiver.changed().await.map_err(|err| {
-                    CapError::failed(format!("Could not get info for {store_path}: {err}"))
-                })?;
-                let info = receiver.borrow();
-                match info.as_ref() {
-                    Ok(info) => f(info),
-                    Err(err) => Err(err.clone()),
-                }
-            })
+            receiver.changed().await.map_err(|err| {
+                CapError::failed(format!("Could not get info for {store_path}: {err}"))
+            })?;
+            let info = receiver.borrow();
+            match info.as_ref() {
+                Ok(info) => f(info),
+                Err(err) => Err(err.clone()),
+            }
         }
     }
 }
 
 impl store_path_access::Server for DaemonStorePathAccess {
-    fn get_store_path(
-        &mut self,
+    async fn get_store_path(
+        self: Rc<Self>,
         _params: store_path_access::GetStorePathParams,
         mut result: store_path_access::GetStorePathResults,
-    ) -> Promise<(), CapError> {
-        pry!(result.get().init_path().build_from(&*self.store_path));
-        Promise::ok(())
+    ) -> capnp::Result<()> {
+        result.get().init_path().build_from(&*self.store_path)?;
+        Ok(())
     }
 
-    fn get_deriver(
-        &mut self,
+    async fn get_deriver(
+        self: Rc<Self>,
         _params: store_path_access::GetDeriverParams,
         mut result: store_path_access::GetDeriverResults,
-    ) -> Promise<(), CapError> {
+    ) -> capnp::Result<()> {
         let store = self.store.clone();
         self.with_info(move |info| {
             if let Some(deriver) = info.deriver.as_ref() {
@@ -426,13 +424,14 @@ impl store_path_access::Server for DaemonStorePathAccess {
             }
             Ok(())
         })
+        .await
     }
 
-    fn get_references(
-        &mut self,
+    async fn get_references(
+        self: Rc<Self>,
         _params: store_path_access::GetReferencesParams,
         mut result: store_path_access::GetReferencesResults,
-    ) -> Promise<(), CapError> {
+    ) -> capnp::Result<()> {
         let store = self.store.clone();
         debug!("Store path {} references", self.store_path);
         self.with_info(move |info| {
@@ -446,46 +445,50 @@ impl store_path_access::Server for DaemonStorePathAccess {
             }
             Ok(())
         })
+        .await
     }
 
-    fn get_registration_time(
-        &mut self,
+    async fn get_registration_time(
+        self: Rc<Self>,
         _params: store_path_access::GetRegistrationTimeParams,
         mut result: store_path_access::GetRegistrationTimeResults,
-    ) -> Promise<(), CapError> {
+    ) -> capnp::Result<()> {
         self.with_info(move |info| {
             result.get().set_time(info.registration_time);
             Ok(())
         })
+        .await
     }
 
-    fn get_size(
-        &mut self,
+    async fn get_size(
+        self: Rc<Self>,
         _params: store_path_access::GetSizeParams,
         mut result: store_path_access::GetSizeResults,
-    ) -> Promise<(), CapError> {
+    ) -> capnp::Result<()> {
         self.with_info(move |info| {
             result.get().set_size(info.nar_size);
             Ok(())
         })
+        .await
     }
 
-    fn is_ultimate(
-        &mut self,
+    async fn is_ultimate(
+        self: Rc<Self>,
         _params: store_path_access::IsUltimateParams,
         mut result: store_path_access::IsUltimateResults,
-    ) -> Promise<(), CapError> {
+    ) -> capnp::Result<()> {
         self.with_info(move |info| {
             result.get().set_trusted(info.ultimate);
             Ok(())
         })
+        .await
     }
 
-    fn get_signatures(
-        &mut self,
+    async fn get_signatures(
+        self: Rc<Self>,
         _params: store_path_access::GetSignaturesParams,
         mut result: store_path_access::GetSignaturesResults,
-    ) -> Promise<(), CapError> {
+    ) -> capnp::Result<()> {
         self.with_info(move |info| {
             let mut b = result.get().init_signatures(info.signatures.len() as u32);
             for (index, signature) in info.signatures.iter().enumerate() {
@@ -495,13 +498,14 @@ impl store_path_access::Server for DaemonStorePathAccess {
             }
             Ok(())
         })
+        .await
     }
 
-    fn info(
-        &mut self,
+    async fn info(
+        self: Rc<Self>,
         _params: store_path_access::InfoParams,
         mut result: store_path_access::InfoResults,
-    ) -> Promise<(), CapError> {
+    ) -> capnp::Result<()> {
         let store = self.store.clone();
         debug!("Store path {} info", self.store_path);
         self.with_info(move |info| {
@@ -538,13 +542,14 @@ impl store_path_access::Server for DaemonStorePathAccess {
             }
             Ok(())
         })
+        .await
     }
 
-    fn nar(
-        &mut self,
+    async fn nar(
+        self: Rc<Self>,
         _params: store_path_access::NarParams,
         mut result: store_path_access::NarResults,
-    ) -> Promise<(), CapError> {
+    ) -> capnp::Result<()> {
         let store = self.store.clone();
         let store_path = self.store_path.clone();
         self.with_info(move |info| {
@@ -557,6 +562,7 @@ impl store_path_access::Server for DaemonStorePathAccess {
             result.get().set_nar(client);
             Ok(())
         })
+        .await
     }
 }
 
@@ -571,140 +577,134 @@ impl DaemonStorePathStore {
 }
 
 impl store_path_store::Server for DaemonStorePathStore {
-    fn list(
-        &mut self,
+    async fn list(
+        self: Rc<Self>,
         _params: store_path_store::ListParams,
         mut result: store_path_store::ListResults,
-    ) -> Promise<(), CapError> {
+    ) -> capnp::Result<()> {
         let store = self.store.clone();
-        Promise::from_future(async move {
-            let paths = store.query_all_valid_paths_request().send().promise.await?;
-            let r = paths.get()?.get_paths()?;
-            let mut b = result.get().init_paths(r.len());
-            for (index, item) in r.iter().enumerate() {
-                let store_path = item.read_into()?;
-                let remote_store_path = RemoteStorePath::daemon_path(store.clone(), store_path);
-                b.reborrow()
-                    .get(index as u32)
-                    .build_from(&remote_store_path)?;
-            }
-            Ok(())
-        })
+        let paths = store.query_all_valid_paths_request().send().promise.await?;
+        let r = paths.get()?.get_paths()?;
+        let mut b = result.get().init_paths(r.len());
+        for (index, item) in r.iter().enumerate() {
+            let store_path = item.read_into()?;
+            let remote_store_path = RemoteStorePath::daemon_path(store.clone(), store_path);
+            b.reborrow()
+                .get(index as u32)
+                .build_from(&remote_store_path)?;
+        }
+        Ok(())
     }
 
-    fn lookup(
-        &mut self,
+    async fn lookup(
+        self: Rc<Self>,
         params: store_path_store::LookupParams,
         mut result: store_path_store::LookupResults,
-    ) -> Promise<(), CapError> {
+    ) -> capnp::Result<()> {
         let store = self.store.clone();
-        Promise::from_future(async move {
-            match params.get()?.get_params()?.which()? {
-                lookup_params::Which::ByStorePath(store_path) => {
-                    let store_path = store_path?.read_into()?;
-                    debug!("Lookup store path {store_path}");
-                    let mut req = store.is_valid_path_request();
-                    req.get().init_path().build_from(&store_path)?;
-                    let resp = req.send().promise.await?;
-                    if resp.get()?.get_valid() {
-                        debug!("Store path {store_path} is valid");
-                        let remote_store_path = RemoteStorePath::daemon_path(store, store_path);
-                        result.get().init_path().build_from(&remote_store_path)?;
-                    } else {
-                        debug!("Store path {store_path} is invalid");
-                    }
-                }
-                lookup_params::Which::ByHash(hash) => {
-                    let store_hash = StorePathHash::try_from(hash?)
-                        .map_err(|err| CapError::failed(err.to_string()))?;
-                    debug!("Lookup store hash {store_hash}");
-                    let mut req = store.query_path_from_hash_part_request();
-                    req.get().set_hash(&store_hash);
-                    let resp = req.send().promise.await?;
-                    let r = resp.get()?;
-                    if r.has_path() {
-                        let store_path: StorePath = r.get_path()?.read_into()?;
-                        let remote_store_path = RemoteStorePath::daemon_path(store, store_path);
-                        result.get().init_path().build_from(&remote_store_path)?;
-                    }
+        match params.get()?.get_params()?.which()? {
+            lookup_params::Which::ByStorePath(store_path) => {
+                let store_path = store_path?.read_into()?;
+                debug!("Lookup store path {store_path}");
+                let mut req = store.is_valid_path_request();
+                req.get().init_path().build_from(&store_path)?;
+                let resp = req.send().promise.await?;
+                if resp.get()?.get_valid() {
+                    debug!("Store path {store_path} is valid");
+                    let remote_store_path = RemoteStorePath::daemon_path(store, store_path);
+                    result.get().init_path().build_from(&remote_store_path)?;
+                } else {
+                    debug!("Store path {store_path} is invalid");
                 }
             }
-            Ok(())
-        })
+            lookup_params::Which::ByHash(hash) => {
+                let store_hash = StorePathHash::try_from(hash?)
+                    .map_err(|err| CapError::failed(err.to_string()))?;
+                debug!("Lookup store hash {store_hash}");
+                let mut req = store.query_path_from_hash_part_request();
+                req.get().set_hash(&store_hash);
+                let resp = req.send().promise.await?;
+                let r = resp.get()?;
+                if r.has_path() {
+                    let store_path: StorePath = r.get_path()?.read_into()?;
+                    let remote_store_path = RemoteStorePath::daemon_path(store, store_path);
+                    result.get().init_path().build_from(&remote_store_path)?;
+                }
+            }
+        }
+        Ok(())
     }
 
-    fn add(
-        &mut self,
+    async fn add(
+        self: Rc<Self>,
         params: store_path_store::AddParams,
         _result: store_path_store::AddResults,
-    ) -> Promise<(), CapError> {
+    ) -> capnp::Result<()> {
         let store = self.store.clone();
-        Promise::from_future(async move {
-            let rp = params.get()?;
-            let remote_store_path: RemoteStorePath = rp.get_path()?.read_into()?;
-            // ComputeFSClosure
-            debug!("Compute closure of {}", remote_store_path.store_path);
-            let mut closure = RemoteStorePathSet::new();
-            closure.insert_closure(remote_store_path).await?;
+        let rp = params.get()?;
+        let remote_store_path: RemoteStorePath = rp.get_path()?.read_into()?;
+        // ComputeFSClosure
+        debug!("Compute closure of {}", remote_store_path.store_path);
+        let mut closure = RemoteStorePathSet::new();
+        closure.insert_closure(remote_store_path).await?;
 
-            // Remove already valid
-            debug!("Check validity of {} paths", closure.len());
-            let mut req = store.query_valid_paths_request();
-            let mut b = req.get();
-            b.reborrow()
-                .init_paths(closure.len() as u32)
-                .build_from(&closure)?;
-            b.set_substitute(rp.get_substitute());
-            let valid_res = req.send().promise.await?;
-            for v in valid_res.get()?.get_valid_set()? {
-                let store_path: StorePath = v.read_into()?;
-                closure.remove(&store_path);
-            }
+        // Remove already valid
+        debug!("Check validity of {} paths", closure.len());
+        let mut req = store.query_valid_paths_request();
+        let mut b = req.get();
+        b.reborrow()
+            .init_paths(closure.len() as u32)
+            .build_from(&closure)?;
+        b.set_substitute(rp.get_substitute());
+        let valid_res = req.send().promise.await?;
+        for v in valid_res.get()?.get_valid_set()? {
+            let store_path: StorePath = v.read_into()?;
+            closure.remove(&store_path);
+        }
 
-            if closure.is_empty() {
-                return Ok(());
-            }
+        if closure.is_empty() {
+            return Ok(());
+        }
 
-            // Toposort missing
-            debug!("Topssort {} paths", closure.len());
-            let sorted = closure.toposort().await?;
+        // Toposort missing
+        debug!("Topssort {} paths", closure.len());
+        let sorted = closure.toposort().await?;
 
-            // AddMultipleToStore
-            debug!("AddMultipleToStore {} paths", closure.len());
-            let mut req = store.add_multiple_to_store_request();
-            let mut b = req.get();
-            b.set_count(sorted.len() as u16);
-            b.set_dont_check_sigs(rp.get_dont_check_sigs());
-            b.set_repair(rp.get_repair());
+        // AddMultipleToStore
+        debug!("AddMultipleToStore {} paths", closure.len());
+        let mut req = store.add_multiple_to_store_request();
+        let mut b = req.get();
+        b.set_count(sorted.len() as u16);
+        b.set_dont_check_sigs(rp.get_dont_check_sigs());
+        b.set_repair(rp.get_repair());
+        let res = req.send();
+        let stream = res.pipeline.get_stream();
+        let mut work = Vec::with_capacity(sorted.len());
+        for item in sorted {
+            let info: ValidPathInfo = item
+                .client
+                .info_request()
+                .send()
+                .promise
+                .await?
+                .get()?
+                .get_info()?
+                .read_into()?;
+            let mut req = stream.add_request();
+            req.get().init_info().build_from(&info)?;
             let res = req.send();
-            let stream = res.pipeline.get_stream();
-            let mut work = Vec::with_capacity(sorted.len());
-            for item in sorted {
-                let info: ValidPathInfo = item
-                    .client
-                    .info_request()
-                    .send()
-                    .promise
-                    .await?
-                    .get()?
-                    .get_info()?
-                    .read_into()?;
-                let mut req = stream.add_request();
-                req.get().init_info().build_from(&info)?;
-                let res = req.send();
-                let bs = res.pipeline.get_stream();
-                let mut write = item
-                    .client
-                    .nar_request()
-                    .send()
-                    .pipeline
-                    .get_nar()
-                    .write_to_request();
-                write.get().set_stream(bs);
-                work.push(try_join(res.promise, write.send().promise));
-            }
-            try_join(res.promise, try_join_all(work)).await?;
-            Ok(())
-        })
+            let bs = res.pipeline.get_stream();
+            let mut write = item
+                .client
+                .nar_request()
+                .send()
+                .pipeline
+                .get_nar()
+                .write_to_request();
+            write.get().set_stream(bs);
+            work.push(try_join(res.promise, write.send().promise));
+        }
+        try_join(res.promise, try_join_all(work)).await?;
+        Ok(())
     }
 }

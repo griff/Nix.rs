@@ -1,11 +1,13 @@
 use std::{
+    cell::RefCell,
     pin::pin,
+    rc::Rc,
     task::{Poll, ready},
 };
 
 use bytes::Bytes;
 use capnp::capability::Promise;
-use capnp_rpc::{new_client, pry};
+use capnp_rpc::new_client;
 use capnp_rpc_tokio::stream::{ByteStreamWrap, ByteStreamWriter};
 use futures::{Sink, SinkExt as _, Stream, TryFutureExt as _, TryStreamExt as _, channel::mpsc};
 use nixrs::archive::{NarEvent, parse_nar};
@@ -168,46 +170,46 @@ where
 type PushEvent = NarEvent<BufReader<ReadHalf<SimplexStream>>>;
 pub fn nar_handler_channel(buffer: usize) -> (node_handler::Client, mpsc::Receiver<PushEvent>) {
     let (sender, receiver) = mpsc::channel(buffer);
-    let push = NodeHandlerPush { sender };
+    let push = NodeHandlerPush {
+        sender: RefCell::new(sender),
+    };
     (new_client(push), receiver)
 }
 
 pub struct NodeHandlerPush {
-    sender: mpsc::Sender<PushEvent>,
+    sender: RefCell<mpsc::Sender<PushEvent>>,
 }
 
 impl NodeHandlerPush {
-    fn send_event(&self, event: PushEvent) -> Promise<(), capnp::Error> {
-        let mut sender = self.sender.clone();
-        Promise::from_future(async move {
-            sender
-                .send(event)
-                .await
-                .map_err(|err| capnp::Error::failed(err.to_string()))
-        })
+    async fn send_event(&self, event: PushEvent) -> capnp::Result<()> {
+        let mut sender = self.sender.borrow().clone();
+        sender
+            .send(event)
+            .await
+            .map_err(|err| capnp::Error::failed(err.to_string()))
     }
 }
 
 impl node_handler::Server for NodeHandlerPush {
-    fn symlink(&mut self, params: node_handler::SymlinkParams) -> Promise<(), capnp::Error> {
-        let r = pry!(params.get());
-        let name = Bytes::copy_from_slice(pry!(r.get_name()));
-        let target = Bytes::copy_from_slice(pry!(r.get_target()));
-        self.send_event(NarEvent::Symlink { name, target })
+    async fn symlink(self: Rc<Self>, params: node_handler::SymlinkParams) -> capnp::Result<()> {
+        let r = params.get()?;
+        let name = Bytes::copy_from_slice(r.get_name()?);
+        let target = Bytes::copy_from_slice(r.get_target()?);
+        self.send_event(NarEvent::Symlink { name, target }).await
     }
 
-    fn file(
-        &mut self,
+    async fn file(
+        self: Rc<Self>,
         params: node_handler::FileParams,
         mut result: node_handler::FileResults,
-    ) -> Promise<(), capnp::Error> {
+    ) -> capnp::Result<()> {
         let (reader, writer) = simplex(DEFAULT_BUF_SIZE);
         let reader = BufReader::new(reader);
         let writer = new_client(ByteStreamWrap::new(writer));
         result.get().set_write_to(writer);
 
-        let r = pry!(params.get());
-        let name = Bytes::copy_from_slice(pry!(r.get_name()));
+        let r = params.get()?;
+        let name = Bytes::copy_from_slice(r.get_name()?);
         let size = r.get_size();
         let executable = r.get_executable();
 
@@ -217,30 +219,31 @@ impl node_handler::Server for NodeHandlerPush {
             size,
             reader,
         })
+        .await
     }
 
-    fn start_directory(
-        &mut self,
+    async fn start_directory(
+        self: Rc<Self>,
         params: node_handler::StartDirectoryParams,
-    ) -> Promise<(), capnp::Error> {
-        let r = pry!(params.get());
-        let name = Bytes::copy_from_slice(pry!(r.get_name()));
-        self.send_event(NarEvent::StartDirectory { name })
+    ) -> capnp::Result<()> {
+        let r = params.get()?;
+        let name = Bytes::copy_from_slice(r.get_name()?);
+        self.send_event(NarEvent::StartDirectory { name }).await
     }
 
-    fn finish_directory(
-        &mut self,
+    async fn finish_directory(
+        self: Rc<Self>,
         _: node_handler::FinishDirectoryParams,
-    ) -> Promise<(), capnp::Error> {
-        self.send_event(NarEvent::EndDirectory)
+    ) -> capnp::Result<()> {
+        self.send_event(NarEvent::EndDirectory).await
     }
 
-    fn end(
-        &mut self,
+    async fn end(
+        self: Rc<Self>,
         _: node_handler::EndParams,
         _: node_handler::EndResults,
-    ) -> Promise<(), capnp::Error> {
-        self.sender.close_channel();
-        Promise::ok(())
+    ) -> capnp::Result<()> {
+        self.sender.borrow_mut().close_channel();
+        Ok(())
     }
 }

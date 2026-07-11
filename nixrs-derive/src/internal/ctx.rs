@@ -24,7 +24,7 @@ impl Context {
     }
 
     pub fn check(&self) -> syn::Result<()> {
-        let mut iter = self.errors.borrow_mut().take().unwrap().into_iter();
+        let mut iter = self.errors.take().unwrap().into_iter();
         let mut err = match iter.next() {
             None => return Ok(()),
             Some(err) => err,

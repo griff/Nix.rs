@@ -78,10 +78,10 @@ assert_matches = "1.5.0"
 #capnp-futures = { git = "https://github.com/griff/capnproto-rust.git", branch = "feat/setter-input-everywhere" }
 #capnp-rpc = { git = "https://github.com/griff/capnproto-rust.git", branch = "feat/setter-input-everywhere" }
 #capnpc = { git = "https://github.com/griff/capnproto-rust.git", branch = "feat/setter-input-everywhere" }
-capnp = "^0.21.0"
-capnp-futures = "^0.21.0"
-capnp-rpc = "^0.21.0"
-capnpc = "^0.21.0"
+capnp = "^0.25.4"
+capnp-futures = "^0.25.2"
+capnp-rpc = "^0.25.1"
+capnpc = "^0.25.3"
 which = "^4.4.0"
 
 # nixrs-derive

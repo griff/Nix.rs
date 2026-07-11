@@ -1,10 +1,6 @@
 use std::rc::Rc;
 
-use capnp::Error as CapError;
-use capnp::capability::Promise;
 use capnp_convert::BuildFrom as _;
-use capnp_rpc::pry;
-use futures::TryFutureExt;
 use nixrs::hash::NarHash;
 use nixrs::store_path::StorePath;
 
@@ -19,34 +15,35 @@ pub struct DaemonNar {
 }
 
 impl nar::Server for DaemonNar {
-    fn write_to(
-        &mut self,
+    async fn write_to(
+        self: Rc<Self>,
         params: nar::WriteToParams,
         _result: nar::WriteToResults,
-    ) -> Promise<(), CapError> {
-        let stream = pry!(pry!(params.get()).get_stream());
+    ) -> capnp::Result<()> {
+        let stream = params.get()?.get_stream()?;
         let mut req = self.store.nar_from_path_request();
         let mut b = req.get();
-        pry!(b.reborrow().init_path().build_from(&*self.store_path));
+        b.reborrow().init_path().build_from(&*self.store_path)?;
         b.set_stream(stream);
-        Promise::from_future(req.send().promise.map_ok(|_| ()))
+        req.send().promise.await?;
+        Ok(())
     }
 
-    fn nar_hash(
-        &mut self,
+    async fn nar_hash(
+        self: Rc<Self>,
         _params: nar::NarHashParams,
         mut result: nar::NarHashResults,
-    ) -> Promise<(), CapError> {
+    ) -> capnp::Result<()> {
         result.get().set_hash(self.nar_hash.digest_bytes());
-        Promise::ok(())
+        Ok(())
     }
 
-    fn nar_size(
-        &mut self,
+    async fn nar_size(
+        self: Rc<Self>,
         _params: nar::NarSizeParams,
         mut result: nar::NarSizeResults,
-    ) -> Promise<(), CapError> {
+    ) -> capnp::Result<()> {
         result.get().set_size(self.nar_size);
-        Promise::ok(())
+        Ok(())
     }
 }

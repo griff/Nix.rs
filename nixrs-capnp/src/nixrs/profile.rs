@@ -4,7 +4,7 @@ use std::time::UNIX_EPOCH;
 use bstr::ByteSlice as _;
 
 use camino::{Utf8Path, Utf8PathBuf};
-use capnp::capability::{FromClientHook, Promise};
+use capnp::capability::FromClientHook;
 use capnp::traits::{FromPointerBuilder, HasTypeId, SetterInput};
 use capnp_convert::{BuildFrom as _, ReadInto as _};
 use capnp_rpc::new_client;
@@ -153,80 +153,72 @@ impl<R> profile::Server for ProfileImpl<R>
 where
     R: ProfileRoots + 'static,
 {
-    fn current_generation(
-        &mut self,
+    async fn current_generation(
+        self: Rc<Self>,
         _params: profile::CurrentGenerationParams,
         mut result: profile::CurrentGenerationResults,
-    ) -> Promise<(), capnp::Error> {
+    ) -> capnp::Result<()> {
         let me = self.clone();
-        Promise::from_future(async move {
-            if let Some(generation) = me.profile.current_generation().await? {
-                me.build_generation(&generation, result.get().init_generation())
-                    .await?;
-            }
-            Ok(())
-        })
+        if let Some(generation) = me.profile.current_generation().await? {
+            me.build_generation(&generation, result.get().init_generation())
+                .await?;
+        }
+        Ok(())
     }
 
-    fn list_generations(
-        &mut self,
+    async fn list_generations(
+        self: Rc<Self>,
         _params: profile::ListGenerationsParams,
         mut result: profile::ListGenerationsResults,
-    ) -> Promise<(), capnp::Error> {
+    ) -> capnp::Result<()> {
         let me = self.clone();
-        Promise::from_future(async move {
-            let list = me.profile.list_generations().await?;
-            let mut bl = result.get().init_generations(list.len() as u32);
-            for (index, generation) in me.profile.list_generations().await?.into_iter().enumerate()
-            {
-                me.build_generation(&generation, bl.reborrow().get(index as u32))
-                    .await?;
-            }
-            Ok(())
-        })
+        let list = me.profile.list_generations().await?;
+        let mut bl = result.get().init_generations(list.len() as u32);
+        for (index, generation) in me.profile.list_generations().await?.into_iter().enumerate() {
+            me.build_generation(&generation, bl.reborrow().get(index as u32))
+                .await?;
+        }
+        Ok(())
     }
 
-    fn create_generation(
-        &mut self,
+    async fn create_generation(
+        self: Rc<Self>,
         params: profile::CreateGenerationParams,
         mut result: profile::CreateGenerationResults,
-    ) -> Promise<(), capnp::Error> {
-        let me = self.clone();
-        Promise::from_future(async move {
-            let r = params.get()?;
-            let mut req = me.store.lookup_request();
-            req.get()
-                .init_params()
-                .set_by_store_path(r.get_store_path()?)?;
-            let res = req.send().promise.await?;
-            let store_path = r.get_store_path()?.read_into()?;
-            let r = res.get()?;
-            if !r.has_path() {
-                return Err(capnp::Error::failed(
-                    "Store (store_path) path does not exist".to_string(),
-                ));
-            }
-            let remote_store_path: RemoteStorePath = r.get_path()?.read_into()?;
-            let generation = me.profile.create_generation(&store_path).await?;
-            let mut b = result.get().init_generation();
-            let client = new_client(GenerationCapImpl {
-                profile: me.clone(),
-                number: generation.number,
-            });
-            b.set_cap(client);
-            let mut bi = b.init_info();
-            bi.reborrow()
-                .init_store_path()
-                .build_from(&remote_store_path)?;
-            bi.set_number(generation.number);
-            let time = if let Ok(elapsed) = generation.creation_time.duration_since(UNIX_EPOCH) {
-                elapsed.as_secs() as i64
-            } else {
-                0
-            };
-            bi.set_creation_time(time);
-            Ok(())
-        })
+    ) -> capnp::Result<()> {
+        let r = params.get()?;
+        let mut req = self.store.lookup_request();
+        req.get()
+            .init_params()
+            .set_by_store_path(r.get_store_path()?)?;
+        let res = req.send().promise.await?;
+        let store_path = r.get_store_path()?.read_into()?;
+        let r = res.get()?;
+        if !r.has_path() {
+            return Err(capnp::Error::failed(
+                "Store (store_path) path does not exist".to_string(),
+            ));
+        }
+        let remote_store_path: RemoteStorePath = r.get_path()?.read_into()?;
+        let generation = self.profile.create_generation(&store_path).await?;
+        let mut b = result.get().init_generation();
+        let client = new_client(GenerationCapImpl {
+            profile: self.as_ref().clone(),
+            number: generation.number,
+        });
+        b.set_cap(client);
+        let mut bi = b.init_info();
+        bi.reborrow()
+            .init_store_path()
+            .build_from(&remote_store_path)?;
+        bi.set_number(generation.number);
+        let time = if let Ok(elapsed) = generation.creation_time.duration_since(UNIX_EPOCH) {
+            elapsed.as_secs() as i64
+        } else {
+            0
+        };
+        bi.set_creation_time(time);
+        Ok(())
     }
 }
 
@@ -248,45 +240,39 @@ impl<R> generation_cap::Server for GenerationCapImpl<R>
 where
     R: ProfileRoots + 'static,
 {
-    fn info(
-        &mut self,
+    async fn info(
+        self: Rc<Self>,
         _: generation_cap::InfoParams,
         mut result: generation_cap::InfoResults,
-    ) -> Promise<(), capnp::Error> {
+    ) -> capnp::Result<()> {
         let me = self.clone();
-        Promise::from_future(async move {
-            let generation = me.profile.profile.get_generation(me.number).await?;
-            me.profile
-                .build_generation_info(&generation, result.get().init_info())
-                .await?;
-            Ok(())
-        })
+        let generation = me.profile.profile.get_generation(me.number).await?;
+        me.profile
+            .build_generation_info(&generation, result.get().init_info())
+            .await?;
+        Ok(())
     }
 
-    fn switch(
-        &mut self,
+    async fn switch(
+        self: Rc<Self>,
         _: generation_cap::SwitchParams,
         _: generation_cap::SwitchResults,
-    ) -> Promise<(), capnp::Error> {
+    ) -> capnp::Result<()> {
         let me = self.clone();
-        Promise::from_future(async move {
-            let generation = me.profile.profile.get_generation(me.number).await?;
-            generation.switch().await?;
-            Ok(())
-        })
+        let generation = me.profile.profile.get_generation(me.number).await?;
+        generation.switch().await?;
+        Ok(())
     }
 
-    fn delete(
-        &mut self,
+    async fn delete(
+        self: Rc<Self>,
         _: generation_cap::DeleteParams,
         _: generation_cap::DeleteResults,
-    ) -> Promise<(), capnp::Error> {
+    ) -> capnp::Result<()> {
         let me = self.clone();
-        Promise::from_future(async move {
-            let generation = me.profile.profile.get_generation(me.number).await?;
-            generation.delete().await?;
-            Ok(())
-        })
+        let generation = me.profile.profile.get_generation(me.number).await?;
+        generation.delete().await?;
+        Ok(())
     }
 }
 

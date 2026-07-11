@@ -784,7 +784,7 @@ async fn add_to_store_nar(
 // AddMultipleToStore
 #[test_log::test(tokio::test)]
 #[rstest]
-#[case::ok(
+#[case::multiple(
     true,
     true,
     vec![
@@ -820,6 +820,30 @@ async fn add_to_store_nar(
             },
             test_data::dir_example()
         ),
+    ],
+    Ok(()),
+    Ok(())
+)]
+#[case::single(
+    true,
+    true,
+    vec![
+        (
+            ValidPathInfo {
+                path: "00000000000000000000000000000000-_".parse().unwrap(),
+                info: UnkeyedValidPathInfo {
+                    deriver: Some("00000000000000000000000000000000-_.drv".parse().unwrap()),
+                    nar_hash: NarHash::new(&[0u8; 32]),
+                    references: btree_set!["00000000000000000000000000000000-_"],
+                    registration_time: 0,
+                    nar_size: 0,
+                    ultimate: true,
+                    signatures: BTreeSet::new(),
+                    ca: None,
+                }
+            },
+            test_data::text_file(),
+        )
     ],
     Ok(()),
     Ok(())

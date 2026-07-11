@@ -1,11 +1,11 @@
+use std::cell::RefCell;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll, ready};
 use std::{io, mem};
 
 use capnp::Error;
-use capnp::capability::Promise;
-use capnp_rpc::pry;
+use capnp::capability::{Promise, Rc};
 use futures::TryFutureExt as _;
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
@@ -195,13 +195,13 @@ where
 }
 
 pub struct ByteStreamWrap<W> {
-    state: WriteState<W>,
+    state: RefCell<WriteState<W>>,
 }
 
 impl<W> ByteStreamWrap<W> {
     pub fn new(writer: W) -> ByteStreamWrap<W> {
         ByteStreamWrap {
-            state: WriteState::Writeable(writer),
+            state: RefCell::new(WriteState::Writeable(writer)),
         }
     }
 }
@@ -210,15 +210,16 @@ impl<W> byte_stream::Server for ByteStreamWrap<W>
 where
     W: AsyncWrite + Unpin + 'static,
 {
-    fn write(&mut self, params: byte_stream::WriteParams) -> Promise<(), capnp::Error> {
-        let data = pry!(BsWriteParams::new(params));
-        self.state.write(data)
+    async fn write(self: Rc<Self>, params: byte_stream::WriteParams) -> capnp::Result<()> {
+        let data = BsWriteParams::new(params)?;
+        { self.state.borrow_mut().write(data) }.await
     }
-    fn end(
-        &mut self,
+
+    async fn end(
+        self: Rc<Self>,
         _: byte_stream::EndParams,
         _: byte_stream::EndResults,
-    ) -> Promise<(), capnp::Error> {
-        self.state.end()
+    ) -> capnp::Result<()> {
+        { self.state.borrow_mut().end() }.await
     }
 }

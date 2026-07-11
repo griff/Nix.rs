@@ -1,10 +1,11 @@
-use std::future::{Future, poll_fn};
+use std::cell::{Cell, RefCell};
+use std::future::{Future, poll_fn, ready};
 use std::pin::{Pin, pin};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, ready};
 
 use capnp::Error;
-use capnp::capability::Promise;
+use capnp::capability::Rc;
 use capnp_convert::{BuildFrom as _, ReadInto as _};
 use capnp_rpc::new_client;
 use capnp_rpc_tokio::stream::{ByteStreamWrap, ByteStreamWriter};
@@ -27,12 +28,12 @@ pub struct NoopLogger;
 
 #[forbid(clippy::missing_trait_methods)]
 impl logger::Server for NoopLogger {
-    fn write(&mut self, _: logger::WriteParams) -> Promise<(), Error> {
-        Promise::ok(())
+    async fn write(self: Rc<Self>, _: logger::WriteParams) -> capnp::Result<()> {
+        Ok(())
     }
 
-    fn end(&mut self, _: logger::EndParams, _: logger::EndResults) -> Promise<(), Error> {
-        Promise::ok(())
+    async fn end(self: Rc<Self>, _: logger::EndParams, _: logger::EndResults) -> capnp::Result<()> {
+        Ok(())
     }
 }
 
@@ -87,13 +88,13 @@ where
     S: HasStoreDir + Clone + 'static,
 {
     fn store_dir(
-        &mut self,
+        self: Rc<Self>,
         _: has_store_dir::StoreDirParams,
         mut result: has_store_dir::StoreDirResults,
-    ) -> Promise<(), capnp::Error> {
+    ) -> impl Future<Output = capnp::Result<()>> {
         let dir = self.store.store_dir();
         result.get().set_store_dir(dir.to_str());
-        Promise::ok(())
+        ready(Ok(()))
     }
 }
 
@@ -102,381 +103,336 @@ impl<S> nix_daemon::Server for CapnpServer<S>
 where
     S: DaemonStore + Clone + 'static,
 {
-    fn end(&mut self, _: nix_daemon::EndParams, _: nix_daemon::EndResults) -> Promise<(), Error> {
-        let mut this = self.clone();
-        Promise::from_future(async move {
-            if this.shutdown {
-                this.logger.process_logs(this.store.shutdown()).await?;
-            }
-            this.logger.end().await?;
-            Ok(())
-        })
+    async fn end(
+        self: Rc<Self>,
+        _: nix_daemon::EndParams,
+        _: nix_daemon::EndResults,
+    ) -> capnp::Result<()> {
+        if self.shutdown {
+            let mut store = self.store.clone();
+            self.logger.process_logs(store.shutdown()).await?;
+        }
+        self.logger.end().await?;
+        Ok(())
     }
 
-    fn set_options(
-        &mut self,
+    async fn set_options(
+        self: Rc<Self>,
         params: nix_daemon::SetOptionsParams,
         _: nix_daemon::SetOptionsResults,
-    ) -> Promise<(), Error> {
-        let mut this = self.clone();
-        Promise::from_future(async move {
-            let options = params.get()?.get_options()?.read_into()?;
-            this.logger
-                .process_logs(this.store.set_options(&options))
-                .await
-        })
+    ) -> capnp::Result<()> {
+        let mut store = self.store.clone();
+        let options = params.get()?.get_options()?.read_into()?;
+        self.logger.process_logs(store.set_options(&options)).await
     }
 
-    fn is_valid_path(
-        &mut self,
+    async fn is_valid_path(
+        self: Rc<Self>,
         params: nix_daemon::IsValidPathParams,
         mut result: nix_daemon::IsValidPathResults,
-    ) -> Promise<(), Error> {
-        let mut this = self.clone();
-        Promise::from_future(async move {
-            debug!("is_valid_path");
-            let path = params.get()?.get_path()?.read_into()?;
-            debug!("is_valid_path {path}");
-            let valid = this
-                .logger
-                .process_logs(this.store.is_valid_path(&path))
-                .await?;
-            debug!("is_valid_path {path} result {valid}");
-            result.get().set_valid(valid);
-            Ok(())
-        })
+    ) -> capnp::Result<()> {
+        let mut store = self.store.clone();
+        debug!("is_valid_path");
+        let path = params.get()?.get_path()?.read_into()?;
+        debug!("is_valid_path {path}");
+        let valid = self.logger.process_logs(store.is_valid_path(&path)).await?;
+        debug!("is_valid_path {path} result {valid}");
+        result.get().set_valid(valid);
+        Ok(())
     }
 
-    fn query_valid_paths(
-        &mut self,
+    async fn query_valid_paths(
+        self: Rc<Self>,
         params: nix_daemon::QueryValidPathsParams,
         mut result: nix_daemon::QueryValidPathsResults,
-    ) -> Promise<(), Error> {
-        let mut this = self.clone();
-        Promise::from_future(async move {
-            let p = params.get()?;
-            let paths = p.get_paths()?.read_into()?;
-            let substitute = p.get_substitute();
-            let valid = this
-                .logger
-                .process_logs(this.store.query_valid_paths(&paths, substitute))
-                .await?;
-            result
-                .get()
-                .init_valid_set(valid.len() as u32)
-                .build_from(&valid)?;
-            Ok(())
-        })
+    ) -> capnp::Result<()> {
+        let mut store = self.store.clone();
+        let p = params.get()?;
+        let paths = p.get_paths()?.read_into()?;
+        let substitute = p.get_substitute();
+        let valid = self
+            .logger
+            .process_logs(store.query_valid_paths(&paths, substitute))
+            .await?;
+        result
+            .get()
+            .init_valid_set(valid.len() as u32)
+            .build_from(&valid)?;
+        Ok(())
     }
 
-    fn query_path_info(
-        &mut self,
+    async fn query_path_info(
+        self: Rc<Self>,
         params: nix_daemon::QueryPathInfoParams,
         mut result: nix_daemon::QueryPathInfoResults,
-    ) -> Promise<(), Error> {
-        let mut this = self.clone();
-        Promise::from_future(async move {
-            let path = params.get()?.get_path()?.read_into()?;
-            if let Some(info) = this
-                .logger
-                .process_logs(this.store.query_path_info(&path))
-                .await?
-            {
-                result.get().init_info().build_from(&info)?;
-            }
-            Ok(())
-        })
+    ) -> capnp::Result<()> {
+        let mut store = self.store.clone();
+        let path = params.get()?.get_path()?.read_into()?;
+        if let Some(info) = self
+            .logger
+            .process_logs(store.query_path_info(&path))
+            .await?
+        {
+            result.get().init_info().build_from(&info)?;
+        }
+        Ok(())
     }
 
-    fn nar_from_path(
-        &mut self,
+    async fn nar_from_path(
+        self: Rc<Self>,
         params: nix_daemon::NarFromPathParams,
         _: nix_daemon::NarFromPathResults,
-    ) -> Promise<(), Error> {
-        let mut this = self.clone();
-        Promise::from_future(async move {
-            let p = params.get()?;
-            let path = p.get_path()?.read_into()?;
-            let stream = p.get_stream()?;
-            let writer = ByteStreamWriter::new(stream);
-            let reader = this
-                .logger
-                .process_logs(this.store.nar_from_path(&path))
-                .await?;
-            let mut writer = pin!(writer);
-            let mut reader = pin!(reader);
-            copy_buf(&mut reader, &mut writer).await?;
-            writer.shutdown().await?;
-            Ok(())
-        })
+    ) -> capnp::Result<()> {
+        let mut store = self.store.clone();
+        let p = params.get()?;
+        let path = p.get_path()?.read_into()?;
+        let stream = p.get_stream()?;
+        let writer = ByteStreamWriter::new(stream);
+        let reader = self.logger.process_logs(store.nar_from_path(&path)).await?;
+        let mut writer = pin!(writer);
+        let mut reader = pin!(reader);
+        copy_buf(&mut reader, &mut writer).await?;
+        writer.shutdown().await?;
+        Ok(())
     }
 
-    fn build_paths(
-        &mut self,
+    async fn build_paths(
+        self: Rc<Self>,
         params: nix_daemon::BuildPathsParams,
         _: nix_daemon::BuildPathsResults,
-    ) -> Promise<(), Error> {
-        let mut this = self.clone();
-        Promise::from_future(async move {
-            let p = params.get()?;
-            let drvs: Vec<DerivedPath> = p.get_drvs()?.read_into()?;
-            let mode = p.get_mode()?.into();
-            this.logger
-                .process_logs(this.store.build_paths(&drvs, mode))
-                .await?;
-            Ok(())
-        })
+    ) -> capnp::Result<()> {
+        let mut store = self.store.clone();
+        let p = params.get()?;
+        let drvs: Vec<DerivedPath> = p.get_drvs()?.read_into()?;
+        let mode = p.get_mode()?.into();
+        self.logger
+            .process_logs(store.build_paths(&drvs, mode))
+            .await?;
+        Ok(())
     }
 
-    fn build_paths_with_results(
-        &mut self,
+    async fn build_paths_with_results(
+        self: Rc<Self>,
         params: nix_daemon::BuildPathsWithResultsParams,
         mut result: nix_daemon::BuildPathsWithResultsResults,
-    ) -> Promise<(), Error> {
-        let mut this = self.clone();
-        Promise::from_future(async move {
-            let p = params.get()?;
-            let drvs: Vec<DerivedPath> = p.get_drvs()?.read_into()?;
-            let mode = p.get_mode()?.into();
-            let results = this
-                .logger
-                .process_logs(this.store.build_paths_with_results(&drvs, mode))
-                .await?;
-            result
-                .get()
-                .init_results(results.len() as u32)
-                .build_from(&results)?;
-            Ok(())
-        })
+    ) -> capnp::Result<()> {
+        let mut store = self.store.clone();
+        let p = params.get()?;
+        let drvs: Vec<DerivedPath> = p.get_drvs()?.read_into()?;
+        let mode = p.get_mode()?.into();
+        let results = self
+            .logger
+            .process_logs(store.build_paths_with_results(&drvs, mode))
+            .await?;
+        result
+            .get()
+            .init_results(results.len() as u32)
+            .build_from(&results)?;
+        Ok(())
     }
 
-    fn build_derivation(
-        &mut self,
+    async fn build_derivation(
+        self: Rc<Self>,
         params: nix_daemon::BuildDerivationParams,
         mut result: nix_daemon::BuildDerivationResults,
-    ) -> Promise<(), Error> {
-        let mut this = self.clone();
-        Promise::from_future(async move {
-            let p = params.get()?;
-            let drv = p.get_drv()?.read_into()?;
-            let mode = p.get_mode()?.into();
-            let build_result = this
-                .logger
-                .process_logs(this.store.build_derivation(&drv, mode))
-                .await?;
-            result.get().init_result().build_from(&build_result)?;
-            Ok(())
-        })
+    ) -> capnp::Result<()> {
+        let mut store = self.store.clone();
+        let p = params.get()?;
+        let drv = p.get_drv()?.read_into()?;
+        let mode = p.get_mode()?.into();
+        let build_result = self
+            .logger
+            .process_logs(store.build_derivation(&drv, mode))
+            .await?;
+        result.get().init_result().build_from(&build_result)?;
+        Ok(())
     }
 
-    fn query_missing(
-        &mut self,
+    async fn query_missing(
+        self: Rc<Self>,
         params: nix_daemon::QueryMissingParams,
         mut result: nix_daemon::QueryMissingResults,
-    ) -> Promise<(), Error> {
-        let mut this = self.clone();
-        Promise::from_future(async move {
-            let p = params.get()?;
-            let paths: Vec<DerivedPath> = p.get_paths()?.read_into()?;
-            let missing = this
-                .logger
-                .process_logs(this.store.query_missing(&paths))
-                .await?;
-            result.get().init_missing().build_from(&missing)?;
-            Ok(())
-        })
+    ) -> capnp::Result<()> {
+        let mut store = self.store.clone();
+        let p = params.get()?;
+        let paths: Vec<DerivedPath> = p.get_paths()?.read_into()?;
+        let missing = self
+            .logger
+            .process_logs(store.query_missing(&paths))
+            .await?;
+        result.get().init_missing().build_from(&missing)?;
+        Ok(())
     }
 
-    fn add_to_store_nar(
-        &mut self,
+    async fn add_to_store_nar(
+        self: Rc<Self>,
         params: nix_daemon::AddToStoreNarParams,
         mut result: nix_daemon::AddToStoreNarResults,
-    ) -> Promise<(), Error> {
-        let mut this = self.clone();
-        Promise::from_future(async move {
-            let p = params.get()?;
-            let info = p.get_info()?.read_into()?;
-            let repair = p.get_repair();
-            let dont_check_sigs = p.get_dont_check_sigs();
-            let (reader, writer) = simplex(DEFAULT_BUF_SIZE);
-            let source = BufReader::new(reader);
-            let wrap = ByteStreamWrap::new(writer);
-            let bs_client = new_client(wrap);
-            result.get().set_stream(bs_client);
-            result.set_pipeline()?;
-            eprintln!("add_to_store_nar set_pipeline");
-            this.logger
-                .process_logs(
-                    this.store
-                        .add_to_store_nar(&info, source, repair, dont_check_sigs),
-                )
-                .await?;
-            eprintln!("add_to_store_nar Done");
-            Ok(())
-        })
+    ) -> capnp::Result<()> {
+        let mut store = self.store.clone();
+        let p = params.get()?;
+        let info = p.get_info()?.read_into()?;
+        let repair = p.get_repair();
+        let dont_check_sigs = p.get_dont_check_sigs();
+        let (reader, writer) = simplex(DEFAULT_BUF_SIZE);
+        let source = BufReader::new(reader);
+        let wrap = ByteStreamWrap::new(writer);
+        let bs_client = new_client(wrap);
+        result.get().set_stream(bs_client);
+        result.set_pipeline()?;
+        eprintln!("add_to_store_nar set_pipeline");
+        self.logger
+            .process_logs(store.add_to_store_nar(&info, source, repair, dont_check_sigs))
+            .await?;
+        eprintln!("add_to_store_nar Done");
+        Ok(())
     }
 
-    fn add_multiple_to_store(
-        &mut self,
+    async fn add_multiple_to_store(
+        self: Rc<Self>,
         params: nix_daemon::AddMultipleToStoreParams,
         mut result: nix_daemon::AddMultipleToStoreResults,
-    ) -> Promise<(), Error> {
-        let mut this = self.clone();
-        Promise::from_future(async move {
-            let p = params.get()?;
-            let repair = p.get_repair();
-            let dont_check_sigs = p.get_dont_check_sigs();
-            let remaining = p.get_count();
-            trace!(count = remaining, "add_multiple_to_store Processing stream");
-            let (mut sender, stream) = mpsc::channel(2);
-            if remaining == 0 {
-                sender.close_channel();
-            }
-            let sender = AddMultipleStreamServer { remaining, sender };
-            let add_stream = new_client(sender);
-            result.get().set_stream(add_stream);
-            result.set_pipeline()?;
-            trace!(count = remaining, "add_multiple_to_store set_pipeline");
-            let stream = CountedStream { remaining, stream };
-            this.logger
-                .process_logs(
-                    this.store
-                        .add_multiple_to_store(repair, dont_check_sigs, stream),
-                )
-                .await?;
-            trace!(count = remaining, "add_multiple_to_store Done");
-            Ok(())
-        })
+    ) -> capnp::Result<()> {
+        let mut store = self.store.clone();
+        let p = params.get()?;
+        let repair = p.get_repair();
+        let dont_check_sigs = p.get_dont_check_sigs();
+        let remaining = p.get_count();
+        trace!(count = remaining, "add_multiple_to_store Processing stream");
+        let (mut sender, stream) = mpsc::channel(2);
+        if remaining == 0 {
+            sender.close_channel();
+        }
+        let sender = AddMultipleStreamServer {
+            remaining: Cell::new(remaining),
+            sender,
+        };
+        let add_stream = new_client(sender);
+        result.get().set_stream(add_stream);
+        result.set_pipeline()?;
+        trace!(count = remaining, "add_multiple_to_store set_pipeline");
+        let stream = CountedStream { remaining, stream };
+        self.logger
+            .process_logs(store.add_multiple_to_store(repair, dont_check_sigs, stream))
+            .await?;
+        trace!(count = remaining, "add_multiple_to_store Done");
+        Ok(())
     }
 
-    fn query_all_valid_paths(
-        &mut self,
+    async fn query_all_valid_paths(
+        self: Rc<Self>,
         _params: nix_daemon::QueryAllValidPathsParams,
         mut result: nix_daemon::QueryAllValidPathsResults,
-    ) -> Promise<(), Error> {
-        let mut this = self.clone();
-        Promise::from_future(async move {
-            let paths = this
-                .logger
-                .process_logs(this.store.query_all_valid_paths())
-                .await?;
-            result
-                .get()
-                .init_paths(paths.len() as u32)
-                .build_from(&paths)?;
-            Ok(())
-        })
+    ) -> capnp::Result<()> {
+        let mut store = self.store.clone();
+        let paths = self
+            .logger
+            .process_logs(store.query_all_valid_paths())
+            .await?;
+        result
+            .get()
+            .init_paths(paths.len() as u32)
+            .build_from(&paths)?;
+        Ok(())
     }
 
-    fn query_path_from_hash_part(
-        &mut self,
+    async fn query_path_from_hash_part(
+        self: Rc<Self>,
         params: nix_daemon::QueryPathFromHashPartParams,
         mut result: nix_daemon::QueryPathFromHashPartResults,
-    ) -> Promise<(), Error> {
-        let mut this = self.clone();
-        Promise::from_future(async move {
-            let p = params.get()?;
-            let hash = StorePathHash::try_from(p.get_hash()?)
-                .map_err(|err| Error::failed(err.to_string()))?;
-            let res = this
-                .logger
-                .process_logs(this.store.query_path_from_hash_part(&hash))
-                .await?;
-            if let Some(path) = res {
-                result.get().init_path().build_from(&path)?;
-            }
-            Ok(())
-        })
+    ) -> capnp::Result<()> {
+        let mut store = self.store.clone();
+        let p = params.get()?;
+        let hash =
+            StorePathHash::try_from(p.get_hash()?).map_err(|err| Error::failed(err.to_string()))?;
+        let res = self
+            .logger
+            .process_logs(store.query_path_from_hash_part(&hash))
+            .await?;
+        if let Some(path) = res {
+            result.get().init_path().build_from(&path)?;
+        }
+        Ok(())
     }
 
-    fn add_temp_root(
-        &mut self,
+    async fn add_temp_root(
+        self: Rc<Self>,
         params: nix_daemon::AddTempRootParams,
         _result: nix_daemon::AddTempRootResults,
-    ) -> Promise<(), Error> {
-        let mut this = self.clone();
-        Promise::from_future(async move {
-            let p = params.get()?;
-            let path = p.get_path()?.read_into()?;
-            this.logger
-                .process_logs(this.store.add_temp_root(&path))
-                .await
-        })
+    ) -> capnp::Result<()> {
+        let mut store = self.store.clone();
+        let p = params.get()?;
+        let path = p.get_path()?.read_into()?;
+        self.logger.process_logs(store.add_temp_root(&path)).await
     }
 
-    fn add_indirect_root(
-        &mut self,
+    async fn add_indirect_root(
+        self: Rc<Self>,
         params: nix_daemon::AddIndirectRootParams,
         _result: nix_daemon::AddIndirectRootResults,
-    ) -> Promise<(), Error> {
-        let mut this = self.clone();
-        Promise::from_future(async move {
-            let p = params.get()?;
-            let path = p.get_path()?.read_into()?;
-            this.logger
-                .process_logs(this.store.add_indirect_root(&path))
-                .await
-        })
+    ) -> capnp::Result<()> {
+        let mut store = self.store.clone();
+        let p = params.get()?;
+        let path = p.get_path()?.read_into()?;
+        self.logger
+            .process_logs(store.add_indirect_root(&path))
+            .await
     }
 
-    fn add_perm_root(
-        &mut self,
+    async fn add_perm_root(
+        self: Rc<Self>,
         params: nix_daemon::AddPermRootParams,
         mut result: nix_daemon::AddPermRootResults,
-    ) -> Promise<(), Error> {
-        let mut this = self.clone();
-        Promise::from_future(async move {
-            let p = params.get()?;
-            let path = p.get_path()?.read_into()?;
-            let gc_root = p.get_gc_root()?.read_into()?;
-            let res = this
-                .logger
-                .process_logs(this.store.add_perm_root(&path, &gc_root))
-                .await?;
-            result.get().set_path(&res);
-            Ok(())
-        })
+    ) -> capnp::Result<()> {
+        let mut store = self.store.clone();
+        let p = params.get()?;
+        let path = p.get_path()?.read_into()?;
+        let gc_root = p.get_gc_root()?.read_into()?;
+        let res = self
+            .logger
+            .process_logs(store.add_perm_root(&path, &gc_root))
+            .await?;
+        result.get().set_path(&res);
+        Ok(())
     }
 }
 
 struct AddMultipleStreamServer {
-    remaining: u16,
+    remaining: Cell<u16>,
     sender: mpsc::Sender<DaemonResult<AddToStoreItem<BufReader<ReadHalf<SimplexStream>>>>>,
 }
 
 #[forbid(clippy::missing_trait_methods)]
 impl add_multiple_stream::Server for AddMultipleStreamServer {
-    fn add(
-        &mut self,
+    async fn add(
+        self: Rc<Self>,
         params: add_multiple_stream::AddParams,
         mut result: add_multiple_stream::AddResults,
-    ) -> Promise<(), Error> {
-        if self.remaining == 0 {
-            return Promise::err(Error::failed(
+    ) -> capnp::Result<()> {
+        if self.remaining.get() == 0 {
+            return Err(capnp::Error::failed(
                 "Sending more items than specified in addMultipleToStore call".into(),
             ));
         }
-        self.remaining -= 1;
+        self.remaining.update(|old| old - 1);
         let mut sender = self.sender.clone();
-        let remaining = self.remaining;
-        Promise::from_future(async move {
-            let p = params.get()?;
-            let info = p.get_info()?.read_into()?;
-            let (reader, writer) = simplex(DEFAULT_BUF_SIZE);
-            let reader = BufReader::new(reader);
-            let wrap = ByteStreamWrap::new(writer);
-            let bs_client = new_client(wrap);
-            result.get().set_stream(bs_client);
-            result.set_pipeline()?;
-            sender
-                .send(Ok(AddToStoreItem { info, reader }))
-                .await
-                .map_err(from_error)?;
-            if remaining == 0 {
-                sender.close_channel();
-            }
-            Ok(())
-        })
+        let p = params.get()?;
+        let info = p.get_info()?.read_into()?;
+        let (reader, writer) = simplex(DEFAULT_BUF_SIZE);
+        let reader = BufReader::new(reader);
+        let wrap = ByteStreamWrap::new(writer);
+        let bs_client = new_client(wrap);
+        result.get().set_stream(bs_client);
+        result.set_pipeline()?;
+        sender
+            .send(Ok(AddToStoreItem { info, reader }))
+            .await
+            .map_err(from_error)?;
+        trace!(remaining = self.remaining.get(), "returning from add");
+        if self.remaining.get() == 0 {
+            sender.close_channel();
+        }
+        Ok(())
     }
 }
 
@@ -588,14 +544,15 @@ where
 impl<HS, S> has_store_dir::Server for HandshakeLoggedCapnpServer<HS, S>
 where
     HS: HasStoreDir + 'static,
+    S: 'static,
 {
-    fn store_dir(
-        &mut self,
+    async fn store_dir(
+        self: Rc<Self>,
         _: has_store_dir::StoreDirParams,
         mut result: has_store_dir::StoreDirResults,
-    ) -> Promise<(), capnp::Error> {
+    ) -> capnp::Result<()> {
         result.get().set_store_dir(self.store_dir.to_str());
-        Promise::ok(())
+        Ok(())
     }
 }
 
@@ -605,38 +562,36 @@ where
     HS: HandshakeDaemonStore<Store = S> + 'static,
     S: DaemonStore + Clone + 'static,
 {
-    fn capture_logs(
-        &mut self,
+    async fn capture_logs(
+        self: Rc<Self>,
         params: logged_nix_daemon::CaptureLogsParams,
         mut result: logged_nix_daemon::CaptureLogsResults,
-    ) -> Promise<(), ::capnp::Error> {
+    ) -> capnp::Result<()> {
         let inner = self.inner.clone();
-        Promise::from_future(async move {
-            let logger = if params.get()?.has_logger() {
-                params.get()?.get_logger()?
-            } else {
-                new_client(NoopLogger)
-            };
-            let captures = Captures {
-                client: logger,
-                sender: None,
-            };
-            let client: logger::Client = new_client(captures);
-            let store = poll_fn(|cx| {
-                let logger = client.clone();
-                let mut guard = inner.lock().unwrap();
-                guard.poll_handshake(cx, logger)
-            })
-            .await?;
-
-            let server = CapnpServer {
-                logger: Logger { client },
-                store,
-                shutdown: false,
-            };
-            result.get().set_daemon(new_client(server));
-            Ok(())
+        let logger = if params.get()?.has_logger() {
+            params.get()?.get_logger()?
+        } else {
+            new_client(NoopLogger)
+        };
+        let captures = Captures {
+            client: logger,
+            sender: RefCell::new(None),
+        };
+        let client: logger::Client = new_client(captures);
+        let store = poll_fn(|cx| {
+            let logger = client.clone();
+            let mut guard = inner.lock().unwrap();
+            guard.poll_handshake(cx, logger)
         })
+        .await?;
+
+        let server = CapnpServer {
+            logger: Logger { client },
+            store,
+            shutdown: false,
+        };
+        result.get().set_daemon(new_client(server));
+        Ok(())
     }
 }
 
@@ -653,30 +608,26 @@ impl<S> LoggedCapnpServer<S> {
 
 struct Captures {
     client: logger::Client,
-    sender: Option<oneshot::Sender<()>>,
+    sender: RefCell<Option<oneshot::Sender<()>>>,
 }
 
 #[forbid(clippy::missing_trait_methods)]
 impl logger::Server for Captures {
-    fn write(&mut self, params: logger::WriteParams) -> Promise<(), ::capnp::Error> {
+    async fn write(self: Rc<Self>, params: logger::WriteParams) -> capnp::Result<()> {
         let client = self.client.clone();
-        Promise::from_future(async move {
-            let mut req = client.write_request();
-            req.get().set_event(params.get()?.get_event()?)?;
-            req.send().await
-        })
+        let mut req = client.write_request();
+        req.get().set_event(params.get()?.get_event()?)?;
+        req.send().await
     }
 
-    fn end(&mut self, _: logger::EndParams, _: logger::EndResults) -> Promise<(), ::capnp::Error> {
+    async fn end(self: Rc<Self>, _: logger::EndParams, _: logger::EndResults) -> capnp::Result<()> {
         let client = self.client.clone();
         let sender = self.sender.take();
-        Promise::from_future(async move {
-            client.end_request().send().promise.await?;
-            if let Some(sender) = sender {
-                let _ = sender.send(());
-            }
-            Ok(())
-        })
+        client.end_request().send().promise.await?;
+        if let Some(sender) = sender {
+            let _ = sender.send(());
+        }
+        Ok(())
     }
 }
 
@@ -685,13 +636,13 @@ impl<S> has_store_dir::Server for LoggedCapnpServer<S>
 where
     S: HasStoreDir + 'static,
 {
-    fn store_dir(
-        &mut self,
+    async fn store_dir(
+        self: Rc<Self>,
         _: has_store_dir::StoreDirParams,
         mut result: has_store_dir::StoreDirResults,
-    ) -> Promise<(), capnp::Error> {
+    ) -> capnp::Result<()> {
         result.get().set_store_dir(self.store.store_dir().to_str());
-        Promise::ok(())
+        Ok(())
     }
 }
 
@@ -700,30 +651,28 @@ impl<S> logged_nix_daemon::Server for LoggedCapnpServer<S>
 where
     S: DaemonStore + Clone + 'static,
 {
-    fn capture_logs(
-        &mut self,
+    async fn capture_logs(
+        self: Rc<Self>,
         params: logged_nix_daemon::CaptureLogsParams,
         mut result: logged_nix_daemon::CaptureLogsResults,
-    ) -> Promise<(), ::capnp::Error> {
+    ) -> capnp::Result<()> {
         let store = self.store.clone();
-        Promise::from_future(async move {
-            let client = if params.get()?.has_logger() {
-                params.get()?.get_logger()?
-            } else {
-                new_client(NoopLogger)
-            };
-            let captures = Captures {
-                client,
-                sender: None,
-            };
-            let client = new_client(captures);
-            let server = CapnpServer {
-                logger: Logger { client },
-                store,
-                shutdown: false,
-            };
-            result.get().set_daemon(new_client(server));
-            Ok(())
-        })
+        let client = if params.get()?.has_logger() {
+            params.get()?.get_logger()?
+        } else {
+            new_client(NoopLogger)
+        };
+        let captures = Captures {
+            client,
+            sender: RefCell::new(None),
+        };
+        let client = new_client(captures);
+        let server = CapnpServer {
+            logger: Logger { client },
+            store,
+            shutdown: false,
+        };
+        result.get().set_daemon(new_client(server));
+        Ok(())
     }
 }

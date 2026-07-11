@@ -1155,9 +1155,9 @@ rec {
       };
       "capnp" = rec {
         crateName = "capnp";
-        version = "0.21.7";
+        version = "0.25.6";
         edition = "2021";
-        sha256 = "1f0f8gvzw07pjzqigj0h3jk19giag3dj3c0bx7ndgz3li7nfv4jf";
+        sha256 = "0462rwamzwzjfgw5gbh8zsrcig6bvyswd5h15pxyby5q36ya6xs7";
         authors = [
           "David Renshaw <dwrenshaw@gmail.com>"
         ];
@@ -1198,9 +1198,9 @@ rec {
       };
       "capnp-futures" = rec {
         crateName = "capnp-futures";
-        version = "0.21.0";
+        version = "0.25.2";
         edition = "2021";
-        sha256 = "0c8jnxxdzpddylm9dcx7kf9kmbz3jq6llmgchvw3cj13xfnphi6h";
+        sha256 = "13bfmnffyh6snx7sj7l52ilk4z5r8hmxgychk97q8mycvkyrvdkk";
         libName = "capnp_futures";
         authors = [
           "David Renshaw <drenshaw@gmail.com>"
@@ -1234,9 +1234,9 @@ rec {
       };
       "capnp-rpc" = rec {
         crateName = "capnp-rpc";
-        version = "0.21.0";
+        version = "0.25.1";
         edition = "2021";
-        sha256 = "1xvpg16fd27b0vzraqk7263waax7d3x1pcighb4vkw9gyngc3sc5";
+        sha256 = "1nki8zw60z467g1lrxh43iiwq2mb70vm3czzfhqmzxw7gqrlriz3";
         libName = "capnp_rpc";
         authors = [
           "David Renshaw <dwrenshaw@gmail.com>"
@@ -1314,10 +1314,10 @@ rec {
       };
       "capnpc" = rec {
         crateName = "capnpc";
-        version = "0.21.4";
+        version = "0.25.3";
         edition = "2021";
         crateBin = [];
-        sha256 = "05mdh0n36kr0fnxgk7nzfgcqmwah2mgcbfj2mxnm430f1b5nvabd";
+        sha256 = "14xgayala9lfj81p4iiqyaz5jsxb0s883f94zj5sgif8cpl2p87w";
         authors = [
           "David Renshaw <dwrenshaw@gmail.com>"
         ];
@@ -1531,6 +1531,44 @@ rec {
           "wrap_help" = [ "clap_builder/wrap_help" ];
         };
         resolvedDefaultFeatures = [ "color" "default" "derive" "error-context" "help" "std" "suggestions" "usage" ];
+      };
+      "clap-verbosity-flag" = rec {
+        crateName = "clap-verbosity-flag";
+        version = "3.0.4";
+        edition = "2021";
+        sha256 = "1513fiasgif7h7nxbnzs3ddkwm6n43lwcz5ph4w99zkjnbxb34lx";
+        libName = "clap_verbosity_flag";
+        authors = [
+          "Pascal Hertleif <killercup@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "clap";
+            packageId = "clap";
+            usesDefaultFeatures = false;
+            features = [ "std" "derive" ];
+          }
+          {
+            name = "tracing-core";
+            packageId = "tracing-core";
+            optional = true;
+          }
+        ];
+        devDependencies = [
+          {
+            name = "clap";
+            packageId = "clap";
+            usesDefaultFeatures = false;
+            features = [ "help" "usage" ];
+          }
+        ];
+        features = {
+          "default" = [ "log" ];
+          "log" = [ "dep:log" ];
+          "serde" = [ "dep:serde" ];
+          "tracing" = [ "dep:tracing-core" ];
+        };
+        resolvedDefaultFeatures = [ "tracing" ];
       };
       "clap_builder" = rec {
         crateName = "clap_builder";
@@ -1980,6 +2018,17 @@ rec {
             packageId = "capnp-rpc";
           }
           {
+            name = "clap";
+            packageId = "clap";
+            features = [ "derive" ];
+          }
+          {
+            name = "clap-verbosity-flag";
+            packageId = "clap-verbosity-flag";
+            usesDefaultFeatures = false;
+            features = [ "tracing" ];
+          }
+          {
             name = "futures";
             packageId = "futures";
           }
@@ -1998,6 +2047,14 @@ rec {
           {
             name = "tokio-util";
             packageId = "tokio-util";
+          }
+          {
+            name = "tracing";
+            packageId = "tracing";
+          }
+          {
+            name = "tracing-subscriber";
+            packageId = "tracing-subscriber";
           }
         ];
 
@@ -2496,12 +2553,12 @@ rec {
       };
       "embedded-io" = rec {
         crateName = "embedded-io";
-        version = "0.6.1";
+        version = "0.7.1";
         edition = "2021";
-        sha256 = "0v901xykajh3zffn6x4cnn4fhgfw3c8qpjwbsk6gai3gaccg3l7d";
+        sha256 = "1ivwy30m48mkw6si51wwj7zv6ad1h55p9np1cxz5rdvn8xqsmccy";
         libName = "embedded_io";
         features = {
-          "defmt-03" = [ "dep:defmt-03" ];
+          "defmt" = [ "dep:defmt" ];
           "std" = [ "alloc" ];
         };
         resolvedDefaultFeatures = [ "alloc" "std" ];

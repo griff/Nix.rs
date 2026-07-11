@@ -1,8 +1,5 @@
-use capnp::{
-    capability::{FromClientHook, Promise},
-    traits::{HasTypeId, SetterInput},
-};
-use capnp_rpc::pry;
+use capnp::capability::{FromClientHook, Rc};
+use capnp::traits::{HasTypeId, SetterInput};
 
 use crate::capnp::lookup_capnp;
 
@@ -183,23 +180,23 @@ impl CapRegistry {
 }
 
 impl lookup_capnp::cap_lookup::Server for CapRegistry {
-    fn lookup(
-        &mut self,
+    async fn lookup(
+        self: Rc<Self>,
         params: lookup_capnp::cap_lookup::LookupParams,
         mut result: lookup_capnp::cap_lookup::LookupResults,
-    ) -> Promise<(), capnp::Error> {
-        let rl = pry!(pry!(params.get()).get_priority());
+    ) -> capnp::Result<()> {
+        let rl = params.get()?.get_priority()?;
         for r in rl.iter() {
             let ty = r.get_cap_type();
             if let Some(cap) = self.caps.iter().find(|cap| ty == cap.cap_type())
-                && let Some(client) = pry!(cap.make_cap(r))
+                && let Some(client) = cap.make_cap(r)?
             {
                 let mut b = result.get().init_selected();
                 b.set_cap_type(cap.cap_type());
                 b.init_cap().set_as_capability(client.hook);
-                return Promise::ok(());
+                return Ok(());
             }
         }
-        Promise::ok(())
+        Ok(())
     }
 }

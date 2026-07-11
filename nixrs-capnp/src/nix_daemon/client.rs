@@ -2,10 +2,8 @@ use std::fmt;
 use std::future::ready;
 use std::pin::pin;
 
-use ::capnp::Error;
-use ::capnp::capability::Promise;
 use bytes::Bytes;
-use capnp::capability::FromClientHook;
+use capnp::capability::{FromClientHook, Rc};
 use capnp_convert::{BuildFrom as _, ReadInto as _};
 use capnp_rpc::new_client;
 use capnp_rpc_tokio::stream::{ByteStreamWrap, ByteStreamWriter, from_cap_error};
@@ -139,7 +137,7 @@ impl LocalDaemonStore for CapnpStore {
             if r.has_info() {
                 Ok(Some(r.get_info()?.read_into()?))
             } else {
-                Ok(None) as Result<_, Error>
+                Ok(None) as capnp::Result<_>
             }
         })
         .map_err(DaemonError::custom)
@@ -162,7 +160,7 @@ impl LocalDaemonStore for CapnpStore {
 
             let driver = req.send().promise.map_ok(|_| ()).map_err(from_cap_error);
             let stream = DriveResult::new(reader, driver);
-            Ok(stream) as Result<_, Error>
+            Ok(stream) as capnp::Result<_>
         })
         .map_err(DaemonError::custom)
         .empty_logs()
@@ -181,7 +179,7 @@ impl LocalDaemonStore for CapnpStore {
             params.set_mode(mode.into());
             let resp = req.send().promise.await?;
             resp.get()?;
-            Ok(()) as Result<_, Error>
+            Ok(()) as capnp::Result<_>
         })
         .map_err(DaemonError::custom)
         .empty_logs()
@@ -268,7 +266,7 @@ impl LocalDaemonStore for CapnpStore {
             writer.shutdown().await?;
             eprintln!("add_to_store_nar Shutdown");
             res.promise.await?;
-            Ok(()) as Result<(), Error>
+            Ok(()) as capnp::Result<()>
         })
         .map_err(DaemonError::custom)
         .empty_logs()
@@ -343,9 +341,9 @@ impl LocalDaemonStore for CapnpStore {
             let r = resp.get()?;
             if r.has_path() {
                 let store_path: StorePath = r.get_path()?.read_into()?;
-                Ok(Some(store_path)) as Result<_, Error>
+                Ok(Some(store_path)) as capnp::Result<_>
             } else {
-                Ok(None) as Result<_, Error>
+                Ok(None) as capnp::Result<_>
             }
         })
         .map_err(DaemonError::custom)
@@ -360,7 +358,7 @@ impl LocalDaemonStore for CapnpStore {
             let mut req = self.store.add_temp_root_request();
             req.get().init_path().build_from(path)?;
             req.send().promise.await?;
-            Ok(()) as Result<_, Error>
+            Ok(()) as capnp::Result<_>
         })
         .map_err(DaemonError::custom)
         .empty_logs()
@@ -375,7 +373,7 @@ impl LocalDaemonStore for CapnpStore {
             let mut params = req.get();
             params.set_path(path);
             req.send().promise.await?;
-            Ok(()) as Result<_, Error>
+            Ok(()) as capnp::Result<_>
         })
         .map_err(DaemonError::custom)
         .empty_logs()
@@ -393,7 +391,7 @@ impl LocalDaemonStore for CapnpStore {
             params.set_gc_root(gc_root);
             let resp = req.send().promise.await?;
             let ret_path = Bytes::copy_from_slice(resp.get()?.get_path()?);
-            Ok(ret_path) as Result<_, Error>
+            Ok(ret_path) as capnp::Result<_>
         })
         .map_err(DaemonError::custom)
         .empty_logs()
@@ -411,24 +409,21 @@ impl LoggerStream {
 }
 
 impl nix_daemon_capnp::logger::Server for LoggerStream {
-    fn write(
-        &mut self,
+    async fn write(
+        self: Rc<Self>,
         params: nix_daemon_capnp::logger::WriteParams,
-    ) -> Promise<(), ::capnp::Error> {
-        let mut sender = self.sender.clone();
-        Promise::from_future(async move {
-            let msg = params.get()?.get_event()?.read_into()?;
-            sender.send(msg).await.map_err(from_error)
-        })
+    ) -> capnp::Result<()> {
+        let msg = params.get()?.get_event()?.read_into()?;
+        self.sender.clone().send(msg).await.map_err(from_error)
     }
 
-    fn end(
-        &mut self,
+    async fn end(
+        self: Rc<Self>,
         _: nix_daemon_capnp::logger::EndParams,
         _: nix_daemon_capnp::logger::EndResults,
-    ) -> Promise<(), ::capnp::Error> {
-        self.sender.disconnect();
-        Promise::ok(())
+    ) -> capnp::Result<()> {
+        self.sender.clone().disconnect();
+        Ok(())
     }
 }
 
