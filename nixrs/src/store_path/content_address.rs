@@ -22,7 +22,19 @@ impl ContentAddressMethod {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, derive_more::Display)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    derive_more::Display,
+    serde_with::DeserializeFromStr,
+    serde_with::SerializeDisplay,
+)]
 pub enum ContentAddressMethodAlgorithm {
     #[display("text:sha256")]
     Text,
@@ -66,7 +78,19 @@ impl FromStr for ContentAddressMethodAlgorithm {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, derive_more::Display)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    derive_more::Display,
+    serde_with::DeserializeFromStr,
+    serde_with::SerializeDisplay,
+)]
 pub enum ContentAddress {
     #[display("text:{}", _0.as_base32())]
     Text(Sha256),

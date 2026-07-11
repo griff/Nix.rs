@@ -4,13 +4,88 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 
 use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 
+use crate::ByteString;
 use crate::archive::CASE_HACK_SUFFIX;
 
 use super::NarEvent;
 
 pub type TestNarEvent = NarEvent<Cursor<Bytes>>;
 pub type TestNarEvents = Vec<TestNarEvent>;
+
+#[derive(Serialize, Deserialize)]
+enum NarEventBytes {
+    File {
+        name: ByteString,
+        executable: bool,
+        size: u64,
+        contents: Bytes,
+    },
+    Symlink {
+        name: ByteString,
+        target: ByteString,
+    },
+    StartDirectory {
+        name: ByteString,
+    },
+    EndDirectory,
+}
+
+impl serde::ser::Serialize for NarEvent<Cursor<Bytes>> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let b = match self {
+            NarEvent::File {
+                name,
+                executable,
+                size,
+                reader,
+            } => NarEventBytes::File {
+                name: name.clone(),
+                executable: *executable,
+                size: *size,
+                contents: reader.get_ref().clone(),
+            },
+            NarEvent::Symlink { name, target } => NarEventBytes::Symlink {
+                name: name.clone(),
+                target: target.clone(),
+            },
+            NarEvent::StartDirectory { name } => {
+                NarEventBytes::StartDirectory { name: name.clone() }
+            }
+            NarEvent::EndDirectory => NarEventBytes::EndDirectory,
+        };
+        b.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for NarEvent<Cursor<Bytes>> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let b = NarEventBytes::deserialize(deserializer)?;
+        match b {
+            NarEventBytes::File {
+                name,
+                executable,
+                size,
+                contents,
+            } => Ok(NarEvent::File {
+                name,
+                executable,
+                size,
+                reader: Cursor::new(contents),
+            }),
+            NarEventBytes::Symlink { name, target } => Ok(NarEvent::Symlink { name, target }),
+            NarEventBytes::StartDirectory { name } => Ok(NarEvent::StartDirectory { name }),
+            NarEventBytes::EndDirectory => Ok(NarEvent::EndDirectory),
+        }
+    }
+}
 
 pub fn text_file() -> TestNarEvents {
     vec![NarEvent::File {

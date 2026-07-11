@@ -6,6 +6,8 @@ use std::str::FromStr;
 
 use derive_more::Display;
 use ring::digest;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 
 use crate::encoding::base64_len;
@@ -202,7 +204,8 @@ impl TryFrom<digest::Digest> for Hash {
     }
 }
 
-#[derive(Clone, Copy, Eq, Hash, PartialEq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Eq, Hash, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(from = "fmt::Base32<NarHash>", into = "fmt::Base32<NarHash>")]
 #[repr(transparent)]
 pub struct NarHash(Sha256);
 

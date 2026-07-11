@@ -6,7 +6,18 @@ use crate::store_path::{StorePathName, StorePathNameError, StorePathNameRef};
 ///
 /// This is a derivation output name, so the 'out' or 'bin' bit that has
 /// been verified to not contain invalid characters.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, derive_more::Display)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    derive_more::Display,
+    serde_with::SerializeDisplay,
+    serde_with::DeserializeFromStr,
+)]
 pub struct OutputName(pub(crate) String);
 
 impl OutputName {

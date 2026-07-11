@@ -12,7 +12,17 @@ use crate::store_path::StorePathNameError;
 ///
 /// This is used in [`DerivedPath`] to perform selection of the outputs to make
 /// sure while building are valid or substituted.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    serde_with::SerializeDisplay,
+    serde_with::DeserializeFromStr,
+)]
 pub enum OutputSpec {
     All,
     Named(BTreeSet<OutputName>),

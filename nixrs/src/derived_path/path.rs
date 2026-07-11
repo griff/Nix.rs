@@ -1,5 +1,7 @@
 use std::ops::Deref as _;
 
+use serde::{Deserialize, Serialize};
+
 use crate::derivation::OutputName;
 use crate::derived_path::OutputSpec;
 use crate::store_path::{FromStoreDirStr, ParseStorePathError, StoreDirDisplay, StorePath};
@@ -68,7 +70,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SingleDerivedPath {
     Opaque(StorePath),
     Built {
@@ -153,7 +155,7 @@ impl FromStoreDirStr for SingleDerivedPath {
 ///     - built: a pair of a store path to a store derivation and an output name.
 ///
 /// See: <https://nix.dev/manual/nix/latest/store/derivation/#deriving-path>
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DerivedPath {
     Opaque(StorePath),
     Built {

@@ -1,6 +1,8 @@
 use std::{fmt as sfmt, str::FromStr};
 
 use data_encoding::{BASE64, DecodeError, DecodeKind, HEXLOWER_PERMISSIVE};
+use serde_with::DeserializeFromStr;
+use serde_with::SerializeDisplay;
 use thiserror::Error;
 
 use crate::base32;
@@ -654,7 +656,9 @@ impl<H: CommonHash> FromStr for Base16<H> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord, DeserializeFromStr, SerializeDisplay,
+)]
 #[repr(transparent)]
 pub struct Base32<H>(H);
 impl<H: CommonHash + Sized> Base32<H> {

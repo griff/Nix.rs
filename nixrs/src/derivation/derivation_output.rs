@@ -1,11 +1,13 @@
 use std::collections::BTreeMap;
 
+use serde::{Deserialize, Serialize};
+
 use crate::derivation::{OutputName, StorePathCreate as _, StorePathNameOutput};
 #[cfg(any(feature = "xp-ca-derivations", feature = "xp-impure-derivations"))]
 use crate::store_path::ContentAddressMethodAlgorithm;
 use crate::store_path::{ContentAddress, StoreDir, StorePath, StorePathName, StorePathNameError};
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Serialize, Deserialize)]
 pub enum DerivationOutput {
     InputAddressed(StorePath),
     CAFixed(ContentAddress),

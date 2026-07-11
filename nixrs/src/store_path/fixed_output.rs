@@ -31,7 +31,19 @@ impl From<FixedOutputMethod> for ContentAddressMethod {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, derive_more::Display)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    derive_more::Display,
+    serde_with::DeserializeFromStr,
+    serde_with::SerializeDisplay,
+)]
 #[display("{}{algorithm}", method.prefix())]
 pub struct FixedOutputMethodAlgorithm {
     pub method: FixedOutputMethod,
@@ -78,7 +90,19 @@ impl From<FixedOutputMethodAlgorithm> for ContentAddressMethodAlgorithm {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, derive_more::Display)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    derive_more::Display,
+    serde_with::DeserializeFromStr,
+    serde_with::SerializeDisplay,
+)]
 #[display("fixed:{}{}", method.prefix(), hash.as_base32())]
 pub struct FixedOutput {
     pub method: FixedOutputMethod,

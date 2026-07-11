@@ -17,10 +17,10 @@ help: the following other types implement trait `FromStoreDirStr`
     |
    ::: $WORKSPACE/nixrs/src/derived_path/path.rs
     |
- 54 | / impl<const C: char, D> FromStoreDirStr for ParsePath<C, D>
- 55 | | where
- 56 | |     D: FromStoreDirStrSep,
- 57 | |     <D as FromStoreDirStrSep>::Error: std::error::Error,
+ 56 | / impl<const C: char, D> FromStoreDirStr for ParsePath<C, D>
+ 57 | | where
+ 58 | |     D: FromStoreDirStrSep,
+ 59 | |     <D as FromStoreDirStrSep>::Error: std::error::Error,
     | |________________________________________________________^ `nixrs::derived_path::path::ParsePath<C, D>`
 ...
     |   impl FromStoreDirStr for SingleDerivedPath {

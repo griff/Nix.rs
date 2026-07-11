@@ -12,6 +12,7 @@ use nixrs_derive::{NixDeserialize, NixSerialize};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(any(test, feature = "test"))]
 use proptest::prelude::any_with;
+use serde::{Deserialize, Serialize};
 #[cfg(any(test, feature = "test"))]
 use test_strategy::Arbitrary;
 use thiserror::Error;
@@ -42,7 +43,9 @@ pub type DaemonPath = Bytes;
 pub type DaemonInt = libc::c_uint;
 pub type DaemonTime = libc::time_t;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, NixDeserialize, NixSerialize, Serialize, Deserialize,
+)]
 #[repr(transparent)]
 pub struct Microseconds(i64);
 
@@ -218,6 +221,8 @@ impl Operation {
     IntoPrimitive,
     NixDeserialize,
     NixSerialize,
+    Serialize,
+    Deserialize,
 )]
 #[nix(try_from = "u16", into = "u16")]
 #[repr(u16)]
@@ -265,6 +270,8 @@ pub enum GCAction {
     IntoPrimitive,
     NixDeserialize,
     NixSerialize,
+    Serialize,
+    Deserialize,
 )]
 #[nix(try_from = "u16", into = "u16")]
 #[repr(u16)]
@@ -345,7 +352,9 @@ impl Default for ClientOptions {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize, Serialize, Deserialize,
+)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 pub struct UnkeyedValidPathInfo {
     pub deriver: Option<StorePath>,
@@ -359,7 +368,9 @@ pub struct UnkeyedValidPathInfo {
     pub ca: Option<ContentAddress>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize, Serialize, Deserialize,
+)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 pub struct ValidPathInfo {
     pub path: StorePath,
@@ -374,9 +385,12 @@ pub struct UnkeyedSubstitutablePathInfo {
     pub nar_size: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize, Serialize, Deserialize,
+)]
 pub struct BuildResult {
     pub status: BuildStatus,
+    #[serde(serialize_with = "crate::serialize_byte_string")]
     pub error_msg: DaemonString,
     #[nix(version = "29..")]
     pub times_built: DaemonInt,
@@ -395,7 +409,9 @@ pub struct BuildResult {
 }
 
 pub type KeyedBuildResults = Vec<KeyedBuildResult>;
-#[derive(Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, NixDeserialize, NixSerialize, Serialize, Deserialize,
+)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary))]
 #[cfg_attr(any(test, feature = "test"), arbitrary(args = ProtocolVersion))]
 pub struct KeyedBuildResult {
