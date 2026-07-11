@@ -220,21 +220,6 @@ impl FromStoreDirStr for DerivedPath {
 }
 
 pub type LegacyDerivedPath = ParsePath<'!', DerivedPath>;
-/*
-pub struct LegacyDerivedPath(pub DerivedPath);
-impl FromStoreDirStr for LegacyDerivedPath {
-    type Error = ParseStorePathError;
-
-    fn from_store_dir_str(
-        store_dir: &crate::store_path::StoreDir,
-        s: &str,
-    ) -> Result<Self, Self::Error> {
-        Ok(LegacyDerivedPath(DerivedPath::from_store_dir_str_sep(
-            store_dir, '!', s,
-        )?))
-    }
-}
-*/
 
 #[cfg(test)]
 mod unittests {
