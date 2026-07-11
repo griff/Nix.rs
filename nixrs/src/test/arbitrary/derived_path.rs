@@ -1,19 +1,8 @@
 use proptest::{collection::btree_set, prelude::*};
 
-use crate::{
-    derived_path::{DerivedPath, OutputName, OutputSpec, SingleDerivedPath},
-    store_path::StorePath,
-};
-
-impl Arbitrary for OutputName {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        use crate::test::arbitrary::store_path::arb_output_name;
-        arb_output_name().prop_map(OutputName).boxed()
-    }
-}
+use crate::derivation::OutputName;
+use crate::derived_path::{DerivedPath, OutputSpec, SingleDerivedPath};
+use crate::store_path::StorePath;
 
 impl Arbitrary for OutputSpec {
     type Parameters = ();

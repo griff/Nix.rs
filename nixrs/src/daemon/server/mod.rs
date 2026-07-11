@@ -24,8 +24,8 @@ use crate::daemon::{
     DaemonResultExt, DaemonStore, GCAction, HandshakeDaemonStore, HasTrustLevel, NIX_VERSION,
     Operation, PROTOCOL_VERSION, ProtocolVersion, ResultLog, TrustLevel, ValidPathInfo,
 };
-use crate::derivation::BasicDerivation;
-use crate::derived_path::{DerivedPath, OutputName};
+use crate::derivation::{BasicDerivation, OutputName};
+use crate::derived_path::DerivedPath;
 use crate::io::{AsyncBufReadCompat, BytesReader};
 use crate::log::LogMessage;
 use crate::realisation::{DrvOutput, Realisation};

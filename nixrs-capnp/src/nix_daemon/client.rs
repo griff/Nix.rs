@@ -755,7 +755,7 @@ impl LocalDaemonStore for LoggedCapnpStore {
         path: &'a StorePath,
     ) -> impl ResultLog<
         Output = DaemonResult<
-            std::collections::BTreeMap<nixrs::derived_path::OutputName, Option<StorePath>>,
+            std::collections::BTreeMap<nixrs::derivation::OutputName, Option<StorePath>>,
         >,
     > + 'a {
         make_request!(self, |store| {
@@ -815,7 +815,7 @@ impl LocalDaemonStore for LoggedCapnpStore {
         &'a mut self,
         path: &'a StorePath,
     ) -> impl ResultLog<
-        Output = DaemonResult<std::collections::BTreeSet<nixrs::derived_path::OutputName>>,
+        Output = DaemonResult<std::collections::BTreeSet<nixrs::derivation::OutputName>>,
     > + 'a {
         make_request!(self, |store| {
             store.query_derivation_output_names(path).await

@@ -9,8 +9,8 @@ use crate::daemon::{
     DaemonPath, DaemonResult, FutureResultExt, GCAction, HasTrustLevel, KeyedBuildResult,
     Operation, QueryMissingResult, ResultLog, UnkeyedValidPathInfo, ValidPathInfo,
 };
-use crate::derivation::BasicDerivation;
-use crate::derived_path::{DerivedPath, OutputName};
+use crate::derivation::{BasicDerivation, OutputName};
+use crate::derived_path::DerivedPath;
 use crate::realisation::{DrvOutput, Realisation};
 use crate::signature::Signature;
 use crate::store_path::{

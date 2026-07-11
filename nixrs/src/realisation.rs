@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use thiserror::Error;
 
-use crate::derived_path::OutputName;
+use crate::derivation::OutputName;
 use crate::hash::fmt::Any;
 use crate::hash::{self, Hash};
 use crate::signature::Signature;
@@ -82,7 +82,7 @@ mod unittests {
     use rstest::rstest;
 
     use crate::btree_map;
-    use crate::derived_path::OutputName;
+    use crate::derivation::OutputName;
     use crate::hash::Hash;
     use crate::hash::fmt::Any;
     use crate::set;

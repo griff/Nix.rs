@@ -340,7 +340,7 @@ where
     ) -> impl ResultLog<
         Output = super::DaemonResult<
             std::collections::BTreeMap<
-                crate::derived_path::OutputName,
+                crate::derivation::OutputName,
                 Option<crate::store_path::StorePath>,
             >,
         >,
@@ -401,7 +401,7 @@ where
         &'a mut self,
         path: &'a crate::store_path::StorePath,
     ) -> impl ResultLog<
-        Output = super::DaemonResult<std::collections::BTreeSet<crate::derived_path::OutputName>>,
+        Output = super::DaemonResult<std::collections::BTreeSet<crate::derivation::OutputName>>,
     > + Send
     + 'a {
         mutex_result!(self, |store| { store.query_derivation_output_names(path) })

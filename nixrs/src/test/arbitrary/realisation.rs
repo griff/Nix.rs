@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use proptest::prelude::*;
 use proptest::sample::SizeRange;
 
-use crate::derived_path::OutputName;
+use crate::derivation::OutputName;
 use crate::hash;
 use crate::realisation::{DrvOutput, DrvOutputs, Realisation};
 use crate::store_path::StorePath;

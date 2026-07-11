@@ -1,8 +1,8 @@
 use std::ops::Deref as _;
 
+use crate::derivation::OutputName;
+use crate::derived_path::OutputSpec;
 use crate::store_path::{FromStoreDirStr, ParseStorePathError, StoreDirDisplay, StorePath};
-
-use super::{OutputName, OutputSpec};
 
 trait StoreDirDisplaySep {
     fn fmt(

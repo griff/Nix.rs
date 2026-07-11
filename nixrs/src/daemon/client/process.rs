@@ -431,7 +431,7 @@ where
         &'a mut self,
         path: &'a StorePath,
     ) -> impl ResultLog<
-        Output = DaemonResult<BTreeMap<crate::derived_path::OutputName, Option<StorePath>>>,
+        Output = DaemonResult<BTreeMap<crate::derivation::OutputName, Option<StorePath>>>,
     > + Send
     + 'a {
         make_result(move |mut sender| async move {
@@ -509,7 +509,7 @@ where
     fn query_derivation_output_names<'a>(
         &'a mut self,
         path: &'a StorePath,
-    ) -> impl ResultLog<Output = DaemonResult<BTreeSet<crate::derived_path::OutputName>>> + Send + 'a
+    ) -> impl ResultLog<Output = DaemonResult<BTreeSet<crate::derivation::OutputName>>> + Send + 'a
     {
         make_result(move |mut sender| async move {
             let result = self.store.query_derivation_output_names(path);

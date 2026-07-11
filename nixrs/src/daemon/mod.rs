@@ -65,8 +65,8 @@ mod unittests {
     };
     use crate::btree_set;
     use crate::daemon::server;
-    use crate::derivation::{BasicDerivation, DerivationOutput};
-    use crate::derived_path::{DerivedPath, OutputName};
+    use crate::derivation::{BasicDerivation, DerivationOutput, OutputName};
+    use crate::derived_path::DerivedPath;
     use crate::hash::NarHash;
     use crate::store_path::{StoreDir, StorePath, StorePathSet};
     use crate::test::archive::{test_data, write_nar};

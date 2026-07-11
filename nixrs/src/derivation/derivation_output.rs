@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, fmt};
 
-use crate::derived_path::OutputName;
+use crate::derivation::OutputName;
 #[cfg(any(feature = "xp-ca-derivations", feature = "xp-impure-derivations"))]
 use crate::store_path::ContentAddressMethodAlgorithm;
 use crate::store_path::{
@@ -68,7 +68,7 @@ mod unittests {
     use rstest::rstest;
 
     use super::DerivationOutput;
-    use crate::derived_path::OutputName;
+    use crate::derivation::OutputName;
     use crate::store_path::{StorePath, StorePathName, StorePathNameError};
 
     #[rstest]

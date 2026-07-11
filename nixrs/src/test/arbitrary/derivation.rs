@@ -3,12 +3,21 @@ use std::collections::BTreeMap;
 use proptest::prelude::*;
 use proptest::sample::SizeRange;
 
-use crate::derivation::{BasicDerivation, DerivationOutput, DerivationOutputs};
-use crate::derived_path::OutputName;
+use crate::derivation::{BasicDerivation, DerivationOutput, DerivationOutputs, OutputName};
 use crate::hash;
 use crate::store_path::{StorePath, StorePathSet};
 use crate::test::arbitrary::arb_byte_string;
 use crate::test::arbitrary::helpers::Union;
+
+impl Arbitrary for OutputName {
+    type Parameters = ();
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+        use crate::test::arbitrary::store_path::arb_output_name;
+        arb_output_name().prop_map(OutputName).boxed()
+    }
+}
 
 impl Arbitrary for BasicDerivation {
     type Parameters = ();

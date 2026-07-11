@@ -20,21 +20,26 @@ mod derivation {
 
     use nixrs_derive::{
         NixDeserialize, NixSerialize, nix_deserialize_remote, nix_deserialize_remote_derive,
+        nix_serde_remote,
     };
     use thiserror::Error;
 
     use crate::ByteString;
     use crate::daemon::ser::{Error, NixSerialize, NixWrite};
     use crate::derivation::{
-        BasicDerivation, DerivationOutput, DerivationOutputs, output_path_name,
+        BasicDerivation, DerivationOutput, DerivationOutputs, OutputName, output_path_name,
     };
-    use crate::derived_path::OutputName;
     use crate::hash;
     use crate::hash::fmt::ParseHashError;
     use crate::store_path::{
         ContentAddress, ContentAddressMethod, ContentAddressMethodAlgorithm, StorePath,
         StorePathNameRef, StorePathSet,
     };
+
+    nix_serde_remote!(
+        #[nix(from_str, display)]
+        OutputName
+    );
 
     nix_deserialize_remote_derive! {
         pub struct BasicDerivation {
@@ -219,8 +224,7 @@ mod derivation {
         use crate::ByteString;
         use crate::daemon::de::{NixRead as _, NixReader};
         use crate::daemon::ser::{NixWrite as _, NixWriter};
-        use crate::derivation::{BasicDerivation, DerivationOutput};
-        use crate::derived_path::OutputName;
+        use crate::derivation::{BasicDerivation, DerivationOutput, OutputName};
         use crate::store_path::StorePathSet;
 
         macro_rules! store_path_set {
@@ -340,16 +344,9 @@ mod derivation {
 }
 
 mod derived_path {
-    use nixrs_derive::nix_serde_remote;
-
     use crate::daemon::de::NixDeserialize;
     use crate::daemon::ser::NixSerialize;
-    use crate::derived_path::{DerivedPath, LegacyDerivedPath, OutputName};
-
-    nix_serde_remote!(
-        #[nix(from_str, display)]
-        OutputName
-    );
+    use crate::derived_path::{DerivedPath, LegacyDerivedPath};
 
     impl NixSerialize for DerivedPath {
         async fn serialize<W>(&self, writer: &mut W) -> Result<(), W::Error>

@@ -29,8 +29,8 @@ use crate::daemon::{
     QueryMissingResult, ResultLog, ResultLogExt as _, TrustLevel, UnkeyedValidPathInfo,
     ValidPathInfo,
 };
-use crate::derivation::BasicDerivation;
-use crate::derived_path::{DerivedPath, OutputName};
+use crate::derivation::{BasicDerivation, OutputName};
+use crate::derived_path::DerivedPath;
 use crate::log::{Activity, ActivityId, ActivityResult, LogMessage, Message, StopActivity};
 #[cfg(any(test, feature = "test"))]
 use crate::pretty_prop_assert_eq;

@@ -11,8 +11,8 @@ use nixrs::daemon::{
     DaemonStore as _, DaemonString, Operation, QueryMissingResult, UnkeyedValidPathInfo,
     ValidPathInfo,
 };
-use nixrs::derivation::{BasicDerivation, DerivationOutput};
-use nixrs::derived_path::{DerivedPath, OutputName};
+use nixrs::derivation::{BasicDerivation, DerivationOutput, OutputName};
+use nixrs::derived_path::DerivedPath;
 use nixrs::hash::NarHash;
 use nixrs::log::{
     ActivityId, LogMessage, ParsedActivity, ParsedActivityResult, ParsedLogMessage, StopActivity,
