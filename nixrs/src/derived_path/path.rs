@@ -145,6 +145,14 @@ impl FromStoreDirStr for SingleDerivedPath {
     }
 }
 
+/// A deriving path.
+///
+/// Deriving paths are a way to refer to store objects that may or may not yet
+/// be realised. There are two forms:
+///     - opaque: just a store path.
+///     - built: a pair of a store path to a store derivation and an output name.
+///
+/// See: <https://nix.dev/manual/nix/latest/store/derivation/#deriving-path>
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DerivedPath {
     Opaque(StorePath),
@@ -219,6 +227,16 @@ impl FromStoreDirStr for DerivedPath {
     }
 }
 
+/// Format a [`DerivedPath`] in the "legacy" format.
+///
+/// Normally a [`DerivedPath::Built`] it formatted like
+/// `/nix/store/00000000000000000000000000000000-test.drv^out`. But in some
+/// places (most notably in the [Nix daemon protocol]) a format like
+/// `/nix/store/00000000000000000000000000000000-test.drv!out` is used.
+///
+/// This formatter implements [`FromStr`] and [`fmt::Display`] that use this format.
+///
+/// [Nix daemon protocol]: http://snix.dev/docs/reference/nix-daemon-protocol/intro/
 pub type LegacyDerivedPath = ParsePath<'!', DerivedPath>;
 
 #[cfg(test)]

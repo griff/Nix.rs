@@ -108,6 +108,7 @@ const fn encode<const R: usize>(s: &[u8]) -> [u8; R] {
     ret
 }
 
+/// A const version of `&mut src[range]`.
 const fn get_slice_mut(src: &mut [u8], range: Range<usize>) -> &mut [u8] {
     let (_prefix, rest) = src.split_at_mut(range.start);
     let (ret, _postfix) = rest.split_at_mut(range.end - range.start);
@@ -128,6 +129,7 @@ pub(crate) const fn concat<const R: usize>(list: &[&[u8]]) -> [u8; R] {
     ret
 }
 
+/// Encode a byte array in the Nix bytes format in a const context
 macro_rules! encoding {
     ($value:expr) => {{
         const N: &[u8] = $value;
