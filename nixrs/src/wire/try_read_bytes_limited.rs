@@ -6,14 +6,16 @@ use std::pin::Pin;
 use std::task::{Context, Poll, ready};
 
 use bytes::Bytes;
+use tracing::field::Empty;
+use tracing::{Span, trace_span};
 
 use super::{TryReadU64, ZEROS, checked_calc_aligned};
 use crate::io::AsyncBytesRead;
 
 #[derive(Debug, Clone)]
 pub enum TryReadBytesLimited {
-    ReadLen(RangeInclusive<usize>, TryReadU64),
-    Fill(usize, usize),
+    ReadLen(RangeInclusive<usize>, TryReadU64, Span),
+    Fill(usize, usize, Span),
     Done,
 }
 
@@ -23,7 +25,8 @@ fn invalid_data<T: fmt::Display>(msg: T) -> io::Error {
 
 impl TryReadBytesLimited {
     pub fn new(limit: RangeInclusive<usize>) -> Self {
-        Self::ReadLen(limit, TryReadU64::new())
+        let span = trace_span!("TryReadBytesLimited", ?limit, len = Empty, aligned = Empty);
+        Self::ReadLen(limit, TryReadU64::new(), span)
     }
     pub async fn read<R: AsyncBytesRead + Unpin>(
         mut self,
@@ -43,7 +46,8 @@ impl TryReadBytesLimited {
     {
         loop {
             match self {
-                Self::ReadLen(limit, try_read_u64) => {
+                Self::ReadLen(limit, try_read_u64, span) => {
+                    let _guard = span.clone().entered();
                     if let Some(raw_len) = ready!(try_read_u64.poll_reader(cx, reader.as_mut()))? {
                         // Check that length is in range and convert to usize
                         let len = raw_len
@@ -51,17 +55,19 @@ impl TryReadBytesLimited {
                             .ok()
                             .filter(|v| limit.contains(v))
                             .ok_or_else(|| invalid_data("bytes length out of range"))?;
+                        span.record("len", len);
 
                         // Calculate 64bit aligned length and convert to usize
                         let aligned: usize = checked_calc_aligned(raw_len)
                             .ok_or_else(|| invalid_data("aligned bytes length out of range"))?
                             .try_into()
                             .map_err(invalid_data)?;
+                        span.record("aligned", aligned);
 
                         if aligned > 0 {
                             // Ensure that there is enough space in buffer for contents
                             reader.as_mut().prepare(aligned);
-                            *self = Self::Fill(len, aligned);
+                            *self = Self::Fill(len, aligned, span.clone());
                         } else {
                             *self = Self::Done;
                             return Poll::Ready(Ok(Some(Bytes::new())));
@@ -71,7 +77,8 @@ impl TryReadBytesLimited {
                         return Poll::Ready(Ok(None));
                     }
                 }
-                Self::Fill(len, aligned) => {
+                Self::Fill(len, aligned, span) => {
+                    let _guard = span.clone().entered();
                     let mut buf = ready!(reader.as_mut().poll_fill_buf(cx))?;
                     while buf.len() < *aligned {
                         let _ = buf.split_to(0);
