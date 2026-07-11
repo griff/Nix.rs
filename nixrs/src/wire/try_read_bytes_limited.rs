@@ -5,7 +5,7 @@ use std::ops::RangeInclusive;
 use std::pin::Pin;
 use std::task::{Context, Poll, ready};
 
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 use tracing::field::Empty;
 use tracing::{Span, trace_span};
 
@@ -80,11 +80,10 @@ impl TryReadBytesLimited {
                 Self::Fill(len, aligned, span) => {
                     let _guard = span.clone().entered();
                     let mut buf = ready!(reader.as_mut().poll_fill_buf(cx))?;
-                    while buf.len() < *aligned {
-                        let _ = buf.split_to(0);
+                    while buf.remaining() < *aligned {
                         buf = ready!(reader.as_mut().poll_force_fill_buf(cx))?;
                     }
-                    let mut contents = buf.split_to(*aligned);
+                    let mut contents = buf.copy_to_bytes(*aligned);
                     reader.as_mut().consume(*aligned);
 
                     let padding = *aligned - *len;

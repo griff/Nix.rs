@@ -5378,6 +5378,11 @@ rec {
             packageId = "serde_with";
           }
           {
+            name = "smallvec";
+            packageId = "smallvec";
+            features = [ "const_generics" ];
+          }
+          {
             name = "smol_str";
             packageId = "smol_str";
           }
@@ -5898,6 +5903,7 @@ rec {
           {
             name = "smallvec";
             packageId = "smallvec";
+            features = [ "const_generics" ];
           }
           {
             name = "thiserror";

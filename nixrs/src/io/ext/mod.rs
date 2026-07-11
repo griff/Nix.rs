@@ -1,3 +1,6 @@
+mod buf;
+mod chunked;
+
 use std::pin::Pin;
 
 use bytes::{Buf, Bytes};
@@ -6,11 +9,14 @@ use tracing::trace;
 
 use crate::io::AsyncBytesRead;
 
+pub use buf::{BytesBuf, Limited};
+pub use chunked::{Chunked, ChunkedMut};
+
 pub trait AsyncBytesReadExt: AsyncBytesRead {
-    fn force_fill_buf(&mut self) -> impl Future<Output = io::Result<Bytes>>
+    fn force_fill_buf(&mut self) -> impl Future<Output = io::Result<<Self as AsyncBytesRead>::Buf>>
     where
         Self: Unpin;
-    fn fill_buf(&mut self) -> impl Future<Output = io::Result<Bytes>>
+    fn fill_buf(&mut self) -> impl Future<Output = io::Result<<Self as AsyncBytesRead>::Buf>>
     where
         Self: Unpin;
     fn consume(&mut self, amt: usize)
@@ -25,7 +31,7 @@ impl<R> AsyncBytesReadExt for R
 where
     R: AsyncBytesRead,
 {
-    async fn force_fill_buf(&mut self) -> io::Result<Bytes>
+    async fn force_fill_buf(&mut self) -> io::Result<R::Buf>
     where
         Self: Unpin,
     {
@@ -33,7 +39,7 @@ where
         poll_fn(|cx| pined.as_mut().poll_force_fill_buf(cx)).await
     }
 
-    async fn fill_buf(&mut self) -> io::Result<Bytes>
+    async fn fill_buf(&mut self) -> io::Result<R::Buf>
     where
         Self: Unpin,
     {

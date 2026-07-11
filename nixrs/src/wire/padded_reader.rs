@@ -2,11 +2,11 @@ use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll, ready};
 
-use bytes::{Buf, BufMut as _, Bytes};
+use bytes::{Buf, BufMut as _};
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncRead, ReadBuf};
 
-use crate::io::{AsyncBytesRead, DrainInto};
+use crate::io::{AsyncBytesRead, BytesBuf, DrainInto};
 
 use super::{ZEROS, calc_aligned};
 
@@ -23,7 +23,7 @@ pin_project! {
     not(any(feature = "internal", feature = "archive", test)),
     expect(dead_code)
 )]
-impl<R> PaddedReader<R> {
+impl<R: AsyncBytesRead> PaddedReader<R> {
     pub fn new(reader: R, len: u64, aligned: u64) -> Self {
         debug_assert_eq!(aligned, calc_aligned(len));
         Self {
@@ -73,10 +73,12 @@ impl<R> AsyncBytesRead for PaddedReader<R>
 where
     R: AsyncBytesRead,
 {
-    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Bytes>> {
+    type Buf = R::Buf;
+
+    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Self::Buf>> {
         let mut this = self.project();
         if *this.aligned == 0 {
-            return Poll::Ready(Ok(Bytes::new()));
+            return Poll::Ready(Ok(<Self::Buf as BytesBuf>::empty()));
         }
 
         let mut buf = ready!(this.reader.as_mut().poll_fill_buf(cx))?;
@@ -117,7 +119,10 @@ where
         Poll::Ready(Ok(buf))
     }
 
-    fn poll_force_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Bytes>> {
+    fn poll_force_fill_buf(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<io::Result<Self::Buf>> {
         let mut this = self.project();
         if *this.aligned == 0 {
             return Poll::Ready(Err(io::Error::new(
@@ -190,10 +195,10 @@ where
     fn poll_drain(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         loop {
             let buf = ready!(self.as_mut().poll_fill_buf(cx))?;
-            if buf.is_empty() {
+            if !buf.has_remaining() {
                 break;
             }
-            self.as_mut().consume(buf.len());
+            self.as_mut().consume(buf.remaining());
         }
         Poll::Ready(Ok(()))
     }

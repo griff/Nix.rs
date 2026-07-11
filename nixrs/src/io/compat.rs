@@ -1,17 +1,19 @@
 use std::task::{Poll, ready};
 
-use bytes::{Buf as _, Bytes};
+use bytes::Buf as _;
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncBufRead, AsyncRead};
+
+use crate::io::BytesBuf;
 
 use super::{AsyncBytesRead, DrainInto};
 
 pin_project! {
     #[derive(Debug)]
-    pub struct AsyncBufReadCompat<R> {
+    pub struct AsyncBufReadCompat<R: AsyncBytesRead> {
         #[pin]
         reader: R,
-        buffer: Bytes,
+        buffer: R::Buf,
     }
 }
 
@@ -22,7 +24,7 @@ where
     pub fn new(reader: R) -> Self {
         Self {
             reader,
-            buffer: Bytes::new(),
+            buffer: <R::Buf as BytesBuf>::empty(),
         }
     }
 }
@@ -55,19 +57,19 @@ where
         cx: &mut std::task::Context<'_>,
     ) -> Poll<std::io::Result<&[u8]>> {
         let this = self.project();
-        if this.buffer.is_empty() {
+        if !this.buffer.has_remaining() {
             *this.buffer = ready!(this.reader.poll_fill_buf(cx))?;
         }
-        Poll::Ready(Ok(&this.buffer[..]))
+        Poll::Ready(Ok((*this.buffer).chunk()))
     }
 
     fn consume(self: std::pin::Pin<&mut Self>, amt: usize) {
         let this = self.project();
         this.buffer.advance(amt);
-        if this.buffer.is_empty() {
+        if !this.buffer.has_remaining() {
             // Release the buffer when empty so that the reader can reclaim it
             // on the next call to poll_fill_buf
-            *this.buffer = Bytes::new();
+            *this.buffer = <R::Buf as BytesBuf>::empty();
         }
         this.reader.consume(amt);
     }
@@ -75,14 +77,14 @@ where
 
 impl<R, R2> DrainInto<R2> for AsyncBufReadCompat<R>
 where
-    R: DrainInto<R2>,
+    R: DrainInto<R2> + AsyncBytesRead,
 {
     fn poll_drain(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<std::io::Result<()>> {
         let this = self.project();
-        *this.buffer = Bytes::new();
+        *this.buffer = <R::Buf as BytesBuf>::empty();
         this.reader.poll_drain(cx)
     }
 

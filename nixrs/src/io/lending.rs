@@ -4,11 +4,13 @@ use std::mem::replace;
 use std::pin::Pin;
 use std::task::{Context, Poll, ready};
 
-use bytes::Bytes;
+use bytes::Buf;
 use futures::FutureExt;
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncBufRead, AsyncRead, ReadBuf};
 use tokio::sync::oneshot;
+
+use crate::io::BytesBuf;
 
 use super::AsyncBytesRead;
 
@@ -120,28 +122,32 @@ impl<R> AsyncBytesRead for LentReader<R>
 where
     R: AsyncBytesRead + Unpin,
 {
-    fn poll_force_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Bytes>> {
+    type Buf = R::Buf;
+    fn poll_force_fill_buf(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<io::Result<Self::Buf>> {
         let this = self.get_mut();
         if let Some(inner) = this.inner.as_mut() {
-            let buf = ready!(Pin::new(&mut inner.reader).poll_fill_buf(cx))?;
-            if !buf.is_empty() {
+            let buf = ready!(Pin::new(&mut inner.reader).poll_force_fill_buf(cx))?;
+            if buf.has_remaining() {
                 return Poll::Ready(Ok(buf));
             }
         }
         this.return_reader();
-        Poll::Ready(Ok(Bytes::new()))
+        Poll::Ready(Ok(<R::Buf as BytesBuf>::empty()))
     }
 
-    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Bytes>> {
+    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Self::Buf>> {
         let this = self.get_mut();
         if let Some(inner) = this.inner.as_mut() {
             let buf = ready!(Pin::new(&mut inner.reader).poll_fill_buf(cx))?;
-            if !buf.is_empty() {
+            if buf.has_remaining() {
                 return Poll::Ready(Ok(buf));
             }
         }
         this.return_reader();
-        Poll::Ready(Ok(Bytes::new()))
+        Poll::Ready(Ok(<R::Buf as BytesBuf>::empty()))
     }
 
     fn prepare(self: Pin<&mut Self>, additional: usize) {
@@ -267,12 +273,16 @@ where
     R: AsyncBytesRead + Unpin,
     W: DrainInto<R> + Unpin,
 {
-    fn poll_force_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Bytes>> {
+    type Buf = R::Buf;
+    fn poll_force_fill_buf(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<io::Result<Self::Buf>> {
         let reader = ready!(self.poll_reader(cx))?;
         reader.poll_force_fill_buf(cx)
     }
 
-    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Bytes>> {
+    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Self::Buf>> {
         let reader = ready!(self.poll_reader(cx))?;
         reader.poll_fill_buf(cx)
     }

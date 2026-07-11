@@ -4,7 +4,7 @@ use std::ops::RangeInclusive;
 use std::pin::Pin;
 use std::task::{Context, Poll, ready};
 
-use bytes::Bytes;
+use bytes::{Buf, BufMut as _, Bytes};
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncRead, ReadBuf};
 
@@ -167,9 +167,9 @@ impl<R: AsyncBytesRead> AsyncRead for NixReader<R> {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
         let rem = ready!(self.as_mut().poll_fill_buf(cx))?;
-        if !rem.is_empty() {
-            let amt = std::cmp::min(rem.len(), buf.remaining());
-            buf.put_slice(&rem[0..amt]);
+        if rem.has_remaining() {
+            let amt = std::cmp::min(rem.remaining(), buf.remaining());
+            buf.put(rem.take(amt));
             self.consume(amt);
         }
         Poll::Ready(Ok(()))
@@ -177,7 +177,8 @@ impl<R: AsyncBytesRead> AsyncRead for NixReader<R> {
 }
 
 impl<R: AsyncBytesRead> AsyncBytesRead for NixReader<R> {
-    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Bytes>> {
+    type Buf = R::Buf;
+    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Self::Buf>> {
         self.project().inner.poll_fill_buf(cx)
     }
 
@@ -185,7 +186,10 @@ impl<R: AsyncBytesRead> AsyncBytesRead for NixReader<R> {
         self.project().inner.consume(amt)
     }
 
-    fn poll_force_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Bytes>> {
+    fn poll_force_fill_buf(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<io::Result<Self::Buf>> {
         self.project().inner.poll_force_fill_buf(cx)
     }
 

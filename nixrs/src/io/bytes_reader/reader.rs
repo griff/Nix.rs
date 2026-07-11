@@ -156,10 +156,12 @@ impl<R> AsyncBytesRead for BytesReader<R>
 where
     R: AsyncRead,
 {
+    type Buf = Bytes;
+
     fn poll_force_fill_buf(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
-    ) -> Poll<io::Result<bytes::Bytes>> {
+    ) -> Poll<io::Result<Self::Buf>> {
         let read = ready!(self.as_mut().poll_force_fill_buf_internal(cx))?;
         if read == 0 {
             Poll::Ready(Err(io::Error::new(
@@ -174,7 +176,7 @@ where
     fn poll_fill_buf(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
-    ) -> Poll<std::io::Result<bytes::Bytes>> {
+    ) -> Poll<std::io::Result<Self::Buf>> {
         if self.buf.is_empty() {
             ready!(self.as_mut().poll_force_fill_buf_internal(cx))?;
         }

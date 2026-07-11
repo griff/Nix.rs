@@ -68,13 +68,14 @@ where
         }
         loop {
             let mut buf = ready!(reader.as_mut().poll_fill_buf(cx))?;
-            if buf.is_empty() {
+            if !buf.has_remaining() {
                 return Poll::Ready(Some(Err(io::Error::new(
                     io::ErrorKind::UnexpectedEof,
                     "EOF while reading NAR",
                 ))));
             }
-            let cnt = this.state.drive(&buf)?;
+
+            let cnt = this.state.drive(buf.chunk())?;
             buf.advance(cnt);
             reader.as_mut().consume(cnt);
             trace!(state=?this.state.state, cnt, "Loop state");
@@ -97,11 +98,11 @@ where
                     let aligned = aligned.try_into().map_err(|_| {
                         io::Error::new(io::ErrorKind::InvalidData, "Symlink target way too long")
                     })?;
-                    while buf.len() < aligned {
+                    while buf.remaining() < aligned {
                         buf = ready!(reader.as_mut().poll_force_fill_buf(cx))?;
                     }
 
-                    let target = buf.split_to(len as usize);
+                    let target = buf.copy_to_bytes(len as usize);
                     buf.advance(aligned - len as usize);
                     reader.as_mut().consume(aligned);
                     this.state.bump_next();
@@ -112,12 +113,12 @@ where
                     let aligned = aligned.try_into().map_err(|_| {
                         io::Error::new(io::ErrorKind::InvalidData, "Entry name way too long")
                     })?;
-                    while buf.len() < aligned {
+                    while buf.remaining() < aligned {
                         buf = ready!(reader.as_mut().poll_force_fill_buf(cx))?;
-                        trace!(len = buf.len(), "Reading name");
+                        trace!(len = buf.remaining(), "Reading name");
                     }
-                    let name_buf = buf.split_to(len as usize);
-                    trace!(len = buf.len(), ?name_buf, "Read name");
+                    let name_buf = buf.copy_to_bytes(len as usize);
+                    trace!(len = buf.remaining(), ?name_buf, "Read name");
                     *this.name = Some(name_buf);
                     buf.advance(aligned - len as usize);
                     reader.as_mut().consume(aligned);

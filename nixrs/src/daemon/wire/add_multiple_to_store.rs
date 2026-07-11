@@ -94,6 +94,7 @@ pub async fn parse_add_multiple_to_store<'s, R>(
 >
 where
     R: NixRead + AsyncRead + AsyncBytesRead + Unpin + 's,
+    R::Buf: Send,
     DaemonError: From<<R as NixRead>::Error>,
 {
     let count = source.read_number().await?;

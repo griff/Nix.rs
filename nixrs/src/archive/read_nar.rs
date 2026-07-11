@@ -90,13 +90,13 @@ use std::ops::Range;
 use std::pin::Pin;
 use std::task::{Context, Poll, ready};
 
-use bytes::Bytes;
+use bytes::{Buf, BufMut as _};
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncBufRead, AsyncRead};
 use tracing::{error, trace};
 
 use super::radix_tree::{RLookup, RMatch, RTree};
-use crate::io::{AsyncBytesRead, DrainInto};
+use crate::io::{AsyncBytesRead, BytesBuf, DrainInto, Limited};
 use crate::wire::{ZEROS, calc_aligned, checked_calc_aligned};
 
 const fn encode<const R: usize>(s: &[u8]) -> [u8; R] {
@@ -638,13 +638,14 @@ impl<R> AsyncBytesRead for NarBytesReader<R>
 where
     R: AsyncBytesRead,
 {
-    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Bytes>> {
+    type Buf = Limited<R::Buf>;
+    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Self::Buf>> {
         let this = self.project();
         trace!(parsed = *this.parsed, "poll_fill_buf reader");
         if *this.parsed == 0 && this.state.is_eof() {
-            return Poll::Ready(Ok(Bytes::new()));
+            return Poll::Ready(Ok(<Self::Buf as BytesBuf>::empty()));
         }
-        let mut buf = match ready!(this.reader.poll_fill_buf(cx)) {
+        let buf = match ready!(this.reader.poll_fill_buf(cx)) {
             Ok(buf) => buf,
             Err(err) => {
                 error!(parsed = *this.parsed, ?err, "poll_fill_buf reader Error");
@@ -653,40 +654,43 @@ where
         };
         trace!(
             parsed = *this.parsed,
-            buf.len = buf.len(),
+            buf.len = buf.remaining(),
             "poll_fill_buf len"
         );
-        if buf.len() > *this.parsed {
-            *this.parsed += this.state.drive(&buf[*this.parsed..])?;
+        if let Some((mut nth, index)) = buf.find_chunk_index(*this.parsed) {
+            let mut chunk = &buf.nth_chunk(nth)[index..];
+            let mut parsed = this.state.drive(chunk)?;
+            while parsed > 0 && parsed == chunk.len() {
+                *this.parsed += parsed;
+                nth += 1;
+                chunk = buf.nth_chunk(nth);
+                parsed = this.state.drive(chunk)?;
+            }
+            *this.parsed += parsed;
         }
-        if buf.is_empty() && !this.state.is_eof() {
-            error!(
-                parsed = *this.parsed,
-                len = buf[..*this.parsed].len(),
-                "poll_fill_buf Error"
-            );
+        if !buf.has_remaining() && !this.state.is_eof() {
+            error!(parsed = *this.parsed, "poll_fill_buf Error");
             Poll::Ready(Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 "not a complete NAR",
             )))
         } else {
-            trace!(
-                parsed = *this.parsed,
-                len = buf[..*this.parsed].len(),
-                "poll_fill_buf"
-            );
-            buf.truncate(*this.parsed);
-            Poll::Ready(Ok(buf))
+            trace!(parsed = *this.parsed, "poll_fill_buf");
+            let ret = buf.limit(*this.parsed);
+            Poll::Ready(Ok(ret))
         }
     }
 
-    fn poll_force_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<Bytes>> {
+    fn poll_force_fill_buf(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<io::Result<Self::Buf>> {
         let this = self.project();
         trace!(parsed = *this.parsed, "poll_force_fill_buf reader");
         if *this.parsed == 0 && this.state.is_eof() {
-            return Poll::Ready(Ok(Bytes::new()));
+            return Poll::Ready(Ok(Limited::empty()));
         }
-        let mut buf = match ready!(this.reader.poll_force_fill_buf(cx)) {
+        let buf = match ready!(this.reader.poll_force_fill_buf(cx)) {
             Ok(buf) => buf,
             Err(err) => {
                 error!(
@@ -699,30 +703,30 @@ where
         };
         trace!(
             parsed = *this.parsed,
-            buf.len = buf.len(),
+            buf.len = buf.remaining(),
             "poll_force_fill_buf len"
         );
-        if buf.len() > *this.parsed {
-            *this.parsed += this.state.drive(&buf[*this.parsed..])?;
+        if let Some((mut nth, index)) = buf.find_chunk_index(*this.parsed) {
+            let mut chunk = &buf.nth_chunk(nth)[index..];
+            let mut parsed = this.state.drive(chunk)?;
+            while parsed > 0 && parsed == chunk.len() {
+                *this.parsed += parsed;
+                nth += 1;
+                chunk = buf.nth_chunk(nth);
+                parsed = this.state.drive(chunk)?;
+            }
+            *this.parsed += parsed;
         }
-        if buf.is_empty() && !this.state.is_eof() {
-            error!(
-                parsed = *this.parsed,
-                len = buf[..*this.parsed].len(),
-                "poll_force_fill_buf Error"
-            );
+        if !buf.has_remaining() && !this.state.is_eof() {
+            error!(parsed = *this.parsed, "poll_force_fill_buf Error");
             Poll::Ready(Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 "not a complete NAR",
             )))
         } else {
-            trace!(
-                parsed = *this.parsed,
-                len = buf[..*this.parsed].len(),
-                "poll_force_fill_buf"
-            );
-            buf.truncate(*this.parsed);
-            Poll::Ready(Ok(buf))
+            trace!(parsed = *this.parsed, "poll_force_fill_buf");
+            let ret = buf.limit(*this.parsed);
+            Poll::Ready(Ok(ret))
         }
     }
 
@@ -756,14 +760,14 @@ where
         let parsed = self.parsed;
         let rem = ready!(self.as_mut().poll_fill_buf(cx))?;
         trace!(
-            len = rem.len(),
+            len = rem.remaining(),
             buf.remaining = buf.remaining(),
             parsed,
             "poll_read"
         );
-        if !rem.is_empty() {
-            let amt = min(rem.len(), buf.remaining());
-            buf.put_slice(&rem[0..amt]);
+        if rem.has_remaining() {
+            let amt = min(rem.remaining(), buf.remaining());
+            buf.put(rem.take(amt));
             self.consume(amt);
         }
         Poll::Ready(Ok(()))
@@ -776,7 +780,7 @@ where
 {
     fn poll_drain(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         loop {
-            let len = ready!(self.as_mut().poll_fill_buf(cx))?.len();
+            let len = ready!(self.as_mut().poll_fill_buf(cx))?.remaining();
             if len == 0 {
                 break;
             }
