@@ -127,10 +127,10 @@ mod unittests {
 
     use bytes::Bytes;
     use futures::stream::iter;
-    use futures::{TryFutureExt as _, TryStreamExt as _};
+    use futures::{FutureExt as _, TryFutureExt as _, TryStreamExt as _};
     use pretty_assertions::assert_eq;
     use rstest::rstest;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt, simplex};
     use tokio::try_join;
     use tokio_test::io::Builder;
 
@@ -140,7 +140,8 @@ mod unittests {
     use crate::daemon::ser::NixWriter;
     use crate::daemon::{DaemonResult, UnkeyedValidPathInfo};
     use crate::hash::NarHash;
-    use crate::test::archive::{test_data, write_nar};
+    use crate::io::BytesReader;
+    use crate::test::archive::{read_nar, test_data, write_nar};
     use crate::wire::DEFAULT_BUF_SIZE;
 
     #[tokio::test]
@@ -245,11 +246,6 @@ mod unittests {
         ],
     )]
     async fn test_read_written(#[case] infos: Vec<(ValidPathInfo, test_data::TestNarEvents)>) {
-        use futures::FutureExt as _;
-        use tokio::io::simplex;
-
-        use crate::{io::BytesReader, test::archive::read_nar};
-
         let stream = info_stream(infos.clone());
         let (reader, writer) = simplex(DEFAULT_BUF_SIZE);
         let mut writer = NixWriter::new(writer);
