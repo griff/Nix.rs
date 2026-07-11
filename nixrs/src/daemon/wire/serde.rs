@@ -387,7 +387,6 @@ mod derived_path {
 
 mod hash {
     use nixrs_derive::{nix_deserialize_remote, nix_serde_remote};
-    use std::fmt as sfmt;
 
     use crate::hash::fmt::{Any, Bare, Base16, Base32, CommonHash, Format};
     use crate::hash::{Algorithm, Hash, NarHash};
@@ -399,7 +398,7 @@ mod hash {
         display,
         bound(
             deserialize = "F: Format + Sync + 'static, <F as Format>::Hash: CommonHash",
-            serialize = "F: sfmt::Display + Sync"
+            serialize = "F: std::fmt::Display + Sync"
         )
     )] Bare<F>);
 
