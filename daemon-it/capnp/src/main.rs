@@ -5,6 +5,7 @@ use capnp_rpc::rpc_twoparty_capnp::Side;
 use capnp_rpc::{
     Disconnector, RpcSystem, new_client, new_future_client, rpc_twoparty_capnp, twoparty,
 };
+use clap::Parser;
 use futures::io as fio;
 use futures::{AsyncReadExt, TryFutureExt as _, try_join};
 use nixrs::daemon::client::DaemonClient;
@@ -13,6 +14,8 @@ use nixrs_capnp::nix_daemon::{HandshakeLoggedCapnpServer, LoggedCapnpStore};
 use nixrs_capnp::{DEFAULT_BUF_SIZE, from_error};
 use tokio::io::{AsyncRead, AsyncWrite, duplex};
 use tokio::task::LocalSet;
+use tracing::info;
+use tracing_subscriber::layer::SubscriberExt as _;
 
 fn make_server<S>(client_stream: S) -> (impl Future<Output = DaemonResult<()>>, Disconnector<Side>)
 where
@@ -77,9 +80,47 @@ where
     let disconnector = rpc_system.get_disconnector();
     (rpc_system.map_err(DaemonError::custom), disconnector)
 }
+pub fn init_logging(verbosity: Option<tracing::Level>) {
+    use tracing_subscriber::Layer as _;
+    use tracing_subscriber::util::SubscriberInitExt as _;
+
+    let layered = tracing_subscriber::fmt::layer()
+        .with_file(false)
+        .with_line_number(false)
+        .with_writer(std::io::stderr);
+
+    let layered = layered.with_filter({
+        let b = tracing_subscriber::EnvFilter::builder()
+            .with_default_directive(tracing_subscriber::filter::LevelFilter::INFO.into())
+            .from_env()
+            .expect("invalid RUST_LOG");
+        if let Some(level) = verbosity {
+            b.add_directive(level.into())
+        } else {
+            b
+        }
+    });
+
+    tracing_subscriber::registry().with(layered).init();
+}
+
+#[derive(Debug, Parser)]
+#[command(version)]
+struct Args {
+    #[clap(flatten)]
+    verbosity: clap_verbosity_flag::Verbosity<clap_verbosity_flag::InfoLevel>,
+}
 
 #[tokio::main(flavor = "current_thread")]
 pub async fn main() {
+    let args = Args::parse();
+    init_logging(
+        args.verbosity
+            .is_present()
+            .then_some(())
+            .and_then(|_| args.verbosity.tracing_level()),
+    );
+    info!("Running test");
     let local = LocalSet::new();
     local
         .run_until(async move {
