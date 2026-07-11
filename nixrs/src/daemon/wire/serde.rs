@@ -27,7 +27,8 @@ mod derivation {
     use crate::ByteString;
     use crate::daemon::ser::{Error, NixSerialize, NixWrite};
     use crate::derivation::{
-        BasicDerivation, DerivationOutput, DerivationOutputs, OutputName, StorePathNameOutput,
+        BasicDerivation, DerivationOutput, DerivationOutputs, OutputName, StorePathCreate as _,
+        StorePathNameOutput,
     };
     use crate::hash;
     use crate::hash::fmt::ParseHashError;

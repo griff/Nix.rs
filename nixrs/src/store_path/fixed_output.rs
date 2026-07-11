@@ -120,7 +120,7 @@ impl FixedOutput {
     }
 
     pub fn fod_display(&self) -> impl fmt::Display {
-        fmt::from_fn(|f| write!(f, "fixed:out:{}{:x}", self.method.prefix(), self.hash))
+        fmt::from_fn(|f| write!(f, "fixed:out:{}{:x}:", self.method.prefix(), self.hash))
     }
 
     pub fn fod_digest(&self) -> Sha256 {
