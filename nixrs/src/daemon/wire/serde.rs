@@ -33,8 +33,7 @@ mod derivation {
     use crate::hash;
     use crate::hash::fmt::ParseHashError;
     use crate::store_path::{
-        ContentAddress, ContentAddressMethod, ContentAddressMethodAlgorithm, StorePath,
-        StorePathNameRef, StorePathSet,
+        ContentAddress, ContentAddressMethodAlgorithm, StorePath, StorePathNameRef, StorePathSet,
     };
 
     nix_serde_remote!(
@@ -108,7 +107,7 @@ mod derivation {
         fn try_from(value: DerivationOutputData) -> Result<Self, Self::Error> {
             if let Some(hash_algo) = value.hash_algo {
                 #[cfg(not(feature = "xp-dynamic-derivations"))]
-                if hash_algo.method() == ContentAddressMethod::Text {
+                if hash_algo.method() == crate::store_path::ContentAddressMethod::Text {
                     return Err(ParseDerivationOutput::MissingExperimentalFeature(
                         "dynamic-derivations".into(),
                     ));
