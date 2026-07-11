@@ -1,0 +1,6 @@
+build-tests:
+    cargo build --bin daemon-it-capnp
+
+[working-directory: '../suite']
+test *TEST_ARGS: build-tests
+    NIX_IMPL="../capnp/run-tests.json" cargo test -- {{TEST_ARGS}}

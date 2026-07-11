@@ -6,6 +6,7 @@ use bstr::ByteSlice as _;
 use camino::{Utf8Path, Utf8PathBuf};
 use capnp::capability::{FromClientHook, Promise};
 use capnp::traits::{FromPointerBuilder, HasTypeId, SetterInput};
+use capnp_convert::{BuildFrom as _, ReadInto as _};
 use capnp_rpc::new_client;
 use nixrs::profile::{Generation, Profile, ProfileRoots};
 use nixrs::store_path::{HasStoreDir, StoreDir};
@@ -15,7 +16,6 @@ use crate::capnp::nix_daemon_capnp::nix_daemon;
 use crate::capnp::nixrs_capnp::{
     generation, generation_cap, generation_info, profile, store_path_store,
 };
-use crate::convert::ReadInto;
 use crate::lookup::{LookupParams, ParamsCap};
 use crate::nixrs::RemoteStorePath;
 
@@ -134,7 +134,10 @@ where
     ) -> capnp::Result<()> {
         let store_path = generation.store_path().await?;
         let remote_store_path = RemoteStorePath::from_store_path(store_path, &self.store)?;
-        builder.set_store_path(&remote_store_path)?;
+        builder
+            .reborrow()
+            .init_store_path()
+            .build_from(&remote_store_path)?;
         builder.set_number(generation.number);
         let time = if let Ok(elapsed) = generation.creation_time.duration_since(UNIX_EPOCH) {
             elapsed.as_secs() as i64
@@ -203,7 +206,7 @@ where
                     "Store (store_path) path does not exist".to_string(),
                 ));
             }
-            let remote_store_path = r.get_path()?.read_into()?;
+            let remote_store_path: RemoteStorePath = r.get_path()?.read_into()?;
             let generation = me.profile.create_generation(&store_path).await?;
             let mut b = result.get().init_generation();
             let client = new_client(GenerationCapImpl {
@@ -212,7 +215,9 @@ where
             });
             b.set_cap(client);
             let mut bi = b.init_info();
-            bi.set_store_path(&remote_store_path)?;
+            bi.reborrow()
+                .init_store_path()
+                .build_from(&remote_store_path)?;
             bi.set_number(generation.number);
             let time = if let Ok(elapsed) = generation.creation_time.duration_since(UNIX_EPOCH) {
                 elapsed.as_secs() as i64
@@ -319,7 +324,10 @@ impl ProfileRoots for DaemonProfileRoots {
         let n = <[u8]>::from_os_str(link.as_os_str())
             .ok_or_else(|| std::io::Error::other(format!("link {link:?} is not valid UTF-8")))?;
         b.set_gc_root(n);
-        b.set_path(target).map_err(std::io::Error::other)?;
+        b.reborrow()
+            .init_path()
+            .build_from(target)
+            .map_err(std::io::Error::other)?;
         req.send().promise.await.map_err(std::io::Error::other)?;
         Ok(())
     }

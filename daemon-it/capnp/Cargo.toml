@@ -1,0 +1,14 @@
+[package]
+name = "daemon-it-capnp"
+version = "0.1.0"
+authors = ["Brian Olsen <brian@maven-group.org>"]
+edition = "2024"
+license = "EUPL-1.2 OR MIT"
+
+[dependencies]
+nixrs.path = "../../nixrs"
+nixrs-capnp.path = "../../nixrs-capnp"
+capnp-rpc.workspace = true
+futures.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true

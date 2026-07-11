@@ -6,6 +6,7 @@ use ::capnp::Error;
 use ::capnp::capability::Promise;
 use bytes::Bytes;
 use capnp::capability::FromClientHook;
+use capnp_convert::{BuildFrom as _, ReadInto as _};
 use capnp_rpc::new_client;
 use capnp_rpc_tokio::stream::{ByteStreamWrap, ByteStreamWriter, from_cap_error};
 use futures::channel::mpsc;
@@ -21,7 +22,6 @@ use nixrs::store_path::{HasStoreDir, StoreDir, StorePath, StorePathSet};
 use tokio::io::{AsyncWriteExt, BufReader, copy_buf, simplex};
 
 use crate::capnp::nix_daemon_capnp::{self, has_store_dir};
-use crate::convert::{BuildFrom, ReadInto};
 use crate::{DEFAULT_BUF_SIZE, from_error};
 
 pub struct CapnpStore {
@@ -86,7 +86,7 @@ impl LocalDaemonStore for CapnpStore {
     ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
         (async move {
             let mut req = self.store.set_options_request();
-            req.get().set_options(options)?;
+            req.get().init_options().build_from(options)?;
             req.send().promise.await.map(|_| ())
         })
         .map_err(DaemonError::custom)
@@ -99,8 +99,7 @@ impl LocalDaemonStore for CapnpStore {
     ) -> impl ResultLog<Output = DaemonResult<bool>> + 'a {
         (async move {
             let mut req = self.store.is_valid_path_request();
-            let mut params = req.get();
-            params.set_path(path)?;
+            req.get().init_path().build_from(path)?;
             let resp = req.send().promise.await?;
             resp.get().map(|r| r.get_valid())
         })
@@ -133,8 +132,7 @@ impl LocalDaemonStore for CapnpStore {
     ) -> impl ResultLog<Output = DaemonResult<Option<UnkeyedValidPathInfo>>> + 'a {
         (async move {
             let mut req = self.store.query_path_info_request();
-            let mut params = req.get();
-            params.set_path(path)?;
+            req.get().init_path().build_from(path)?;
 
             let resp = req.send().promise.await?;
             let r = resp.get()?;
@@ -159,7 +157,7 @@ impl LocalDaemonStore for CapnpStore {
 
             let mut req = self.store.nar_from_path_request();
             let mut params = req.get();
-            params.reborrow().set_path(path)?;
+            params.reborrow().init_path().build_from(path)?;
             params.set_stream(new_client(bs_write));
 
             let driver = req.send().promise.map_ok(|_| ()).map_err(from_cap_error);
@@ -215,7 +213,7 @@ impl LocalDaemonStore for CapnpStore {
         (async move {
             let mut req = self.store.build_derivation_request();
             let mut params = req.get();
-            params.set_drv(drv)?;
+            params.reborrow().init_drv().build_from(drv)?;
             /*
             let mut drv_b = params.reborrow().init_drv();
             drv_b.build_from(drv)?;
@@ -360,8 +358,7 @@ impl LocalDaemonStore for CapnpStore {
     ) -> impl ResultLog<Output = DaemonResult<()>> + 'a {
         (async move {
             let mut req = self.store.add_temp_root_request();
-            let mut params = req.get();
-            params.set_path(path)?;
+            req.get().init_path().build_from(path)?;
             req.send().promise.await?;
             Ok(()) as Result<_, Error>
         })
@@ -376,7 +373,7 @@ impl LocalDaemonStore for CapnpStore {
         (async move {
             let mut req = self.store.add_indirect_root_request();
             let mut params = req.get();
-            params.set_path(&**path);
+            params.set_path(path);
             req.send().promise.await?;
             Ok(()) as Result<_, Error>
         })
@@ -392,8 +389,8 @@ impl LocalDaemonStore for CapnpStore {
         (async move {
             let mut req = self.store.add_perm_root_request();
             let mut params = req.get();
-            params.set_path(path)?;
-            params.set_gc_root(&**gc_root);
+            params.reborrow().init_path().build_from(path)?;
+            params.set_gc_root(gc_root);
             let resp = req.send().promise.await?;
             let ret_path = Bytes::copy_from_slice(resp.get()?.get_path()?);
             Ok(ret_path) as Result<_, Error>

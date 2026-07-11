@@ -37,10 +37,30 @@ rec {
   # You can override the features with
   # workspaceMembers."${crateName}".build.override { features = [ "default" "feature1" ... ]; }.
   workspaceMembers = {
+    "capnp-convert" = rec {
+      packageId = "capnp-convert";
+      build = internal.buildRustCrateWithFeatures {
+        packageId = "capnp-convert";
+      };
+
+      # Debug support which might change between releases.
+      # File a bug if you depend on any for non-debug work!
+      debug = internal.debugCrate { inherit packageId; };
+    };
     "capnp-rpc-tokio" = rec {
       packageId = "capnp-rpc-tokio";
       build = internal.buildRustCrateWithFeatures {
         packageId = "capnp-rpc-tokio";
+      };
+
+      # Debug support which might change between releases.
+      # File a bug if you depend on any for non-debug work!
+      debug = internal.debugCrate { inherit packageId; };
+    };
+    "daemon-it-capnp" = rec {
+      packageId = "daemon-it-capnp";
+      build = internal.buildRustCrateWithFeatures {
+        packageId = "daemon-it-capnp";
       };
 
       # Debug support which might change between releases.
@@ -1089,14 +1109,9 @@ rec {
       };
       "capnp" = rec {
         crateName = "capnp";
-        version = "0.21.4";
+        version = "0.21.7";
         edition = "2021";
-        workspace_member = null;
-        src = pkgs.fetchgit {
-          url = "https://github.com/griff/capnproto-rust.git";
-          rev = "083b39c90ae1e48194bb9645a6ff812ef6b3a08d";
-          sha256 = "0p41yp5vxr7fp5giwbysn96mcxg6xfqcvg6ihqs3jcsbad3y9r77";
-        };
+        sha256 = "1f0f8gvzw07pjzqigj0h3jk19giag3dj3c0bx7ndgz3li7nfv4jf";
         authors = [
           "David Renshaw <dwrenshaw@gmail.com>"
         ];
@@ -1117,16 +1132,29 @@ rec {
         };
         resolvedDefaultFeatures = [ "alloc" "default" "std" ];
       };
+      "capnp-convert" = rec {
+        crateName = "capnp-convert";
+        version = "0.1.0";
+        edition = "2024";
+        src = lib.cleanSourceWith { filter = sourceFilter;  src = ./capnp-convert; };
+        libName = "capnp_convert";
+        dependencies = [
+          {
+            name = "bytes";
+            packageId = "bytes";
+          }
+          {
+            name = "capnp";
+            packageId = "capnp";
+          }
+        ];
+
+      };
       "capnp-futures" = rec {
         crateName = "capnp-futures";
         version = "0.21.0";
         edition = "2021";
-        workspace_member = null;
-        src = pkgs.fetchgit {
-          url = "https://github.com/griff/capnproto-rust.git";
-          rev = "083b39c90ae1e48194bb9645a6ff812ef6b3a08d";
-          sha256 = "0p41yp5vxr7fp5giwbysn96mcxg6xfqcvg6ihqs3jcsbad3y9r77";
-        };
+        sha256 = "0c8jnxxdzpddylm9dcx7kf9kmbz3jq6llmgchvw3cj13xfnphi6h";
         libName = "capnp_futures";
         authors = [
           "David Renshaw <drenshaw@gmail.com>"
@@ -1162,12 +1190,7 @@ rec {
         crateName = "capnp-rpc";
         version = "0.21.0";
         edition = "2021";
-        workspace_member = null;
-        src = pkgs.fetchgit {
-          url = "https://github.com/griff/capnproto-rust.git";
-          rev = "083b39c90ae1e48194bb9645a6ff812ef6b3a08d";
-          sha256 = "0p41yp5vxr7fp5giwbysn96mcxg6xfqcvg6ihqs3jcsbad3y9r77";
-        };
+        sha256 = "1xvpg16fd27b0vzraqk7263waax7d3x1pcighb4vkw9gyngc3sc5";
         libName = "capnp_rpc";
         authors = [
           "David Renshaw <dwrenshaw@gmail.com>"
@@ -1245,15 +1268,10 @@ rec {
       };
       "capnpc" = rec {
         crateName = "capnpc";
-        version = "0.21.2";
+        version = "0.21.4";
         edition = "2021";
         crateBin = [];
-        workspace_member = null;
-        src = pkgs.fetchgit {
-          url = "https://github.com/griff/capnproto-rust.git";
-          rev = "083b39c90ae1e48194bb9645a6ff812ef6b3a08d";
-          sha256 = "0p41yp5vxr7fp5giwbysn96mcxg6xfqcvg6ihqs3jcsbad3y9r77";
-        };
+        sha256 = "05mdh0n36kr0fnxgk7nzfgcqmwah2mgcbfj2mxnm430f1b5nvabd";
         authors = [
           "David Renshaw <dwrenshaw@gmail.com>"
         ];
@@ -1881,6 +1899,49 @@ rec {
             name = "cipher";
             packageId = "cipher 0.3.0";
             features = [ "dev" ];
+          }
+        ];
+
+      };
+      "daemon-it-capnp" = rec {
+        crateName = "daemon-it-capnp";
+        version = "0.1.0";
+        edition = "2024";
+        crateBin = [
+          {
+            name = "daemon-it-capnp";
+            path = "src/main.rs";
+            requiredFeatures = [ ];
+          }
+        ];
+        src = lib.cleanSourceWith { filter = sourceFilter;  src = ./daemon-it/capnp; };
+        authors = [
+          "Brian Olsen <brian@maven-group.org>"
+        ];
+        dependencies = [
+          {
+            name = "capnp-rpc";
+            packageId = "capnp-rpc";
+          }
+          {
+            name = "futures";
+            packageId = "futures";
+          }
+          {
+            name = "nixrs";
+            packageId = "nixrs";
+          }
+          {
+            name = "nixrs-capnp";
+            packageId = "nixrs-capnp";
+          }
+          {
+            name = "tokio";
+            packageId = "tokio";
+          }
+          {
+            name = "tokio-util";
+            packageId = "tokio-util";
           }
         ];
 
@@ -5244,11 +5305,6 @@ rec {
             path = "src/bin/nixrs_capnp_proxy.rs";
             requiredFeatures = [ ];
           }
-          {
-            name = "run-tests";
-            path = "src/bin/run_tests.rs";
-            requiredFeatures = [ ];
-          }
         ];
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./nixrs-capnp; };
         libName = "nixrs_capnp";
@@ -5275,6 +5331,10 @@ rec {
           {
             name = "capnp";
             packageId = "capnp";
+          }
+          {
+            name = "capnp-convert";
+            packageId = "capnp-convert";
           }
           {
             name = "capnp-rpc";
@@ -5352,7 +5412,7 @@ rec {
         crateName = "nixrs-daemon-tests";
         version = "0.1.0";
         edition = "2024";
-        src = lib.cleanSourceWith { filter = sourceFilter;  src = ./nixrs-daemon-tests; };
+        src = lib.cleanSourceWith { filter = sourceFilter;  src = ./daemon-it/suite; };
         libName = "nixrs_daemon_tests";
         dependencies = [
           {

@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "capnp-convert",
   "nixrs",
   "nixrs-derive",
   "nixrs-derive-tests",
@@ -9,7 +10,9 @@ members = [
   "nixrs-capnp",
   "examples/nixrs-nix-store",
   "examples/nix-docker-build",
-  "nixrs-daemon-tests", "capnp-rpc-tokio",
+  "daemon-it/suite",
+  "daemon-it/capnp",
+  "capnp-rpc-tokio",
 ]
 package.version = "0.1.0"
 metadata.crane.name = "nixrs-workspace"
@@ -66,12 +69,14 @@ compress-tools = "^0.14.3"
 assert_matches = "1.5.0"
 
 # nixrs-capnp
-capnp = { git = "https://github.com/griff/capnproto-rust.git", branch = "feat/setter-input-everywhere" }
-capnp-rpc = { git = "https://github.com/griff/capnproto-rust.git", branch = "feat/setter-input-everywhere" }
-capnpc = { git = "https://github.com/griff/capnproto-rust.git", branch = "feat/setter-input-everywhere" }
-#capnp = "^0.21.0"
-#capnp-rpc = "^0.21.0"
-#capnpc = "^0.21.0"
+#capnp = { git = "https://github.com/griff/capnproto-rust.git", branch = "feat/setter-input-everywhere" }
+#capnp-futures = { git = "https://github.com/griff/capnproto-rust.git", branch = "feat/setter-input-everywhere" }
+#capnp-rpc = { git = "https://github.com/griff/capnproto-rust.git", branch = "feat/setter-input-everywhere" }
+#capnpc = { git = "https://github.com/griff/capnproto-rust.git", branch = "feat/setter-input-everywhere" }
+capnp = "^0.21.0"
+capnp-futures = "^0.21.0"
+capnp-rpc = "^0.21.0"
+capnpc = "^0.21.0"
 which = "^4.4.0"
 
 # nixrs-derive

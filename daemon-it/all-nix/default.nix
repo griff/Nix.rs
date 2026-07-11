@@ -1,5 +1,5 @@
 { pkgs, project, lib, ... }: let
-  mkDaemonTest = project.nixrs-daemon-tests.mk-daemon-test;
+  mkDaemonTest = project.daemon-it.mk-daemon-test;
 in (lib.mapAttrs (name: v: mkDaemonTest {
       inherit name;
       config = {program_path = "${v}/bin/nix-daemon";

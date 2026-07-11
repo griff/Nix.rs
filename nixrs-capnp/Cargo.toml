@@ -7,10 +7,6 @@ license = "EUPL-1.2 OR MIT"
 build = "build.rs"
 
 [[bin]]
-name = "run-tests"
-path = "src/bin/run_tests.rs"
-
-[[bin]]
 name = "nixrs-capnp-proxy"
 path = "src/bin/nixrs_capnp_proxy.rs"
 
@@ -34,6 +30,7 @@ bytes.workspace = true
 bstr.workspace = true
 clap.workspace = true
 capnp.workspace = true
+capnp-convert.path = "../capnp-convert"
 capnp-rpc.workspace = true
 futures.workspace = true
 serde = { workspace = true, features = ["derive"] }

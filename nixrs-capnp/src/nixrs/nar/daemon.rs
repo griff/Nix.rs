@@ -2,6 +2,7 @@ use std::rc::Rc;
 
 use capnp::Error as CapError;
 use capnp::capability::Promise;
+use capnp_convert::BuildFrom as _;
 use capnp_rpc::pry;
 use futures::TryFutureExt;
 use nixrs::hash::NarHash;
@@ -26,7 +27,7 @@ impl nar::Server for DaemonNar {
         let stream = pry!(pry!(params.get()).get_stream());
         let mut req = self.store.nar_from_path_request();
         let mut b = req.get();
-        pry!(b.set_path(&*self.store_path));
+        pry!(b.reborrow().init_path().build_from(&*self.store_path));
         b.set_stream(stream);
         Promise::from_future(req.send().promise.map_ok(|_| ()))
     }

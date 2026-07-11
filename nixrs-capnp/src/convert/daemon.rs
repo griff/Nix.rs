@@ -1,14 +1,14 @@
 use bytes::Bytes;
 use capnp::Error;
-use capnp::traits::{FromPointerBuilder as _, SetterInput};
+use capnp_convert::{BuildFrom as _, ReadFrom, ReadInto as _, SetInto};
 use nixrs::daemon::{
     BuildMode, BuildResult, BuildStatus, ClientOptions, KeyedBuildResult, QueryMissingResult,
     UnkeyedValidPathInfo, ValidPathInfo,
 };
+use nixrs::hash::NarHash;
 
 use crate::capnp::nix_daemon_capnp;
 use crate::capnp::nixrs_capnp::store_path_info;
-use crate::convert::{BuildFrom, ReadFrom, ReadInto as _};
 
 impl From<nix_daemon_capnp::BuildStatus> for BuildStatus {
     fn from(value: nix_daemon_capnp::BuildStatus) -> Self {
@@ -78,50 +78,24 @@ impl From<nix_daemon_capnp::BuildMode> for BuildMode {
     }
 }
 
-impl<'b> BuildFrom<ClientOptions> for nix_daemon_capnp::client_options::Builder<'b> {
-    fn build_from(&mut self, options: &ClientOptions) -> Result<(), Error> {
-        self.set_keep_failed(options.keep_failed);
-        self.set_keep_going(options.keep_going);
-        self.set_try_fallback(options.try_fallback);
-        self.set_verbosity(options.verbosity.into());
-        self.set_max_build_jobs(options.max_build_jobs);
-        self.set_max_silent_time(options.max_silent_time);
-        self.set_verbose_build(options.verbose_build.into());
-        self.set_build_cores(options.build_cores);
-        self.set_use_substitutes(options.use_substitutes);
-        if !options.other_settings.is_empty() {
-            let other = self.reborrow().init_other_settings();
-            let mut entries = other.init_entries(options.other_settings.len() as u32);
-            for (index, (k, v)) in options.other_settings.iter().enumerate() {
-                let mut entry = entries.reborrow().get(index as u32);
-                entry.set_key(k)?;
-                entry.set_value(&v[..])?;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl SetterInput<nix_daemon_capnp::client_options::Owned> for &'_ ClientOptions {
-    fn set_pointer_builder(
-        builder: capnp::private::layout::PointerBuilder<'_>,
-        input: Self,
-        _canonicalize: bool,
+impl<'b> SetInto<nix_daemon_capnp::client_options::Builder<'b>> for ClientOptions {
+    fn set_into(
+        &self,
+        builder: &mut nix_daemon_capnp::client_options::Builder<'b>,
     ) -> capnp::Result<()> {
-        let mut builder = nix_daemon_capnp::client_options::Builder::init_pointer(builder, 0);
-        builder.set_keep_failed(input.keep_failed);
-        builder.set_keep_going(input.keep_going);
-        builder.set_try_fallback(input.try_fallback);
-        builder.set_verbosity(input.verbosity.into());
-        builder.set_max_build_jobs(input.max_build_jobs);
-        builder.set_max_silent_time(input.max_silent_time);
-        builder.set_verbose_build(input.verbose_build.into());
-        builder.set_build_cores(input.build_cores);
-        builder.set_use_substitutes(input.use_substitutes);
-        if !input.other_settings.is_empty() {
+        builder.set_keep_failed(self.keep_failed);
+        builder.set_keep_going(self.keep_going);
+        builder.set_try_fallback(self.try_fallback);
+        builder.set_verbosity(self.verbosity.into());
+        builder.set_max_build_jobs(self.max_build_jobs);
+        builder.set_max_silent_time(self.max_silent_time);
+        builder.set_verbose_build(self.verbose_build.into());
+        builder.set_build_cores(self.build_cores);
+        builder.set_use_substitutes(self.use_substitutes);
+        if !self.other_settings.is_empty() {
             let other = builder.reborrow().init_other_settings();
-            let mut entries = other.init_entries(input.other_settings.len() as u32);
-            for (index, (k, v)) in input.other_settings.iter().enumerate() {
+            let mut entries = other.init_entries(self.other_settings.len() as u32);
+            for (index, (k, v)) in self.other_settings.iter().enumerate() {
                 let mut entry = entries.reborrow().get(index as u32);
                 entry.set_key(k)?;
                 entry.set_value(&v[..])?;
@@ -148,50 +122,27 @@ impl<'r> ReadFrom<nix_daemon_capnp::client_options::Reader<'r>> for ClientOption
     }
 }
 
-impl<'b> BuildFrom<BuildResult> for nix_daemon_capnp::build_result::Builder<'b> {
-    fn build_from(&mut self, input: &BuildResult) -> Result<(), Error> {
-        self.set_status(input.status.into());
-        self.set_error_msg(input.error_msg.as_ref());
-        self.set_times_built(input.times_built);
-        self.set_is_non_deterministic(input.is_non_deterministic);
-        self.set_start_time(input.start_time);
-        self.set_stop_time(input.stop_time);
-        if let Some(cpu_user) = input.cpu_user.as_ref() {
-            self.set_cpu_user((*cpu_user).into());
-        }
-        if let Some(cpu_system) = input.cpu_system.as_ref() {
-            self.set_cpu_system((*cpu_system).into());
-        }
-        self.reborrow()
-            .init_built_outputs()
-            .build_from(&input.built_outputs)?;
-        Ok(())
-    }
-}
-
-impl SetterInput<nix_daemon_capnp::build_result::Owned> for &'_ BuildResult {
-    fn set_pointer_builder(
-        builder: capnp::private::layout::PointerBuilder<'_>,
-        input: Self,
-        _canonicalize: bool,
+impl<'b> SetInto<nix_daemon_capnp::build_result::Builder<'b>> for BuildResult {
+    fn set_into(
+        &self,
+        builder: &mut nix_daemon_capnp::build_result::Builder<'b>,
     ) -> capnp::Result<()> {
-        let mut builder = nix_daemon_capnp::build_result::Builder::init_pointer(builder, 0);
-        builder.set_status(input.status.into());
-        builder.set_error_msg(input.error_msg.as_ref());
-        builder.set_times_built(input.times_built);
-        builder.set_is_non_deterministic(input.is_non_deterministic);
-        builder.set_start_time(input.start_time);
-        builder.set_stop_time(input.stop_time);
-        if let Some(cpu_user) = input.cpu_user.as_ref() {
+        builder.set_status(self.status.into());
+        builder.set_error_msg(self.error_msg.as_ref());
+        builder.set_times_built(self.times_built);
+        builder.set_is_non_deterministic(self.is_non_deterministic);
+        builder.set_start_time(self.start_time);
+        builder.set_stop_time(self.stop_time);
+        if let Some(cpu_user) = self.cpu_user.as_ref() {
             builder.set_cpu_user((*cpu_user).into());
         }
-        if let Some(cpu_system) = input.cpu_system.as_ref() {
+        if let Some(cpu_system) = self.cpu_system.as_ref() {
             builder.set_cpu_system((*cpu_system).into());
         }
         builder
             .reborrow()
             .init_built_outputs()
-            .build_from(&input.built_outputs)?;
+            .build_from(&self.built_outputs)?;
         Ok(())
     }
 }
@@ -229,23 +180,13 @@ impl<'r> ReadFrom<nix_daemon_capnp::build_result::Reader<'r>> for BuildResult {
     }
 }
 
-impl<'b> BuildFrom<KeyedBuildResult> for nix_daemon_capnp::keyed_build_result::Builder<'b> {
-    fn build_from(&mut self, input: &KeyedBuildResult) -> Result<(), Error> {
-        self.set_path(&input.path)?;
-        self.set_result(&input.result)?;
-        Ok(())
-    }
-}
-
-impl SetterInput<nix_daemon_capnp::keyed_build_result::Owned> for &'_ KeyedBuildResult {
-    fn set_pointer_builder(
-        builder: capnp::private::layout::PointerBuilder<'_>,
-        input: Self,
-        _canonicalize: bool,
+impl<'b> SetInto<nix_daemon_capnp::keyed_build_result::Builder<'b>> for KeyedBuildResult {
+    fn set_into(
+        &self,
+        builder: &mut nix_daemon_capnp::keyed_build_result::Builder<'b>,
     ) -> capnp::Result<()> {
-        let mut builder = nix_daemon_capnp::keyed_build_result::Builder::init_pointer(builder, 0);
-        builder.set_path(&input.path)?;
-        builder.set_result(&input.result)?;
+        builder.reborrow().init_path().build_from(&self.path)?;
+        builder.reborrow().init_result().build_from(&self.result)?;
         Ok(())
     }
 }
@@ -258,44 +199,25 @@ impl<'r> ReadFrom<nix_daemon_capnp::keyed_build_result::Reader<'r>> for KeyedBui
     }
 }
 
-impl<'b> BuildFrom<QueryMissingResult> for nix_daemon_capnp::query_missing_result::Builder<'b> {
-    fn build_from(&mut self, input: &QueryMissingResult) -> Result<(), Error> {
-        self.reborrow()
-            .init_unknown(input.unknown.len() as u32)
-            .build_from(&input.unknown)?;
-        self.reborrow()
-            .init_will_build(input.will_build.len() as u32)
-            .build_from(&input.will_build)?;
-        self.reborrow()
-            .init_will_substitute(input.will_substitute.len() as u32)
-            .build_from(&input.will_substitute)?;
-        self.set_download_size(input.download_size);
-        self.set_nar_size(input.nar_size);
-        Ok(())
-    }
-}
-
-impl SetterInput<nix_daemon_capnp::query_missing_result::Owned> for &'_ QueryMissingResult {
-    fn set_pointer_builder(
-        builder: capnp::private::layout::PointerBuilder<'_>,
-        input: Self,
-        _canonicalize: bool,
+impl<'b> SetInto<nix_daemon_capnp::query_missing_result::Builder<'b>> for QueryMissingResult {
+    fn set_into(
+        &self,
+        builder: &mut nix_daemon_capnp::query_missing_result::Builder<'b>,
     ) -> capnp::Result<()> {
-        let mut builder = nix_daemon_capnp::query_missing_result::Builder::init_pointer(builder, 0);
         builder
             .reborrow()
-            .init_unknown(input.unknown.len() as u32)
-            .build_from(&input.unknown)?;
+            .init_unknown(self.unknown.len() as u32)
+            .build_from(&self.unknown)?;
         builder
             .reborrow()
-            .init_will_build(input.will_build.len() as u32)
-            .build_from(&input.will_build)?;
+            .init_will_build(self.will_build.len() as u32)
+            .build_from(&self.will_build)?;
         builder
             .reborrow()
-            .init_will_substitute(input.will_substitute.len() as u32)
-            .build_from(&input.will_substitute)?;
-        builder.set_download_size(input.download_size);
-        builder.set_nar_size(input.nar_size);
+            .init_will_substitute(self.will_substitute.len() as u32)
+            .build_from(&self.will_substitute)?;
+        builder.set_download_size(self.download_size);
+        builder.set_nar_size(self.nar_size);
         Ok(())
     }
 }
@@ -319,55 +241,28 @@ impl<'r> ReadFrom<nix_daemon_capnp::query_missing_result::Reader<'r>> for QueryM
     }
 }
 
-impl<'b> BuildFrom<UnkeyedValidPathInfo>
-    for nix_daemon_capnp::unkeyed_valid_path_info::Builder<'b>
-{
-    fn build_from(&mut self, input: &UnkeyedValidPathInfo) -> Result<(), Error> {
-        if let Some(deriver) = input.deriver.as_ref() {
-            self.set_deriver(deriver)?;
-        }
-        self.set_nar_hash(input.nar_hash.digest_bytes());
-        self.reborrow()
-            .init_references(input.references.len() as u32)
-            .build_from(&input.references)?;
-        self.set_registration_time(input.registration_time);
-        self.set_nar_size(input.nar_size);
-        self.set_ultimate(input.ultimate);
-        self.reborrow()
-            .init_signatures(input.signatures.len() as u32)
-            .build_from(&input.signatures)?;
-        if let Some(ca) = input.ca.as_ref() {
-            self.set_ca(ca)?;
-        }
-        Ok(())
-    }
-}
-
-impl SetterInput<nix_daemon_capnp::unkeyed_valid_path_info::Owned> for &'_ UnkeyedValidPathInfo {
-    fn set_pointer_builder(
-        builder: capnp::private::layout::PointerBuilder<'_>,
-        input: Self,
-        _canonicalize: bool,
+impl<'b> SetInto<nix_daemon_capnp::unkeyed_valid_path_info::Builder<'b>> for UnkeyedValidPathInfo {
+    fn set_into(
+        &self,
+        builder: &mut nix_daemon_capnp::unkeyed_valid_path_info::Builder<'b>,
     ) -> capnp::Result<()> {
-        let mut builder =
-            nix_daemon_capnp::unkeyed_valid_path_info::Builder::init_pointer(builder, 0);
-        if let Some(deriver) = input.deriver.as_ref() {
-            builder.set_deriver(deriver)?;
+        if let Some(deriver) = self.deriver.as_ref() {
+            builder.reborrow().init_deriver().build_from(deriver)?;
         }
-        builder.set_nar_hash(input.nar_hash.digest_bytes());
+        builder.set_nar_hash(self.nar_hash.digest_bytes());
         builder
             .reborrow()
-            .init_references(input.references.len() as u32)
-            .build_from(&input.references)?;
-        builder.set_registration_time(input.registration_time);
-        builder.set_nar_size(input.nar_size);
-        builder.set_ultimate(input.ultimate);
+            .init_references(self.references.len() as u32)
+            .build_from(&self.references)?;
+        builder.set_registration_time(self.registration_time);
+        builder.set_nar_size(self.nar_size);
+        builder.set_ultimate(self.ultimate);
         builder
             .reborrow()
-            .init_signatures(input.signatures.len() as u32)
-            .build_from(&input.signatures)?;
-        if let Some(ca) = input.ca.as_ref() {
-            builder.set_ca(ca)?;
+            .init_signatures(self.signatures.len() as u32)
+            .build_from(&self.signatures)?;
+        if let Some(ca) = self.ca.as_ref() {
+            builder.reborrow().init_ca().build_from(ca)?;
         }
         Ok(())
     }
@@ -382,7 +277,8 @@ impl<'r> ReadFrom<nix_daemon_capnp::unkeyed_valid_path_info::Reader<'r>> for Unk
         } else {
             None
         };
-        let nar_hash = reader.get_nar_hash()?.read_into()?;
+        let nar_hash = NarHash::from_slice(reader.get_nar_hash()?)
+            .map_err(|err| Error::failed(err.to_string()))?;
         let references = reader.get_references()?.read_into()?;
         let registration_time = reader.get_registration_time();
         let nar_size = reader.get_nar_size();
@@ -406,23 +302,13 @@ impl<'r> ReadFrom<nix_daemon_capnp::unkeyed_valid_path_info::Reader<'r>> for Unk
     }
 }
 
-impl<'b> BuildFrom<ValidPathInfo> for nix_daemon_capnp::valid_path_info::Builder<'b> {
-    fn build_from(&mut self, input: &ValidPathInfo) -> Result<(), Error> {
-        self.set_path(&input.path)?;
-        self.set_info(&input.info)?;
-        Ok(())
-    }
-}
-
-impl SetterInput<nix_daemon_capnp::valid_path_info::Owned> for &'_ ValidPathInfo {
-    fn set_pointer_builder(
-        builder: capnp::private::layout::PointerBuilder<'_>,
-        input: Self,
-        _canonicalize: bool,
+impl<'b> SetInto<nix_daemon_capnp::valid_path_info::Builder<'b>> for ValidPathInfo {
+    fn set_into(
+        &self,
+        builder: &mut nix_daemon_capnp::valid_path_info::Builder<'b>,
     ) -> capnp::Result<()> {
-        let mut builder = nix_daemon_capnp::valid_path_info::Builder::init_pointer(builder, 0);
-        builder.set_path(&input.path)?;
-        builder.set_info(&input.info)?;
+        builder.reborrow().init_path().build_from(&self.path)?;
+        builder.reborrow().init_info().build_from(&self.info)?;
         Ok(())
     }
 }
@@ -442,7 +328,8 @@ impl<'r> ReadFrom<store_path_info::Reader<'r>> for UnkeyedValidPathInfo {
         } else {
             None
         };
-        let nar_hash = reader.get_nar_hash()?.read_into()?;
+        let nar_hash = NarHash::from_slice(reader.get_nar_hash()?)
+            .map_err(|err| Error::failed(err.to_string()))?;
         let references = reader.get_references()?.read_into()?;
         let registration_time = reader.get_registration_time();
         let nar_size = reader.get_nar_size();

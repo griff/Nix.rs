@@ -7,7 +7,7 @@ edition = "2024"
 bstr = { workspace = true }
 bytes = { workspace = true }
 futures = { workspace = true }
-nixrs = { path = "../nixrs", features = [ "daemon", "test" ] }
+nixrs = { path = "../../nixrs", features = [ "daemon", "test" ] }
 pretty_assertions = { workspace = true }
 proptest = { workspace = true }
 rstest = { workspace = true }

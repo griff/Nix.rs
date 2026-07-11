@@ -1,7 +1,5 @@
-use capnp::{
-    Error,
-    traits::{FromPointerBuilder as _, SetterInput},
-};
+use capnp::Error;
+use capnp_convert::{BuildFrom as _, ReadFrom, ReadInto as _, SetInto};
 use nixrs::{
     ByteString,
     log::{
@@ -10,10 +8,7 @@ use nixrs::{
     },
 };
 
-use crate::{
-    capnp::nix_daemon_capnp,
-    convert::{BuildFrom, ReadFrom, ReadInto as _},
-};
+use crate::capnp::nix_daemon_capnp;
 
 impl From<Verbosity> for nix_daemon_capnp::Verbosity {
     fn from(value: Verbosity) -> Self {
@@ -119,45 +114,26 @@ impl From<nix_daemon_capnp::ResultType> for ResultType {
     }
 }
 
-impl<'b> BuildFrom<LogMessage> for nix_daemon_capnp::log_message::Builder<'b> {
-    fn build_from(&mut self, input: &LogMessage) -> Result<(), Error> {
-        match input {
-            LogMessage::Message(msg) => {
-                self.reborrow().init_message().build_from(msg)?;
-            }
-            LogMessage::StartActivity(activity) => {
-                self.reborrow().init_start_activity().build_from(activity)?;
-            }
-            LogMessage::StopActivity(act) => {
-                self.reborrow().init_stop_activity().set_id(act.id);
-            }
-            LogMessage::Result(result) => {
-                self.reborrow().init_result().build_from(result)?;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl SetterInput<nix_daemon_capnp::log_message::Owned> for &'_ LogMessage {
-    fn set_pointer_builder(
-        builder: capnp::private::layout::PointerBuilder<'_>,
-        input: Self,
-        _canonicalize: bool,
+impl<'b> SetInto<nix_daemon_capnp::log_message::Builder<'b>> for LogMessage {
+    fn set_into(
+        &self,
+        builder: &mut nix_daemon_capnp::log_message::Builder<'b>,
     ) -> capnp::Result<()> {
-        let builder = nix_daemon_capnp::log_message::Builder::init_pointer(builder, 0);
-        match input {
+        match self {
             LogMessage::Message(msg) => {
-                builder.init_message().build_from(msg)?;
+                builder.reborrow().init_message().build_from(msg)?;
             }
             LogMessage::StartActivity(activity) => {
-                builder.init_start_activity().build_from(activity)?;
+                builder
+                    .reborrow()
+                    .init_start_activity()
+                    .build_from(activity)?;
             }
             LogMessage::StopActivity(act) => {
-                builder.init_stop_activity().set_id(act.id);
+                builder.reborrow().init_stop_activity().set_id(act.id);
             }
             LogMessage::Result(result) => {
-                builder.init_result().build_from(result)?;
+                builder.reborrow().init_result().build_from(result)?;
             }
         }
         Ok(())
@@ -174,7 +150,8 @@ impl<'r> ReadFrom<nix_daemon_capnp::log_message::Reader<'r>> for LogMessage {
                 Ok(LogMessage::StartActivity(act.read_into()?))
             }
             nix_daemon_capnp::log_message::Which::StopActivity(act) => {
-                Ok(LogMessage::StopActivity(StopActivity { id: act.get_id() }))
+                let id = act.get_id();
+                Ok(LogMessage::StopActivity(StopActivity { id }))
             }
             nix_daemon_capnp::log_message::Which::Result(res) => {
                 Ok(LogMessage::Result(res.read_into()?))
@@ -183,23 +160,13 @@ impl<'r> ReadFrom<nix_daemon_capnp::log_message::Reader<'r>> for LogMessage {
     }
 }
 
-impl<'b> BuildFrom<Message> for nix_daemon_capnp::log_message::message::Builder<'b> {
-    fn build_from(&mut self, input: &Message) -> Result<(), Error> {
-        self.set_level(input.level.into());
-        self.set_text(input.text.as_ref());
-        Ok(())
-    }
-}
-
-impl SetterInput<nix_daemon_capnp::log_message::message::Owned> for &'_ Message {
-    fn set_pointer_builder(
-        builder: capnp::private::layout::PointerBuilder<'_>,
-        input: Self,
-        _canonicalize: bool,
+impl<'b> SetInto<nix_daemon_capnp::log_message::message::Builder<'b>> for Message {
+    fn set_into(
+        &self,
+        builder: &mut nix_daemon_capnp::log_message::message::Builder<'b>,
     ) -> capnp::Result<()> {
-        let mut builder = nix_daemon_capnp::log_message::message::Builder::init_pointer(builder, 0);
-        builder.set_level(input.level.into());
-        builder.set_text(input.text.as_ref());
+        builder.set_level(self.level.into());
+        builder.set_text(self.text.as_ref());
         Ok(())
     }
 }
@@ -214,36 +181,20 @@ impl<'r> ReadFrom<nix_daemon_capnp::log_message::message::Reader<'r>> for Messag
     }
 }
 
-impl<'b> BuildFrom<Activity> for nix_daemon_capnp::log_message::start_activity::Builder<'b> {
-    fn build_from(&mut self, input: &Activity) -> Result<(), Error> {
-        self.set_id(input.id);
-        self.set_activity_type(input.activity_type.into());
-        self.set_level(input.level.into());
-        self.set_text(input.text.as_ref());
-        self.set_parent(input.parent);
-        self.reborrow()
-            .init_fields(input.fields.len() as u32)
-            .build_from(&input.fields)?;
-        Ok(())
-    }
-}
-
-impl SetterInput<nix_daemon_capnp::log_message::start_activity::Owned> for &'_ Activity {
-    fn set_pointer_builder(
-        builder: capnp::private::layout::PointerBuilder<'_>,
-        input: Self,
-        _canonicalize: bool,
+impl<'b> SetInto<nix_daemon_capnp::log_message::start_activity::Builder<'b>> for Activity {
+    fn set_into(
+        &self,
+        builder: &mut nix_daemon_capnp::log_message::start_activity::Builder<'b>,
     ) -> capnp::Result<()> {
-        let mut builder =
-            nix_daemon_capnp::log_message::start_activity::Builder::init_pointer(builder, 0);
-        builder.set_id(input.id);
-        builder.set_activity_type(input.activity_type.into());
-        builder.set_level(input.level.into());
-        builder.set_text(input.text.as_ref());
-        builder.set_parent(input.parent);
+        builder.set_id(self.id);
+        builder.set_activity_type(self.activity_type.into());
+        builder.set_level(self.level.into());
+        builder.set_text(self.text.as_ref());
+        builder.set_parent(self.parent);
         builder
-            .init_fields(input.fields.len() as u32)
-            .build_from(&input.fields)?;
+            .reborrow()
+            .init_fields(self.fields.len() as u32)
+            .build_from(&self.fields)?;
         Ok(())
     }
 }
@@ -269,29 +220,17 @@ impl<'r> ReadFrom<nix_daemon_capnp::log_message::start_activity::Reader<'r>> for
     }
 }
 
-impl<'b> BuildFrom<ActivityResult> for nix_daemon_capnp::log_message::result::Builder<'b> {
-    fn build_from(&mut self, input: &ActivityResult) -> Result<(), Error> {
-        self.set_id(input.id);
-        self.set_result_type(input.result_type.into());
-        self.reborrow()
-            .init_fields(input.fields.len() as u32)
-            .build_from(&input.fields)?;
-        Ok(())
-    }
-}
-
-impl SetterInput<nix_daemon_capnp::log_message::result::Owned> for &'_ ActivityResult {
-    fn set_pointer_builder(
-        builder: capnp::private::layout::PointerBuilder<'_>,
-        input: Self,
-        _canonicalize: bool,
+impl<'b> SetInto<nix_daemon_capnp::log_message::result::Builder<'b>> for ActivityResult {
+    fn set_into(
+        &self,
+        builder: &mut nix_daemon_capnp::log_message::result::Builder<'b>,
     ) -> capnp::Result<()> {
-        let mut builder = nix_daemon_capnp::log_message::result::Builder::init_pointer(builder, 0);
-        builder.set_id(input.id);
-        builder.set_result_type(input.result_type.into());
+        builder.set_id(self.id);
+        builder.set_result_type(self.result_type.into());
         builder
-            .init_fields(input.fields.len() as u32)
-            .build_from(&input.fields)?;
+            .reborrow()
+            .init_fields(self.fields.len() as u32)
+            .build_from(&self.fields)?;
         Ok(())
     }
 }
@@ -309,15 +248,12 @@ impl<'r> ReadFrom<nix_daemon_capnp::log_message::result::Reader<'r>> for Activit
     }
 }
 
-impl SetterInput<nix_daemon_capnp::log_message::stop_activity::Owned> for &'_ StopActivity {
-    fn set_pointer_builder(
-        builder: capnp::private::layout::PointerBuilder<'_>,
-        input: Self,
-        _canonicalize: bool,
+impl<'b> SetInto<nix_daemon_capnp::log_message::stop_activity::Builder<'b>> for StopActivity {
+    fn set_into(
+        &self,
+        builder: &mut nix_daemon_capnp::log_message::stop_activity::Builder<'b>,
     ) -> capnp::Result<()> {
-        let mut builder =
-            nix_daemon_capnp::log_message::stop_activity::Builder::init_pointer(builder, 0);
-        builder.set_id(input.id);
+        builder.set_id(self.id);
         Ok(())
     }
 }
@@ -331,24 +267,9 @@ impl<'r> ReadFrom<nix_daemon_capnp::log_message::stop_activity::Reader<'r>> for 
     }
 }
 
-impl<'b> BuildFrom<Field> for nix_daemon_capnp::field::Builder<'b> {
-    fn build_from(&mut self, input: &Field) -> Result<(), Error> {
-        match input {
-            Field::Int(value) => self.set_int(*value),
-            Field::String(value) => self.set_string(value.as_ref()),
-        }
-        Ok(())
-    }
-}
-
-impl SetterInput<nix_daemon_capnp::field::Owned> for &'_ Field {
-    fn set_pointer_builder(
-        builder: capnp::private::layout::PointerBuilder<'_>,
-        input: Self,
-        _canonicalize: bool,
-    ) -> capnp::Result<()> {
-        let mut builder = nix_daemon_capnp::field::Builder::init_pointer(builder, 0);
-        match input {
+impl<'b> SetInto<nix_daemon_capnp::field::Builder<'b>> for Field {
+    fn set_into(&self, builder: &mut nix_daemon_capnp::field::Builder<'b>) -> capnp::Result<()> {
+        match self {
             Field::Int(value) => builder.set_int(*value),
             Field::String(value) => builder.set_string(value.as_ref()),
         }

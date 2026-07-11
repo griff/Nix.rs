@@ -3,8 +3,9 @@ use std::pin::{Pin, pin};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, ready};
 
-use ::capnp::Error;
-use ::capnp::capability::Promise;
+use capnp::Error;
+use capnp::capability::Promise;
+use capnp_convert::{BuildFrom as _, ReadInto as _};
 use capnp_rpc::new_client;
 use capnp_rpc_tokio::stream::{ByteStreamWrap, ByteStreamWriter};
 use futures::channel::{mpsc, oneshot};
@@ -20,7 +21,6 @@ use tracing::{debug, trace};
 use crate::capnp::nix_daemon_capnp::{
     add_multiple_stream, has_store_dir, logged_nix_daemon, logger, nix_daemon,
 };
-use crate::convert::{BuildFrom, ReadInto};
 use crate::{DEFAULT_BUF_SIZE, from_error};
 
 pub struct NoopLogger;
@@ -376,13 +376,14 @@ where
         let mut this = self.clone();
         Promise::from_future(async move {
             let p = params.get()?;
-            let hash: StorePathHash = p.get_hash()?.read_into()?;
+            let hash = StorePathHash::try_from(p.get_hash()?)
+                .map_err(|err| Error::failed(err.to_string()))?;
             let res = this
                 .logger
                 .process_logs(this.store.query_path_from_hash_part(&hash))
                 .await?;
             if let Some(path) = res {
-                result.get().set_path(&path)?;
+                result.get().init_path().build_from(&path)?;
             }
             Ok(())
         })
@@ -432,7 +433,7 @@ where
                 .logger
                 .process_logs(this.store.add_perm_root(&path, &gc_root))
                 .await?;
-            result.get().set_path(&*res);
+            result.get().set_path(&res);
             Ok(())
         })
     }

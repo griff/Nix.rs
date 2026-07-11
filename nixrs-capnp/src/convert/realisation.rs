@@ -1,27 +1,19 @@
 use capnp::Error;
-use capnp::traits::{FromPointerBuilder, SetterInput};
+use capnp_convert::{BuildFrom as _, ReadFrom, ReadInto as _, SetInto};
 use nixrs::realisation::{DrvOutput, Realisation};
 
 use crate::capnp::nix_daemon_capnp;
-use crate::convert::{BuildFrom, ReadFrom, ReadInto};
 
-impl<'b> BuildFrom<DrvOutput> for nix_daemon_capnp::drv_output::Builder<'b> {
-    fn build_from(&mut self, input: &DrvOutput) -> Result<(), Error> {
-        self.set_drv_hash(&input.drv_hash)?;
-        self.set_output_name(&input.output_name);
-        Ok(())
-    }
-}
-
-impl SetterInput<nix_daemon_capnp::drv_output::Owned> for &'_ DrvOutput {
-    fn set_pointer_builder(
-        builder: capnp::private::layout::PointerBuilder<'_>,
-        input: Self,
-        _canonicalize: bool,
+impl<'b> SetInto<nix_daemon_capnp::drv_output::Builder<'b>> for DrvOutput {
+    fn set_into(
+        &self,
+        builder: &mut nix_daemon_capnp::drv_output::Builder<'b>,
     ) -> capnp::Result<()> {
-        let mut builder = nix_daemon_capnp::drv_output::Builder::init_pointer(builder, 0);
-        builder.set_drv_hash(&input.drv_hash)?;
-        builder.set_output_name(&input.output_name);
+        builder
+            .reborrow()
+            .init_drv_hash()
+            .build_from(&self.drv_hash)?;
+        builder.set_output_name(&self.output_name);
         Ok(())
     }
 }
@@ -37,37 +29,24 @@ impl<'r> ReadFrom<nix_daemon_capnp::drv_output::Reader<'r>> for DrvOutput {
     }
 }
 
-impl<'b> BuildFrom<Realisation> for nix_daemon_capnp::realisation::Builder<'b> {
-    fn build_from(&mut self, input: &Realisation) -> Result<(), Error> {
-        self.set_id(&input.id)?;
-        self.set_out_path(&input.out_path)?;
-        self.reborrow()
-            .init_signatures(input.signatures.len() as u32)
-            .build_from(&input.signatures)?;
-        self.reborrow()
-            .init_dependent_realisations()
-            .build_from(&input.dependent_realisations)?;
-        Ok(())
-    }
-}
-
-impl SetterInput<nix_daemon_capnp::realisation::Owned> for &'_ Realisation {
-    fn set_pointer_builder(
-        builder: capnp::private::layout::PointerBuilder<'_>,
-        input: Self,
-        _canonicalize: bool,
+impl<'b> SetInto<nix_daemon_capnp::realisation::Builder<'b>> for Realisation {
+    fn set_into(
+        &self,
+        builder: &mut nix_daemon_capnp::realisation::Builder<'b>,
     ) -> capnp::Result<()> {
-        let mut builder = nix_daemon_capnp::realisation::Builder::init_pointer(builder, 0);
-        builder.set_id(&input.id)?;
-        builder.set_out_path(&input.out_path)?;
+        builder.reborrow().init_id().build_from(&self.id)?;
         builder
             .reborrow()
-            .init_signatures(input.signatures.len() as u32)
-            .build_from(&input.signatures)?;
+            .init_out_path()
+            .build_from(&self.out_path)?;
+        builder
+            .reborrow()
+            .init_signatures(self.signatures.len() as u32)
+            .build_from(&self.signatures)?;
         builder
             .reborrow()
             .init_dependent_realisations()
-            .build_from(&input.dependent_realisations)?;
+            .build_from(&self.dependent_realisations)?;
         Ok(())
     }
 }

@@ -88,7 +88,7 @@ where
                 } => {
                     let mut req = handler.file_request();
                     let mut b = req.get();
-                    b.set_name(&*name);
+                    b.set_name(&name);
                     b.set_executable(executable);
                     b.set_size(size);
                     let res = req.send().promise.await?;
@@ -103,13 +103,13 @@ where
                 NarEvent::Symlink { name, target } => {
                     let mut req = handler.symlink_request();
                     let mut b = req.get();
-                    b.set_name(&*name);
-                    b.set_target(&*target);
+                    b.set_name(&name);
+                    b.set_target(&target);
                     req.send().await?;
                 }
                 NarEvent::StartDirectory { name } => {
                     let mut req = handler.start_directory_request();
-                    req.get().set_name(&*name);
+                    req.get().set_name(&name);
                     req.send().await?;
                 }
                 NarEvent::EndDirectory => {

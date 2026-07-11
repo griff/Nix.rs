@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use capnp::Error as CapError;
 use capnp::capability::Promise;
-use capnp::traits::{FromPointerBuilder as _, SetterInput};
+use capnp_convert::{BuildFrom as _, ReadFrom, ReadInto as _, SetInto};
 use capnp_rpc::{new_client, new_future_client, pry};
 use futures::TryFutureExt as _;
 use futures::future::{select_all, try_join, try_join_all};
@@ -23,7 +23,6 @@ use crate::capnp::nix_types_capnp;
 use crate::capnp::nixrs_capnp::{
     lookup_params, remote_store_path, store_path_access, store_path_store,
 };
-use crate::convert::{BuildFrom, ReadFrom, ReadInto};
 use crate::nixrs::DaemonNar;
 
 #[derive(Clone)]
@@ -94,29 +93,22 @@ impl Borrow<StorePath> for RemoteStorePath {
     }
 }
 
-impl<'b> BuildFrom<RemoteStorePath> for nix_types_capnp::store_path::Builder<'b> {
-    fn build_from(&mut self, input: &RemoteStorePath) -> Result<(), CapError> {
-        self.build_from(&*input.store_path)
-    }
-}
-
-impl<'b> BuildFrom<RemoteStorePath> for remote_store_path::Builder<'b> {
-    fn build_from(&mut self, input: &RemoteStorePath) -> Result<(), CapError> {
-        self.set_store_path(&*input.store_path)?;
-        self.set_access(input.client.clone());
-        Ok(())
-    }
-}
-
-impl SetterInput<remote_store_path::Owned> for &'_ RemoteStorePath {
-    fn set_pointer_builder(
-        builder: capnp::private::layout::PointerBuilder<'_>,
-        input: Self,
-        _canonicalize: bool,
+impl<'b> SetInto<nix_types_capnp::store_path::Builder<'b>> for RemoteStorePath {
+    fn set_into(
+        &self,
+        builder: &mut nix_types_capnp::store_path::Builder<'b>,
     ) -> capnp::Result<()> {
-        let mut builder = remote_store_path::Builder::init_pointer(builder, 0);
-        builder.set_store_path(&*input.store_path)?;
-        builder.set_access(input.client.clone());
+        builder.build_from(&*self.store_path)
+    }
+}
+
+impl<'b> SetInto<remote_store_path::Builder<'b>> for RemoteStorePath {
+    fn set_into(&self, builder: &mut remote_store_path::Builder<'b>) -> capnp::Result<()> {
+        builder
+            .reborrow()
+            .init_store_path()
+            .build_from(&*self.store_path)?;
+        builder.set_access(self.client.clone());
         Ok(())
     }
 }
@@ -155,7 +147,10 @@ impl RemoteStorePath {
         client: &store_path_store::Client,
     ) -> capnp::Result<Self> {
         let mut req = client.lookup_request();
-        req.get().init_params().set_by_store_path(&store_path)?;
+        req.get()
+            .init_params()
+            .init_by_store_path()
+            .build_from(&store_path)?;
         let client = req.send().pipeline.get_path().get_access();
         let store_path = Rc::new(store_path);
         Ok(RemoteStorePath { store_path, client })
@@ -166,7 +161,10 @@ impl RemoteStorePath {
         client: &store_path_store::Client,
     ) -> capnp::Result<Option<Self>> {
         let mut req = client.lookup_request();
-        req.get().init_params().set_by_store_path(&store_path)?;
+        req.get()
+            .init_params()
+            .init_by_store_path()
+            .build_from(&store_path)?;
         let res = req.send().promise.await?;
         let r = res.get()?.get_path()?;
         if r.has_access() {
@@ -196,6 +194,12 @@ pub struct RemoteStorePathSet(BTreeSet<RemoteStorePath>);
 impl RemoteStorePathSet {
     pub fn new() -> Self {
         Self::default()
+    }
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
     pub async fn insert_closure(&mut self, store_path: RemoteStorePath) -> capnp::Result<bool> {
         if !self.contains(&store_path) {
@@ -280,7 +284,7 @@ impl RemoteStorePathSet {
         let mut res = Vec::with_capacity(self.len());
         for path in self.iter() {
             let mut req = receiver.add_request();
-            req.get().set_path(path)?;
+            req.get().init_path().build_from(path)?;
             res.push(req.send().promise);
         }
         try_join_all(res).await?;
@@ -302,17 +306,23 @@ impl DerefMut for RemoteStorePathSet {
     }
 }
 
-impl BuildFrom<RemoteStorePathSet> for capnp::struct_list::Builder<'_, remote_store_path::Owned> {
-    fn build_from(&mut self, input: &RemoteStorePathSet) -> Result<(), CapError> {
-        self.build_from(&input.0)
+impl SetInto<capnp::struct_list::Builder<'_, remote_store_path::Owned>> for RemoteStorePathSet {
+    fn set_into(
+        &self,
+        builder: &mut capnp::struct_list::Builder<'_, remote_store_path::Owned>,
+    ) -> capnp::Result<()> {
+        builder.build_from(&self.0)
     }
 }
 
-impl BuildFrom<RemoteStorePathSet>
-    for capnp::struct_list::Builder<'_, nix_types_capnp::store_path::Owned>
+impl SetInto<capnp::struct_list::Builder<'_, nix_types_capnp::store_path::Owned>>
+    for RemoteStorePathSet
 {
-    fn build_from(&mut self, input: &RemoteStorePathSet) -> Result<(), CapError> {
-        self.build_from(&input.0)
+    fn set_into(
+        &self,
+        builder: &mut capnp::struct_list::Builder<'_, nix_types_capnp::store_path::Owned>,
+    ) -> capnp::Result<()> {
+        builder.build_from(&self.0)
     }
 }
 
@@ -340,7 +350,7 @@ impl DaemonStorePathAccess {
             let store_path = self.store_path.clone();
 
             spawn_local(async move {
-                if let Err(err) = req.get().set_path(&*store_path) {
+                if let Err(err) = req.get().init_path().build_from(&*store_path) {
                     let _ = sender.send(Err(err));
                     return;
                 }
@@ -399,7 +409,7 @@ impl store_path_access::Server for DaemonStorePathAccess {
         _params: store_path_access::GetStorePathParams,
         mut result: store_path_access::GetStorePathResults,
     ) -> Promise<(), CapError> {
-        pry!(result.get().set_path(&*self.store_path));
+        pry!(result.get().init_path().build_from(&*self.store_path));
         Promise::ok(())
     }
 
@@ -412,7 +422,7 @@ impl store_path_access::Server for DaemonStorePathAccess {
         self.with_info(move |info| {
             if let Some(deriver) = info.deriver.as_ref() {
                 let remote_store_path = RemoteStorePath::daemon_path(store, deriver.clone());
-                result.get().set_deriver(&remote_store_path)?;
+                result.get().init_deriver().build_from(&remote_store_path)?;
             }
             Ok(())
         })
@@ -500,7 +510,10 @@ impl store_path_access::Server for DaemonStorePathAccess {
             if let Some(deriver) = info.deriver.as_ref() {
                 let remote_store_path =
                     RemoteStorePath::daemon_path(store.clone(), deriver.clone());
-                builder.set_deriver(&remote_store_path)?;
+                builder
+                    .reborrow()
+                    .init_deriver()
+                    .build_from(&remote_store_path)?;
             }
             builder.set_nar_hash(info.nar_hash.digest_bytes());
             let mut b = builder
@@ -521,7 +534,7 @@ impl store_path_access::Server for DaemonStorePathAccess {
                 .init_signatures(info.signatures.len() as u32)
                 .build_from(&info.signatures)?;
             if let Some(ca) = info.ca.as_ref() {
-                builder.set_ca(ca)?;
+                builder.init_ca().build_from(ca)?;
             }
             Ok(())
         })
@@ -591,27 +604,28 @@ impl store_path_store::Server for DaemonStorePathStore {
                     let store_path = store_path?.read_into()?;
                     debug!("Lookup store path {store_path}");
                     let mut req = store.is_valid_path_request();
-                    req.get().set_path(&store_path)?;
+                    req.get().init_path().build_from(&store_path)?;
                     let resp = req.send().promise.await?;
                     if resp.get()?.get_valid() {
                         debug!("Store path {store_path} is valid");
                         let remote_store_path = RemoteStorePath::daemon_path(store, store_path);
-                        result.get().set_path(&remote_store_path)?;
+                        result.get().init_path().build_from(&remote_store_path)?;
                     } else {
                         debug!("Store path {store_path} is invalid");
                     }
                 }
                 lookup_params::Which::ByHash(hash) => {
-                    let store_hash: StorePathHash = hash?.read_into()?;
+                    let store_hash = StorePathHash::try_from(hash?)
+                        .map_err(|err| CapError::failed(err.to_string()))?;
                     debug!("Lookup store hash {store_hash}");
                     let mut req = store.query_path_from_hash_part_request();
-                    req.get().set_hash(&*store_hash);
+                    req.get().set_hash(&store_hash);
                     let resp = req.send().promise.await?;
                     let r = resp.get()?;
                     if r.has_path() {
                         let store_path: StorePath = r.get_path()?.read_into()?;
                         let remote_store_path = RemoteStorePath::daemon_path(store, store_path);
-                        result.get().set_path(&remote_store_path)?;
+                        result.get().init_path().build_from(&remote_store_path)?;
                     }
                 }
             }
@@ -676,7 +690,7 @@ impl store_path_store::Server for DaemonStorePathStore {
                     .get_info()?
                     .read_into()?;
                 let mut req = stream.add_request();
-                req.get().set_info(&info)?;
+                req.get().init_info().build_from(&info)?;
                 let res = req.send();
                 let bs = res.pipeline.get_stream();
                 let mut write = item
