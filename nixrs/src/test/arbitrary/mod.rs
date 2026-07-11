@@ -16,20 +16,16 @@ mod hash;
 pub mod helpers;
 #[cfg(not(feature = "internal"))]
 pub(crate) mod helpers;
-mod log;
+pub mod log;
 pub mod realisation;
 pub mod signature;
 pub mod store_path;
 
 pub fn arb_filename() -> impl Strategy<Value = String> {
-    "[a-zA-Z 0-9.?=+]+".prop_filter("Not cur and parent dir", |s| s != "." && s != "..")
+    "[.][a-zA-Z 0-9?=+]|[.][a-zA-Z 0-9.?=+]{2,}|[a-zA-Z 0-9?=+][a-zA-Z 0-9.?=+]*"
+        .prop_filter("Not cur and parent dir", |s| s != "." && s != "..")
 }
-/*
-pub fn arb_filename() -> impl Strategy<Value=String> {
-    "[^!/\\r\\n\u{0}\\pC]+"
-        .prop_filter("Not cur and parent dir", |s| s != "." && s != ".." )
-}
-*/
+
 pub fn arb_file_component() -> impl Strategy<Value = String> {
     "[a-zA-Z 0-9.?=+]+"
 }
@@ -41,6 +37,10 @@ prop_compose! {
         ret.push(last);
         ret
     }
+}
+
+pub fn arb_url_path() -> impl Strategy<Value = String> {
+    proptest::collection::vec(arb_filename(), 0..50).prop_map(|components| components.join("/"))
 }
 
 prop_compose! {
@@ -61,6 +61,22 @@ prop_compose! {
     {
         Duration::from_secs((secs as i64).unsigned_abs())
     }
+}
+
+pub fn arb_hostname() -> impl Strategy<Value = String> {
+    "[a-zA-Z0-9_]+"
+}
+
+pub fn arb_dns_hostname() -> impl Strategy<Value = String> {
+    proptest::collection::vec(arb_hostname(), 0..5).prop_map(|segments| segments.join("."))
+}
+
+pub fn arb_http_uri() -> impl Strategy<Value = http::Uri> {
+    // FUTUREWORK: This is very naive and could be massively improved
+    (arb_dns_hostname(), arb_url_path()).prop_filter_map("invalid url", |(host, path)| {
+        let uri_s = format!("https://{host}/{path}");
+        uri_s.parse::<http::Uri>().ok()
+    })
 }
 
 #[macro_export]

@@ -13,7 +13,9 @@ use nixrs::daemon::{
 use nixrs::derivation::{BasicDerivation, DerivationOutput};
 use nixrs::derived_path::{DerivedPath, OutputName};
 use nixrs::hash::NarHash;
-use nixrs::log::{Activity, ActivityResult, LogMessage};
+use nixrs::log::{
+    ActivityId, LogMessage, ParsedActivity, ParsedActivityResult, ParsedLogMessage, StopActivity,
+};
 use nixrs::store_path::{StoreDir, StorePath, StorePathSet};
 use nixrs::test::archive::{read_nar, test_data, write_nar};
 use nixrs::test::daemon::Operation;
@@ -55,26 +57,145 @@ async fn check_unread_fails() {
 
 #[test_log::test(tokio::test)]
 #[rstest]
-#[case::message(vec![LogMessage::message("Hello")])]
-#[case::message_cr(vec![LogMessage::message("Hello\r")])]
-#[case::message_lncr(vec![LogMessage::message("Hello\n\r")])]
-#[case::message_crln(vec![LogMessage::message("Hello\r\n")])]
-#[case::messaage_lines(vec![LogMessage::message("Lines\n  More\n   ")])]
-#[case::start_activity(vec![LogMessage::StartActivity(Activity {
-    id: 666,
+#[case::message(vec![ParsedLogMessage::message("Hello")])]
+#[case::message_cr(vec![ParsedLogMessage::message("Hello\r")])]
+#[case::message_lncr(vec![ParsedLogMessage::message("Hello\n\r")])]
+#[case::message_crln(vec![ParsedLogMessage::message("Hello\r\n")])]
+#[case::messaage_lines(vec![ParsedLogMessage::message("Lines\n  More\n   ")])]
+#[case::start_activity(vec![ParsedLogMessage::StartActivity(ParsedActivity {
+    id: ActivityId::from_u64(666),
     level: nixrs::log::Verbosity::Chatty,
     text: "Hello World".into(),
-    activity_type: nixrs::log::ActivityType::OptimiseStore,
-    fields: vec![nixrs::log::Field::Int(44), nixrs::log::Field::String("More path".into())],
-    parent: 555,
+    activity_type: nixrs::log::ParsedActivityType::OptimiseStore,
+    parent: Some(ActivityId::from_u64(555)),
+}), ParsedLogMessage::StopActivity(StopActivity {
+    id: ActivityId::from_u64(666),
 })])]
-#[case::result(vec![LogMessage::Result(ActivityResult {
-    id: 666,
-    result_type: nixrs::log::ResultType::CorruptedPath,
-    fields: vec![nixrs::log::Field::Int(44), nixrs::log::Field::String("More path".into())],
+#[case::complete_span(vec![
+    ParsedLogMessage::StartActivity(ParsedActivity {
+        id: ActivityId::from_u64(666),
+        level: nixrs::log::Verbosity::Chatty,
+        text: "Hello World".into(),
+        activity_type: nixrs::log::ParsedActivityType::OptimiseStore,
+        parent: Some(ActivityId::from_u64(555)),
+    }),
+    ParsedLogMessage::StopActivity(StopActivity {
+        id: ActivityId::from_u64(666),
+    })])]
+#[case::result(vec![
+    ParsedLogMessage::StartActivity(ParsedActivity {
+        id: ActivityId::from_u64(666),
+        level: nixrs::log::Verbosity::Chatty,
+        text: "Hello World".into(),
+        activity_type: nixrs::log::ParsedActivityType::OptimiseStore,
+        parent: Some(ActivityId::from_u64(555)),
+    }),
+    ParsedLogMessage::Result(ParsedActivityResult {
+        id: ActivityId::from_u64(666),
+        result_type: nixrs::log::ParsedResultType::CorruptedPath("/nix/store/00000000000000000000000000000000-_".parse().unwrap()),
+    }),
+    ParsedLogMessage::StopActivity(StopActivity {
+        id: ActivityId::from_u64(666),
+    })
+    ])]
+#[case::missing_nested_stop(vec![
+    ParsedLogMessage::StartActivity(ParsedActivity {
+        id: ActivityId::from_u64(5968978765494741651),
+        level: nixrs::log::Verbosity::Error,
+        parent: None,
+        text: "".into(),
+        activity_type: nixrs::log::ParsedActivityType::Unknown,
+    }),
+    ParsedLogMessage::StartActivity(ParsedActivity {
+        id: ActivityId::from_u64(12443509800820621021),
+        level: nixrs::log::Verbosity::Error,
+        parent: Some(ActivityId::from_u64(5968978765494741651)),
+        text: "".into(),
+        activity_type: nixrs::log::ParsedActivityType::Unknown,
+    }),
+    ParsedLogMessage::StopActivity(StopActivity {
+        id: ActivityId::from_u64(12443509800820621021),
+    }),
+    ParsedLogMessage::StopActivity(StopActivity {
+        id: ActivityId::from_u64(5968978765494741651),
+    }),
+    ])]
+#[case::multiple(vec![ParsedLogMessage::message("Hello"), ParsedLogMessage::message("World")])]
+#[case::non_utf_8_message(vec![ParsedLogMessage::message(ByteString::from_static(b"\x80"))])]
+#[case::non_utf_8_activity_text(vec![ParsedLogMessage::StartActivity(ParsedActivity {
+    id: ActivityId::from_u64(666),
+    level: nixrs::log::Verbosity::Chatty,
+    text: ByteString::from_static(b"\x80"),
+    activity_type: nixrs::log::ParsedActivityType::OptimiseStore,
+    parent: Some(ActivityId::from_u64(555)),
+}), ParsedLogMessage::StopActivity(StopActivity {
+    id: ActivityId::from_u64(666),
 })])]
-#[case::multiple(vec![LogMessage::message("Hello"), LogMessage::message("World")])]
-async fn op_logs(#[case] mut logs: Vec<LogMessage>) {
+#[case::nested_activity(vec![ParsedLogMessage::StartActivity(ParsedActivity {
+    id: ActivityId::from_u64(666),
+    level: nixrs::log::Verbosity::Chatty,
+    text: "".into(),
+    activity_type: nixrs::log::ParsedActivityType::OptimiseStore,
+    parent: None,
+}), ParsedLogMessage::StartActivity(ParsedActivity {
+    id: ActivityId::from_u64(667),
+    level: nixrs::log::Verbosity::Chatty,
+    text: "".into(),
+    activity_type: nixrs::log::ParsedActivityType::OptimiseStore,
+    parent: Some(ActivityId::from_u64(666)),
+}), ParsedLogMessage::StopActivity(StopActivity {
+    id: ActivityId::from_u64(667),
+}), ParsedLogMessage::StopActivity(StopActivity {
+    id: ActivityId::from_u64(666),
+})])]
+#[case::unparseable_activity(vec![ParsedLogMessage::StartActivity(ParsedActivity {
+    id: ActivityId::from_u64(666),
+    level: nixrs::log::Verbosity::Chatty,
+    text: "Hello World".into(),
+    activity_type: nixrs::log::ParsedActivityType::Unparsable {
+        activity_type: nixrs::log::ActivityType::OptimiseStore,
+        fields: vec![nixrs::log::Field::Int(44), nixrs::log::Field::String("More path".into())],
+    },
+    parent: Some(ActivityId::from_u64(555)),
+}), ParsedLogMessage::StopActivity(StopActivity {
+    id: ActivityId::from_u64(666),
+})])]
+#[case::unparseable_result(vec![
+    ParsedLogMessage::StartActivity(ParsedActivity {
+        id: ActivityId::from_u64(666),
+        level: nixrs::log::Verbosity::Chatty,
+        text: "Hello World".into(),
+        activity_type: nixrs::log::ParsedActivityType::OptimiseStore,
+        parent: Some(ActivityId::from_u64(555)),
+    }),
+    ParsedLogMessage::Result(ParsedActivityResult {
+        id: ActivityId::from_u64(666),
+        result_type: nixrs::log::ParsedResultType::Unparsable {
+            result_type: nixrs::log::ResultType::CorruptedPath,
+            fields: vec![nixrs::log::Field::Int(44), nixrs::log::Field::String("More path".into())],
+        },
+    }),
+    ParsedLogMessage::StopActivity(StopActivity {
+        id: ActivityId::from_u64(666),
+    })
+    ])]
+#[case::weird_copy_path_dest(vec![
+    ParsedLogMessage::StartActivity(ParsedActivity {
+        id: ActivityId::from_u64(17172761494985901226),
+        level: nixrs::log::Verbosity::Error,
+        parent: None,
+        text: "".into(),
+        activity_type: nixrs::log::ParsedActivityType::CopyPath {
+            store_path: "/nix/store/00000000000000000000000000000000-=".parse().unwrap(),
+            source_uri: nixrs::log::StoreUri::Local,
+            dest_uri: nixrs::log::StoreUri::Daemon,
+        },
+    }),
+    ParsedLogMessage::StopActivity(StopActivity {
+        id: ActivityId::from_u64(17172761494985901226),
+    })
+    ])]
+async fn op_logs(#[case] mut logs: Vec<ParsedLogMessage>) {
     let nix = ENV_NIX_IMPL.deref();
     if nix.is_skipped("unittests::op_logs") {
         return;
@@ -84,7 +205,7 @@ async fn op_logs(#[case] mut logs: Vec<LogMessage>) {
     let store_path = "00230000000000000000000000000000-_".parse().unwrap();
     let mut op = mock.is_valid_path(&store_path, Ok(true));
     for log in logs.iter() {
-        op = op.add_log(log.clone());
+        op = op.add_log(log.clone().into());
     }
     op.build();
     nix.prepare_op_logs(Operation::IsValidPath, &mut logs);
@@ -93,7 +214,7 @@ async fn op_logs(#[case] mut logs: Vec<LogMessage>) {
         {
             let res = client.is_valid_path(&store_path);
             let mut r = pin!(res);
-            let actual_logs: Vec<_> = r.by_ref().collect().await;
+            let actual_logs: Vec<_> = r.by_ref().map(ParsedLogMessage::from).collect().await;
             assert_eq!(
                 actual_logs,
                 logs.into_iter()
@@ -129,7 +250,7 @@ async fn handshake_logs(#[case] logs: Vec<LogMessage>) {
         assert_eq!(
             actual_logs,
             logs.into_iter()
-                .map(|log| nix.collect_log(log))
+                .map(|log| nix.collect_log(log.into()))
                 .collect::<Vec<_>>()
         );
         Ok(client) as DaemonResult<_>
@@ -819,11 +940,11 @@ async fn sesennst() {
     let nar = b"\r\0\0\0\0\0\0\0nix-archive-1\0\0\0\x01\0\0\0\0\0\0\0(\0\0\0\0\0\0\0\x04\0\0\0\0\0\0\0type\0\0\0\0\x07\0\0\0\0\0\0\0symlink\0\x06\0\0\0\0\0\0\0target\0\0a\0\0\0\0\0\0\0a6 ++Et?+C+= = ABYL+D7C=qEIc?nk/967?//747/0H?by=C+= 3=+?=3+4+e= B+j=i+5v+pW=e+?ht e79?U1/f =P+.KX\0\0\0\0\0\0\0\x01\0\0\0\0\0\0\0)\0\0\0\0\0\0\0";
     let handshake_logs = handshake_logs
         .into_iter()
-        .map(|log| nix.collect_log(log))
+        .map(|log| nix.collect_log(log.into()))
         .collect::<Vec<_>>();
     let mut mock = prepare_mock(nix);
     for log in handshake_logs.iter() {
-        mock.add_handshake_log(log.clone());
+        mock.add_handshake_log(log.clone().into());
     }
     mock.add_to_store_nar(&path_info, false, false, Bytes::from_static(nar), Ok(()))
         .build();

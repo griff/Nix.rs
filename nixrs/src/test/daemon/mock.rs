@@ -30,7 +30,7 @@ use crate::daemon::{
 };
 use crate::derivation::BasicDerivation;
 use crate::derived_path::{DerivedPath, OutputName};
-use crate::log::{Activity, ActivityResult, LogMessage, Message, StopActivity};
+use crate::log::{Activity, ActivityId, ActivityResult, LogMessage, Message, StopActivity};
 #[cfg(any(test, feature = "test"))]
 use crate::pretty_prop_assert_eq;
 use crate::realisation::{DrvOutput, Realisation};
@@ -1593,7 +1593,7 @@ impl<R, O> LogBuilder<'_, R, O> {
         self.add_log(LogMessage::StartActivity(act))
     }
 
-    pub fn stop_activity(self, id: u64) -> Self {
+    pub fn stop_activity(self, id: ActivityId) -> Self {
         self.add_log(LogMessage::StopActivity(StopActivity { id }))
     }
 

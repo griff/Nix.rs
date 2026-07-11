@@ -419,12 +419,41 @@ mod log {
     use num_enum::{IntoPrimitive, TryFromPrimitive};
 
     use crate::ByteString;
+    use crate::daemon::de::NixDeserialize;
     use crate::daemon::ser::{NixSerialize, NixWrite};
     use crate::daemon::wire::logger::RawLogMessageType;
     use crate::log::{
-        Activity, ActivityResult, ActivityType, Field, LogMessage, Message, ResultType,
+        Activity, ActivityId, ActivityResult, ActivityType, Field, LogMessage, Message, ResultType,
         StopActivity, Verbosity,
     };
+
+    nix_serde_remote!(
+        #[nix(try_from = "u64", into = "u64")]
+        ActivityId
+    );
+
+    impl NixSerialize for Option<ActivityId> {
+        fn serialize<W>(&self, writer: &mut W) -> impl Future<Output = Result<(), W::Error>> + Send
+        where
+            W: NixWrite,
+        {
+            match self {
+                Some(value) => writer.write_number(value.as_u64()),
+                None => writer.write_number(0),
+            }
+        }
+    }
+    impl NixDeserialize for Option<ActivityId> {
+        async fn try_deserialize<R>(reader: &mut R) -> Result<Option<Self>, R::Error>
+        where
+            R: ?Sized + crate::daemon::de::NixRead + Send,
+        {
+            match reader.try_read_number().await? {
+                Some(value) => Ok(Some(value.try_into().ok())),
+                None => Ok(None),
+            }
+        }
+    }
 
     nix_serde_remote!(
         #[nix(from = "u16", into = "u16")]
@@ -487,24 +516,24 @@ mod log {
 
     nix_serde_remote_derive! {
         struct Activity {
-            pub id: u64,
+            pub id: ActivityId,
             pub level: Verbosity,
             pub activity_type: ActivityType,
             pub text: ByteString,
             pub fields: Vec<Field>,
-            pub parent: u64,
+            pub parent: Option<ActivityId>,
         }
     }
 
     nix_serde_remote_derive! {
         pub struct StopActivity {
-            pub id: u64,
+            pub id: ActivityId,
         }
     }
 
     nix_serde_remote_derive! {
         pub struct ActivityResult {
-            pub id: u64,
+            pub id: ActivityId,
             pub result_type: ResultType,
             pub fields: Vec<Field>,
         }

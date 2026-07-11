@@ -11,8 +11,8 @@ license = "EUPL-1.2 OR MIT"
 
 [features]
 test = ["proptest", "dep:proptest-derive", "dep:test-strategy", "dep:pretty_assertions"]
-archive = ["dep:walkdir", "dep:bstr"]
-daemon = ["archive", "daemon-serde", "dep:nixrs-derive", "dep:libc", "dep:bstr", "tokio/rt"]
+archive = ["dep:walkdir"]
+daemon = ["archive", "daemon-serde", "dep:nixrs-derive", "dep:libc", "tokio/rt"]
 daemon-serde = []
 daemon-client-process = ["daemon", "tokio/process"]
 internal = []
@@ -28,12 +28,13 @@ default = []
 
 [dependencies]
 async-stream = { workspace = true }
-bstr = { workspace = true, optional = true }
+bstr.workspace = true
 bytes = { workspace = true, features = ["serde"] }
 data-encoding = { workspace = true }
 derive_more = { workspace = true }
 futures = { workspace = true }
 libc = { workspace = true, optional = true }
+http.workspace = true
 md5 = { workspace = true, optional = true }
 num_enum = { workspace = true }
 parking_lot = { version = "^0.12.3", features = ["arc_lock"] }

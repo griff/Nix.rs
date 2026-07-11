@@ -3515,9 +3515,9 @@ rec {
       };
       "http" = rec {
         crateName = "http";
-        version = "1.3.1";
-        edition = "2018";
-        sha256 = "0r95i5h7dr1xadp1ac9453w0s62s27hzkam356nyx2d9mqqmva7l";
+        version = "1.4.2";
+        edition = "2021";
+        sha256 = "09b4p8fiivkg7wm0b59fyrn1jkm7px298ci7zb9igz6n647gaw39";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
           "Carl Lerche <me@carllerche.com>"
@@ -3527,10 +3527,6 @@ rec {
           {
             name = "bytes";
             packageId = "bytes";
-          }
-          {
-            name = "fnv";
-            packageId = "fnv";
           }
           {
             name = "itoa";
@@ -5165,7 +5161,6 @@ rec {
           {
             name = "bstr";
             packageId = "bstr";
-            optional = true;
           }
           {
             name = "bytes";
@@ -5184,6 +5179,10 @@ rec {
           {
             name = "futures";
             packageId = "futures";
+          }
+          {
+            name = "http";
+            packageId = "http";
           }
           {
             name = "libc";
@@ -5335,8 +5334,8 @@ rec {
           }
         ];
         features = {
-          "archive" = [ "dep:walkdir" "dep:bstr" ];
-          "daemon" = [ "archive" "daemon-serde" "dep:nixrs-derive" "dep:libc" "dep:bstr" "tokio/rt" ];
+          "archive" = [ "dep:walkdir" ];
+          "daemon" = [ "archive" "daemon-serde" "dep:nixrs-derive" "dep:libc" "tokio/rt" ];
           "daemon-client-process" = [ "daemon" "tokio/process" ];
           "full" = [ "test" "daemon" "daemon-client-process" ];
           "md5" = [ "dep:md5" ];

@@ -13,7 +13,7 @@ use futures::{FutureExt as _, StreamExt as _, TryFutureExt as _};
 use nixrs::daemon::client::DaemonClient;
 use nixrs::daemon::{DaemonError, DaemonResult, DaemonStore as _};
 use nixrs::daemon::{ProtocolRange, ProtocolVersion, ResultLog, server};
-use nixrs::log::{LogMessage, Message, Verbosity};
+use nixrs::log::{Message, ParsedLogMessage, Verbosity};
 use nixrs::test::daemon::Operation;
 use nixrs::test::daemon::{Builder, MockReporter, MockStore, ReporterError};
 use serde::Deserialize;
@@ -50,11 +50,11 @@ pub trait NixImpl: std::fmt::Debug {
     }
     fn prepare_mock(&self, _mock: &mut Builder<()>) {}
     fn prepare_program<'c>(&self, cmd: &'c mut Command) -> &'c mut Command;
-    fn prepare_op_logs(&self, op: Operation, logs: &mut Vec<LogMessage>);
+    fn prepare_op_logs(&self, op: Operation, logs: &mut Vec<ParsedLogMessage>);
     //fn prepare_op_logs2(&self, op: Operation, logs: &mut VecDeque<LogMessage>);
     fn protocol_range(&self) -> ProtocolRange;
     //fn handshake_logs_range(&self) -> SizeRange;
-    fn collect_log(&self, log: LogMessage) -> LogMessage {
+    fn collect_log(&self, log: ParsedLogMessage) -> ParsedLogMessage {
         log
     }
 }
@@ -134,12 +134,12 @@ impl NixImpl for JsonNixImpl {
         cmd.args(self.cmd_args.iter())
     }
 
-    fn prepare_op_logs(&self, op: Operation, logs: &mut Vec<LogMessage>) {
+    fn prepare_op_logs(&self, op: Operation, logs: &mut Vec<ParsedLogMessage>) {
         if self.op_log_prefix {
             let id: u64 = op.into();
             logs.insert(
                 0,
-                LogMessage::Message(Message {
+                ParsedLogMessage::Message(Message {
                     text: format!("performing daemon worker op: {id}\n").into(),
                     level: Verbosity::Error,
                 }),
@@ -147,14 +147,16 @@ impl NixImpl for JsonNixImpl {
         }
         for log in logs.iter_mut() {
             match log {
-                LogMessage::Message(Message { level, text: _ }) if *level != Verbosity::Error => {
+                ParsedLogMessage::Message(Message { level, text: _ })
+                    if *level != Verbosity::Error =>
+                {
                     *level = Verbosity::Error
                 }
                 _ => {}
             }
         }
     }
-    fn collect_log(&self, log: LogMessage) -> LogMessage {
+    fn collect_log(&self, log: ParsedLogMessage) -> ParsedLogMessage {
         if self.chomp_log { chomp_log(log) } else { log }
     }
     fn protocol_range(&self) -> ProtocolRange {
@@ -192,12 +194,12 @@ impl NixImpl for StdNixImpl {
         cmd.args(self.cmd_args.iter())
     }
 
-    fn prepare_op_logs(&self, op: Operation, logs: &mut Vec<LogMessage>) {
+    fn prepare_op_logs(&self, op: Operation, logs: &mut Vec<ParsedLogMessage>) {
         if self.op_log_prefix {
             let id: u64 = op.into();
             logs.insert(
                 0,
-                LogMessage::message(format!("performing daemon worker op: {id}\n")),
+                ParsedLogMessage::message(format!("performing daemon worker op: {id}\n")),
             )
         }
     }
@@ -211,7 +213,7 @@ impl NixImpl for StdNixImpl {
         }
     }
     */
-    fn collect_log(&self, log: LogMessage) -> LogMessage {
+    fn collect_log(&self, log: ParsedLogMessage) -> ParsedLogMessage {
         chomp_log(log)
     }
 
@@ -309,7 +311,7 @@ pub async fn run_store_test<R, T, F, E>(
 ) -> Result<(), E>
 where
     R: MockReporter,
-    T: FnOnce(DaemonClient<ChildStdout, ChildStdin>, Vec<LogMessage>) -> F,
+    T: FnOnce(DaemonClient<ChildStdout, ChildStdin>, Vec<ParsedLogMessage>) -> F,
     F: Future<Output = Result<DaemonClient<ChildStdout, ChildStdin>, E>>,
     //    T: FnOnce(DaemonClient<OwnedReadHalf, OwnedWriteHalf>) -> F,
     //    F: Future<Output = Result<DaemonClient<OwnedReadHalf, OwnedWriteHalf>, E>>,
@@ -378,7 +380,9 @@ where
     let client = async move {
         let result = DaemonClient::builder().connect(stdout, stdin);
         let mut r = pin!(result);
-        let logs: Vec<_> = r.by_ref().collect().await;
+        let logs: Vec<_> = futures::StreamExt::map(r.by_ref(), ParsedLogMessage::from)
+            .collect()
+            .await;
         let client = r.await?;
         let mut client = (test)(client, logs).await?;
         eprintln!("Closing");
@@ -407,16 +411,16 @@ pub fn prepare_mock(nix: &dyn NixImpl) -> Builder<()> {
     mock
 }
 
-pub fn chomp_log(log: LogMessage) -> LogMessage {
+pub fn chomp_log(log: ParsedLogMessage) -> ParsedLogMessage {
     match log {
-        LogMessage::Message(mut msg) => {
+        ParsedLogMessage::Message(mut msg) => {
             let chomped = msg
                 .text
                 .trim_end_with(|ch| matches!(ch, ' ' | '\n' | '\r' | '\t'));
             let mut new_msg = BytesMut::from(chomped);
             new_msg.extend_from_slice(b"\n");
             msg.text = new_msg.freeze();
-            LogMessage::Message(msg)
+            ParsedLogMessage::Message(msg)
         }
         m => m,
     }

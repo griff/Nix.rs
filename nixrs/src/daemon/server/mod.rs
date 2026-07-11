@@ -160,18 +160,18 @@ where
         }
         LogMessage::StartActivity(activity) => {
             let text = String::from_utf8_lossy(&activity.text);
-            trace!(id=activity.id, level=?activity.level, type=?activity.activity_type,
+            trace!(id=?activity.id, level=?activity.level, type=?activity.activity_type,
                 ?text,
-                parent=activity.parent,
+                parent=?activity.parent,
                 "start_activity: {:?} {:?}: {}", activity.activity_type, activity.fields, text);
         }
         LogMessage::StopActivity(activity) => {
-            trace!(id = activity.id, "stop_activity: {}", activity.id);
+            trace!(id = ?activity.id, "stop_activity: {:?}", activity.id);
         }
         LogMessage::Result(result) => {
             trace!(
-                id = result.id,
-                "log_result: {} {:?} {:?}", result.id, result.result_type, result.fields,
+                id = ?result.id,
+                "log_result: {:?} {:?} {:?}", result.id, result.result_type, result.fields,
             );
         }
     }

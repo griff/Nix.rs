@@ -3,13 +3,13 @@ use std::time::{Duration, Instant};
 
 use futures::StreamExt as _;
 use nixrs::daemon::{DaemonStore as _, ProtocolVersion};
-use nixrs::log::LogMessage;
+use nixrs::log::ParsedLogMessage;
 use nixrs::pretty_prop_assert_eq;
 use nixrs::store_path::{StorePath, StorePathSet};
+use nixrs::test::arbitrary::log::protocol_parsed_log_messages;
 use nixrs::test::daemon::MockStore;
 use nixrs::test::daemon::Operation;
 use proptest::prelude::*;
-use proptest::sample::size_range;
 use proptest::test_runner::TestCaseResult;
 use tokio::time::timeout;
 use tracing::error;
@@ -23,7 +23,9 @@ use crate::{ENV_NIX_IMPL, NixImpl as _, nix_protocol_range, prepare_mock, run_st
 ))]
 async fn proptest_handshake(
     #[any(nix_protocol_range())] version: ProtocolVersion,
-    #[any((size_range(0..100), #version))] mut op_logs: Vec<LogMessage>,
+    #[strategy(protocol_parsed_log_messages(#version, 8, 256, 10))] mut op_logs: Vec<
+        ParsedLogMessage,
+    >,
 ) -> TestCaseResult {
     let nix = &*ENV_NIX_IMPL;
     if nix.is_skipped("proptests::proptest_handshake") {
@@ -33,7 +35,7 @@ async fn proptest_handshake(
     let store_path = "00000000000000000000000000000000-_".parse().unwrap();
     let mut op = mock.is_valid_path(&store_path, Ok(true));
     for log in op_logs.iter() {
-        op = op.add_log(log.clone());
+        op = op.add_log(log.clone().into());
     }
     op.build();
     nix.prepare_op_logs(Operation::IsValidPath, &mut op_logs);
@@ -43,7 +45,11 @@ async fn proptest_handshake(
             {
                 let ret = client.is_valid_path(&store_path);
                 let mut r = pin!(ret);
-                let actual_logs = r.by_ref().collect::<Vec<_>>().await;
+                let actual_logs = r
+                    .by_ref()
+                    .map(ParsedLogMessage::from)
+                    .collect::<Vec<_>>()
+                    .await;
                 pretty_prop_assert_eq!(
                     actual_logs,
                     op_logs
@@ -100,7 +106,9 @@ proptest! {
 #[test_log::test(test_strategy::proptest(async = "tokio", ProptestConfig::default(),))]
 async fn proptest_is_valid_path(
     #[any(nix_protocol_range())] version: ProtocolVersion,
-    #[any((size_range(0..100), #version))] mut op_logs: Vec<LogMessage>,
+    #[strategy(protocol_parsed_log_messages(#version, 8, 256, 10))] mut op_logs: Vec<
+        ParsedLogMessage,
+    >,
     #[any()] path: StorePath,
     #[any()] result: bool,
 ) -> TestCaseResult {
@@ -112,7 +120,7 @@ async fn proptest_is_valid_path(
     let mut mock = prepare_mock(nix);
     let mut op = mock.is_valid_path(&path, Ok(result));
     for log in op_logs.iter() {
-        op = op.add_log(log.clone());
+        op = op.add_log(log.clone().into());
     }
     op.build();
     nix.prepare_op_logs(Operation::IsValidPath, &mut op_logs);
@@ -120,7 +128,11 @@ async fn proptest_is_valid_path(
         {
             let ret = client.is_valid_path(&path);
             let mut r = pin!(ret);
-            let actual_logs = r.by_ref().collect::<Vec<_>>().await;
+            let actual_logs = r
+                .by_ref()
+                .map(ParsedLogMessage::from)
+                .collect::<Vec<_>>()
+                .await;
             pretty_prop_assert_eq!(r.await?, result);
             pretty_prop_assert_eq!(
                 actual_logs,
@@ -218,7 +230,9 @@ async fn proptest_operations(
 #[test_log::test(test_strategy::proptest(async = "tokio"))]
 async fn proptest_op_logs(
     #[any(nix_protocol_range())] version: ProtocolVersion,
-    #[any((size_range(0..100), #version))] mut op_logs: Vec<LogMessage>,
+    #[strategy(protocol_parsed_log_messages(#version, 8, 256, 10))] mut op_logs: Vec<
+        ParsedLogMessage,
+    >,
 ) -> TestCaseResult {
     let nix = &*ENV_NIX_IMPL;
     if nix.is_skipped("proptests::proptest_op_logs") {
@@ -228,7 +242,7 @@ async fn proptest_op_logs(
     let store_path = "00000000000000000000000000000000-_".parse().unwrap();
     let mut op = mock.is_valid_path(&store_path, Ok(true));
     for log in op_logs.iter() {
-        op = op.add_log(log.clone());
+        op = op.add_log(log.clone().into());
     }
     op.build();
     nix.prepare_op_logs(Operation::IsValidPath, &mut op_logs);
@@ -238,7 +252,11 @@ async fn proptest_op_logs(
             {
                 let ret = client.is_valid_path(&store_path);
                 let mut r = pin!(ret);
-                let actual_logs = r.by_ref().collect::<Vec<_>>().await;
+                let actual_logs = r
+                    .by_ref()
+                    .map(ParsedLogMessage::from)
+                    .collect::<Vec<_>>()
+                    .await;
                 pretty_prop_assert_eq!(
                     actual_logs,
                     op_logs

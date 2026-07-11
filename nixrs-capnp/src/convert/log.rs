@@ -3,7 +3,7 @@ use capnp_convert::{BuildFrom as _, ReadFrom, ReadInto as _, SetInto};
 use nixrs::{
     ByteString,
     log::{
-        Activity, ActivityResult, ActivityType, Field, LogMessage, Message, ResultType,
+        Activity, ActivityId, ActivityResult, ActivityType, Field, LogMessage, Message, ResultType,
         StopActivity, Verbosity,
     },
 };
@@ -130,7 +130,10 @@ impl<'b> SetInto<nix_daemon_capnp::log_message::Builder<'b>> for LogMessage {
                     .build_from(activity)?;
             }
             LogMessage::StopActivity(act) => {
-                builder.reborrow().init_stop_activity().set_id(act.id);
+                builder
+                    .reborrow()
+                    .init_stop_activity()
+                    .set_id(act.id.into());
             }
             LogMessage::Result(result) => {
                 builder.reborrow().init_result().build_from(result)?;
@@ -150,7 +153,8 @@ impl<'r> ReadFrom<nix_daemon_capnp::log_message::Reader<'r>> for LogMessage {
                 Ok(LogMessage::StartActivity(act.read_into()?))
             }
             nix_daemon_capnp::log_message::Which::StopActivity(act) => {
-                let id = act.get_id();
+                let id = ActivityId::try_from(act.get_id())
+                    .map_err(|err| Error::failed(err.to_string()))?;
                 Ok(LogMessage::StopActivity(StopActivity { id }))
             }
             nix_daemon_capnp::log_message::Which::Result(res) => {
@@ -186,11 +190,13 @@ impl<'b> SetInto<nix_daemon_capnp::log_message::start_activity::Builder<'b>> for
         &self,
         builder: &mut nix_daemon_capnp::log_message::start_activity::Builder<'b>,
     ) -> capnp::Result<()> {
-        builder.set_id(self.id);
+        builder.set_id(self.id.into());
         builder.set_activity_type(self.activity_type.into());
         builder.set_level(self.level.into());
         builder.set_text(self.text.as_ref());
-        builder.set_parent(self.parent);
+        if let Some(parent) = self.parent {
+            builder.set_parent(parent.into());
+        }
         builder
             .reborrow()
             .init_fields(self.fields.len() as u32)
@@ -203,12 +209,13 @@ impl<'r> ReadFrom<nix_daemon_capnp::log_message::start_activity::Reader<'r>> for
     fn read_from(
         reader: nix_daemon_capnp::log_message::start_activity::Reader<'r>,
     ) -> Result<Self, Error> {
-        let id = reader.get_id();
+        let id =
+            ActivityId::try_from(reader.get_id()).map_err(|err| Error::failed(err.to_string()))?;
         let activity_type = reader.get_activity_type()?.into();
         let level = reader.get_level()?.into();
         let text = ByteString::copy_from_slice(reader.get_text()?);
         let fields = reader.get_fields()?.read_into()?;
-        let parent = reader.get_parent();
+        let parent = reader.get_parent().try_into().ok();
         Ok(Activity {
             id,
             activity_type,
@@ -225,7 +232,7 @@ impl<'b> SetInto<nix_daemon_capnp::log_message::result::Builder<'b>> for Activit
         &self,
         builder: &mut nix_daemon_capnp::log_message::result::Builder<'b>,
     ) -> capnp::Result<()> {
-        builder.set_id(self.id);
+        builder.set_id(self.id.into());
         builder.set_result_type(self.result_type.into());
         builder
             .reborrow()
@@ -237,7 +244,8 @@ impl<'b> SetInto<nix_daemon_capnp::log_message::result::Builder<'b>> for Activit
 
 impl<'r> ReadFrom<nix_daemon_capnp::log_message::result::Reader<'r>> for ActivityResult {
     fn read_from(reader: nix_daemon_capnp::log_message::result::Reader<'r>) -> Result<Self, Error> {
-        let id = reader.get_id();
+        let id =
+            ActivityId::try_from(reader.get_id()).map_err(|err| Error::failed(err.to_string()))?;
         let result_type = reader.get_result_type()?.into();
         let fields = reader.get_fields()?.read_into()?;
         Ok(ActivityResult {
@@ -253,7 +261,7 @@ impl<'b> SetInto<nix_daemon_capnp::log_message::stop_activity::Builder<'b>> for 
         &self,
         builder: &mut nix_daemon_capnp::log_message::stop_activity::Builder<'b>,
     ) -> capnp::Result<()> {
-        builder.set_id(self.id);
+        builder.set_id(self.id.into());
         Ok(())
     }
 }
@@ -262,7 +270,8 @@ impl<'r> ReadFrom<nix_daemon_capnp::log_message::stop_activity::Reader<'r>> for 
     fn read_from(
         reader: nix_daemon_capnp::log_message::stop_activity::Reader<'r>,
     ) -> Result<Self, Error> {
-        let id = reader.get_id();
+        let id =
+            ActivityId::try_from(reader.get_id()).map_err(|err| Error::failed(err.to_string()))?;
         Ok(StopActivity { id })
     }
 }
