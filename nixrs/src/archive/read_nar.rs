@@ -801,10 +801,11 @@ mod unittests {
     use tokio_test::io::Builder;
     use tracing::trace;
 
+    use crate::io::BytesReader;
     use crate::test::archive::test_data::*;
     use crate::test::archive::write_nar;
 
-    use super::NarReader;
+    use super::{NarBytesReader, NarReader};
 
     // FUTUREWORK: I have seen the following tests not finishing:
     // case_2_exec_file::postfix_1_Ok__b_________::chunk_size_04_4
@@ -888,6 +889,80 @@ mod unittests {
             }
         }
     }
+
+    #[test_log::test(tokio::test)]
+    #[rstest]
+    #[case::text_file(text_file())]
+    #[case::exec_file(exec_file())]
+    #[case::empty_file(empty_file())]
+    #[case::empty_file_in_dir(empty_file_in_dir())]
+    #[case::empty_dir(empty_dir())]
+    #[case::empty_dir_in_dir(empty_dir_in_dir())]
+    #[case::symlink(symlink())]
+    #[case::dir_example(dir_example())]
+    async fn read_nar_bytes(
+        #[case] events: TestNarEvents,
+        #[values(
+            Ok(&b""[..]),
+            Ok(&b"more"[..]),
+            Err(io::ErrorKind::StorageFull)
+        )]
+        postfix: Result<&[u8], io::ErrorKind>,
+        #[values(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 51, 64_000)] chunk_size: usize,
+    ) {
+        let content = write_nar(&events);
+
+        let mut buf = BytesMut::new();
+        buf.put_slice(b"before");
+        buf.put_slice(&content);
+        if let Ok(postfix) = postfix {
+            buf.put_slice(postfix);
+        }
+        let read_content = buf.freeze();
+
+        let mock = {
+            let mut b = Builder::new();
+            for c in read_content.chunks(chunk_size) {
+                b.read(c);
+                b.wait(Duration::from_secs(0));
+            }
+            if let Err(err) = postfix {
+                b.wait(Duration::from_secs(0));
+                b.read_error(io::Error::new(err, "unexpected read"));
+            }
+            b.build()
+        };
+        let mut buf_read = BytesReader::new(mock);
+
+        let mut prefix = [0u8; 6];
+        buf_read.read_exact(&mut prefix).await.unwrap();
+        {
+            trace!(contents = content.len(), "Read NAR");
+            let mut reader = NarBytesReader::new(&mut buf_read);
+            let mut actual = Vec::new();
+            reader.read_to_end(&mut actual).await.unwrap();
+            let actual = Bytes::from(actual);
+            trace!(actual = actual.len(), "Read NAR Done");
+            assert_eq!(actual, content);
+        }
+
+        let mut rest = Vec::new();
+        let res = buf_read.read_to_end(&mut rest).await;
+        match (postfix, res) {
+            (Ok(value), Ok(_)) => {
+                assert_eq!(rest, value);
+            }
+            (Err(kind), Err(err)) => {
+                assert_eq!(kind, err.kind());
+            }
+            (_, Err(err)) => {
+                panic!("Unexpected read failure {err:?}");
+            }
+            (Err(kind), _) => {
+                panic!("Read should fail with {kind:?} error");
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -901,9 +976,10 @@ mod proptests {
     use tokio_test::io::Builder;
     use tracing::{info, trace};
 
-    use crate::archive::NarReader;
+    use crate::io::BytesReader;
     use crate::test::arbitrary::archive::arb_nar_contents;
 
+    use super::{NarBytesReader, NarReader};
     #[test_log::test]
     fn proptest_read_nar() {
         let r = tokio::runtime::Builder::new_multi_thread()
@@ -935,6 +1011,53 @@ mod proptests {
                 buf_read.read_exact(&mut prefix).await.unwrap();
                 trace!(contents=content.len(), "Read NAR");
                 let mut reader = NarReader::new(&mut buf_read);
+                let mut actual = Vec::new();
+                reader.read_to_end(&mut actual).await.unwrap();
+                let actual = Bytes::from(actual);
+                trace!(actual=actual.len(), "Read NAR Done");
+                assert_eq!(actual, content);
+
+                let mut rest = Vec::new();
+                buf_read.read_to_end(&mut rest).await.unwrap();
+                assert_eq!(rest, b"more");
+
+                Ok(()) as Result<(), TestCaseError>
+            })?;
+            info!("Completed test {}", now.elapsed().as_secs_f64());
+        })
+    }
+
+    #[test_log::test]
+    fn proptest_read_nar_bytes() {
+        let r = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        proptest!(|(
+            content in arb_nar_contents(20, 20, 5),
+            chunk_size in any::<proptest::sample::Index>(),
+        )| {
+            let now = Instant::now();
+            r.block_on(async {
+                let mut buf = BytesMut::new();
+                buf.put_slice(b"before");
+                buf.put_slice(&content);
+                buf.put_slice(b"more");
+                let read_content = buf.freeze();
+
+                let mut b = Builder::new();
+                let chunk_size = chunk_size.index(read_content.len()) + 1;
+                for c in read_content.chunks(chunk_size) {
+                    b.read(c);
+                    b.wait(Duration::from_secs(0));
+                }
+                let mock = b.build();
+                let mut buf_read = BytesReader::new(mock);
+
+                let mut prefix = [0u8; 6];
+                buf_read.read_exact(&mut prefix).await.unwrap();
+                trace!(contents=content.len(), "Read NAR");
+                let mut reader = NarBytesReader::new(&mut buf_read);
                 let mut actual = Vec::new();
                 reader.read_to_end(&mut actual).await.unwrap();
                 let actual = Bytes::from(actual);
