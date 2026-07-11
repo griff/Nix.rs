@@ -30,8 +30,8 @@ cfg_daemon! {
 
     pub use fail_store::FailStore;
     pub use local::{LocalDaemonStore, LocalHandshakeDaemonStore};
-    pub use logger::{DriveResult, FutureResultExt, LogSender, ResultLog, ResultLogExt, make_result};
     pub use mutex::{MutexHandshakeStore, MutexStore};
+    pub use logger::{AndThenLog, DriveResult, EmptyLogs, FutureResultExt, FutureResult, LogSender, MapErrResult, MapOkResult, ResultLog, ResultLogExt, WithLogs, make_result};
     pub use types::{
         AddToStoreItem, BuildMode, BuildResult, BuildStatus, ClientOptions, CollectGarbageResponse,
         DaemonError, DaemonErrorContext, DaemonErrorKind, DaemonInt, DaemonPath, DaemonResult,

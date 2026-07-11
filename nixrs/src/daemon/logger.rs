@@ -5,7 +5,6 @@ use std::task::{Context, Poll, ready};
 
 use futures::channel::mpsc;
 use futures::future::{MaybeDone, maybe_done};
-use futures::stream::{Empty, empty};
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncBufRead, AsyncRead};
@@ -62,7 +61,7 @@ where
 }
 
 pin_project! {
-    struct MapOkResult<L, F, T> {
+    pub struct MapOkResult<L, F, T> {
         #[pin]
         result: L,
         mapper: Option<F>,
@@ -84,8 +83,7 @@ where
 impl<L, F, T, T2, E> Future for MapOkResult<L, F, T>
 where
     L: Future<Output = Result<T, E>>,
-    F: FnOnce(T) -> T2 + Send,
-    T: Send,
+    F: FnOnce(T) -> T2,
 {
     type Output = Result<T2, E>;
 
@@ -96,7 +94,7 @@ where
 }
 
 pin_project! {
-    struct MapErrResult<L, F, E> {
+    pub struct MapErrResult<L, F, E> {
         #[pin]
         result: L,
         mapper: Option<F>,
@@ -116,8 +114,7 @@ where
 impl<L, F, T, E, E2> Future for MapErrResult<L, F, E>
 where
     L: Future<Output = Result<T, E>>,
-    F: FnOnce(E) -> E2 + Send,
-    E: Send,
+    F: FnOnce(E) -> E2,
 {
     type Output = Result<T, E2>;
 
@@ -141,7 +138,7 @@ pin_project! {
 }
 
 pin_project! {
-    struct AndThenLog<L, F, R> {
+    pub struct AndThenLog<L, F, R> {
         #[pin]
         stream: L,
         #[pin]
@@ -187,23 +184,21 @@ where
 }
 
 pub trait ResultLogExt: ResultLog {
-    fn map_ok<F, E, T, T2>(self, f: F) -> impl ResultLog<Output = Result<T2, E>>
+    fn map_ok<F, E, T, T2>(self, f: F) -> MapOkResult<Self, F, T>
     where
-        Self: ResultLog<Output = Result<T, E>>,
-        F: FnOnce(T) -> T2 + Send,
-        T: Send,
+        Self: ResultLog<Output = Result<T, E>> + Sized,
+        F: FnOnce(T) -> T2,
         T2: 'static;
-    fn map_err<F, E, T, E2>(self, f: F) -> impl ResultLog<Output = Result<T, E2>>
+    fn map_err<F, E, T, E2>(self, f: F) -> MapErrResult<Self, F, E>
     where
-        Self: ResultLog<Output = Result<T, E>>,
-        F: FnOnce(E) -> E2 + Send,
-        E: Send,
+        Self: ResultLog<Output = Result<T, E>> + Sized,
+        F: FnOnce(E) -> E2,
         E2: 'static;
-    fn and_then<F, E, T, T2, Fut>(self, f: F) -> impl ResultLog<Output = Result<T2, E>>
+    fn and_then<F, E, T, T2, Fut>(self, f: F) -> AndThenLog<Self, F, Fut>
     where
-        Self: ResultLog<Output = Result<T, E>>,
-        F: FnOnce(T) -> Fut + Send,
-        Fut: Future<Output = Result<T2, E>> + Send,
+        Self: ResultLog<Output = Result<T, E>> + Sized,
+        F: FnOnce(T) -> Fut,
+        Fut: Future<Output = Result<T2, E>>,
         T2: 'static;
     fn fill_operation<T>(self, op: Operation) -> impl ResultLog<Output = Result<T, DaemonError>>
     where
@@ -225,11 +220,10 @@ impl<L> ResultLogExt for L
 where
     L: ResultLog,
 {
-    fn map_ok<F, E, T, T2>(self, f: F) -> impl ResultLog<Output = Result<T2, E>>
+    fn map_ok<F, E, T, T2>(self, f: F) -> MapOkResult<Self, F, T>
     where
-        Self: ResultLog<Output = Result<T, E>>,
-        F: FnOnce(T) -> T2 + Send,
-        T: Send,
+        Self: ResultLog<Output = Result<T, E>> + Sized,
+        F: FnOnce(T) -> T2,
         T2: 'static,
     {
         MapOkResult {
@@ -239,11 +233,10 @@ where
         }
     }
 
-    fn map_err<F, E, T, E2>(self, f: F) -> impl ResultLog<Output = Result<T, E2>>
+    fn map_err<F, E, T, E2>(self, f: F) -> MapErrResult<Self, F, E>
     where
         Self: ResultLog<Output = Result<T, E>>,
-        F: FnOnce(E) -> E2 + Send,
-        E: Send,
+        F: FnOnce(E) -> E2,
         E2: 'static,
     {
         MapErrResult {
@@ -252,11 +245,11 @@ where
             value: PhantomData,
         }
     }
-    fn and_then<F, E, T, T2, Fut>(self, f: F) -> impl ResultLog<Output = Result<T2, E>>
+    fn and_then<F, E, T, T2, Fut>(self, f: F) -> AndThenLog<Self, F, Fut>
     where
-        Self: ResultLog<Output = Result<T, E>>,
-        F: FnOnce(T) -> Fut + Send,
-        Fut: Future<Output = Result<T2, E>> + Send,
+        Self: ResultLog<Output = Result<T, E>> + Sized,
+        F: FnOnce(T) -> Fut,
+        Fut: Future<Output = Result<T2, E>>,
         T2: 'static,
     {
         AndThenLog {
@@ -301,7 +294,7 @@ where
 pin_project! {
     #[project = FutureResultProj]
     #[derive(Default)]
-    pub enum FutureResult<Fut, T, E> {
+    enum FutureResultInner<Fut, T, E> {
         Later {
             #[pin]
             fut: Fut,
@@ -318,32 +311,39 @@ pin_project! {
     }
 }
 
+pin_project! {
+    pub struct FutureResult<Fut, T, E> {
+        #[pin]
+        inner: FutureResultInner<Fut, T, E>,
+    }
+}
+
 impl<Fut, R, E> FutureResult<Fut, R, E>
 where
     Fut: Future<Output = Result<R, E>>,
 {
     pub fn new(fut: Fut) -> Self {
-        Self::Later { fut }
+        Self {
+            inner: FutureResultInner::Later { fut },
+        }
     }
 
-    fn poll_resolved(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Pin<&mut R>, ()>> {
-        match self.as_mut().project() {
+    fn poll_resolved(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<Pin<&mut R>, ()>> {
+        let mut inner = self.project().inner;
+        match inner.as_mut().project() {
             FutureResultProj::Later { fut } => match ready!(fut.poll(cx)) {
                 Ok(result) => {
-                    self.set(FutureResult::ResolvedOk { result });
+                    inner.set(FutureResultInner::ResolvedOk { result });
                 }
                 Err(err) => {
-                    self.set(FutureResult::ResolvedErr { err: Some(err) });
+                    inner.set(FutureResultInner::ResolvedErr { err: Some(err) });
                 }
             },
             FutureResultProj::ResolvedOk { result: _ } => {}
             FutureResultProj::ResolvedErr { err: _ } => {}
             FutureResultProj::Invalid => {}
         }
-        match self.project() {
+        match inner.project() {
             FutureResultProj::Later { fut: _ } => unreachable!(),
             FutureResultProj::ResolvedOk { result } => Poll::Ready(Ok(result)),
             FutureResultProj::ResolvedErr { err: _ } => Poll::Ready(Err(())),
@@ -379,7 +379,7 @@ where
         if let Ok(res) = ready!(self.as_mut().poll_resolved(cx)) {
             res.poll(cx)
         } else {
-            match self.project() {
+            match self.project().inner.project() {
                 FutureResultProj::Later { fut: _ } => unreachable!(),
                 FutureResultProj::ResolvedOk { result } => result.poll(cx),
                 FutureResultProj::ResolvedErr { err } => {
@@ -410,14 +410,20 @@ pub trait FutureResultExt: Future {
     /// assert_eq!(rp.await, 12);
     /// # })
     /// ```
-    fn empty_logs(self) -> impl ResultLog<Output = Self::Output>;
+    fn empty_logs(self) -> EmptyLogs<Self>
+    where
+        Self: Sized,
+    {
+        EmptyLogs { result: self }
+    }
 
     /// Create a [ResultLog] with the provided logs and with the output from
     /// the [Future]
     ///
     ///
-    fn with_logs<S>(self, logs: S) -> impl ResultLog<Output = Self::Output>
+    fn with_logs<S>(self, logs: S) -> WithLogs<S, Self>
     where
+        Self: Sized,
         S: Stream<Item = LogMessage>;
 
     /// Flattens a [Future] that outputs a [ResultLog] to a [ResultLog]
@@ -437,9 +443,9 @@ pub trait FutureResultExt: Future {
     /// assert_eq!(rp.await.unwrap(), 12);
     /// # })
     /// ```
-    fn future_result<R, T, E>(self) -> impl ResultLog<Output = Result<T, E>>
+    fn future_result<R, T, E>(self) -> FutureResult<Self, R, E>
     where
-        Self: Future<Output = Result<R, E>>,
+        Self: Future<Output = Result<R, E>> + Sized,
         R: ResultLog<Output = Result<T, E>>;
 }
 
@@ -447,23 +453,20 @@ impl<F> FutureResultExt for F
 where
     F: Future,
 {
-    fn empty_logs(self) -> impl ResultLog<Output = Self::Output> {
-        ResultProcess::empty(self)
-    }
-
-    fn with_logs<S>(self, logs: S) -> impl ResultLog<Output = Self::Output>
+    fn with_logs<S>(self, logs: S) -> WithLogs<S, Self>
     where
+        Self: Sized,
         S: Stream<Item = LogMessage>,
     {
-        ResultProcess {
+        WithLogs {
             stream: logs,
             result: maybe_done(self),
         }
     }
 
-    fn future_result<R, T, E>(self) -> impl ResultLog<Output = Result<T, E>>
+    fn future_result<R, T, E>(self) -> FutureResult<Self, R, E>
     where
-        Self: Future<Output = Result<R, E>>,
+        Self: Future<Output = Result<R, E>> + Sized,
         R: ResultLog<Output = Result<T, E>>,
     {
         FutureResult::new(self)
@@ -471,24 +474,38 @@ where
 }
 
 pin_project! {
-    pub struct ResultProcess<S, R: Future> {
+    pub struct EmptyLogs<F> {
         #[pin]
-        pub stream: S,
-        #[pin]
-        pub result: MaybeDone<R>,
+        pub result: F,
     }
 }
 
-impl<R: Future> ResultProcess<Empty<LogMessage>, R> {
-    pub fn empty(result: R) -> Self {
-        Self {
-            stream: empty(),
-            result: maybe_done(result),
-        }
+impl<F> Stream for EmptyLogs<F> {
+    type Item = LogMessage;
+
+    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Poll::Ready(None)
     }
 }
 
-impl<S, R: Future> Stream for ResultProcess<S, R>
+impl<F: Future> Future for EmptyLogs<F> {
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.project().result.poll(cx)
+    }
+}
+
+pin_project! {
+    pub struct WithLogs<S, R: Future> {
+        #[pin]
+        stream: S,
+        #[pin]
+        result: MaybeDone<R>,
+    }
+}
+
+impl<S, R: Future> Stream for WithLogs<S, R>
 where
     S: Stream<Item = LogMessage>,
 {
@@ -504,7 +521,7 @@ where
     }
 }
 
-impl<S, R> Future for ResultProcess<S, R>
+impl<S, R> Future for WithLogs<S, R>
 where
     S: Stream<Item = LogMessage>,
     R: Future,
