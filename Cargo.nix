@@ -1285,7 +1285,7 @@ rec {
           {
             name = "tokio";
             packageId = "tokio";
-            features = [ "net" "macros" "time" "io-util" ];
+            features = [ "net" "macros" "time" "io-util" "rt" ];
           }
           {
             name = "tokio-util";
