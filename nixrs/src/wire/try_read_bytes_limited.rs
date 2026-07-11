@@ -7,7 +7,7 @@ use std::task::{Context, Poll, ready};
 
 use bytes::Bytes;
 
-use super::{TryReadU64, ZEROS};
+use super::{TryReadU64, ZEROS, checked_calc_aligned};
 use crate::io::AsyncBytesRead;
 
 #[derive(Debug, Clone)]
@@ -53,9 +53,7 @@ impl TryReadBytesLimited {
                             .ok_or_else(|| invalid_data("bytes length out of range"))?;
 
                         // Calculate 64bit aligned length and convert to usize
-                        let aligned: usize = raw_len
-                            .checked_add(7)
-                            .map(|v| v & !7)
+                        let aligned: usize = checked_calc_aligned(raw_len)
                             .ok_or_else(|| invalid_data("aligned bytes length out of range"))?
                             .try_into()
                             .map_err(invalid_data)?;

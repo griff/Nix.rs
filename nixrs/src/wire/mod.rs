@@ -18,6 +18,14 @@ pub const DEFAULT_BUF_SIZE: usize = 32 * 1024;
 pub const RESERVED_BUF_SIZE: usize = DEFAULT_BUF_SIZE / 2;
 pub const ZEROS: [u8; 8] = [0u8; 8];
 
+pub const fn checked_calc_aligned(len: u64) -> Option<u64> {
+    if let Some(added) = len.checked_add(7) {
+        Some(added & !7)
+    } else {
+        None
+    }
+}
+
 pub const fn calc_aligned(len: u64) -> u64 {
     len.wrapping_add(7) & !7
 }

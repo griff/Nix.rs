@@ -97,7 +97,7 @@ use tracing::{error, trace};
 
 use super::radix_tree::{RLookup, RMatch, RTree};
 use crate::io::{AsyncBytesRead, DrainInto};
-use crate::wire::{ZEROS, calc_aligned};
+use crate::wire::{ZEROS, calc_aligned, checked_calc_aligned};
 
 const fn encode<const R: usize>(s: &[u8]) -> [u8; R] {
     let mut ret = [0u8; R];
@@ -322,7 +322,10 @@ impl<const P: bool> Inner<P> {
                         );
                         buf = &buf[rem..];
                         let len = u64::from_le_bytes(value);
-                        self.state = InnerState::ReadContents(node_type, len, calc_aligned(len));
+                        let aligned = checked_calc_aligned(len).ok_or_else(|| {
+                            io::Error::new(io::ErrorKind::InvalidData, "content length too long")
+                        })?;
+                        self.state = InnerState::ReadContents(node_type, len, aligned);
                     }
                 }
 
@@ -448,7 +451,10 @@ impl<const P: bool> Inner<P> {
                     } else {
                         buf = &buf[rem..];
                         let len = u64::from_le_bytes(value);
-                        self.state = InnerState::ReadEntryName(len, calc_aligned(len));
+                        let aligned = checked_calc_aligned(len).ok_or_else(|| {
+                            io::Error::new(io::ErrorKind::InvalidData, "content length too long")
+                        })?;
+                        self.state = InnerState::ReadEntryName(len, aligned);
                     }
                 }
 
