@@ -1,7 +1,8 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::str::FromStr;
 
+use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::hash;
@@ -27,19 +28,25 @@ pub struct StoreDirError {
 /// ```
 ///
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct StoreDir(Arc<PathBuf>, Arc<String>);
+pub struct StoreDir(SmolStr);
+
+const DEFAULT_DIR: StoreDir = StoreDir::from_static("/nix/store");
 
 impl StoreDir {
+    pub const fn from_static(dir: &'static str) -> Self {
+        assert!(*(dir.as_bytes().first().expect("non-empty store dir")) == b'/');
+        Self(SmolStr::new_static(dir))
+    }
+
     /// Create a new StoreDir from given path.
     /// This can fail if the path contains non-UTF-8 characters and therefore can't be
     /// converted to a [`String`].
-    pub fn new<P: Into<PathBuf>>(path: P) -> Result<StoreDir, StoreDirError> {
-        let path = path.into();
-        let path_s = path
-            .to_str()
-            .ok_or_else(|| StoreDirError { path: path.clone() })?
-            .to_string();
-        Ok(StoreDir(Arc::new(path), Arc::new(path_s)))
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<StoreDir, StoreDirError> {
+        let path = path.as_ref();
+        let dir = path.to_str().ok_or_else(|| StoreDirError {
+            path: path.to_path_buf(),
+        })?;
+        Self::from_str(dir)
     }
 
     /// Get [`str`] representation of this StoreDir.
@@ -50,7 +57,7 @@ impl StoreDir {
     /// assert_eq!("/nix/store", store.to_str());
     /// ```
     pub fn to_str(&self) -> &str {
-        self.1.as_ref()
+        &self.0
     }
 
     /// Get [`Path`] representation of this StoreDir.
@@ -62,7 +69,7 @@ impl StoreDir {
     /// assert_eq!(Path::new("/nix/store"), store.to_path());
     /// ```
     pub fn to_path(&self) -> &Path {
-        self.0.as_ref()
+        Path::new(&self.0)
     }
 
     pub fn parse<F>(&self, s: &str) -> Result<F, F::Error>
@@ -93,6 +100,20 @@ impl StoreDir {
     }
 }
 
+impl FromStr for StoreDir {
+    type Err = StoreDirError;
+
+    fn from_str(dir: &str) -> Result<Self, Self::Err> {
+        if dir.starts_with("/") {
+            Ok(Self(SmolStr::new(dir)))
+        } else {
+            Err(StoreDirError {
+                path: Path::new(dir).to_path_buf(),
+            })
+        }
+    }
+}
+
 impl AsRef<Path> for StoreDir {
     fn as_ref(&self) -> &Path {
         self.to_path()
@@ -107,7 +128,7 @@ impl AsRef<str> for StoreDir {
 
 impl Default for StoreDir {
     fn default() -> Self {
-        StoreDir::new("/nix/store").unwrap()
+        DEFAULT_DIR.clone()
     }
 }
 

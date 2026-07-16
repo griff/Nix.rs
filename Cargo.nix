@@ -963,6 +963,44 @@ rec {
         };
         resolvedDefaultFeatures = [ "bcrypt" ];
       };
+      "borsh" = rec {
+        crateName = "borsh";
+        version = "1.7.0";
+        edition = "2018";
+        crateBin = [];
+        sha256 = "0igisdygydivbx0310h4r67lk55rvk3schmgv6y5py9dk6j6sgrg";
+        authors = [
+          "Near Inc <hello@near.org>"
+        ];
+        dependencies = [
+          {
+            name = "bytes";
+            packageId = "bytes";
+            optional = true;
+            usesDefaultFeatures = false;
+          }
+        ];
+        buildDependencies = [
+          {
+            name = "cfg_aliases";
+            packageId = "cfg_aliases";
+          }
+        ];
+        features = {
+          "ascii" = [ "dep:ascii" ];
+          "borsh-derive" = [ "dep:borsh-derive" ];
+          "bson" = [ "dep:bson" ];
+          "bytes" = [ "dep:bytes" ];
+          "default" = [ "std" ];
+          "derive" = [ "borsh-derive" ];
+          "hashbrown" = [ "dep:hashbrown" ];
+          "indexmap" = [ "dep:indexmap" ];
+          "std" = [ "bytes?/std" ];
+          "unstable__schema" = [ "derive" "borsh-derive/schema" ];
+          "uuid" = [ "dep:uuid" ];
+        };
+        resolvedDefaultFeatures = [ "std" ];
+      };
       "bstr" = rec {
         crateName = "bstr";
         version = "1.12.0";
@@ -1322,6 +1360,16 @@ rec {
           "core" = [ "dep:core" ];
           "rustc-dep-of-std" = [ "core" ];
         };
+      };
+      "cfg_aliases" = rec {
+        crateName = "cfg_aliases";
+        version = "0.2.1";
+        edition = "2018";
+        sha256 = "092pxdc1dbgjb6qvh83gk56rkic2n2ybm4yvy76cgynmzi3zwfk1";
+        authors = [
+          "Zicklag <zicklag@katharostech.com>"
+        ];
+
       };
       "chrono" = rec {
         crateName = "chrono";
@@ -5198,6 +5246,10 @@ rec {
             packageId = "serde_with";
           }
           {
+            name = "smol_str";
+            packageId = "smol_str";
+          }
+          {
             name = "test-strategy";
             packageId = "test-strategy";
             optional = true;
@@ -8529,19 +8581,47 @@ rec {
       };
       "serde" = rec {
         crateName = "serde";
-        version = "1.0.219";
-        edition = "2018";
-        sha256 = "1dl6nyxnsi82a197sd752128a4avm6mxnscywas1jq30srp2q3jz";
+        version = "1.0.228";
+        edition = "2021";
+        sha256 = "17mf4hhjxv5m90g42wmlbc61hdhlm6j9hwfkpcnd72rpgzm993ls";
         authors = [
           "Erick Tryzelaar <erick.tryzelaar@gmail.com>"
           "David Tolnay <dtolnay@gmail.com>"
         ];
         dependencies = [
           {
+            name = "serde_core";
+            packageId = "serde_core";
+            usesDefaultFeatures = false;
+            features = [ "result" ];
+          }
+          {
             name = "serde_derive";
             packageId = "serde_derive";
             optional = true;
           }
+        ];
+        features = {
+          "alloc" = [ "serde_core/alloc" ];
+          "default" = [ "std" ];
+          "derive" = [ "serde_derive" ];
+          "rc" = [ "serde_core/rc" ];
+          "serde_derive" = [ "dep:serde_derive" ];
+          "std" = [ "serde_core/std" ];
+          "unstable" = [ "serde_core/unstable" ];
+        };
+        resolvedDefaultFeatures = [ "alloc" "default" "derive" "serde_derive" "std" ];
+      };
+      "serde_core" = rec {
+        crateName = "serde_core";
+        version = "1.0.228";
+        edition = "2021";
+        sha256 = "1bb7id2xwx8izq50098s5j2sqrrvk31jbbrjqygyan6ask3qbls1";
+        authors = [
+          "Erick Tryzelaar <erick.tryzelaar@gmail.com>"
+          "David Tolnay <dtolnay@gmail.com>"
+        ];
+        dependencies = [
           {
             name = "serde_derive";
             packageId = "serde_derive";
@@ -8555,17 +8635,15 @@ rec {
           }
         ];
         features = {
-          "default" = [ "std" ];
-          "derive" = [ "serde_derive" ];
-          "serde_derive" = [ "dep:serde_derive" ];
+          "default" = [ "std" "result" ];
         };
-        resolvedDefaultFeatures = [ "alloc" "default" "derive" "serde_derive" "std" ];
+        resolvedDefaultFeatures = [ "alloc" "result" "std" ];
       };
       "serde_derive" = rec {
         crateName = "serde_derive";
-        version = "1.0.219";
-        edition = "2015";
-        sha256 = "001azhjmj7ya52pmfiw4ppxm16nd44y15j2pf5gkcwrcgz7pc0jv";
+        version = "1.0.228";
+        edition = "2021";
+        sha256 = "0y8xm7fvmr2kjcd029g9fijpndh8csv5m20g4bd76w8qschg4h6m";
         procMacro = true;
         authors = [
           "Erick Tryzelaar <erick.tryzelaar@gmail.com>"
@@ -9148,6 +9226,38 @@ rec {
           "unty" = [ "dep:unty" ];
         };
         resolvedDefaultFeatures = [ "const_generics" "const_new" ];
+      };
+      "smol_str" = rec {
+        crateName = "smol_str";
+        version = "0.3.6";
+        edition = "2024";
+        sha256 = "08qm7y1k2fkzrs8k78m03h4z4wbarv5g0bfr5m62m1glzil77aja";
+        authors = [
+          "Aleksey Kladov <aleksey.kladov@gmail.com>"
+          "Lukas Wirth <lukastw97@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "borsh";
+            packageId = "borsh";
+            optional = true;
+            usesDefaultFeatures = false;
+          }
+          {
+            name = "serde_core";
+            packageId = "serde_core";
+            optional = true;
+            usesDefaultFeatures = false;
+          }
+        ];
+        features = {
+          "arbitrary" = [ "dep:arbitrary" ];
+          "borsh" = [ "dep:borsh" ];
+          "default" = [ "std" ];
+          "serde" = [ "dep:serde_core" ];
+          "std" = [ "serde_core?/std" "borsh?/std" ];
+        };
+        resolvedDefaultFeatures = [ "default" "std" ];
       };
       "socket2 0.5.10" = rec {
         crateName = "socket2";
