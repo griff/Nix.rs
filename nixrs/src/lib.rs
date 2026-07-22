@@ -17,6 +17,7 @@ pub mod base32;
 pub mod daemon;
 pub mod derivation;
 pub mod derived_path;
+pub mod encoding;
 pub mod hash;
 #[cfg(feature = "internal")]
 pub mod io;
@@ -35,7 +36,10 @@ pub mod store_path;
 pub mod test;
 #[cfg(feature = "internal")]
 pub mod wire;
-#[cfg(not(feature = "internal"))]
+#[cfg(all(
+    not(feature = "internal"),
+    any(feature = "archive", feature = "daemon-serde")
+))]
 pub(crate) mod wire;
 
 pub type ByteString = bytes::Bytes;

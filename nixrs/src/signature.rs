@@ -11,7 +11,7 @@ use serde_with::{DeserializeFromStr, SerializeDisplay};
 use thiserror::Error;
 use tracing::error;
 
-use crate::wire::base64_len;
+use crate::encoding::base64_len;
 
 pub const SIGNATURE_BYTES: usize = 64;
 const SIGNATURE_BASE64_LEN: usize = base64_len(SIGNATURE_BYTES);

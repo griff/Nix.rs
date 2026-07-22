@@ -8,7 +8,7 @@ use derive_more::Display;
 use ring::digest;
 use thiserror::Error;
 
-use crate::wire::base64_len;
+use crate::encoding::base64_len;
 
 use super::base32;
 
