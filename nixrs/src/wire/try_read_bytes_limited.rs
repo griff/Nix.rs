@@ -7,9 +7,8 @@ use std::task::{Context, Poll, ready};
 
 use bytes::Bytes;
 
-use crate::wire::ZEROS;
-
-use super::{AsyncBytesRead, TryReadU64};
+use super::{TryReadU64, ZEROS};
+use crate::io::AsyncBytesRead;
 
 #[derive(Debug, Clone)]
 pub enum TryReadBytesLimited {
@@ -97,5 +96,32 @@ impl TryReadBytesLimited {
                 Self::Done => panic!("Polling completed future"),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod unittests {
+    use std::time::Duration;
+
+    use hex_literal::hex;
+    use tokio_test::io::Builder;
+
+    use super::TryReadBytesLimited;
+    use crate::io::BytesReader;
+
+    #[tokio::test]
+    async fn test_try_read_bytes_missing_padding() {
+        let mock = Builder::new()
+            .read(&hex!("0200 0000 0000 0000"))
+            .wait(Duration::ZERO)
+            .read(&hex!("1234"))
+            .build();
+        let mut reader = BytesReader::new(mock);
+
+        let ret = TryReadBytesLimited::new(0..=usize::MAX)
+            .read(&mut reader)
+            .await;
+
+        assert_eq!(std::io::ErrorKind::UnexpectedEof, ret.unwrap_err().kind());
     }
 }

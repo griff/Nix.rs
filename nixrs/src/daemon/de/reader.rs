@@ -10,11 +10,9 @@ use pin_project_lite::pin_project;
 use tokio::io::{AsyncRead, ReadBuf};
 
 use crate::daemon::ProtocolVersion;
-use crate::io::{
-    AsyncBytesRead, BytesReader, DEFAULT_MAX_BUF_SIZE, DEFAULT_RESERVED_BUF_SIZE,
-    TryReadBytesLimited, TryReadU64,
-};
+use crate::io::{AsyncBytesRead, BytesReader, DEFAULT_MAX_BUF_SIZE, DEFAULT_RESERVED_BUF_SIZE};
 use crate::store_path::{HasStoreDir, StoreDir};
+use crate::wire::{TryReadBytesLimited, TryReadU64};
 
 use super::NixRead;
 

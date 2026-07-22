@@ -233,29 +233,7 @@ mod unittests {
     use tokio::io::AsyncReadExt as _;
     use tokio_test::io::Builder;
 
-    use crate::io::{BytesReader, TryReadBytesLimited, TryReadU64};
-
-    #[test_log::test(tokio::test)]
-    async fn test_read_u64_partial() {
-        let mock = Builder::new()
-            .read(&hex!("0100 0000"))
-            .wait(Duration::ZERO)
-            .read(&hex!("0000 0000 0123 4567 89AB CDEF"))
-            .wait(Duration::ZERO)
-            .read(&hex!("0100 0000"))
-            .build();
-        let mut reader = BytesReader::new(mock);
-
-        assert_eq!(
-            1,
-            TryReadU64::new().read(&mut reader).await.unwrap().unwrap()
-        );
-        assert_eq!(hex!("0123 4567 89AB CDEF"), reader.buffer());
-
-        let mut buf = Vec::new();
-        reader.read_to_end(&mut buf).await.unwrap();
-        assert_eq!(hex!("0123 4567 89AB CDEF 0100 0000"), &buf[..]);
-    }
+    use crate::io::BytesReader;
 
     #[test_log::test(tokio::test)]
     async fn test_read_twice() {
@@ -299,21 +277,5 @@ mod unittests {
         drop(buf);
 
         assert_eq!(8, reader.force_fill().await.unwrap().len());
-    }
-
-    #[tokio::test]
-    async fn test_try_read_bytes_missing_padding() {
-        let mock = Builder::new()
-            .read(&hex!("0200 0000 0000 0000"))
-            .wait(Duration::ZERO)
-            .read(&hex!("1234"))
-            .build();
-        let mut reader = BytesReader::new(mock);
-
-        let ret = TryReadBytesLimited::new(0..=usize::MAX)
-            .read(&mut reader)
-            .await;
-
-        assert_eq!(std::io::ErrorKind::UnexpectedEof, ret.unwrap_err().kind());
     }
 }

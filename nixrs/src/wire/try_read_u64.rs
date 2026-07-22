@@ -58,3 +58,37 @@ impl TryReadU64 {
         Poll::Ready(Ok(Some(num)))
     }
 }
+
+#[cfg(test)]
+mod unittests {
+    use std::time::Duration;
+
+    use hex_literal::hex;
+    use tokio::io::AsyncReadExt as _;
+    use tokio_test::io::Builder;
+
+    use super::TryReadU64;
+    use crate::io::BytesReader;
+
+    #[test_log::test(tokio::test)]
+    async fn test_read_u64_partial() {
+        let mock = Builder::new()
+            .read(&hex!("0100 0000"))
+            .wait(Duration::ZERO)
+            .read(&hex!("0000 0000 0123 4567 89AB CDEF"))
+            .wait(Duration::ZERO)
+            .read(&hex!("0100 0000"))
+            .build();
+        let mut reader = BytesReader::new(mock);
+
+        assert_eq!(
+            1,
+            TryReadU64::new().read(&mut reader).await.unwrap().unwrap()
+        );
+        assert_eq!(hex!("0123 4567 89AB CDEF"), reader.buffer());
+
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf).await.unwrap();
+        assert_eq!(hex!("0123 4567 89AB CDEF 0100 0000"), &buf[..]);
+    }
+}

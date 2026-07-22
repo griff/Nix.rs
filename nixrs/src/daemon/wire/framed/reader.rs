@@ -5,7 +5,7 @@ use pin_project_lite::pin_project;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead};
 use tracing::trace;
 
-use crate::io::TryReadU64;
+use crate::wire::TryReadU64;
 
 #[derive(Debug, Default)]
 enum FramedReadState {

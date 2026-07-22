@@ -10,9 +10,8 @@ use pin_project_lite::pin_project;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::daemon::ProtocolVersion;
-use crate::io::{DEFAULT_BUF_SIZE, RESERVED_BUF_SIZE};
 use crate::store_path::{HasStoreDir, StoreDir};
-use crate::wire::{ZEROS, calc_padding};
+use crate::wire::{DEFAULT_BUF_SIZE, RESERVED_BUF_SIZE, ZEROS, calc_padding};
 
 use super::{Error, NixWrite};
 

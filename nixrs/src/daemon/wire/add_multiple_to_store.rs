@@ -140,8 +140,8 @@ mod unittests {
     use crate::daemon::ser::NixWriter;
     use crate::daemon::{DaemonResult, UnkeyedValidPathInfo};
     use crate::hash::NarHash;
-    use crate::io::DEFAULT_BUF_SIZE;
     use crate::test::archive::{test_data, write_nar};
+    use crate::wire::DEFAULT_BUF_SIZE;
 
     #[tokio::test]
     async fn write_empty() {
