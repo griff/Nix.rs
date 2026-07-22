@@ -1,45 +1,46 @@
-#[cfg(feature = "daemon")]
-pub mod client;
-pub mod de;
-#[cfg(feature = "daemon")]
-mod fail_store;
-#[cfg(feature = "daemon")]
-mod local;
-#[cfg(feature = "daemon")]
-mod logger;
-#[cfg(feature = "daemon")]
-mod mutex;
-pub mod ser;
-#[cfg(feature = "daemon")]
-pub mod server;
-#[cfg(feature = "daemon")]
-mod types;
-mod version;
-#[cfg(all(feature = "daemon", feature = "internal"))]
-pub mod wire;
-#[cfg(all(not(feature = "internal"), feature = "daemon"))]
-pub(crate) mod wire;
+macro_rules! cfg_daemon {
+    ($($item:item)*) => {
+        $(
+            #[cfg(feature = "daemon")]
+            $item
+        )*
+    };
+}
 
-#[cfg(feature = "daemon")]
-pub use fail_store::FailStore;
-#[cfg(feature = "daemon")]
-pub use local::{LocalDaemonStore, LocalHandshakeDaemonStore};
-#[cfg(feature = "daemon")]
-pub use logger::{DriveResult, FutureResultExt, LogSender, ResultLog, ResultLogExt, make_result};
-#[cfg(feature = "daemon")]
-pub use mutex::{MutexHandshakeStore, MutexStore};
-#[cfg(feature = "daemon")]
-pub use types::{
-    AddToStoreItem, BuildMode, BuildResult, BuildStatus, ClientOptions, CollectGarbageResponse,
-    DaemonError, DaemonErrorContext, DaemonErrorKind, DaemonInt, DaemonPath, DaemonResult,
-    DaemonResultExt, DaemonStore, DaemonString, DaemonTime, GCAction, HandshakeDaemonStore,
-    HasTrustLevel, KeyedBuildResult, KeyedBuildResults, Microseconds, Operation,
-    QueryMissingResult, RemoteError, TrustLevel, UnkeyedSubstitutablePathInfo,
-    UnkeyedValidPathInfo, ValidPathInfo,
-};
+pub mod de;
+pub mod ser;
+mod version;
+
 pub use version::{
     NIX_VERSION, PROTOCOL_VERSION, PROTOCOL_VERSION_MIN, ProtocolRange, ProtocolVersion,
 };
+
+cfg_daemon! {
+    pub mod client;
+    mod fail_store;
+    mod local;
+    mod logger;
+    mod mutex;
+    pub mod server;
+    mod types;
+    #[cfg(feature = "internal")]
+    pub mod wire;
+    #[cfg(not(feature = "internal"))]
+    pub(crate) mod wire;
+
+    pub use fail_store::FailStore;
+    pub use local::{LocalDaemonStore, LocalHandshakeDaemonStore};
+    pub use logger::{DriveResult, FutureResultExt, LogSender, ResultLog, ResultLogExt, make_result};
+    pub use mutex::{MutexHandshakeStore, MutexStore};
+    pub use types::{
+        AddToStoreItem, BuildMode, BuildResult, BuildStatus, ClientOptions, CollectGarbageResponse,
+        DaemonError, DaemonErrorContext, DaemonErrorKind, DaemonInt, DaemonPath, DaemonResult,
+        DaemonResultExt, DaemonStore, DaemonString, DaemonTime, GCAction, HandshakeDaemonStore,
+        HasTrustLevel, KeyedBuildResult, KeyedBuildResults, Microseconds, Operation,
+        QueryMissingResult, RemoteError, TrustLevel, UnkeyedSubstitutablePathInfo,
+        UnkeyedValidPathInfo, ValidPathInfo,
+    };
+}
 
 #[cfg(all(test, feature = "daemon"))]
 mod unittests {
