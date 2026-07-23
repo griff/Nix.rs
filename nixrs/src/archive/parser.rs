@@ -82,9 +82,9 @@ where
                 InnerState::ReadContents(
                     node_type @ (NodeType::ExecutableFile | NodeType::File),
                     size,
-                    _,
+                    aligned,
                 ) => {
-                    let reader = this.reader.lend(|r| PaddedReader::new(r, size));
+                    let reader = this.reader.lend(|r| PaddedReader::new(r, size, aligned));
                     let name = this.name.take().unwrap_or_default();
                     return Poll::Ready(Some(Ok(NarEvent::File {
                         name,
