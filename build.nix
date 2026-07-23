@@ -216,8 +216,9 @@ in {
       protobuf
       libarchive
       jq
-      cloc
       treefmt
+      rustfmt
+      nixpkgs-fmt
       crate2nix
       rustc.llvmPackages.llvm
       cargo
@@ -228,6 +229,7 @@ in {
       nix-output-monitor
       just
       cloc
+      jujutsu
     ] ++ lib.optionals stdenv.isDarwin [
       iconv
     ];
